@@ -4,6 +4,7 @@
 
 - 완료: 읽기 전용 프로젝트 명세, 저장소 단일 지침, 시작 문서, 구현 결정, 상태 및 Git 협업 문서
 - 완료: 초기화 작업 추적용 GitHub Issue #1
+- 완료: 원격 작업 브랜치 `codex/repository-initialization`과 검토용 Pull Request #2
 - 미구현: React 애플리케이션, 패키지 설정, 의존성, 테스트, 배포 설정과 Continuous Integration (CI)
 - 미구현: HTTP JSON, WebSocket, Web Real-Time Communication (WebRTC), 녹화 미디어와 관리자 인증 연동
 
