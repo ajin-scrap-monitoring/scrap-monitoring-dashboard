@@ -12,7 +12,7 @@
 
 ## 사용 전 주의
 
-Codex를 포함한 구현 작업자는 이 문서를 사용하기 전에 다음 기준을 따른다.
+구현 작업자는 이 문서를 사용하기 전에 다음 기준을 따른다.
 
 1. `docs/project-spec.md`를 먼저 읽고 확정된 목적, 범위와 경계를 확인한다.
 2. 현재 작업 요청과 확정된 외부 계약에서 결정되지 않은 내용을 이 문서만 근거로 구현하지
@@ -203,4 +203,5 @@ Cross-Site Request Forgery (CSRF) 방어를 적용하는 구성을 검토할 수
 | --- | --- |
 | `docs/project-spec.md` | 목적, 산출물, 범위, 외부 경계, 실행 제약과 완료 방향 |
 | `docs/design-reference.md` | 미확정된 구체적 참고안과 적용 전 확인 사항 |
+| `docs/development-workflow.md` | 요구사항, 설계, 구현, 검증과 배포 순서 |
 | `docs/implementation.md` | 채택한 기술, 의존성, 내부 설계, 실행 방법과 검증 방법 |
