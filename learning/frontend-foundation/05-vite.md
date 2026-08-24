@@ -2,33 +2,123 @@
 
 ## 학습 목표
 
-Vite가 개발 중 소스를 제공하는 과정과 프로덕션 정적 파일을 생성하는 과정을
-구분하고, TypeScript와 React plugin이 어느 단계에 참여하는지 이해한다.
+Vite가 왜 필요한지 이해하고, 개발 서버와 프로덕션 빌드가 서로 다른 작업이라는
+점을 구분한다. `pnpm run dev`, `pnpm run build`와 `pnpm run preview`가 실제로
+실행하는 명령과 생성 결과도 이해한다.
 
 ## 구성 요소
 
-현재 구조의 구성 요소는 8개다.
+현재 Vite 처리에 참여하는 구성 요소는 8개다.
 
 | 구성 요소 | 위치 | 역할 |
 | --- | --- | --- |
-| Vite Command-Line Interface (CLI) | `node_modules/vite` | 개발 서버, build와 preview 명령 제공 |
-| Vite 설정 | `vite.config.ts` | plugin과 build 동작 구성 |
-| React plugin | `@vitejs/plugin-react` | React 변환과 Fast Refresh 지원 |
-| Hypertext Markup Language (HTML) 진입점 | `index.html` | module graph의 시작점과 HTML 문서 제공 |
-| 애플리케이션 source | `src/*.tsx` | 변환하고 bundle할 코드 |
-| 개발 서버 | `vite` process | source를 개발용으로 변환하고 제공 |
-| 프로덕션 builder | `vite build` process | 최적화된 정적 파일 생성 |
-| build 산출물 | `dist/` | 웹 서버에 전달할 정적 파일 |
+| pnpm script | `package.json` | 사람이 입력할 Vite 관련 명령 정의 |
+| Vite | `node_modules/vite` | 개발 서버, 소스 변환과 프로덕션 빌드 제공 |
+| Vite 설정 | `vite.config.ts` | React plugin 등록 |
+| React plugin | `@vitejs/plugin-react` | React JavaScript XML (JSX) 변환과 Fast Refresh 지원 |
+| Hypertext Markup Language (HTML) 진입 파일 | `index.html` | 브라우저가 처음 받을 문서 |
+| JavaScript 진입 파일 | `src/main.tsx` | 애플리케이션 소스 연결 시작점 |
+| 애플리케이션 소스 | `src/*.tsx` | 개발 서버와 빌드의 변환 입력 |
+| 프로덕션 산출물 | `dist/` | 웹 서버가 제공할 HTML과 JavaScript |
 
-`vite.config.ts`, `index.html`과 `src/`는 입력 파일이다. 개발 서버 process와
-`dist/`는 명령 실행으로 생기는 실행 상태 또는 부산물이다.
+`vite.config.ts`, `index.html`과 `src/`는 Git으로 추적하는 입력이다. `dist/`는
+입력으로 다시 만들 수 있는 빌드 결과이므로 추적하지 않는다.
 
-## Vite 설정 실행 위치
+## Vite가 필요한 이유
 
-`vite.config.ts`는 브라우저가 실행하는 코드가 아니다. Node.js가 Vite를 시작할 때
-이 파일을 읽고 실행한다.
+현재 소스에는 브라우저가 그대로 실행할 수 없는 내용이 있다.
 
-현재 설정은 React plugin 하나를 등록한다.
+- TypeScript 타입 문법
+- TypeScript JSX (TSX)
+- React JSX 변환
+- npm package에서 가져오는 module
+
+브라우저는 JavaScript를 실행한다. Vite는 개발 중 또는 빌드할 때 TypeScript와
+TSX 소스를 브라우저가 실행할 JavaScript로 변환한다.
+
+Vite의 현재 책임은 3개다.
+
+1. 개발 중 사용할 로컬 웹 서버 실행
+2. TypeScript와 TSX 소스의 JavaScript 변환
+3. 배포할 정적 파일을 `dist/`에 생성
+
+Vite는 TypeScript 타입 오류를 검사하지 않는다. 타입 검사는 `tsc`가 담당한다.
+
+## 먼저 구분할 세 명령
+
+현재 Vite와 관련된 프로젝트 명령은 3개다.
+
+| 내가 입력하는 명령 | `package.json`이 실행하는 내용 | 사용 목적 | `dist/` 생성 |
+| --- | --- | --- | --- |
+| `pnpm run dev` | `vite` | 개발 중 브라우저 확인 | 생성하지 않음 |
+| `pnpm run build` | `tsc -b && vite build` | 타입 검사 후 배포 파일 생성 | 생성 |
+| `pnpm run preview` | `vite preview` | 생성된 `dist/`를 로컬에서 확인 | 새로 생성하지 않음 |
+
+세 명령은 모두 웹 화면과 관련되지만 실행 목적과 입력이 다르다.
+
+## `pnpm run dev`
+
+이 명령은 개발 서버를 실행한다. 개발 서버는 명령을 실행한 terminal에서 계속
+동작하며, 종료하기 전까지 브라우저 요청을 기다린다.
+
+실행 과정은 7단계다.
+
+1. 사람이 `pnpm run dev`를 입력한다.
+2. pnpm이 `package.json`의 `dev` script를 찾는다.
+3. pnpm이 `vite`를 실행한다.
+4. Vite가 `vite.config.ts`를 읽는다.
+5. Vite가 로컬 Hypertext Transfer Protocol (HTTP) 서버를 연다.
+6. 브라우저가 개발 서버에 HTML과 JavaScript를 요청한다.
+7. Vite가 요청된 소스를 변환해 브라우저에 응답한다.
+
+```text
+Source Files -> Vite Dev Server -> Browser
+```
+
+개발 서버는 `dist/`를 먼저 만들지 않는다. 브라우저가 필요한 소스를 요청할 때
+Vite가 개발용으로 변환해 응답한다.
+
+개발 서버를 종료하려면 실행 중인 terminal에서 `Ctrl-C`를 입력한다. 개발 서버는
+개발 컴퓨터에서만 사용하며 운영 웹 서버로 사용하지 않는다.
+
+## 브라우저가 처음 요청하는 파일
+
+Vite는 Repository 루트의 `index.html`을 브라우저 진입 파일로 사용한다. 현재
+HTML에는 다음 script가 있다.
+
+```html
+<script type="module" src="/src/main.tsx"></script>
+```
+
+브라우저가 `/src/main.tsx`를 요청하면 개발 서버의 Vite가 원본 TSX를 JavaScript로
+변환해 응답한다. 브라우저가 TypeScript를 직접 실행하는 것이 아니다.
+
+`src/main.tsx`가 `src/App.tsx`를 import하므로 Vite는 `App.tsx`도 찾아서 변환한다.
+`App.tsx`가 다른 파일을 import하면 Vite는 그 파일도 이어서 처리한다.
+
+## module과 import 연결
+
+module은 import 또는 export를 사용하는 코드 파일이다. 현재 주요 module 연결은
+다음과 같다.
+
+```text
+index.html -> src/main.tsx -> src/App.tsx
+                          -> react
+                          -> react-dom
+```
+
+한 module이 다른 module을 import하는 연결 전체를 module graph라고 부른다.
+Vite는 이 연결을 따라 필요한 애플리케이션 파일과 package를 찾는다.
+
+module graph라는 용어는 새로운 실행 단계가 아니다. 어떤 파일이 어떤 파일을
+가져오는지 나타내는 관계의 이름이다.
+
+## `vite.config.ts`
+
+`vite.config.ts`는 브라우저에 전달하는 애플리케이션 코드가 아니다. Vite가 시작할
+때 Node.js 환경에서 읽는 도구 설정이다.
+
+현재 설정은 다음과 같다.
 
 ```ts
 import { defineConfig } from "vite";
@@ -39,61 +129,42 @@ export default defineConfig({
 });
 ```
 
-`defineConfig`는 설정 객체 작성 시 TypeScript 편집 지원을 제공한다. `react()`가
-반환한 plugin을 `plugins` 배열에 넣으면 Vite가 개발과 build pipeline에 해당
-plugin을 연결한다.
+이 설정이 하는 일은 React plugin 하나를 Vite에 등록하는 것이다.
 
-## `index.html`의 역할
+| 코드 | 역할 |
+| --- | --- |
+| `defineConfig` | Vite 설정 객체 작성 지원 |
+| `react()` | React용 Vite plugin 생성 |
+| `plugins: [react()]` | 개발 서버와 빌드에 React plugin 적용 |
 
-Vite에서 `index.html`은 단순 복사 대상이 아니라 module graph의 진입점이다.
-현재 script element는 원본 진입 module을 가리킨다.
+React plugin은 React JSX 변환과 개발 중 Fast Refresh를 지원한다. Fast Refresh는
+컴포넌트 파일을 저장했을 때 가능한 경우 현재 화면 상태를 유지하면서 변경된
+컴포넌트를 갱신한다.
 
-```html
-<script type="module" src="/src/main.tsx"></script>
-```
+## `pnpm run build`
 
-개발 서버는 이 요청을 처리하면서 TSX를 변환한다. 프로덕션 build는
-`src/main.tsx`에서 이어지는 import graph를 분석하고, script 경로를 생성한
-JavaScript asset 경로로 바꾼 HTML을 `dist/`에 기록한다.
+이 명령은 개발 서버를 여는 명령이 아니다. 배포할 정적 파일을 만드는 명령이다.
 
-## 개발 서버 흐름
+상위 실행 과정은 5단계다.
 
-`pnpm run dev`의 실행 흐름은 7단계다.
+1. 사람이 `pnpm run build`를 입력한다.
+2. pnpm이 `tsc -b`로 TypeScript 타입을 검사한다.
+3. 타입 오류가 있으면 빌드를 중단한다.
+4. 타입 오류가 없으면 pnpm이 `vite build`를 실행한다.
+5. Vite가 결과를 `dist/`에 기록한다.
 
-1. pnpm이 `package.json`의 `dev` script를 읽는다.
-2. pnpm이 프로젝트에 설치된 Vite CLI를 실행한다.
-3. Node.js가 `vite.config.ts`를 읽어 React plugin을 등록한다.
-4. Vite가 로컬 Hypertext Transfer Protocol (HTTP) 개발 서버를 연다.
-5. 브라우저가 `index.html`과 `/src/main.tsx`를 요청한다.
-6. Vite가 요청된 module을 필요할 때 변환해 응답한다.
-7. source가 바뀌면 Vite와 React plugin이 변경 사항을 브라우저에 전달한다.
+Vite 내부에서는 다음 작업을 수행한다.
 
-```text
-Source -> Vite Dev Server -> Transformed Modules -> Browser
-                  ^                              |
-                  +--------- Source Update ------+
-```
+1. `index.html`을 읽는다.
+2. `src/main.tsx`부터 import 연결을 따라 필요한 파일을 찾는다.
+3. TypeScript와 JSX 문법을 JavaScript로 변환한다.
+4. 애플리케이션 코드와 필요한 package 코드를 배포에 적합한 파일로 묶는다.
+5. HTML의 script 경로를 생성한 JavaScript 파일 경로로 바꾼다.
 
-개발 서버는 source file을 빠르게 확인하는 도구다. `dist/`를 먼저 만들지 않고
-요청된 module을 개발 환경에 맞게 제공한다.
+여러 source와 package 코드를 배포에 적합한 파일 구조로 묶는 작업을 bundling이라고
+부른다.
 
-## 프로덕션 build 흐름
-
-`pnpm run build`는 2개 상위 작업을 순서대로 실행한다.
-
-```text
-TypeScript type check -> Vite production build -> dist
-```
-
-Vite build 내부 흐름은 5단계다.
-
-1. Vite가 `index.html`을 진입점으로 읽는다.
-2. Vite가 `src/main.tsx`에서 이어지는 import graph를 수집한다.
-3. Vite와 React plugin이 TypeScript와 TSX를 JavaScript로 변환한다.
-4. Vite가 필요한 package code와 애플리케이션 code를 bundle하고 최적화한다.
-5. Vite가 변환된 HTML과 hash가 포함된 asset을 `dist/`에 기록한다.
-
-현재 build 결과는 최소한 다음 구조를 가진다.
+현재 빌드 결과의 기본 구조는 다음과 같다.
 
 ```text
 dist/
@@ -102,69 +173,81 @@ dist/
     index-<content-hash>.js
 ```
 
-asset 이름의 hash는 내용에 따라 달라질 수 있다. HTML은 해당 build에서 생성된
-정확한 asset 이름을 참조한다.
+파일 이름의 hash는 파일 내용을 기준으로 만든 식별값이다. JavaScript 내용이
+바뀌면 파일 이름의 hash도 달라질 수 있다. `dist/index.html`은 같은 빌드에서
+생성된 정확한 JavaScript 파일 이름을 참조한다.
 
-## 개발 서버와 `dist/`의 차이
+## 개발 서버와 프로덕션 빌드
 
-| 항목 | 개발 서버 | 프로덕션 build |
+두 실행 방식을 다음처럼 구분한다.
+
+| 항목 | 개발 서버 | 프로덕션 빌드 |
 | --- | --- | --- |
 | 명령 | `pnpm run dev` | `pnpm run build` |
-| source 처리 | 요청 시 변환 | 전체 graph 분석과 bundle 생성 |
-| 출력 위치 | 개발 서버 응답 | `dist/` |
-| Fast Refresh | 포함 | 제외 |
-| 사용 목적 | 개발 중 확인 | 배포할 정적 산출물 생성 |
+| 실행 상태 | 종료 전까지 계속 실행 | 파일 생성 후 종료 |
+| 소스 처리 시점 | 브라우저 요청 시 | 빌드 명령 실행 시 |
+| Fast Refresh | 사용 | 포함하지 않음 |
+| 파일 결과 | `dist/` 없음 | `dist/` 생성 |
+| 목적 | 개발 중 확인 | 배포 산출물 생성 |
 
-개발 서버를 운영 웹 서버로 사용하지 않는다. 배포 Repository의 Nginx가 검증된
-정적 산출물을 제공한다.
+개발 서버에서 화면이 열린다는 사실만으로 프로덕션 빌드가 성공한다고 판단하지
+않는다. 배포 전에는 `pnpm run build`를 별도로 실행한다.
 
-## preview의 역할
+## `pnpm run preview`
 
-`pnpm run preview`는 이미 생성된 `dist/`를 로컬 HTTP 서버로 제공한다. source를
-개발 방식으로 변환하는 `pnpm run dev`와 달리 build 결과를 확인한다.
+preview는 기존 `dist/`를 로컬 HTTP 서버로 제공한다. 이 명령은 TypeScript와 TSX
+소스를 다시 변환하지 않으며 새 `dist/`도 만들지 않는다.
 
-preview는 배포 전에 HTML과 asset 경로가 실제 HTTP 요청으로 열리는지 확인하는
-도구다. 성능, 보안 header, TLS, reverse proxy와 운영 장애 대응을 제공하는
-프로덕션 웹 서버가 아니다.
+실행 전에 `pnpm run build`가 성공해 `dist/`가 존재해야 한다.
 
-## 세 가지 호환성 설정
+```sh
+pnpm run build
+pnpm run preview
+```
 
-프론트엔드 호환성은 3개 층으로 나뉜다. Web API의 API는 Application Programming
-Interface를 뜻한다.
+preview는 빌드된 HTML이 JavaScript asset을 올바르게 불러오는지 확인하는 용도다.
+Transport Layer Security (TLS), 보안 header, reverse proxy와 장애 대응을 제공하는
+운영 웹 서버가 아니다.
 
-| 층 | 현재 관련 설정 | 결정 대상 |
+## Vite와 브라우저 호환성
+
+브라우저 호환성과 관련된 층은 3개다.
+
+| 층 | 결정하는 대상 | 현재 담당 |
 | --- | --- | --- |
-| TypeScript 검사 언어 수준 | `target: ES2023`, `lib` | source 타입과 사용 가능한 타입 선언 |
-| Vite build 출력 문법 | Vite의 기본 build target | 변환된 JavaScript 문법 범위 |
-| 브라우저 Web API | 애플리케이션 source에서 호출한 API | 실제 브라우저 기능 제공 여부와 fallback |
+| TypeScript 검사 설정 | 소스에서 사용할 수 있다고 판단할 타입 | `tsconfig.app.json` |
+| Vite build target | 최종 JavaScript 문법 변환 범위 | Vite 기본값 |
+| 브라우저 Web API (Application Programming Interface) | 브라우저가 실제 제공하는 기능 | 실제 브라우저 |
 
-Vite가 최신 JavaScript 문법을 이전 문법으로 변환해도 브라우저에 없는 Web API를
-자동 구현하지는 않는다. Web API는 실제 대상 브라우저 지원 여부를 확인하고,
-필요하면 기능 탐지, 대체 동작 또는 별도 polyfill을 결정한다.
+Vite는 JavaScript 문법을 대상 브라우저에 맞게 변환할 수 있다. 그러나 브라우저에
+없는 Web API를 자동으로 추가하지 않는다.
 
-현재 Vite build target은 별도로 재정의하지 않는다. 정확한 대상 브라우저와
-Web API 지원 정책은 프로젝트 구현 결정 문서에서 별도로 확정한다.
+현재 Vite build target은 별도로 설정하지 않아 Vite 8.2.2의 기본값을 사용한다.
+정확한 대상 브라우저와 Web API 정책은 아직 프로젝트 구현 결정으로 확정하지
+않았다.
 
-## 기본 경로와 웹 서버 경계
+## 웹 서버와의 경계
 
-현재 Vite의 기본 base path를 사용하므로 생성된 asset URL은 웹 서버 root를
-기준으로 한다. 이 동작은 현재 빈 애플리케이션 build를 확인하기 위한 기준선이며,
-실제 배포 기본 경로 계약은 아직 확정되지 않은 상태다.
+Vite가 이 Repository에서 만드는 배포 결과는 `dist/`다. 운영 환경에서는 배포
+Repository의 Nginx가 이 정적 파일을 제공한다.
 
-Nginx 설정, Transport Layer Security (TLS), API reverse proxy와 container 구성은
-이 Repository의 Vite 설정이 아니라 배포 Repository의 책임이다.
+현재 Vite의 기본 base path는 웹 서버 root를 기준으로 asset 경로를 만든다. 실제
+배포 기본 경로는 배포 계약을 정할 때 확정한다.
 
-## 생성되는 부산물
+Nginx 설정, TLS, FastAPI reverse proxy와 컨테이너 구성은 `vite.config.ts`에 넣지
+않는다. 해당 항목은 배포 Repository에서 관리한다.
 
-| 부산물 | 생성 명령 | Git 추적 | 처리 원칙 |
+## 생성되는 결과
+
+| 결과 | 생성 명령 | Git 추적 | 처리 방법 |
 | --- | --- | --- | --- |
-| `dist/index.html` | `pnpm run build` | 제외 | source와 함께 재생성 |
-| `dist/assets/*.js` | `pnpm run build` | 제외 | source와 함께 재생성 |
-| 개발 서버 process | `pnpm run dev` | 제외 | 개발 종료 시 중단 |
-| preview server process | `pnpm run preview` | 제외 | 확인 종료 시 중단 |
+| 개발 서버 프로세스 | `pnpm run dev` | 제외 | 개발 종료 시 중단 |
+| `dist/index.html` | `pnpm run build` | 제외 | 소스에서 다시 생성 |
+| `dist/assets/*.js` | `pnpm run build` | 제외 | 소스에서 다시 생성 |
+| preview 서버 프로세스 | `pnpm run preview` | 제외 | 확인 종료 시 중단 |
 
-`dist/` 안의 파일을 직접 수정하지 않는다. 입력 source 또는 Vite 설정을 수정하고
-다시 build한다.
+`dist/` 안의 파일을 직접 수정하지 않는다. `index.html`, `src/` 또는 Vite 설정을
+수정하고 다시 빌드한다.
 
 ## 확인 명령
 
@@ -175,12 +258,12 @@ find dist -maxdepth 2 -type f -print
 pnpm run preview
 ```
 
-개발 서버에서는 원본 module 요청과 Fast Refresh를 관찰한다. preview에서는
-`dist/index.html`이 hash가 포함된 asset을 요청하는지 관찰한다.
+개발 서버와 preview는 동시에 실행할 필요가 없다. 확인 목적에 맞는 명령 하나를
+실행하고 끝나면 중단한다.
 
 ## 공식 자료
 
 - [Vite 시작 안내](https://vite.dev/guide/)
 - [Vite 기능과 TypeScript 처리](https://vite.dev/guide/features.html#typescript)
-- [Vite 프로덕션 build](https://vite.dev/guide/build.html)
+- [Vite 프로덕션 빌드](https://vite.dev/guide/build.html)
 - [Vite React plugin](https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react)

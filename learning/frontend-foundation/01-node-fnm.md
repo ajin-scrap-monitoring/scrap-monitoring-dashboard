@@ -27,25 +27,14 @@ TypeScript 컴파일러와 Vite 같은 개발 도구가 Node.js 프로세스 안
 pnpm은 package를 설치하고 script를 시작하며, script 안의 TypeScript와 Vite는
 현재 선택된 Node.js를 사용한다.
 
-브라우저는 제품을 사용할 때 Node.js를 사용하지 않는다. 브라우저는 Vite가 만든
-HTML과 JavaScript 정적 파일을 Nginx에서 내려받아 자체 JavaScript 엔진으로
-실행한다. 운영 웹 서버에도 프론트엔드 빌드 목적의 Node.js를 설치하지 않는다.
+브라우저는 Vite가 만든 HTML과 JavaScript 정적 파일을 Nginx에서 내려받아
+자체 JavaScript 엔진으로 실행한다.
 
 ## fnm의 역할
 
 fnm은 여러 Node.js 버전을 개발 컴퓨터에 설치하고 현재 셸에서 사용할 버전을
 선택한다. fnm이 셸의 `PATH` 앞부분에 선택한 Node.js 실행 경로를 놓으면, 셸이
 `node` 명령을 해당 버전으로 실행한다.
-
-zsh에서 자동 전환을 사용하면 셸은 디렉터리가 바뀔 때 fnm을 호출한다. fnm은
-Repository의 `.node-version`을 읽고 해당 Node.js 버전을 선택한다.
-
-```sh
-eval "$(fnm env --use-on-cd --shell zsh)"
-```
-
-이 셸 설정은 개발 컴퓨터의 사용자 설정이다. Repository가 사용자의 셸 설정을
-직접 변경하거나 fnm을 자동 설치하지 않는다.
 
 ## 두 버전 선언의 차이
 
@@ -57,7 +46,7 @@ eval "$(fnm env --use-on-cd --shell zsh)"
 | `engines.node` | `24.x` | 패키지가 허용하는 주 버전 범위 | pnpm과 Node.js 생태계 도구 |
 
 `.node-version`은 설치와 실행의 재현성을 제공한다. `engines.node`는 호환성 범위를
-표현하지만 그 자체로 Node.js를 설치하거나 현재 셸의 버전을 바꾸지 않는다.
+표현한다.
 
 ## 로컬 실행 흐름
 
@@ -67,7 +56,8 @@ eval "$(fnm env --use-on-cd --shell zsh)"
 2. `fnm install`이 `.node-version`의 버전을 설치한다.
 3. `fnm use`가 해당 버전을 현재 셸에서 활성화한다.
 4. 셸이 활성화된 `node` 실행 파일을 찾는다.
-5. pnpm이 package script를 시작하고 Node.js가 TypeScript와 Vite를 실행한다.
+5. pnpm이 package script를 시작하여 실행 경로를 찾고
+Node.js가 TypeScript와 Vite를 실행한다.
 
 ```sh
 fnm install
@@ -75,13 +65,10 @@ fnm use
 node --version
 ```
 
-마지막 명령의 기대 결과는 `v24.19.0`이다.
-
 ## CI 실행 흐름
 
-GitHub Actions에서는 fnm을 설치하지 않는다. `actions/setup-node`가
-`.node-version`을 읽어 runner에 Node.js 24.19.0을 준비한다. 로컬과 CI는 버전
-선택 도구는 다르지만 같은 입력 파일을 사용한다.
+GitHub Actions에서는 `actions/setup-node`가 `.node-version`을 읽어
+runner에 Node.js 24.19.0을 준비한다.
 
 ## 생성되는 부산물
 
@@ -91,9 +78,6 @@ GitHub Actions에서는 fnm을 설치하지 않는다. `actions/setup-node`가
 | Node.js 24.19.0 | fnm 관리 경로 또는 CI tool cache | 제외 |
 | 셸 환경 변수와 `PATH` 변경 | 현재 셸 프로세스 | 제외 |
 
-Node.js 설치 파일을 지워도 Repository 소스는 변하지 않는다. 이후 `fnm install`로
-같은 버전을 다시 설치할 수 있다.
-
 ## 확인 명령
 
 ```sh
@@ -102,10 +86,6 @@ node --version
 node -p 'process.execPath'
 node -p 'process.platform + " " + process.arch'
 ```
-
-`node --version`은 활성 버전을 보여 준다. `process.execPath`는 셸이 실제로 실행한
-Node.js 파일의 위치를 보여 준다. 플랫폼과 Central Processing Unit (CPU) 구조는
-같은 Node.js 버전에서도 개발 컴퓨터와 CI가 서로 다를 수 있다.
 
 ## 공식 자료
 
