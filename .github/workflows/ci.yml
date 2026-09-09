@@ -14,7 +14,10 @@ permissions:
 jobs:
   ci:
     name: CI
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+      options: --user 1001
     timeout-minutes: 20
 
     steps:
@@ -40,9 +43,6 @@ jobs:
 
       - name: Run component tests
         run: pnpm run test
-
-      - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
 
       - name: Build and run browser tests
         run: pnpm run test:e2e
