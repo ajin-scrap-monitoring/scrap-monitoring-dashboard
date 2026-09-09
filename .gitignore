@@ -3,5 +3,7 @@ dist/
 coverage/
 playwright-report/
 test-results/
+/temp/
+/local-assets/design-reference/
 .DS_Store
 *.local
