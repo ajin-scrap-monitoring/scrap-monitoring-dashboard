@@ -146,6 +146,15 @@ Playwright는 `e2e/`의 브라우저 테스트를 1440 x 900과 1920 x 1080 Chro
 서버에서 브라우저 테스트를 수행한다. 실패한 테스트의 screenshot과 trace는 Git에서
 제외한 `test-results/`에 저장한다.
 
+CI의 호스트 runner는 Ubuntu 24.04로 고정한다. CI 작업은 `@playwright/test` 1.62.1과
+버전이 일치하는 공식 Playwright Noble 컨테이너
+`mcr.microsoft.com/playwright:v1.62.1-noble`에서 실행하고 OCI image digest를 고정한다.
+컨테이너는 사용자 `1001`로 실행한다. 컨테이너가 Chromium과 실행에 필요한 Linux 시스템
+라이브러리를 제공하므로 CI에서 브라우저 또는 시스템 패키지를 별도로 설치하지 않는다.
+Node.js와 pnpm은 컨테이너 안에서도 각각 `.node-version`과 `package.json`의
+`packageManager`에 기록된 버전을 사용한다. CI가 사용하는 외부 GitHub Action은 upstream
+Repository의 전체 commit SHA로 고정한다.
+
 `pnpm run check`는 정적 검사, 컴포넌트 테스트, 타입 검사, 프로덕션 빌드와 브라우저
 테스트를 순서대로 실행하는 전체 로컬 검증 명령이다.
 
@@ -199,5 +208,5 @@ pnpm run check
 
 `pnpm run preview`는 로컬에서 프로덕션 빌드 결과를 확인하는 명령이며 운영 웹
 서버로 사용하지 않는다. Chromium 설치는 Playwright 버전을 변경한 뒤 다시 실행한다.
-현재 CI는 frozen 설치, 정적 검사, 컴포넌트 테스트, Chromium 설치, 타입 검사,
-프로덕션 빌드와 두 뷰포트의 브라우저 테스트를 실행한다.
+현재 CI는 공식 Playwright 컨테이너에서 frozen 설치, 정적 검사, 컴포넌트 테스트,
+타입 검사, 프로덕션 빌드와 두 뷰포트의 브라우저 테스트를 실행한다.
