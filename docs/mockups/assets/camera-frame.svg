@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" role="img" aria-labelledby="title description">
+  <title id="title">스크랩 적재 공간 합성 영상</title>
+  <desc id="description">현장 사진을 사용하지 않은 공개용 실시간 영상 예시</desc>
+  <defs>
+    <linearGradient id="factoryBackground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#303840"></stop>
+      <stop offset="1" stop-color="#161c22"></stop>
+    </linearGradient>
+    <linearGradient id="leftWall" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#89939a"></stop>
+      <stop offset="1" stop-color="#444f57"></stop>
+    </linearGradient>
+    <linearGradient id="rightWall" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#929ca3"></stop>
+      <stop offset="1" stop-color="#4c5860"></stop>
+    </linearGradient>
+    <linearGradient id="chute" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d6dde1"></stop>
+      <stop offset="0.5" stop-color="#717d85"></stop>
+      <stop offset="1" stop-color="#b9c2c8"></stop>
+    </linearGradient>
+    <pattern id="scrapPattern" width="48" height="38" patternUnits="userSpaceOnUse">
+      <rect width="48" height="38" fill="#66727a"></rect>
+      <path d="M3 24 13 7l11 16-8 10Zm22-11 9-9 10 12-8 12Zm11 18 7-8 5 13Z" fill="#aab3b8" stroke="#d5dade" stroke-width="2"></path>
+      <circle cx="26" cy="31" r="6" fill="#879299" stroke="#c6cdd1" stroke-width="2"></circle>
+      <path d="m1 6 8-4 6 6-8 5Z" fill="#79858d" stroke="#bdc5ca" stroke-width="1.5"></path>
+    </pattern>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#000000" flood-opacity="0.35"></feDropShadow>
+    </filter>
+  </defs>
+
+  <rect width="640" height="480" fill="url(#factoryBackground)"></rect>
+  <g opacity="0.55" stroke="#75818a" stroke-width="9">
+    <path d="M0 68H640M36 0v186M604 0v186M118 0 72 192M522 0l48 192"></path>
+  </g>
+  <g opacity="0.6" stroke="#c68a2d" stroke-width="5">
+    <path d="M24 122h126M490 122h126M54 122v100M586 122v100"></path>
+  </g>
+
+  <g filter="url(#shadow)">
+    <path d="M72 178 320 230 568 178 520 438 320 476 120 438Z" fill="#29343b" stroke="#bbc3c8" stroke-width="5"></path>
+    <path d="M72 178 320 230 320 476 120 438Z" fill="url(#leftWall)" stroke="#c6cdd1" stroke-width="4"></path>
+    <path d="M320 230 568 178 520 438 320 476Z" fill="url(#rightWall)" stroke="#cbd2d6" stroke-width="4"></path>
+    <path d="M117 261 320 292 523 261 491 417 320 450 149 417Z" fill="url(#scrapPattern)" stroke="#35434b" stroke-width="4"></path>
+    <path d="M117 261c59-34 117 27 176-6 50-28 88 20 126-3 31-19 67-7 104 9L320 292Z" fill="#9aa4aa" opacity="0.75"></path>
+  </g>
+
+  <g filter="url(#shadow)">
+    <path d="M252 -18h139l-32 201-112 32Z" fill="url(#chute)" stroke="#e1e5e8" stroke-width="4"></path>
+    <path d="m247 215 112-32-16 65-88 22Z" fill="#657078" stroke="#c5ccd0" stroke-width="4"></path>
+    <path d="M274 0 252 196M322 0l-18 186M370 0l-14 176" stroke="#eef1f3" stroke-opacity="0.38" stroke-width="3"></path>
+  </g>
+
+  <g opacity="0.8" fill="#d5dadd">
+    <path d="m282 238 14-15 15 18-12 15Z"></path>
+    <path d="m317 246 11-17 17 11-6 19Z"></path>
+    <path d="m349 232 13-11 13 15-11 14Z"></path>
+  </g>
+
+  <rect x="18" y="18" width="154" height="30" rx="4" fill="#11171c" fill-opacity="0.8"></rect>
+  <circle cx="35" cy="33" r="5" fill="#f58a07"></circle>
+  <text x="49" y="38" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="1.2">SAMPLE LIVE VIEW</text>
+</svg>
