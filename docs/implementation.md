@@ -152,7 +152,8 @@ CI의 호스트 runner는 Ubuntu 24.04로 고정한다. CI 작업은 `@playwrigh
 컨테이너는 사용자 `1001`로 실행한다. 컨테이너가 Chromium과 실행에 필요한 Linux 시스템
 라이브러리를 제공하므로 CI에서 브라우저 또는 시스템 패키지를 별도로 설치하지 않는다.
 Node.js와 pnpm은 컨테이너 안에서도 각각 `.node-version`과 `package.json`의
-`packageManager`에 기록된 버전을 사용한다.
+`packageManager`에 기록된 버전을 사용한다. CI가 사용하는 외부 GitHub Action은 upstream
+Repository의 전체 commit SHA로 고정한다.
 
 `pnpm run check`는 정적 검사, 컴포넌트 테스트, 타입 검사, 프로덕션 빌드와 브라우저
 테스트를 순서대로 실행하는 전체 로컬 검증 명령이다.
