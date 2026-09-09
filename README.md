@@ -10,6 +10,7 @@ Repository다.
 | [`.agents/AGENTS.md`](.agents/AGENTS.md) | 사람과 코딩 에이전트가 공유하는 Repository 작업 지침 |
 | [`docs/project-spec.md`](docs/project-spec.md) | 프로젝트 목적, 범위와 외부 경계 |
 | [`docs/design-reference.md`](docs/design-reference.md) | 미확정된 구체적 설계 참고안 |
+| [`docs/mockups/README.md`](docs/mockups/README.md) | 코드 기반 화면 목업과 렌더링 방법 |
 | [`docs/development-workflow.md`](docs/development-workflow.md) | 요구사항, 설계, 구현, 검증과 배포 순서 |
 | [`docs/implementation.md`](docs/implementation.md) | 채택한 기술과 현재 구현 상태 |
 

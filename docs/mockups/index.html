@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스크랩 모니터링 목업</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span>AJIN SCRAP MONITORING</span>
+        </div>
+        <nav class="global-nav" aria-label="주요 메뉴">
+          <a class="nav-link" data-page-link="monitoring" href="?page=monitoring">현황</a>
+          <a class="nav-link" data-page-link="history" href="?page=history">이력</a>
+          <a class="nav-link" data-page-link="recordings" href="?page=recordings">녹화 영상</a>
+          <a class="nav-link" data-page-link="admin" href="?page=admin">관리자</a>
+        </nav>
+        <div class="user-tools">
+          <button class="icon-button" type="button" aria-label="알림">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+              <path d="M10 21h4"></path>
+            </svg>
+          </button>
+          <span class="tool-divider" aria-hidden="true"></span>
+          <button class="user-menu" type="button">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="7" r="4"></circle>
+              <path d="M4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2"></path>
+            </svg>
+            <span>관리자</span>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m8 10 4 4 4-4"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <main id="monitoring-page" class="mockup-page" data-page="monitoring">
+        <div class="page-heading">
+          <h1>스크랩 모니터링</h1>
+          <div class="page-meta">
+            <span class="status-text ok">데이터 연결됨</span>
+            <span class="meta-divider" aria-hidden="true"></span>
+            <span>마지막 측정 10:24:18</span>
+          </div>
+        </div>
+        <div class="content">
+          <div class="monitoring-grid">
+            <section class="card top-card span-4 kpi-card">
+              <h2 class="section-title">현재 상태</h2>
+              <div class="kpi-content">
+                <p class="kpi-label">대표 적재율</p>
+                <div class="kpi-value">72<span>%</span></div>
+                <div class="progress" aria-label="대표 적재율 72%">
+                  <div></div>
+                </div>
+                <div class="mini-stats">
+                  <div class="mini-stat">
+                    <span class="label">수거 임계율</span>
+                    <strong>80%</strong>
+                  </div>
+                  <div class="mini-stat">
+                    <span class="label">적재 상태</span>
+                    <strong class="status-text ok">정상</strong>
+                  </div>
+                  <div class="mini-stat">
+                    <span class="label">예상 도달</span>
+                    <strong>9월 10일 14:30</strong>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="card top-card span-4 video-card">
+              <div class="card-head">
+                <h2 class="section-title">실시간 영상</h2>
+              </div>
+              <div class="live-frame">
+                <img src="assets/camera-frame.svg" alt="스크랩 적재 공간 합성 영상 예시">
+                <span class="fullscreen">[ ]</span>
+              </div>
+            </section>
+
+            <section class="card top-card span-4 measurement-card">
+              <h2 class="section-title">측정 영역</h2>
+              <svg class="measurement-svg" viewBox="0 0 440 275" role="img" aria-label="일반화한 LiDAR 1과 LiDAR 2 측정선 배치">
+                <defs>
+                  <clipPath id="publicScrapSurface">
+                    <path d="M70 165 218 214 360 146 212 98Z"></path>
+                  </clipPath>
+                  <pattern id="publicScrapFill" width="18" height="14" patternUnits="userSpaceOnUse">
+                    <rect width="18" height="14" fill="#82909a"></rect>
+                    <path d="M1 4l7 2m3-4 5 3M4 11l6-2m3 3 4-2" stroke="#b9c2c8" stroke-width="2"></path>
+                  </pattern>
+                </defs>
+
+                <path d="M54 137 218 190 376 119 212 68Z" fill="#dbe4e9" stroke="#30485b" stroke-width="3"></path>
+                <path d="M54 137 218 190 218 252 54 199Z" fill="#d1dde4" stroke="#40586b" stroke-width="2"></path>
+                <path d="M218 190 376 119 376 181 218 252Z" fill="#c3d2db" stroke="#40586b" stroke-width="2"></path>
+                <path d="M70 165 218 214 360 146 212 98Z" fill="url(#publicScrapFill)" stroke="#617381" stroke-width="2"></path>
+                <path d="M70 165 218 214 218 244 62 193Z" fill="#74838d" stroke="#596b78" stroke-width="1.5"></path>
+                <path d="M218 214 360 146 368 174 218 244Z" fill="#687985" stroke="#596b78" stroke-width="1.5"></path>
+
+                <g clip-path="url(#publicScrapSurface)" stroke="#6f7f8b" stroke-width="1">
+                  <path d="M70 165 132 125 154 178Z" fill="#9da8b0"></path>
+                  <path d="M132 125 212 98 154 178Z" fill="#778792"></path>
+                  <path d="M154 178 212 98 252 162Z" fill="#a7b0b7"></path>
+                  <path d="M154 178 252 162 218 214Z" fill="#758590"></path>
+                  <path d="M212 98 360 146 252 162Z" fill="#909ca5"></path>
+                  <path d="M252 162 360 146 218 214Z" fill="#7e8d97"></path>
+                </g>
+
+                <path d="M92 105 102 151 150 158 198 176 246 184 290 196Z" fill="#1677e8" fill-opacity="0.22" stroke="#1677e8" stroke-opacity="0.38"></path>
+                <path d="M336 94 326 142 296 158 270 176 240 205Z" fill="#0ba58f" fill-opacity="0.22" stroke="#0ba58f" stroke-opacity="0.38"></path>
+                <g clip-path="url(#publicScrapSurface)">
+                  <polyline points="102,151 150,158 198,176 246,184 290,196" fill="none" stroke="#ffffff" stroke-width="7"></polyline>
+                  <polyline points="102,151 150,158 198,176 246,184 290,196" fill="none" stroke="#1677e8" stroke-width="4"></polyline>
+                  <polyline points="326,142 296,158 270,176 240,205" fill="none" stroke="#ffffff" stroke-width="7"></polyline>
+                  <polyline points="326,142 296,158 270,176 240,205" fill="none" stroke="#0ba58f" stroke-width="4"></polyline>
+                </g>
+
+                <path d="M54 137 218 190 376 119 212 68Z" fill="none" stroke="#30485b" stroke-width="3"></path>
+                <path d="M54 199 218 252 376 181" fill="none" stroke="#647789" stroke-width="1.5"></path>
+                <path d="M54 137v62M218 190v62M376 119v62M212 68v30" stroke="#40586b" stroke-width="2"></path>
+
+                <path d="M166 10 238 32 208 91 136 69Z" fill="#445764" stroke="#304555" stroke-width="2.5"></path>
+                <path d="m174 20 59 18m-67-4 60 18m-68-4 60 18m-68-4 60 18" stroke="#9ba9b3" stroke-width="4"></path>
+                <path d="M136 69 208 91 194 119 122 97Z" fill="#edcfaa" stroke="#c47a25" stroke-width="2"></path>
+
+                <g transform="translate(92 105) rotate(18)">
+                  <rect x="-10" y="-6" width="17" height="12" rx="3" fill="#344b5e"></rect>
+                  <circle cx="7" cy="0" r="5" fill="#ffffff" stroke="#1677e8" stroke-width="3"></circle>
+                </g>
+                <text x="55" y="91" fill="#1677e8" font-size="15" font-weight="700">LiDAR 1</text>
+                <g transform="translate(336 94) rotate(-18)">
+                  <rect x="-10" y="-6" width="17" height="12" rx="3" fill="#344b5e"></rect>
+                  <circle cx="7" cy="0" r="5" fill="#ffffff" stroke="#0ba58f" stroke-width="3"></circle>
+                </g>
+                <text x="348" y="83" fill="#0ba58f" font-size="15" font-weight="700">LiDAR 2</text>
+
+                <path d="M286 229h24" stroke="#1677e8" stroke-width="4"></path>
+                <text x="317" y="233" fill="#52657a" font-size="11">LiDAR 1 표면 측정선</text>
+                <path d="M286 250h24" stroke="#0ba58f" stroke-width="4"></path>
+                <text x="317" y="254" fill="#52657a" font-size="11">LiDAR 2 표면 측정선</text>
+              </svg>
+            </section>
+
+            <section class="card chart-card span-4">
+              <h2 class="section-title">최근 24시간 대표 적재율</h2>
+              <svg class="chart-svg" viewBox="0 0 430 165" role="img" aria-label="최근 24시간 대표 적재율 그래프">
+                <g stroke="#e2e8ef" stroke-width="1">
+                  <path d="M48 18H416M48 50H416M48 82H416M48 114H416M48 146H416"></path>
+                  <path d="M48 18V146M140 18V146M232 18V146M324 18V146M416 18V146"></path>
+                </g>
+                <path d="M48 46H416" stroke="#607086" stroke-dasharray="5 5" stroke-opacity="0.58" stroke-width="1.5"></path>
+                <text x="414" y="37" fill="#526278" font-size="11" font-weight="700" text-anchor="end">수거 임계율 80%</text>
+                <polyline points="48,119 86,111 124,103 162,94 200,87 238,81 276,73 314,68 352,64 390,58 416,55" fill="none" stroke="#f58a07" stroke-width="4"></polyline>
+                <g fill="#f58a07">
+                  <circle cx="48" cy="119" r="4"></circle><circle cx="86" cy="111" r="4"></circle><circle cx="124" cy="103" r="4"></circle><circle cx="162" cy="94" r="4"></circle><circle cx="200" cy="87" r="4"></circle><circle cx="238" cy="81" r="4"></circle><circle cx="276" cy="73" r="4"></circle><circle cx="314" cy="68" r="4"></circle><circle cx="352" cy="64" r="4"></circle><circle cx="390" cy="58" r="4"></circle><circle cx="416" cy="55" r="4"></circle>
+                </g>
+                <g fill="#61708a" font-size="11">
+                  <text x="38" y="160">12:00</text><text x="125" y="160">18:00</text><text x="218" y="160">00:00</text><text x="310" y="160">06:00</text><text x="392" y="160">12:00</text>
+                </g>
+              </svg>
+            </section>
+
+            <section class="card chart-card span-4">
+              <div class="chart-title-row">
+                <h2 class="section-title">LiDAR 1 현재 표면 프로파일</h2>
+                <div class="profile-stat blue">
+                  <span class="average">1.8 m</span>
+                  <span class="small">최소 1.2 m</span>
+                  <span class="small">최대 2.4 m</span>
+                </div>
+              </div>
+              <svg class="chart-svg" viewBox="0 0 430 165" role="img" aria-label="LiDAR 1 현재 표면 프로파일">
+                <g stroke="#e2e8ef" stroke-width="1">
+                  <path d="M45 20H418M45 52H418M45 84H418M45 116H418M45 148H418"></path>
+                  <path d="M45 20V148M138 20V148M231 20V148M324 20V148M418 20V148"></path>
+                </g>
+                <path d="M45 101C78 91 93 58 122 62s42 32 74 20 52 40 82 37 38-24 67-7 42 22 73 26V148H45Z" fill="#1677e8" fill-opacity="0.08"></path>
+                <path d="M45 101C78 91 93 58 122 62s42 32 74 20 52 40 82 37 38-24 67-7 42 22 73 26" fill="none" stroke="#1677e8" stroke-width="4"></path>
+                <text x="4" y="88" fill="#61708a" font-size="12">높이</text><text x="340" y="162" fill="#61708a" font-size="12">측정 위치</text>
+              </svg>
+            </section>
+
+            <section class="card chart-card span-4">
+              <div class="chart-title-row">
+                <h2 class="section-title">LiDAR 2 현재 표면 프로파일</h2>
+                <div class="profile-stat teal">
+                  <span class="average">1.7 m</span>
+                  <span class="small">최소 1.0 m</span>
+                  <span class="small">최대 2.6 m</span>
+                </div>
+              </div>
+              <svg class="chart-svg" viewBox="0 0 430 165" role="img" aria-label="LiDAR 2 현재 표면 프로파일">
+                <g stroke="#e2e8ef" stroke-width="1">
+                  <path d="M45 20H418M45 52H418M45 84H418M45 116H418M45 148H418"></path>
+                  <path d="M45 20V148M138 20V148M231 20V148M324 20V148M418 20V148"></path>
+                </g>
+                <path d="M45 101C76 137 93 132 122 118s43-21 70-42 43-22 68-46c29 25 40 36 68 47s52 42 90 58V148H45Z" fill="#0ba58f" fill-opacity="0.08"></path>
+                <path d="M45 101C76 137 93 132 122 118s43-21 70-42 43-22 68-46c29 25 40 36 68 47s52 42 90 58" fill="none" stroke="#0ba58f" stroke-width="4"></path>
+                <text x="4" y="88" fill="#61708a" font-size="12">높이</text><text x="340" y="162" fill="#61708a" font-size="12">측정 위치</text>
+              </svg>
+            </section>
+
+            <section class="card alerts-card span-4">
+              <div class="card-head">
+                <h2 class="section-title">활성 알림</h2>
+                <span class="alert-count">2건</span>
+              </div>
+              <div class="active-alert-list">
+                <div class="active-alert">
+                  <div><strong class="alert-warning">수거 필요</strong><span>대표 적재율 82%</span></div>
+                  <time>10:20</time>
+                </div>
+                <div class="active-alert">
+                  <div><strong class="alert-error">측정 오류</strong><span>LiDAR 2 일부 측정 불가</span></div>
+                  <time>10:18</time>
+                </div>
+              </div>
+            </section>
+
+            <section class="card devices-card span-8">
+              <h2 class="section-title">장비 상태</h2>
+              <div class="device-grid">
+                <div class="device"><span class="device-symbol">L1</span><div><span class="device-name">LiDAR 1</span><span class="status-text ok">정상</span></div></div>
+                <div class="device"><span class="device-symbol">L2</span><div><span class="device-name">LiDAR 2</span><span class="status-text ok">정상</span></div></div>
+                <div class="device"><span class="device-symbol">CAM</span><div><span class="device-name">카메라</span><span class="status-text ok">정상</span></div></div>
+                <div class="device"><span class="device-symbol">EDGE</span><div><span class="device-name">엣지 장비</span><span class="status-text ok">정상</span></div></div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </main>
+
+      <main id="history-page" class="mockup-page" data-page="history">
+        <div class="page-heading">
+          <h1>이력</h1>
+          <div class="page-meta">
+            <span class="status-text ok">데이터 연결됨</span>
+            <span class="meta-divider" aria-hidden="true"></span>
+            <span>마지막 측정 10:24:18</span>
+          </div>
+        </div>
+        <div class="content history-layout">
+          <section class="card filter-card">
+            <h2 class="section-title">조회 조건</h2>
+            <div class="filter-grid">
+              <label><span class="label">시작 일시</span><input class="field" value="2026-09-01 00:00"></label>
+              <label><span class="label">종료 일시</span><input class="field" value="2026-09-09 23:59"></label>
+              <div>
+                <span class="label">이벤트 유형</span>
+                <div class="segmented" style="margin-top: 8px">
+                  <button class="segment active" type="button">전체</button>
+                  <button class="segment" type="button">수거</button>
+                  <button class="segment" type="button">알림</button>
+                  <button class="segment" type="button">오류</button>
+                </div>
+              </div>
+              <button class="btn primary" type="button">조회</button>
+            </div>
+          </section>
+
+          <section class="card history-chart-card">
+            <h2 class="section-title">적재율 이력</h2>
+            <h3 class="subheading" style="margin-top: 14px">대표 적재율 변화</h3>
+            <svg class="history-chart" viewBox="0 0 1430 250" role="img" aria-label="9월 1일부터 9일까지 대표 적재율 이력">
+              <g stroke="#e2e8ef" stroke-width="1">
+                <path d="M58 20H1412M58 65H1412M58 110H1412M58 155H1412M58 200H1412"></path>
+                <path d="M58 20V200M227 20V200M396 20V200M565 20V200M734 20V200M903 20V200M1072 20V200M1241 20V200M1412 20V200"></path>
+              </g>
+              <path d="M58 65H1412" stroke="#607086" stroke-dasharray="6 6" stroke-opacity="0.58" stroke-width="1.5"></path>
+              <text x="1407" y="55" fill="#526278" font-size="12" font-weight="700" text-anchor="end">수거 임계율 80%</text>
+              <polyline points="58,164 142,155 227,124 312,78 396,67 481,99 565,143 650,158 734,154 819,137 903,104 988,77 1072,63 1157,66 1241,48 1326,125 1412,167" fill="none" stroke="#f58a07" stroke-width="4"></polyline>
+              <g fill="#f58a07">
+                <circle cx="58" cy="164" r="4"></circle><circle cx="142" cy="155" r="4"></circle><circle cx="227" cy="124" r="4"></circle><circle cx="312" cy="78" r="4"></circle><circle cx="396" cy="67" r="4"></circle><circle cx="481" cy="99" r="4"></circle><circle cx="565" cy="143" r="4"></circle><circle cx="650" cy="158" r="4"></circle><circle cx="734" cy="154" r="4"></circle><circle cx="819" cy="137" r="4"></circle><circle cx="903" cy="104" r="4"></circle><circle cx="988" cy="77" r="4"></circle><circle cx="1072" cy="63" r="4"></circle><circle cx="1157" cy="66" r="4"></circle><circle cx="1241" cy="48" r="4"></circle><circle cx="1326" cy="125" r="4"></circle><circle cx="1412" cy="167" r="4"></circle>
+              </g>
+              <g stroke="#718096" stroke-dasharray="4 4" stroke-opacity="0.75" stroke-width="1.5">
+                <path d="M396 25V59"></path>
+                <path d="M734 25V146"></path>
+                <path d="M1072 25V55"></path>
+                <path d="M1241 25V40"></path>
+              </g>
+              <g font-size="12" font-weight="700" text-anchor="middle">
+                <text x="396" y="18" fill="#30415e">알림</text>
+                <text x="734" y="18" fill="#30415e">오류</text>
+                <text x="1072" y="18" fill="#30415e">수거 필요</text>
+                <text x="1241" y="18" fill="#30415e">수거 완료</text>
+                <circle cx="396" cy="67" r="7" fill="#f58a07"></circle>
+                <circle cx="734" cy="154" r="7" fill="#e83232"></circle>
+                <circle cx="1072" cy="63" r="7" fill="#f58a07"></circle>
+                <circle cx="1241" cy="48" r="7" fill="#0aa45b"></circle>
+              </g>
+              <g fill="#61708a" font-size="12" text-anchor="middle">
+                <text x="58" y="228">9월 1일</text><text x="227" y="228">9월 2일</text><text x="396" y="228">9월 3일</text><text x="565" y="228">9월 4일</text><text x="734" y="228">9월 5일</text><text x="903" y="228">9월 6일</text><text x="1072" y="228">9월 7일</text><text x="1241" y="228">9월 8일</text><text x="1407" y="228" text-anchor="end">9월 9일</text>
+              </g>
+            </svg>
+          </section>
+
+          <section class="card event-table-card">
+            <div class="table-head">
+              <h2 class="section-title">이벤트 이력</h2>
+              <span class="table-count">총 4건</span>
+            </div>
+            <table>
+              <colgroup><col style="width: 28%"><col style="width: 18%"><col style="width: 30%"><col style="width: 24%"></colgroup>
+              <thead><tr><th>시각</th><th>유형</th><th>내용</th><th>관련 녹화</th></tr></thead>
+              <tbody>
+                <tr><td>2026-09-08 14:20</td><td><span class="event-type">수거</span></td><td><span class="event-content complete">수거 완료</span></td><td><button class="link-button">영상 보기</button></td></tr>
+                <tr><td>2026-09-07 09:10</td><td><span class="event-type">알림</span></td><td><span class="event-content alert">수거 필요 (적재율 82%)</span></td><td><button class="link-button">영상 보기</button></td></tr>
+                <tr><td>2026-09-05 18:42</td><td><span class="event-type">오류</span></td><td><span class="event-content error">센서 데이터 이상</span></td><td><button class="link-button">영상 보기</button></td></tr>
+                <tr><td>2026-09-03 11:25</td><td><span class="event-type">알림</span></td><td><span class="event-content alert">적재율 75% 도달</span></td><td><button class="link-button">영상 보기</button></td></tr>
+              </tbody>
+            </table>
+            <div class="pagination"><span>&lt;</span><span>1 / 1</span><span>&gt;</span></div>
+          </section>
+        </div>
+      </main>
+
+      <main id="recordings-page" class="mockup-page" data-page="recordings">
+        <div class="page-heading">
+          <h1>녹화 영상</h1>
+          <div class="page-meta">
+            <span class="status-text ok">데이터 연결됨</span>
+            <span class="meta-divider" aria-hidden="true"></span>
+            <span>마지막 측정 10:24:18</span>
+          </div>
+        </div>
+        <div class="content recordings-layout">
+          <section class="card filter-card">
+            <h2 class="section-title">검색 조건</h2>
+            <div class="filter-grid">
+              <label><span class="label">시작일</span><input class="field" value="2026-09-01"></label>
+              <label><span class="label">종료일</span><input class="field" value="2026-09-09"></label>
+              <div>
+                <span class="label">녹화 유형</span>
+                <div class="segmented" style="margin-top: 8px">
+                  <button class="segment active" type="button">전체</button>
+                  <button class="segment" type="button">수거</button>
+                  <button class="segment" type="button">알림</button>
+                  <button class="segment" type="button">오류</button>
+                </div>
+              </div>
+              <button class="btn primary" type="button">조회</button>
+            </div>
+          </section>
+
+          <div class="recordings-main">
+            <section class="card record-list">
+              <h2 class="section-title">녹화 목록</h2>
+              <article class="record-item selected">
+                <img class="thumb" src="assets/camera-frame.svg" alt="">
+                <div><span class="record-date">2026-09-09</span><span class="record-time">00:00 - 23:59</span><span class="status-text ok">정상</span></div>
+                <div><span class="event-type">수거</span><span class="record-duration">24:00:00</span></div>
+              </article>
+              <article class="record-item">
+                <img class="thumb" src="assets/camera-frame.svg" alt="">
+                <div><span class="record-date">2026-09-08</span><span class="record-time">00:00 - 23:59</span><span class="status-text ok">정상</span></div>
+                <div><span class="event-type">알림</span><span class="record-duration">24:00:00</span></div>
+              </article>
+              <article class="record-item">
+                <img class="thumb" src="assets/camera-frame.svg" alt="">
+                <div><span class="record-date">2026-09-07</span><span class="record-time">00:00 - 23:59</span><span class="status-text ok">정상</span></div>
+                <div><span class="event-type">오류</span><span class="record-duration">24:00:00</span></div>
+              </article>
+              <article class="record-item">
+                <img class="thumb" src="assets/camera-frame.svg" alt="">
+                <div><span class="record-date">2026-09-06</span><span class="record-time">00:00 - 23:59</span><span class="status-text ok">정상</span></div>
+                <div><span class="event-type">수거</span><span class="record-duration">24:00:00</span></div>
+              </article>
+            </section>
+
+            <section class="card record-player">
+              <h2 class="section-title">녹화 영상</h2>
+              <div class="recording-frame"><img src="assets/camera-frame.svg" alt="선택한 녹화 영상 예시"></div>
+              <div class="controls"><span>&gt;</span><div class="timeline"><div></div></div><span>00:12:36</span></div>
+              <div class="media-meta">640 x 480 | 4:3</div>
+            </section>
+
+            <aside class="record-side">
+              <section class="card record-side-card">
+                <h2 class="section-title">녹화 정보</h2>
+                <dl class="record-details">
+                  <div class="detail-row"><dt>시작 시각</dt><dd>2026-09-09 00:00:00</dd></div>
+                  <div class="detail-row"><dt>종료 시각</dt><dd>2026-09-09 23:59:59</dd></div>
+                  <div class="detail-row"><dt>기간</dt><dd>24:00:00</dd></div>
+                  <div class="detail-row"><dt>발생 유형</dt><dd><span class="event-type">수거</span></dd></div>
+                  <div class="detail-row"><dt>재생 상태</dt><dd><span class="status-text ok">정상</span></dd></div>
+                </dl>
+              </section>
+              <section class="card record-side-card download-card">
+                <h2 class="section-title">녹화 파일</h2>
+                <p class="helper" style="margin-top: 16px">선택한 녹화 영상을 다운로드할 수 있습니다.</p>
+                <button class="btn outline-orange" type="button">녹화 영상 다운로드</button>
+              </section>
+            </aside>
+          </div>
+        </div>
+      </main>
+
+      <main id="admin-page" class="mockup-page" data-page="admin">
+        <div class="page-heading"><h1>관리자 설정</h1></div>
+        <div class="content admin-layout">
+          <div class="admin-top">
+            <section class="card threshold-card">
+              <h2 class="section-title">수거 임계율</h2>
+              <div class="threshold-editor">
+                <div class="threshold-now"><span class="label">현재</span><span class="threshold-number">80<span>%</span></span></div>
+                <div class="threshold-change">
+                  <span class="label">변경값</span>
+                  <div class="number-field"><input value="85"><span>%</span></div>
+                  <p class="helper">허용 범위는 서버 설정을 따릅니다.</p>
+                  <button class="btn primary" type="button">저장</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="card recipients-card">
+              <div class="recipients-head">
+                <h2 class="section-title">알림 대상 관리</h2>
+                <button class="btn primary" type="button">알림 대상 추가</button>
+              </div>
+              <table>
+                <colgroup><col style="width: 13%"><col style="width: 25%"><col style="width: 22%"><col style="width: 18%"><col style="width: 12%"><col style="width: 10%"></colgroup>
+                <thead><tr><th>이름</th><th>이메일</th><th>전화번호</th><th>수신 채널</th><th>상태</th><th>관리</th></tr></thead>
+                <tbody>
+                  <tr><td>관리자 A</td><td>admin-a@example.com</td><td>010-****-0001</td><td>이메일, 문자</td><td><span class="status-text ok">사용</span></td><td><button class="small-btn">수정</button></td></tr>
+                  <tr><td>관리자 B</td><td>admin-b@example.com</td><td>010-****-0002</td><td>문자</td><td><span class="status-text ok">사용</span></td><td><button class="small-btn">수정</button></td></tr>
+                  <tr><td>관리자 C</td><td>admin-c@example.com</td><td>-</td><td>이메일</td><td><span class="status-text off">중지</span></td><td><button class="small-btn">수정</button></td></tr>
+                </tbody>
+              </table>
+            </section>
+          </div>
+
+          <div class="admin-bottom">
+            <section class="card policy-card">
+              <h2 class="section-title">알림 정책</h2>
+              <div class="policy-body">
+                <div class="policy-column">
+                  <h3 class="subheading">알림 대상 이벤트</h3>
+                  <p class="helper">선택한 이벤트가 발생하면 등록된 알림 대상으로 발송합니다.</p>
+                  <div class="check-list">
+                    <label class="checkbox-option"><input type="checkbox" checked><span class="checkbox-mark" aria-hidden="true">v</span><span>수거 필요</span></label>
+                    <label class="checkbox-option"><input type="checkbox" checked><span class="checkbox-mark" aria-hidden="true">v</span><span>측정 오류</span></label>
+                    <label class="checkbox-option"><input type="checkbox" checked><span class="checkbox-mark" aria-hidden="true">v</span><span>장비 장애</span></label>
+                  </div>
+                </div>
+                <div class="policy-column">
+                  <h3 class="subheading">발송 규칙</h3>
+                  <p class="helper">발송 시점과 반복 및 복구 알림을 설정합니다.</p>
+                  <div class="rule-list">
+                    <label class="rule-row"><span class="label">발송 시점</span><select class="select-field" style="margin-top: 0"><option>즉시</option></select></label>
+                    <label class="rule-row"><span class="label">반복 알림</span><select class="select-field" style="margin-top: 0"><option>30분마다</option></select></label>
+                    <div class="rule-row"><span class="label">오류/장애 복구 알림</span><div class="choice-row"><span class="toggle" aria-hidden="true"></span><span>사용</span></div></div>
+                  </div>
+                  <p class="helper">측정 오류 또는 장비 장애가 정상으로 돌아오면 알림을 발송합니다.</p>
+                </div>
+              </div>
+              <div class="repeat-limit">
+                <div>
+                  <h3 class="subheading">반복 알림 제한</h3>
+                  <p class="helper">최대 횟수에 도달하거나 이벤트가 해제되면 반복 발송을 종료합니다.</p>
+                </div>
+                <label>
+                  <span class="label">최대 반복 횟수</span>
+                  <select class="select-field"><option>3회</option></select>
+                </label>
+              </div>
+              <div class="policy-actions"><button class="btn" type="button">취소</button><button class="btn primary" type="button">정책 저장</button></div>
+            </section>
+
+            <section class="card test-alert-card">
+              <h2 class="section-title">테스트 알림</h2>
+              <p class="helper">선택한 대상과 채널로 고정 테스트 메시지를 발송합니다.</p>
+              <label class="field-group"><span class="label">등록 대상</span><select class="select-field"><option>관리자 A</option></select></label>
+              <div class="field-group">
+                <span class="label">채널 선택</span>
+                <div class="channel-controls">
+                  <label class="checkbox-option"><input type="checkbox" checked><span class="checkbox-mark" aria-hidden="true">v</span><span>이메일</span></label>
+                  <label class="checkbox-option"><input type="checkbox" checked><span class="checkbox-mark" aria-hidden="true">v</span><span>문자</span></label>
+                </div>
+              </div>
+              <div class="message-preview">
+                <strong>발송 내용</strong>
+                스크랩 모니터링 테스트 알림입니다. 이 메시지를 받았다면 알림 수신 설정이 정상입니다.
+              </div>
+              <button class="btn outline-orange" type="button">테스트 알림 보내기</button>
+            </section>
+          </div>
+        </div>
+      </main>
+
+      <main id="login-page" class="mockup-page login-main" data-page="login">
+        <section class="login-card">
+          <div class="lock-icon">
+            <svg class="icon" viewBox="0 0 24 24" style="width: 58px; height: 58px" aria-hidden="true">
+              <rect x="5" y="10" width="14" height="11" rx="2"></rect>
+              <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+              <path d="M12 14v3"></path>
+            </svg>
+          </div>
+          <h1 class="login-title">관리자 로그인</h1>
+          <p class="login-subtitle">관리 기능을 사용하려면 로그인하세요.</p>
+          <label class="field-group"><span class="label">아이디</span><input class="field" placeholder="아이디 입력"></label>
+          <label class="field-group"><span class="label">비밀번호</span><input class="field" type="password" value="password"></label>
+          <button class="btn primary" type="button">로그인</button>
+          <div class="login-note">인증 정보는 서버에서 확인합니다.</div>
+        </section>
+      </main>
+
+      <footer class="app-footer">
+        <span>Copyright 2026 AJIN INDUSTRIAL. All rights reserved.</span>
+        <span>Version 0.1.0</span>
+      </footer>
+    </div>
+    <script src="mockups.js"></script>
+  </body>
+</html>
