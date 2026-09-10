@@ -12,8 +12,9 @@
 Vite 개발 및 빌드 기준선, Continuous Integration (CI) 검증, 제품 배포 경계,
 코드 기반 UI (User Interface) 구현과 브라우저 검토 방식이 채택된 상태다. 최종 Open
 Container Initiative (OCI) 이미지의 책임 경계도 채택되어 있다. ESLint 정적 검사,
-Vitest 컴포넌트 테스트와 Playwright 브라우저 검증이 구현되어 있다. 제품 화면, Dockerfile,
-이미지 게시와 Release 구성은 구현되지 않은 상태다.
+Vitest 컴포넌트 테스트와 Playwright 브라우저 검증이 구현되어 있다. 현재 모니터링,
+이력, 녹화 영상, 로그인과 관리자 설정의 UI MVP가 구현되어 있다. Dockerfile, 이미지
+게시와 Release 구성은 구현되지 않은 상태다.
 
 ## 제품 배포 경계
 
@@ -120,8 +121,20 @@ Sheets (CSS) 픽셀, 기본 1440 x 900 뷰포트와 확장 1920 x 1080 뷰포트
 접속 단말의 Chrome 버전을 확인한 뒤 Vite 빌드 출력과 브라우저 Web API (Application
 Programming Interface) 호환성을 검증한다.
 
-`index.html`, `src/main.tsx`와 `src/App.tsx`는 브라우저 진입점과 빈 React
-애플리케이션 루트만 제공한다. 제품 화면과 사용자 흐름은 구현하지 않은 상태다.
+`index.html`, `src/main.tsx`, `src/App.tsx`와 `src/App.css`는 브라우저 진입점,
+화면 구조, 상태 기반 상호작용과 공통 스타일을 제공한다. 현재 경로는 `/`, `/history`,
+`/recordings`, `/login`, `/admin`이다. 상단 브랜드와 전역 메뉴는 각 화면을 연결하고,
+영상 확대, 알림 팝오버, 알림 대상 설정 패널과 페이지 이동을 제공한다.
+
+현재 화면 데이터는 `src/App.tsx`의 합성 데이터다. 대표 적재율, LiDAR 프로파일,
+장비 상태, 이력, 녹화 목록과 관리자 설정은 외부 API를 호출하지 않는다. 실시간 영상과
+녹화 영상에는 `src/assets/camera-frame.png`의 합성 라이브뷰 예시를 사용한다.
+
+로그인은 UI MVP의 브라우저 세션 상태다. 로그인 제출은 `sessionStorage`에 상태를
+기록하고 로그아웃은 이를 삭제한다. 비로그인 사용자는 현황, 이력과 녹화 영상을 조회할
+수 있으며 관리자 설정, 사용자 메뉴와 개인 알림함은 표시하지 않는다. `/admin` 직접
+접근은 로그인 화면으로 이동한다. 실제 인증, 역할, 토큰, 세션 만료와 서버 요청 보호는
+백엔드 계약 뒤 구현한다.
 
 ## 정적 검사와 테스트 기준선
 
@@ -145,6 +158,10 @@ Playwright는 `e2e/`의 브라우저 테스트를 1440 x 900과 1920 x 1080 Chro
 실행한다. `pnpm run test:e2e`는 타입 검사와 프로덕션 빌드를 완료한 뒤 Vite preview
 서버에서 브라우저 테스트를 수행한다. 실패한 테스트의 screenshot과 trace는 Git에서
 제외한 `test-results/`에 저장한다.
+
+현재 Playwright 테스트는 대시보드 진입, 상단 브랜드 이동, 알림함 읽음 처리와 닫기,
+관리자 메뉴와 로그인 및 로그아웃, 비로그인 화면 제한, 관리자 경로 제한, 적재율 이력의
+이벤트 상세 표시를 검증한다.
 
 CI의 호스트 runner는 Ubuntu 24.04로 고정한다. CI 작업은 `@playwright/test` 1.62.1과
 버전이 일치하는 공식 Playwright Noble 컨테이너
