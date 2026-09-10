@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 import cameraFrame from "./assets/camera-frame.png";
 import { createMockDashboardDataSource, resolveMockScenario } from "./data/mock-dashboard-data-source";
@@ -107,6 +107,16 @@ function DashboardHeader({ activePage, initialNotifications }: { activePage: "mo
       </nav>
       {isAuthenticated ? <div className="user-tools"><div className="header-popover-anchor"><button className="icon-button notification-button" type="button" aria-label={`알림 ${unreadCount}건`} aria-expanded={notificationsOpen} onClick={() => { setNotificationsOpen((open) => !open); setUserMenuOpen(false); }}><BellIcon />{unreadCount > 0 && <span className="notification-badge">{unreadCount}</span>}</button>{notificationsOpen && <section className="header-popover notifications-popover" aria-label="최근 알림"><div className="header-popover-head"><strong>최근 알림</strong><button type="button" onClick={() => setNotifications((items) => items.map((item) => ({ ...item, read: true })))}>모두 읽음</button></div><div className="header-notification-list">{notifications.map((notification) => <button key={notification.id} className={`header-notification ${notification.read ? "read" : ""}`} type="button" onClick={() => markNotificationRead(notification.id)}><span className={`header-notification-dot ${notification.level}`} /><span><strong>{notification.title}</strong><small>{notification.detail}</small></span><time>{notification.time}</time></button>)}</div><a className="header-popover-link" href="/history">알림 이력에서 보기</a></section>}</div><span className="tool-divider" aria-hidden="true" /><div className="header-popover-anchor"><button className="user-menu" type="button" aria-label="관리자 메뉴" aria-expanded={userMenuOpen} onClick={() => { setUserMenuOpen((open) => !open); setNotificationsOpen(false); }}><UserIcon /><span>관리자</span><ChevronIcon /></button>{userMenuOpen && <section className="header-popover user-popover" aria-label="관리자 메뉴"><div className="user-popover-profile"><strong>관리자</strong><span>시스템 관리자</span></div><a href="/admin">관리자 설정</a><button type="button" onClick={logout}>로그아웃</button></section>}</div></div> : <div className="user-tools"><a className="header-login-link" href="/login">로그인</a></div>}
     </header>
+  );
+}
+
+function DashboardPageShell({ activePage, children, headerNotifications }: { activePage: "monitoring" | "history" | "recordings" | "admin"; children: ReactNode; headerNotifications: HeaderNotification[] }) {
+  return (
+    <div className="app-shell">
+      <DashboardHeader activePage={activePage} initialNotifications={headerNotifications} />
+      {children}
+      <footer className="app-footer"><span>Copyright 2026 AJIN INDUSTRIAL. All rights reserved.</span><span>Version 0.1.0</span></footer>
+    </div>
   );
 }
 
@@ -509,8 +519,7 @@ function RecordingsPage({ recordings, headerNotifications, status }: { recording
   }, [recordingOpen]);
 
   return (
-    <div className="app-shell">
-      <DashboardHeader activePage="recordings" initialNotifications={headerNotifications} />
+    <DashboardPageShell activePage="recordings" headerNotifications={headerNotifications}>
       <main className="recordings-page" aria-label="스크랩 모니터링 녹화 영상">
         <div className="page-heading"><h1>녹화 영상</h1><div className="page-meta"><DashboardStatusLabel status={status} /><span className="meta-divider" aria-hidden="true" /><span>마지막 측정 10:24:18</span></div></div>
         <div className="recordings-content">
@@ -523,8 +532,7 @@ function RecordingsPage({ recordings, headerNotifications, status }: { recording
         </div>
       </main>
       {recordingOpen && <div className="video-modal" role="dialog" aria-modal="true" aria-label="녹화 영상 크게 보기" onClick={() => setRecordingOpen(false)}><div className="video-modal-panel" onClick={(event) => event.stopPropagation()}><button className="video-modal-close" type="button" aria-label="녹화 영상 닫기" onClick={() => setRecordingOpen(false)}>닫기</button><div className="video-modal-frame"><img src={cameraFrame} alt={`${selectedRecording.date} 녹화 영상 확대`} /><span className="recorded-time">{selectedRecording.date} 00:12:36</span></div></div></div>}
-      <footer className="app-footer"><span>Copyright 2026 AJIN INDUSTRIAL. All rights reserved.</span><span>Version 0.1.0</span></footer>
-    </div>
+    </DashboardPageShell>
   );
 }
 
@@ -590,8 +598,7 @@ function AdminPage({ admin, headerNotifications }: { admin: DashboardData["admin
   };
 
   return (
-    <div className="app-shell">
-      <DashboardHeader activePage="admin" initialNotifications={headerNotifications} />
+    <DashboardPageShell activePage="admin" headerNotifications={headerNotifications}>
       <main className="admin-page" aria-label="관리자 설정">
         <div className="page-heading"><h1>관리자 설정</h1></div>
         <div className="admin-content">
@@ -627,8 +634,7 @@ function AdminPage({ admin, headerNotifications }: { admin: DashboardData["admin
       </main>
       {selectedRecipient && selectedRecipientSettings && <div className="recipient-panel-backdrop" role="presentation" onClick={() => setSelectedRecipientEmail(null)}><aside className="recipient-panel" role="dialog" aria-modal="true" aria-label={`${selectedRecipient.name} 수신 설정`} onClick={(event) => event.stopPropagation()}><div className="recipient-panel-head"><div><span>개별 수신 설정</span><h2>{selectedRecipient.name}</h2><p>{selectedRecipient.team} | {selectedRecipient.email}</p></div><button type="button" aria-label="수신 설정 닫기" onClick={() => setSelectedRecipientEmail(null)}>닫기</button></div><div className="recipient-panel-body"><label className="admin-toggle recipient-toggle"><span>수신 상태</span><input type="checkbox" checked={selectedRecipientSettings.enabled} onChange={(event) => updateRecipientSetting("enabled", event.target.checked)} /><i aria-hidden="true" /><b>{selectedRecipientSettings.enabled ? "사용" : "중지"}</b></label><section><h3>수신 채널</h3><div className="panel-check-row"><label className="admin-check"><input type="checkbox" checked={selectedRecipientSettings.email} onChange={(event) => updateRecipientSetting("email", event.target.checked)} /><span aria-hidden="true" /><b>이메일</b></label><label className="admin-check"><input type="checkbox" checked={selectedRecipientSettings.sms} onChange={(event) => updateRecipientSetting("sms", event.target.checked)} /><span aria-hidden="true" /><b>문자</b></label></div></section><section><div className="recipient-events-head"><div><h3>수신 이벤트</h3><p>공통 정책을 사용하면 전역 알림 정책의 이벤트를 적용합니다.</p></div><label className="admin-toggle recipient-global-toggle"><span>공통 정책 사용</span><input type="checkbox" checked={selectedRecipientSettings.useGlobal} onChange={(event) => updateRecipientSetting("useGlobal", event.target.checked)} /><i aria-hidden="true" /><b>{selectedRecipientSettings.useGlobal ? "사용" : "해제"}</b></label></div><div className={`recipient-events ${selectedRecipientSettings.useGlobal ? "disabled" : ""}`}><label className="admin-check"><input type="checkbox" disabled={selectedRecipientSettings.useGlobal} checked={selectedRecipientSettings.collection} onChange={(event) => updateRecipientSetting("collection", event.target.checked)} /><span aria-hidden="true" /><b>수거 필요</b></label><label className="admin-check"><input type="checkbox" disabled={selectedRecipientSettings.useGlobal} checked={selectedRecipientSettings.error} onChange={(event) => updateRecipientSetting("error", event.target.checked)} /><span aria-hidden="true" /><b>측정 오류</b></label><label className="admin-check"><input type="checkbox" disabled={selectedRecipientSettings.useGlobal} checked={selectedRecipientSettings.device} onChange={(event) => updateRecipientSetting("device", event.target.checked)} /><span aria-hidden="true" /><b>장비 장애</b></label></div></section></div><div className="recipient-panel-actions"><button className="admin-secondary" type="button" onClick={() => setSelectedRecipientEmail(null)}>취소</button><button className="admin-primary compact" type="button" onClick={() => setSelectedRecipientEmail(null)}>수신 설정 저장</button></div></aside></div>}
       {addRecipientOpen && <div className="recipient-add-backdrop" role="presentation" onClick={closeAddRecipient}><form className="recipient-add-modal" aria-label="알림 대상 추가" onSubmit={addRecipient} onClick={(event) => event.stopPropagation()}><div className="recipient-add-head"><div><span>ALERT RECIPIENT</span><h2>알림 대상 추가</h2><p>대상 정보와 수신 정책을 설정합니다.</p></div><button type="button" aria-label="알림 대상 추가 닫기" onClick={closeAddRecipient}>닫기</button></div><div className="recipient-add-body"><div className="recipient-add-fields"><label><span>이름</span><input autoFocus value={newRecipient.name} onChange={(event) => setNewRecipient((item) => ({ ...item, name: event.target.value }))} /></label><label><span>소속</span><input value={newRecipient.team} onChange={(event) => setNewRecipient((item) => ({ ...item, team: event.target.value }))} /></label><label><span>이메일</span><input type="email" value={newRecipient.email} onChange={(event) => setNewRecipient((item) => ({ ...item, email: event.target.value }))} /></label><label><span>전화번호</span><input type="tel" placeholder="010-0000-0000" value={newRecipient.phone} onChange={(event) => setNewRecipient((item) => ({ ...item, phone: event.target.value }))} /></label></div><section className="recipient-add-section"><div className="recipient-add-section-head"><h3>수신 상태</h3><label className="admin-toggle recipient-global-toggle"><span>수신 사용</span><input type="checkbox" checked={newRecipient.enabled} onChange={(event) => setNewRecipient((item) => ({ ...item, enabled: event.target.checked }))} /><i aria-hidden="true" /><b>{newRecipient.enabled ? "사용" : "중지"}</b></label></div><div className="panel-check-row"><label className="admin-check"><input type="checkbox" checked={newRecipient.emailChannel} onChange={(event) => setNewRecipient((item) => ({ ...item, emailChannel: event.target.checked }))} /><span aria-hidden="true" /><b>이메일</b></label><label className="admin-check"><input type="checkbox" checked={newRecipient.smsChannel} onChange={(event) => setNewRecipient((item) => ({ ...item, smsChannel: event.target.checked }))} /><span aria-hidden="true" /><b>문자</b></label></div></section><section className="recipient-add-section"><h3>수신 이벤트 적용</h3><p>전역 정책을 사용하면 알림 정책 카드의 기본 이벤트를 적용합니다.</p><div className="policy-mode-options"><label><input type="radio" name="recipient-policy" checked={newRecipient.useGlobal} onChange={() => setNewRecipient((item) => ({ ...item, useGlobal: true }))} /><span><b>전역 정책 사용</b><small>공통 이벤트와 발송 규칙 적용</small></span></label><label><input type="radio" name="recipient-policy" checked={!newRecipient.useGlobal} onChange={() => setNewRecipient((item) => ({ ...item, useGlobal: false }))} /><span><b>개별 이벤트 설정</b><small>이 대상에게만 별도 이벤트 적용</small></span></label></div><div className={`recipient-events add-recipient-events ${newRecipient.useGlobal ? "disabled" : ""}`}><label className="admin-check"><input type="checkbox" disabled={newRecipient.useGlobal} checked={newRecipient.collection} onChange={(event) => setNewRecipient((item) => ({ ...item, collection: event.target.checked }))} /><span aria-hidden="true" /><b>수거 필요</b></label><label className="admin-check"><input type="checkbox" disabled={newRecipient.useGlobal} checked={newRecipient.error} onChange={(event) => setNewRecipient((item) => ({ ...item, error: event.target.checked }))} /><span aria-hidden="true" /><b>측정 오류</b></label><label className="admin-check"><input type="checkbox" disabled={newRecipient.useGlobal} checked={newRecipient.device} onChange={(event) => setNewRecipient((item) => ({ ...item, device: event.target.checked }))} /><span aria-hidden="true" /><b>장비 장애</b></label></div></section>{addRecipientError && <p className="recipient-add-error" role="alert">{addRecipientError}</p>}</div><div className="recipient-add-actions"><button className="admin-secondary" type="button" onClick={closeAddRecipient}>취소</button><button className="admin-primary compact" type="submit">알림 대상 추가</button></div></form></div>}
-      <footer className="app-footer"><span>Copyright 2026 AJIN INDUSTRIAL. All rights reserved.</span><span>Version 0.1.0</span></footer>
-    </div>
+    </DashboardPageShell>
   );
 }
 
@@ -639,8 +645,7 @@ function HistoryPage({ history, headerNotifications, status }: { history: Dashbo
   const totalEventPages = Math.max(1, Math.ceil(filteredEvents.length / historyEventsPerPage));
   const visibleEvents = filteredEvents.slice(eventPage * historyEventsPerPage, (eventPage + 1) * historyEventsPerPage);
   return (
-    <div className="app-shell">
-      <DashboardHeader activePage="history" initialNotifications={headerNotifications} />
+    <DashboardPageShell activePage="history" headerNotifications={headerNotifications}>
       <main className="history-page" aria-label="스크랩 모니터링 이력">
         <div className="page-heading"><h1>이력</h1><div className="page-meta"><DashboardStatusLabel status={status} /><span className="meta-divider" aria-hidden="true" /><span>마지막 측정 10:24:18</span></div></div>
         <div className="history-content">
@@ -649,8 +654,7 @@ function HistoryPage({ history, headerNotifications, status }: { history: Dashbo
           <section className="card history-events"><div className="history-card-head"><SectionTitle>이벤트 이력</SectionTitle><span>총 {filteredEvents.length}건</span></div><div className="history-table-wrap"><table><thead><tr><th>시각</th><th>유형</th><th>상태</th><th>내용</th><th>관련 녹화</th></tr></thead><tbody>{visibleEvents.map((event) => <tr key={event.time}><td>{event.time}</td><td>{event.type}</td><td><span className={`event-dot ${event.tone}`} />{event.content}</td><td>{event.detail}</td><td><a href="/recordings">영상 보기</a></td></tr>)}</tbody></table></div><div className="history-pagination"><button type="button" aria-label="이전 이벤트 페이지" disabled={eventPage === 0} onClick={() => setEventPage((page) => page - 1)}>&lt;</button><span>{eventPage + 1} / {totalEventPages}</span><button type="button" aria-label="다음 이벤트 페이지" disabled={eventPage === totalEventPages - 1} onClick={() => setEventPage((page) => page + 1)}>&gt;</button></div></section>
         </div>
       </main>
-      <footer className="app-footer"><span>Copyright 2026 AJIN INDUSTRIAL. All rights reserved.</span><span>Version 0.1.0</span></footer>
-    </div>
+    </DashboardPageShell>
   );
 }
 
@@ -698,8 +702,7 @@ export function App() {
   if (window.location.pathname === "/admin") return <AdminPage admin={admin} headerNotifications={monitoring.headerNotifications} />;
 
   return (
-    <div className="app-shell">
-      <DashboardHeader activePage="monitoring" initialNotifications={monitoring.headerNotifications} />
+    <DashboardPageShell activePage="monitoring" headerNotifications={monitoring.headerNotifications}>
       <main className="monitoring-page" aria-label="스크랩 모니터링 대시보드">
         <div className="page-heading">
           <h1>스크랩 모니터링</h1>
@@ -817,10 +820,6 @@ export function App() {
           </div>
         </div>
       )}
-      <footer className="app-footer">
-        <span>Copyright 2026 AJIN INDUSTRIAL. All rights reserved.</span>
-        <span>Version 0.1.0</span>
-      </footer>
-    </div>
+    </DashboardPageShell>
   );
 }
