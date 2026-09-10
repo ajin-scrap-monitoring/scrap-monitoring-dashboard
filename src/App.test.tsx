@@ -3,12 +3,10 @@ import { expect, test } from "vitest";
 
 import { App } from "./App";
 
-test("대시보드 주 영역을 렌더링한다", () => {
+test("대시보드 주 영역을 렌더링한다", async () => {
   render(<App />);
 
-  expect(
-    screen.getByRole("main", { name: "스크랩 모니터링 대시보드" }),
-  ).toBeInTheDocument();
+  expect(await screen.findByRole("main", { name: "스크랩 모니터링 대시보드" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "스크랩 모니터링" })).toBeVisible();
   expect(
     screen.getByRole("img", { name: "최근 24시간 대표 적재율 그래프" }),
@@ -20,8 +18,6 @@ test("대시보드 주 영역을 렌더링한다", () => {
   expect(screen.getByText("2 / 2")).toBeVisible();
   expect(screen.getByText("안정성 경보")).toBeVisible();
 
-  fireEvent.pointerEnter(
-    screen.getByLabelText("08:00 대표 적재율 72%"),
-  );
+  fireEvent.pointerEnter(screen.getByLabelText("08:00 대표 적재율 72%"));
   expect(screen.getByText("대표 적재율 72%")).toBeVisible();
 });

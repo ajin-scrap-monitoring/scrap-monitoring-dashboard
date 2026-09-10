@@ -126,9 +126,20 @@ Programming Interface) 호환성을 검증한다.
 `/recordings`, `/login`, `/admin`이다. 상단 브랜드와 전역 메뉴는 각 화면을 연결하고,
 영상 확대, 알림 팝오버, 알림 대상 설정 패널과 페이지 이동을 제공한다.
 
-현재 화면 데이터는 `src/App.tsx`의 합성 데이터다. 대표 적재율, LiDAR 프로파일,
-장비 상태, 이력, 녹화 목록과 관리자 설정은 외부 API를 호출하지 않는다. 실시간 영상과
-녹화 영상에는 `src/assets/camera-frame.png`의 합성 라이브뷰 예시를 사용한다.
+화면은 `src/domain/dashboard.ts`의 클라이언트 도메인 모델과
+`src/data/dashboard-data-source.ts`의 데이터 소스 인터페이스를 사용한다.
+`src/data/mock-dashboard-data-source.ts`는 현황, 이력, 녹화 목록, 알림과 관리자 설정의
+합성 데이터를 제공한다. 기본 시나리오는 `normal`이며 개발 환경에서 URL query의
+`scenario`로 `collection-required`, `measurement-error`, `disconnected`, `no-data`,
+`loading`, `request-error` 상태를 선택할 수 있다. `/?scenario=measurement-error`은
+LiDAR 2 측정 오류 데이터를 표시한다. `loading`은 1.2초 뒤 정상 데이터를 반환하고,
+`request-error`는 데이터 소스 요청 실패 화면을 표시한다.
+
+합성 데이터 소스는 외부 API를 호출하지 않고 호출마다 독립된 데이터를 반환한다. 이후
+서버 계약이 확정되면 실제 API 어댑터가 같은 데이터 소스 인터페이스를 구현하고 서버
+응답을 클라이언트 도메인 모델로 변환한다. 화면 컴포넌트는 서버 DTO (Data Transfer
+Object)에 직접 의존하지 않는다. 실시간 영상과 녹화 영상에는
+`src/assets/camera-frame.png`의 합성 라이브뷰 예시를 사용한다.
 
 로그인은 UI MVP의 브라우저 세션 상태다. 로그인 제출은 `sessionStorage`에 상태를
 기록하고 로그아웃은 이를 삭제한다. 비로그인 사용자는 현황, 이력과 녹화 영상을 조회할
@@ -161,7 +172,8 @@ Playwright는 `e2e/`의 브라우저 테스트를 1440 x 900과 1920 x 1080 Chro
 
 현재 Playwright 테스트는 대시보드 진입, 상단 브랜드 이동, 알림함 읽음 처리와 닫기,
 관리자 메뉴와 로그인 및 로그아웃, 비로그인 화면 제한, 관리자 경로 제한, 적재율 이력의
-이벤트 상세 표시를 검증한다.
+이벤트 상세 표시를 검증한다. Vitest는 합성 데이터 소스의 기본 데이터, 상태 시나리오와
+호출 간 데이터 격리를 검증한다.
 
 CI의 호스트 runner는 Ubuntu 24.04로 고정한다. CI 작업은 `@playwright/test` 1.62.1과
 버전이 일치하는 공식 Playwright Noble 컨테이너
