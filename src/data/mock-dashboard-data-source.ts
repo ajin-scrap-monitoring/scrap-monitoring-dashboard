@@ -4,6 +4,8 @@ import type { DashboardDataSource } from "./dashboard-data-source";
 
 export type MockScenario = DashboardStatus | "loading" | "request-error";
 
+const mockScenarios = ["normal", "collection-required", "measurement-error", "disconnected", "no-data", "loading", "request-error"] as const satisfies readonly MockScenario[];
+
 const loadHistoryTimes = [
   "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00",
   "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00", "00:00",
@@ -113,27 +115,31 @@ function dashboardDataFor(scenario: MockScenario): DashboardData {
   const data = structuredClone(baseDashboardData);
   data.monitoring.status = scenario === "loading" || scenario === "request-error" ? "normal" : scenario;
 
-  if (scenario === "collection-required") {
-    data.monitoring.alerts[0] = { detail: "대표 적재율 84%", level: "warning", time: "10:24", title: "수거 필요" };
-  }
-  if (scenario === "measurement-error") {
-    data.monitoring.devices[1] = { label: "LiDAR 2", received: "10:18:04", latency: "-", status: "unavailable" };
-  }
-  if (scenario === "disconnected") {
-    data.monitoring.devices = data.monitoring.devices.map((device) => ({ ...device, latency: "수신 없음", status: "unavailable" }));
-  }
-  if (scenario === "no-data") {
-    data.monitoring.alerts = [];
-    data.monitoring.devices = [];
-    data.monitoring.headerNotifications = [];
-    data.monitoring.lidarProfiles = [];
-    data.monitoring.loadHistory = [];
-    data.history.chartEvents = [];
-    data.history.events = [];
-    data.history.loadSamples = [];
-    data.recordings = [];
-    data.admin.recipientSettings = {};
-    data.admin.recipients = [];
+  switch (scenario) {
+    case "collection-required":
+      data.monitoring.alerts[0] = { detail: "대표 적재율 84%", level: "warning", time: "10:24", title: "수거 필요" };
+      break;
+    case "measurement-error":
+      data.monitoring.devices[1] = { label: "LiDAR 2", received: "10:18:04", latency: "-", status: "unavailable" };
+      break;
+    case "disconnected":
+      data.monitoring.devices = data.monitoring.devices.map((device) => ({ ...device, latency: "수신 없음", status: "unavailable" }));
+      break;
+    case "no-data":
+      data.monitoring.alerts = [];
+      data.monitoring.devices = [];
+      data.monitoring.headerNotifications = [];
+      data.monitoring.lidarProfiles = [];
+      data.monitoring.loadHistory = [];
+      data.history.chartEvents = [];
+      data.history.events = [];
+      data.history.loadSamples = [];
+      data.recordings = [];
+      data.admin.recipientSettings = {};
+      data.admin.recipients = [];
+      break;
+    default:
+      break;
   }
 
   return data;
@@ -150,6 +156,5 @@ export function createMockDashboardDataSource(scenario: MockScenario = "normal")
 }
 
 export function resolveMockScenario(value: string | null): MockScenario {
-  const scenarios: MockScenario[] = ["normal", "collection-required", "measurement-error", "disconnected", "no-data", "loading", "request-error"];
-  return scenarios.includes(value as MockScenario) ? value as MockScenario : "normal";
+  return mockScenarios.find((scenario) => scenario === value) ?? "normal";
 }
