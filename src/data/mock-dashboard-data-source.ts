@@ -11,8 +11,11 @@ const loadHistoryTimes = [
 ];
 
 const baseDashboardData: DashboardData = {
+  lastMeasuredAt: "10:24:18",
   monitoring: {
     status: "normal",
+    videoTimestamp: "2026-09-10 10:24:18",
+    summary: { loadPercent: 72, collectionThreshold: 80, expectedArrivalAt: "9월 10일 14:30", recentChange: "+4%", timeSinceCollection: "2시간 0분", averageCollectionCycle: "23시간 10분" },
     devices: [
       { label: "LiDAR 1", received: "10:24:18", latency: "120ms", status: "normal" },
       { label: "LiDAR 2", received: "10:24:18", latency: "135ms", status: "normal" },
@@ -74,14 +77,7 @@ const baseDashboardData: DashboardData = {
     ],
   },
   recordings: [
-    { date: "2026-09-09", time: "00:00 - 23:59", type: "수거", tone: "complete", duration: "24:00:00", detail: "정기 수거 작업 완료", end: "2026-09-09 23:59:59" },
-    { date: "2026-09-08", time: "00:00 - 23:59", type: "알림", tone: "warning", duration: "24:00:00", detail: "대표 적재율 80% 도달", end: "2026-09-08 23:59:59" },
-    { date: "2026-09-07", time: "00:00 - 23:59", type: "오류", tone: "error", duration: "24:00:00", detail: "LiDAR 2 측정값 제외", end: "2026-09-07 23:59:59" },
-    { date: "2026-09-06", time: "00:00 - 23:59", type: "수거", tone: "complete", duration: "24:00:00", detail: "정기 수거 작업 완료", end: "2026-09-06 23:59:59" },
-    { date: "2026-09-05", time: "00:00 - 23:59", type: "알림", tone: "warning", duration: "24:00:00", detail: "대표 적재율 80% 도달", end: "2026-09-05 23:59:59" },
-    { date: "2026-09-04", time: "00:00 - 23:59", type: "수거", tone: "complete", duration: "24:00:00", detail: "정기 수거 작업 완료", end: "2026-09-04 23:59:59" },
-    { date: "2026-09-03", time: "00:00 - 23:59", type: "오류", tone: "error", duration: "24:00:00", detail: "카메라 프레임 수신 지연", end: "2026-09-03 23:59:59" },
-    { date: "2026-09-02", time: "00:00 - 23:59", type: "수거", tone: "complete", duration: "24:00:00", detail: "정기 수거 작업 완료", end: "2026-09-02 23:59:59" },
+    ...["2026-09-09", "2026-09-08", "2026-09-07", "2026-09-06", "2026-09-05", "2026-09-04", "2026-09-03", "2026-09-02"].map((date, index) => ({ date, start: `${date} 00:00:00`, time: "00:00 - 23:59", type: (["수거", "알림", "오류", "수거", "알림", "수거", "오류", "수거"] as const)[index], tone: (["complete", "warning", "error", "complete", "warning", "complete", "error", "complete"] as const)[index], duration: "24:00:00", detail: (["정기 수거 작업 완료", "대표 적재율 80% 도달", "LiDAR 2 측정값 제외", "정기 수거 작업 완료", "대표 적재율 80% 도달", "정기 수거 작업 완료", "카메라 프레임 수신 지연", "정기 수거 작업 완료"] as const)[index], end: `${date} 23:59:59` })),
   ],
   admin: {
     recipients: [

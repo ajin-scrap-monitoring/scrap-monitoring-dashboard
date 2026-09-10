@@ -34,6 +34,15 @@ export type LidarProfile = {
   values: number[];
 };
 
+export type MonitoringSummary = {
+  averageCollectionCycle: string;
+  collectionThreshold: number;
+  expectedArrivalAt: string;
+  loadPercent: number;
+  recentChange: string;
+  timeSinceCollection: string;
+};
+
 export type HistoryEvent = {
   content: string;
   detail: string;
@@ -60,6 +69,7 @@ export type Recording = {
   detail: string;
   duration: string;
   end: string;
+  start: string;
   time: string;
   tone: EventTone;
   type: "수거" | "알림" | "오류";
@@ -87,6 +97,7 @@ export type RecipientSettings = {
 export type DashboardStatus = "normal" | "collection-required" | "measurement-error" | "disconnected" | "no-data";
 
 export type DashboardData = {
+  lastMeasuredAt: string;
   admin: {
     recipientSettings: Record<string, RecipientSettings>;
     recipients: NotificationRecipient[];
@@ -103,6 +114,8 @@ export type DashboardData = {
     lidarProfiles: LidarProfile[];
     loadHistory: LoadHistorySample[];
     status: DashboardStatus;
+    summary: MonitoringSummary;
+    videoTimestamp: string;
   };
   recordings: Recording[];
 };

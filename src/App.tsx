@@ -266,7 +266,7 @@ function MeasurementDiagram({ lidar1Color, lidar2Color }: { lidar1Color: string;
   );
 }
 
-function LoadChart({ samples }: { samples: DashboardData["monitoring"]["loadHistory"] }) {
+function LoadChart({ samples, threshold }: { samples: DashboardData["monitoring"]["loadHistory"]; threshold: number }) {
   const xValues = samples.map((_, index) => 40 + index * (370 / (samples.length - 1)));
   const yMin = 0;
   const yMax = 100;
@@ -304,8 +304,8 @@ function LoadChart({ samples }: { samples: DashboardData["monitoring"]["loadHist
           </g>
         ))}
       </g>
-      <path d={`M40 ${toY(80)}H410`} stroke="#607086" strokeDasharray="5 5" strokeOpacity="0.58" strokeWidth="1.5" />
-      <text x="408" y="39" transform="translate(408 0) scale(0.69 1) translate(-408 0)" fill="#526278" fontSize="10" fontWeight="600" textAnchor="end">수거 임계율 80%</text>
+      <path d={`M40 ${toY(threshold)}H410`} stroke="#607086" strokeDasharray="5 5" strokeOpacity="0.58" strokeWidth="1.5" />
+      <text x="408" y="39" transform="translate(408 0) scale(0.69 1) translate(-408 0)" fill="#526278" fontSize="10" fontWeight="600" textAnchor="end">수거 임계율 {threshold}%</text>
       <path d={`M${xValues[0]} ${pointY[0]} ${xValues.slice(1).map((x, index) => `L${x} ${pointY[index + 1]}`).join(" ")} V${chartBottom} H${xValues[0]} Z`} fill="#f58a07" fillOpacity="0.1" />
       <polyline points={`${xValues.map((x, index) => `${x},${pointY[index]}`).join(" ")}`} fill="none" stroke="#f58a07" strokeWidth="4" />
       <g fill="#f58a07">
@@ -687,7 +687,7 @@ export function App() {
   if (dashboardError) return <DashboardStatePage title="데이터를 불러올 수 없습니다." description="데이터 연결 상태를 확인한 뒤 다시 시도하세요." />;
   if (dashboardData === null) return <DashboardStatePage title="데이터를 불러오는 중입니다." description="최신 모니터링 데이터를 준비하고 있습니다." />;
 
-  const { admin, history, monitoring, recordings } = dashboardData;
+  const { admin, history, lastMeasuredAt, monitoring, recordings } = dashboardData;
   const totalAlertPages = Math.max(1, Math.ceil(monitoring.alerts.length / alertsPerPage));
   const pageStart = alertPage * alertsPerPage;
   const visibleAlerts = monitoring.alerts.slice(pageStart, pageStart + alertsPerPage);
@@ -706,7 +706,7 @@ export function App() {
           <div className="page-meta">
             <DashboardStatusLabel status={monitoring.status} />
             <span className="meta-divider" aria-hidden="true" />
-            <span>마지막 측정 10:24:18</span>
+            <span>마지막 측정 {lastMeasuredAt}</span>
           </div>
         </div>
         <div className="content">
@@ -715,14 +715,14 @@ export function App() {
               <SectionTitle>현재 상태</SectionTitle>
               <div className="kpi-content">
                 <p className="kpi-label">대표 적재율</p>
-                <div className="kpi-value">72<span>%</span></div>
-                <div className="progress" aria-label="대표 적재율 72%">
-                  <div />
+                <div className="kpi-value">{monitoring.summary.loadPercent}<span>%</span></div>
+                <div className="progress" aria-label={`대표 적재율 ${monitoring.summary.loadPercent}%`}>
+                  <div style={{ width: `${monitoring.summary.loadPercent}%` }} />
                 </div>
                 <div className="mini-stats">
                   <div className="mini-stat">
                     <span className="label">수거 임계율</span>
-                    <strong>80%</strong>
+                    <strong>{monitoring.summary.collectionThreshold}%</strong>
                   </div>
                   <div className="mini-stat">
                     <span className="label">운영 상태</span>
@@ -730,14 +730,14 @@ export function App() {
                   </div>
                   <div className="mini-stat">
                     <span className="label">예상 도달</span>
-                    <strong>9월 10일 14:30</strong>
+                    <strong>{monitoring.summary.expectedArrivalAt}</strong>
                     <span className="remaining-time">남은 시간 4시간 6분</span>
                   </div>
                 </div>
                 <div className="status-details">
-                  <div><span className="label">최근 1시간 변화량</span><strong className="status-text ok">+4%</strong></div>
-                  <div><span className="label">최근 수거 후 경과</span><strong>2시간 0분</strong></div>
-                  <div><span className="label">평균 수거 주기</span><strong>23시간 10분</strong></div>
+                  <div><span className="label">최근 1시간 변화량</span><strong className="status-text ok">{monitoring.summary.recentChange}</strong></div>
+                  <div><span className="label">최근 수거 후 경과</span><strong>{monitoring.summary.timeSinceCollection}</strong></div>
+                  <div><span className="label">평균 수거 주기</span><strong>{monitoring.summary.averageCollectionCycle}</strong></div>
                 </div>
               </div>
             </section>
@@ -745,7 +745,7 @@ export function App() {
               <div className="live-frame">
                 <img src={cameraFrame} alt="스크랩 적재 공간 합성 영상 예시" />
                 <span className="live-indicator">LIVE</span>
-                <span className="live-time">2026-09-10 10:24:18</span>
+                <span className="live-time">{monitoring.videoTimestamp}</span>
                 <button className="fullscreen" type="button" aria-label="실시간 영상 크게 보기" onClick={() => setVideoOpen(true)}><ExpandIcon /></button>
               </div>
             </section>
@@ -755,7 +755,7 @@ export function App() {
             </section>
             <section className="card chart-card span-4">
             <div className="chart-title-row"><SectionTitle>최근 24시간 적재율</SectionTitle></div>
-              <LoadChart samples={monitoring.loadHistory} />
+              <LoadChart samples={monitoring.loadHistory} threshold={monitoring.summary.collectionThreshold} />
             </section>
             {monitoring.lidarProfiles.map((profile) => <ProfileChart key={profile.label} {...profile} />)}
             <section className="card alerts-card span-4">
@@ -812,7 +812,7 @@ export function App() {
             <div className="video-modal-frame">
               <img src={cameraFrame} alt="스크랩 적재 공간 실시간 영상 확대" />
               <span className="live-indicator">LIVE</span>
-              <span className="live-time">2026-09-10 10:24:18</span>
+              <span className="live-time">{monitoring.videoTimestamp}</span>
             </div>
           </div>
         </div>

@@ -129,7 +129,8 @@ Programming Interface) 호환성을 검증한다.
 화면은 `src/domain/dashboard.ts`의 클라이언트 도메인 모델과
 `src/data/dashboard-data-source.ts`의 데이터 소스 인터페이스를 사용한다.
 `src/data/mock-dashboard-data-source.ts`는 현황, 이력, 녹화 목록, 알림과 관리자 설정의
-합성 데이터를 제공한다. 기본 시나리오는 `normal`이며 개발 환경에서 URL query의
+합성 데이터를 제공한다. 현황의 대표 적재율, 수거 임계율, 수거 주기, 예상 도달 시각,
+마지막 측정 시각과 영상 시각도 이 데이터 소스가 제공한다. 기본 시나리오는 `normal`이며 개발 환경에서 URL query의
 `scenario`로 `collection-required`, `measurement-error`, `disconnected`, `no-data`,
 `loading`, `request-error` 상태를 선택할 수 있다. `/?scenario=measurement-error`은
 LiDAR 2 측정 오류 데이터를 표시한다. `loading`은 1.2초 뒤 정상 데이터를 반환하고,
