@@ -1,38 +1,34 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import cameraFrame from "./assets/camera-frame.png";
+import { createMockDashboardDataSource, resolveMockScenario } from "./data/mock-dashboard-data-source";
+import type { DashboardData, HeaderNotification, LidarProfile, RecipientSettings } from "./domain/dashboard";
 import "./App.css";
-
-type ProfileChartProps = {
-  average: string;
-  color: "blue" | "teal";
-  label: string;
-  maximum: string;
-  minimum: string;
-  values: number[];
-};
-
-const devices = [
-  { label: "LiDAR 1", received: "10:24:18", latency: "120ms" },
-  { label: "LiDAR 2", received: "10:24:18", latency: "135ms" },
-  { label: "카메라", received: "10:24:16", latency: "180ms" },
-  { label: "엣지 장비", received: "10:24:17", latency: "95ms" },
-];
-
-const alerts = [
-  { detail: "대표 적재율 82%", level: "warning", time: "10:20", title: "수거 필요" },
-  { detail: "LiDAR 2 일부 측정 불가", level: "error", time: "10:18", title: "측정 오류" },
-  { detail: "임계율 도달 예상 4시간 전", level: "warning", time: "10:02", title: "수거 예정" },
-  { detail: "카메라 프레임 수신 지연", level: "error", time: "09:58", title: "영상 지연" },
-  { detail: "온도 센서 값 변동", level: "warning", time: "09:45", title: "안정성 경보" },
-  { detail: "LiDAR 1 점군 밀도 저하", level: "warning", time: "09:40", title: "센서 감도 경고" },
-  { detail: "엣지 장비 CPU 사용률 상승", level: "warning", time: "09:31", title: "자원 모니터링" },
-];
 
 const alertsPerPage = 4;
 
 function SectionTitle({ children }: { children: string }) {
   return <h2 className="section-title">{children}</h2>;
+}
+
+function DashboardStateMessage({ description, title }: { description: string; title: string }) {
+  return <main className="dashboard-state" aria-label={title}><section><h1>{title}</h1><p>{description}</p></section></main>;
+}
+
+function DashboardStatePage({ description, title }: { description: string; title: string }) {
+  return <div className="app-shell"><DashboardHeader activePage="monitoring" initialNotifications={[]} /><DashboardStateMessage title={title} description={description} /><footer className="app-footer"><span>Copyright 2026 AJIN INDUSTRIAL. All rights reserved.</span><span>Version 0.1.0</span></footer></div>;
+}
+
+function DashboardStatusLabel({ status }: { status: DashboardData["monitoring"]["status"] }) {
+  const labels = {
+    normal: "정상",
+    "collection-required": "수거 필요",
+    "measurement-error": "측정 오류",
+    disconnected: "연결 끊김",
+    "no-data": "데이터 없음",
+  };
+  const tone = status === "normal" ? "ok" : status === "collection-required" ? "warning" : "error";
+  return <span className={`status-text ${tone}`}>{labels[status]}</span>;
 }
 
 function BellIcon() {
@@ -61,24 +57,8 @@ function ChevronIcon() {
   );
 }
 
-type HeaderNotification = {
-  detail: string;
-  id: number;
-  level: "warning" | "error";
-  read: boolean;
-  time: string;
-  title: string;
-};
-
-const initialHeaderNotifications: HeaderNotification[] = [
-  { id: 1, title: "수거 필요", detail: "대표 적재율이 수거 임계율에 도달했습니다.", level: "warning", read: false, time: "10:20" },
-  { id: 2, title: "측정 오류", detail: "LiDAR 2 일부 측정값을 제외했습니다.", level: "error", read: false, time: "10:18" },
-  { id: 3, title: "수거 예정", detail: "수거 임계율 도달이 예상됩니다.", level: "warning", read: false, time: "10:02" },
-  { id: 4, title: "영상 지연", detail: "카메라 프레임 수신이 지연되었습니다.", level: "error", read: true, time: "09:58" },
-];
-
-function DashboardHeader({ activePage }: { activePage: "monitoring" | "history" | "recordings" | "admin" }) {
-  const [notifications, setNotifications] = useState(initialHeaderNotifications);
+function DashboardHeader({ activePage, initialNotifications }: { activePage: "monitoring" | "history" | "recordings" | "admin"; initialNotifications: HeaderNotification[] }) {
+  const [notifications, setNotifications] = useState(initialNotifications);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
@@ -286,14 +266,8 @@ function MeasurementDiagram({ lidar1Color, lidar2Color }: { lidar1Color: string;
   );
 }
 
-function LoadChart() {
-  const times = [
-    "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00",
-    "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00", "00:00",
-    "01:00", "02:00", "03:00", "04:00", "05:00", "06:00", "07:00", "08:00",
-  ];
-  const loadValues = [44, 46, 48, 49, 51, 53, 54, 56, 58, 59, 61, 62, 64, 65, 66, 67, 68, 69, 69, 70, 70, 71, 71, 72];
-  const xValues = times.map((_, index) => 40 + index * (370 / (times.length - 1)));
+function LoadChart({ samples }: { samples: DashboardData["monitoring"]["loadHistory"] }) {
+  const xValues = samples.map((_, index) => 40 + index * (370 / (samples.length - 1)));
   const yMin = 0;
   const yMax = 100;
   const yTickValues = [100, 80, 60, 40, 20, 0];
@@ -301,10 +275,10 @@ function LoadChart() {
   const chartBottom = 148;
   const toY = (value: number) => chartBottom - (value - yMin) * ((chartBottom - chartTop) / (yMax - yMin));
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const pointY = loadValues.map((value) => toY(value));
+  const pointY = samples.map((sample) => toY(sample.value));
   const xTickIndices = [0, 3, 6, 9, 12, 15, 18, 21, 23];
   const xTickPositions = xTickIndices.map((index) => xValues[index]);
-  const xTickLabels = xTickIndices.map((index) => times[index]);
+  const xTickLabels = xTickIndices.map((index) => samples[index].time);
 
   const activeX = activeIndex === null ? 0 : xValues[activeIndex];
   const activeY = activeIndex === null ? 0 : pointY[activeIndex];
@@ -345,7 +319,7 @@ function LoadChart() {
           cy={pointY[index]}
           r="11"
           tabIndex={0}
-          aria-label={`${times[index]} 대표 적재율 ${loadValues[index]}%`}
+          aria-label={`${samples[index].time} 대표 적재율 ${samples[index].value}%`}
           onPointerEnter={() => setActiveIndex(index)}
           onPointerLeave={() => setActiveIndex(null)}
           onFocus={() => setActiveIndex(index)}
@@ -355,8 +329,8 @@ function LoadChart() {
       {activeIndex !== null && (
         <g className="chart-tooltip" transform={`translate(${tooltipX} ${tooltipY})`} pointerEvents="none">
           <rect width="84" height="34" rx="4" />
-          <text x="8" y="14">{times[activeIndex]}</text>
-          <text x="8" y="27">대표 적재율 {loadValues[activeIndex]}%</text>
+          <text x="8" y="14">{samples[activeIndex].time}</text>
+          <text x="8" y="27">대표 적재율 {samples[activeIndex].value}%</text>
         </g>
       )}
       <g fill="#61708a" fontSize="11">
@@ -370,7 +344,7 @@ function LoadChart() {
   );
 }
 
-function ProfileChart({ average, color, label, maximum, minimum, values }: ProfileChartProps) {
+function ProfileChart({ average, color, label, maximum, minimum, values }: LidarProfile) {
   const stroke = color === "blue" ? "#1677e8" : "#0ba58f";
   const axisTextColor = color === "blue" ? "#0b3f8d" : "#066f5e";
   const yMin = 0;
@@ -432,32 +406,10 @@ function ProfileChart({ average, color, label, maximum, minimum, values }: Profi
   );
 }
 
-const historyEvents = [
-  { time: "2026-09-09 12:33", type: "수거", tone: "complete", content: "수거 완료", detail: "정기 수거 작업 완료" },
-  { time: "2026-09-09 12:00", type: "알림", tone: "warning", content: "수거 필요", detail: "대표 적재율 80% 도달" },
-  { time: "2026-09-08 18:00", type: "오류", tone: "error", content: "센서 데이터 이상", detail: "LiDAR 2 측정값 제외" },
-  { time: "2026-09-08 12:33", type: "수거", tone: "complete", content: "수거 완료", detail: "정기 수거 작업 완료" },
-  { time: "2026-09-08 12:00", type: "알림", tone: "warning", content: "수거 필요", detail: "대표 적재율 80% 도달" },
-  { time: "2026-09-07 12:33", type: "수거", tone: "complete", content: "수거 완료", detail: "정기 수거 작업 완료" },
-  { time: "2026-09-07 12:00", type: "알림", tone: "warning", content: "수거 필요", detail: "대표 적재율 80% 도달" },
-  { time: "2026-09-06 12:33", type: "수거", tone: "complete", content: "수거 완료", detail: "정기 수거 작업 완료" },
-  { time: "2026-09-06 12:00", type: "알림", tone: "warning", content: "수거 필요", detail: "대표 적재율 80% 도달" },
-];
-
 const historyEventsPerPage = 8;
 
-function HistoryLoadChart() {
+function HistoryLoadChart({ chartEvents, loadSamples: samples }: DashboardData["history"]) {
   const [activeEvent, setActiveEvent] = useState<number | null>(null);
-  const samples = [
-    ...Array.from({ length: 7 }, (_, day) => [
-      { hour: day * 24, value: 40 },
-      { hour: day * 24 + 6, value: 60 },
-      { hour: day * 24 + 12, value: 80 },
-      { hour: day * 24 + 12.55, value: 0 },
-      { hour: day * 24 + 18, value: 20 },
-    ]).flat(),
-    { hour: 168, value: 40 },
-  ];
   const left = 58;
   const right = 1900;
   const top = 62;
@@ -466,16 +418,9 @@ function HistoryLoadChart() {
   const toY = (value: number) => bottom - value * ((bottom - top) / 100);
   const path = samples.map((sample, index) => `${index === 0 ? "M" : "L"}${toX(sample.hour)} ${toY(sample.value)}`).join(" ");
   const fillPath = `${path}V${bottom}H${left}Z`;
-  const collectionMarkers = Array.from({ length: 7 }, (_, day) => [
-    { index: day * 5 + 2, label: "수거 필요", color: "#f58a07", time: `2026-09-${String(day + 3).padStart(2, "0")} 12:00`, detail: "대표 적재율 80% 도달" },
-    { index: day * 5 + 3, label: "수거 완료", color: "#0aa45b", time: `2026-09-${String(day + 3).padStart(2, "0")} 12:33`, detail: "정기 수거 작업 완료" },
-  ]).flat();
-  const eventMarkers = [
-    ...collectionMarkers,
-    { index: 29, label: "오류", color: "#e83232", time: "2026-09-08 18:00", detail: "LiDAR 2 측정값 제외" },
-  ];
-  const eventAnnotations = eventMarkers.map((event) => {
-    const sample = samples[event.index];
+  const eventAnnotations = chartEvents.map((event) => {
+    const sample = samples.find((item) => item.hour === event.hour);
+    if (!sample) return null;
     const x = toX(sample.hour);
     const direction = x > right - 120 ? -1 : event.label === "수거 필요" ? -1 : 1;
     const row = event.label === "수거 필요" ? 0 : event.label === "수거 완료" ? 1 : 2;
@@ -483,9 +428,9 @@ function HistoryLoadChart() {
     const labelY = 17 + row * 17;
     const labelX = x + direction * 38;
     return { ...event, direction, elbowY, labelX, labelY, sample, x };
-  });
-  const selectedEvent = activeEvent === null ? null : eventMarkers[activeEvent];
-  const selectedSample = selectedEvent === null ? null : samples[selectedEvent.index];
+  }).filter((event): event is NonNullable<typeof event> => event !== null);
+  const selectedEvent = activeEvent === null ? null : eventAnnotations[activeEvent];
+  const selectedSample = selectedEvent?.sample ?? null;
   const tooltipX = selectedSample === null ? 0 : Math.max(left + 8, Math.min(toX(selectedSample.hour) - 96, right - 200));
   const tooltipY = selectedSample === null ? 0 : 132;
   return (
@@ -508,7 +453,7 @@ function HistoryLoadChart() {
           const targetLeft = event.direction === -1 ? event.labelX - 78 : event.labelX - 4;
           const targetWidth = 82;
           return (
-            <g key={`${event.label}-${event.index}`}>
+            <g key={`${event.label}-${event.time}`}>
               <path d={`M${event.x} ${toY(event.sample.value)}V${event.elbowY}L${event.labelX} ${event.labelY + 4}`} fill="none" stroke={event.color} strokeOpacity="0.72" strokeWidth="1.5" />
               <text x={event.labelX + event.direction * 5} y={event.labelY} fill={event.color} fontSize="11" fontWeight="700" textAnchor={event.direction === -1 ? "end" : "start"}>{event.label}</text>
               <rect
@@ -540,20 +485,9 @@ function HistoryLoadChart() {
   );
 }
 
-const recordings = [
-  { date: "2026-09-09", time: "00:00 - 23:59", type: "수거", tone: "complete", duration: "24:00:00", detail: "정기 수거 작업 완료", end: "2026-09-09 23:59:59" },
-  { date: "2026-09-08", time: "00:00 - 23:59", type: "알림", tone: "warning", duration: "24:00:00", detail: "대표 적재율 80% 도달", end: "2026-09-08 23:59:59" },
-  { date: "2026-09-07", time: "00:00 - 23:59", type: "오류", tone: "error", duration: "24:00:00", detail: "LiDAR 2 측정값 제외", end: "2026-09-07 23:59:59" },
-  { date: "2026-09-06", time: "00:00 - 23:59", type: "수거", tone: "complete", duration: "24:00:00", detail: "정기 수거 작업 완료", end: "2026-09-06 23:59:59" },
-  { date: "2026-09-05", time: "00:00 - 23:59", type: "알림", tone: "warning", duration: "24:00:00", detail: "대표 적재율 80% 도달", end: "2026-09-05 23:59:59" },
-  { date: "2026-09-04", time: "00:00 - 23:59", type: "수거", tone: "complete", duration: "24:00:00", detail: "정기 수거 작업 완료", end: "2026-09-04 23:59:59" },
-  { date: "2026-09-03", time: "00:00 - 23:59", type: "오류", tone: "error", duration: "24:00:00", detail: "카메라 프레임 수신 지연", end: "2026-09-03 23:59:59" },
-  { date: "2026-09-02", time: "00:00 - 23:59", type: "수거", tone: "complete", duration: "24:00:00", detail: "정기 수거 작업 완료", end: "2026-09-02 23:59:59" },
-];
-
 const recordingsPerPage = 6;
 
-function RecordingsPage() {
+function RecordingsPage({ recordings, headerNotifications, status }: { recordings: DashboardData["recordings"]; headerNotifications: HeaderNotification[]; status: DashboardData["monitoring"]["status"] }) {
   const [recordType, setRecordType] = useState("전체");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -576,9 +510,9 @@ function RecordingsPage() {
 
   return (
     <div className="app-shell">
-      <DashboardHeader activePage="recordings" />
+      <DashboardHeader activePage="recordings" initialNotifications={headerNotifications} />
       <main className="recordings-page" aria-label="스크랩 모니터링 녹화 영상">
-        <div className="page-heading"><h1>녹화 영상</h1><div className="page-meta"><span className="status-text ok">정상</span><span className="meta-divider" aria-hidden="true" /><span>마지막 측정 10:24:18</span></div></div>
+        <div className="page-heading"><h1>녹화 영상</h1><div className="page-meta"><DashboardStatusLabel status={status} /><span className="meta-divider" aria-hidden="true" /><span>마지막 측정 10:24:18</span></div></div>
         <div className="recordings-content">
           <section className="card recordings-query"><SectionTitle>검색 조건</SectionTitle><div className="recordings-query-controls"><label>시작 시각<input type="datetime-local" defaultValue="2026-09-02T00:00" /></label><label>종료 시각<input type="datetime-local" defaultValue="2026-09-09T23:59" /></label><div className="query-type"><span>녹화 유형</span><div>{["전체", "수거", "알림", "오류"].map((type) => <button key={type} className={recordType === type ? "selected" : ""} type="button" onClick={() => { setRecordType(type); setSelectedIndex(0); setRecordingPage(0); }}>{type}</button>)}</div></div><button className="primary-button" type="button">조회</button></div></section>
           <div className="recordings-main">
@@ -594,48 +528,9 @@ function RecordingsPage() {
   );
 }
 
-const notificationRecipients = [
-  { name: "김현수", team: "생산관리팀", email: "kim@example.com", phone: "010-****-1234", channel: "이메일, 문자", enabled: true },
-  { name: "박영진", team: "설비보전팀", email: "park@example.com", phone: "010-****-5678", channel: "문자", enabled: true },
-  { name: "이정민", team: "품질관리팀", email: "lee@example.com", phone: "-", channel: "이메일", enabled: false },
-  { name: "최민석", team: "생산1팀", email: "choi@example.com", phone: "010-****-9012", channel: "이메일, 문자", enabled: true },
-  { name: "윤서연", team: "생산2팀", email: "yoon@example.com", phone: "010-****-3456", channel: "문자", enabled: true },
-  { name: "정우진", team: "안전환경팀", email: "jung@example.com", phone: "010-****-7890", channel: "이메일, 문자", enabled: true },
-  { name: "한지훈", team: "설비보전팀", email: "han@example.com", phone: "010-****-2468", channel: "이메일", enabled: true },
-  { name: "오수빈", team: "생산관리팀", email: "oh@example.com", phone: "010-****-1357", channel: "문자", enabled: false },
-  { name: "문지아", team: "안전환경팀", email: "moon@example.com", phone: "010-****-0246", channel: "이메일, 문자", enabled: true },
-  { name: "서준호", team: "생산1팀", email: "seo@example.com", phone: "010-****-8024", channel: "이메일", enabled: true },
-  { name: "강민지", team: "품질관리팀", email: "kang@example.com", phone: "010-****-9135", channel: "이메일, 문자", enabled: true },
-];
-
 const recipientsPerPage = 10;
-
-type RecipientSettings = {
-  collection: boolean;
-  device: boolean;
-  email: boolean;
-  enabled: boolean;
-  error: boolean;
-  sms: boolean;
-  useGlobal: boolean;
-};
-
-const initialRecipientSettings: Record<string, RecipientSettings> = {
-  "kim@example.com": { collection: true, device: true, email: true, enabled: true, error: true, sms: true, useGlobal: true },
-  "park@example.com": { collection: true, device: false, email: false, enabled: true, error: true, sms: true, useGlobal: false },
-  "lee@example.com": { collection: false, device: false, email: true, enabled: false, error: true, sms: false, useGlobal: false },
-  "choi@example.com": { collection: true, device: true, email: true, enabled: true, error: true, sms: true, useGlobal: true },
-  "yoon@example.com": { collection: true, device: false, email: false, enabled: true, error: false, sms: true, useGlobal: false },
-  "jung@example.com": { collection: true, device: true, email: true, enabled: true, error: true, sms: true, useGlobal: true },
-  "han@example.com": { collection: false, device: true, email: true, enabled: true, error: true, sms: false, useGlobal: false },
-  "oh@example.com": { collection: true, device: false, email: false, enabled: false, error: false, sms: true, useGlobal: false },
-  "moon@example.com": { collection: true, device: true, email: true, enabled: true, error: true, sms: true, useGlobal: true },
-  "seo@example.com": { collection: false, device: true, email: true, enabled: true, error: true, sms: false, useGlobal: false },
-  "kang@example.com": { collection: true, device: true, email: true, enabled: true, error: true, sms: true, useGlobal: true },
-};
-
-function AdminPage() {
-  const [recipients, setRecipients] = useState(notificationRecipients);
+function AdminPage({ admin, headerNotifications }: { admin: DashboardData["admin"]; headerNotifications: HeaderNotification[] }) {
+  const [recipients, setRecipients] = useState(admin.recipients);
   const [threshold, setThreshold] = useState("85");
   const [currentThreshold, setCurrentThreshold] = useState("80");
   const [preAlertThreshold, setPreAlertThreshold] = useState("70");
@@ -646,7 +541,7 @@ function AdminPage() {
   const [recoveryNotice, setRecoveryNotice] = useState(true);
   const [testChannels, setTestChannels] = useState({ email: true, sms: true });
   const [recipientPage, setRecipientPage] = useState(0);
-  const [recipientSettings, setRecipientSettings] = useState(initialRecipientSettings);
+  const [recipientSettings, setRecipientSettings] = useState(admin.recipientSettings);
   const [selectedRecipientEmail, setSelectedRecipientEmail] = useState<string | null>(null);
   const [addRecipientOpen, setAddRecipientOpen] = useState(false);
   const [addRecipientError, setAddRecipientError] = useState("");
@@ -696,7 +591,7 @@ function AdminPage() {
 
   return (
     <div className="app-shell">
-      <DashboardHeader activePage="admin" />
+      <DashboardHeader activePage="admin" initialNotifications={headerNotifications} />
       <main className="admin-page" aria-label="관리자 설정">
         <div className="page-heading"><h1>관리자 설정</h1></div>
         <div className="admin-content">
@@ -737,20 +632,20 @@ function AdminPage() {
   );
 }
 
-function HistoryPage() {
+function HistoryPage({ history, headerNotifications, status }: { history: DashboardData["history"]; headerNotifications: HeaderNotification[]; status: DashboardData["monitoring"]["status"] }) {
   const [eventType, setEventType] = useState("전체");
   const [eventPage, setEventPage] = useState(0);
-  const filteredEvents = eventType === "전체" ? historyEvents : historyEvents.filter((event) => event.type === eventType);
+  const filteredEvents = eventType === "전체" ? history.events : history.events.filter((event) => event.type === eventType);
   const totalEventPages = Math.max(1, Math.ceil(filteredEvents.length / historyEventsPerPage));
   const visibleEvents = filteredEvents.slice(eventPage * historyEventsPerPage, (eventPage + 1) * historyEventsPerPage);
   return (
     <div className="app-shell">
-      <DashboardHeader activePage="history" />
+      <DashboardHeader activePage="history" initialNotifications={headerNotifications} />
       <main className="history-page" aria-label="스크랩 모니터링 이력">
-        <div className="page-heading"><h1>이력</h1><div className="page-meta"><span className="status-text ok">정상</span><span className="meta-divider" aria-hidden="true" /><span>마지막 측정 10:24:18</span></div></div>
+        <div className="page-heading"><h1>이력</h1><div className="page-meta"><DashboardStatusLabel status={status} /><span className="meta-divider" aria-hidden="true" /><span>마지막 측정 10:24:18</span></div></div>
         <div className="history-content">
           <section className="card history-query"><SectionTitle>조회 조건</SectionTitle><div className="query-controls"><label>시작 시각<input type="datetime-local" defaultValue="2026-09-03T00:00" /></label><label>종료 시각<input type="datetime-local" defaultValue="2026-09-09T23:59" /></label><div className="query-type"><span>이벤트 유형</span><div>{["전체", "수거", "알림", "오류"].map((type) => <button key={type} className={eventType === type ? "selected" : ""} type="button" onClick={() => { setEventType(type); setEventPage(0); }}>{type}</button>)}</div></div><button className="primary-button" type="button">조회</button></div></section>
-          <section className="card history-load"><div className="history-card-head"><SectionTitle>적재율 이력</SectionTitle><div className="history-legend" aria-label="그래프 범례"><span><i className="history-legend-line" />수거 임계율</span><span><i className="history-legend-leader need" />수거 필요</span><span><i className="history-legend-leader complete" />수거 완료</span><span><i className="history-legend-leader error" />오류</span></div></div><HistoryLoadChart /></section>
+          <section className="card history-load"><div className="history-card-head"><SectionTitle>적재율 이력</SectionTitle><div className="history-legend" aria-label="그래프 범례"><span><i className="history-legend-line" />수거 임계율</span><span><i className="history-legend-leader need" />수거 필요</span><span><i className="history-legend-leader complete" />수거 완료</span><span><i className="history-legend-leader error" />오류</span></div></div><HistoryLoadChart {...history} /></section>
           <section className="card history-events"><div className="history-card-head"><SectionTitle>이벤트 이력</SectionTitle><span>총 {filteredEvents.length}건</span></div><div className="history-table-wrap"><table><thead><tr><th>시각</th><th>유형</th><th>상태</th><th>내용</th><th>관련 녹화</th></tr></thead><tbody>{visibleEvents.map((event) => <tr key={event.time}><td>{event.time}</td><td>{event.type}</td><td><span className={`event-dot ${event.tone}`} />{event.content}</td><td>{event.detail}</td><td><a href="/recordings">영상 보기</a></td></tr>)}</tbody></table></div><div className="history-pagination"><button type="button" aria-label="이전 이벤트 페이지" disabled={eventPage === 0} onClick={() => setEventPage((page) => page - 1)}>&lt;</button><span>{eventPage + 1} / {totalEventPages}</span><button type="button" aria-label="다음 이벤트 페이지" disabled={eventPage === totalEventPages - 1} onClick={() => setEventPage((page) => page + 1)}>&gt;</button></div></section>
         </div>
       </main>
@@ -760,11 +655,19 @@ function HistoryPage() {
 }
 
 export function App() {
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [dashboardError, setDashboardError] = useState(false);
   const [alertPage, setAlertPage] = useState(0);
   const [videoOpen, setVideoOpen] = useState(false);
-  const totalAlertPages = Math.ceil(alerts.length / alertsPerPage);
-  const pageStart = alertPage * alertsPerPage;
-  const visibleAlerts = alerts.slice(pageStart, pageStart + alertsPerPage);
+  const scenario = resolveMockScenario(new URLSearchParams(window.location.search).get("scenario"));
+
+  useEffect(() => {
+    let active = true;
+    void createMockDashboardDataSource(scenario).getDashboardData()
+      .then((data) => { if (active) setDashboardData(data); })
+      .catch(() => { if (active) setDashboardError(true); });
+    return () => { active = false; };
+  }, [scenario]);
 
   useEffect(() => {
     if (!videoOpen) return undefined;
@@ -781,18 +684,27 @@ export function App() {
     window.history.replaceState(null, "", "/login");
     return <LoginPage />;
   }
-  if (window.location.pathname === "/recordings") return <RecordingsPage />;
-  if (window.location.pathname === "/history") return <HistoryPage />;
-  if (window.location.pathname === "/admin") return <AdminPage />;
+  if (dashboardError) return <DashboardStatePage title="데이터를 불러올 수 없습니다." description="데이터 연결 상태를 확인한 뒤 다시 시도하세요." />;
+  if (dashboardData === null) return <DashboardStatePage title="데이터를 불러오는 중입니다." description="최신 모니터링 데이터를 준비하고 있습니다." />;
+
+  const { admin, history, monitoring, recordings } = dashboardData;
+  const totalAlertPages = Math.max(1, Math.ceil(monitoring.alerts.length / alertsPerPage));
+  const pageStart = alertPage * alertsPerPage;
+  const visibleAlerts = monitoring.alerts.slice(pageStart, pageStart + alertsPerPage);
+
+  if (monitoring.status === "no-data") return <DashboardStatePage title="표시할 모니터링 데이터가 없습니다." description="조회 조건 또는 장비 데이터 수신 상태를 확인하세요." />;
+  if (window.location.pathname === "/recordings") return <RecordingsPage recordings={recordings} headerNotifications={monitoring.headerNotifications} status={monitoring.status} />;
+  if (window.location.pathname === "/history") return <HistoryPage history={history} headerNotifications={monitoring.headerNotifications} status={monitoring.status} />;
+  if (window.location.pathname === "/admin") return <AdminPage admin={admin} headerNotifications={monitoring.headerNotifications} />;
 
   return (
     <div className="app-shell">
-      <DashboardHeader activePage="monitoring" />
+      <DashboardHeader activePage="monitoring" initialNotifications={monitoring.headerNotifications} />
       <main className="monitoring-page" aria-label="스크랩 모니터링 대시보드">
         <div className="page-heading">
           <h1>스크랩 모니터링</h1>
           <div className="page-meta">
-            <span className="status-text ok">정상</span>
+            <DashboardStatusLabel status={monitoring.status} />
             <span className="meta-divider" aria-hidden="true" />
             <span>마지막 측정 10:24:18</span>
           </div>
@@ -843,28 +755,13 @@ export function App() {
             </section>
             <section className="card chart-card span-4">
             <div className="chart-title-row"><SectionTitle>최근 24시간 적재율</SectionTitle></div>
-              <LoadChart />
+              <LoadChart samples={monitoring.loadHistory} />
             </section>
-            <ProfileChart
-              average="1.8 m"
-              color="blue"
-              label="LiDAR 1"
-              minimum="1.2 m"
-              maximum="2.4 m"
-              values={[1.8, 1.9, 1.8, 2.1, 2.2, 2.0, 1.9, 2.1, 2.3, 2.0, 2.2]}
-            />
-            <ProfileChart
-              average="1.7 m"
-              color="teal"
-              label="LiDAR 2"
-              minimum="1.0 m"
-              maximum="2.6 m"
-              values={[1.4, 1.5, 1.7, 1.9, 2.2, 2.4, 2.3, 2.6, 2.1, 2.0, 2.3]}
-            />
+            {monitoring.lidarProfiles.map((profile) => <ProfileChart key={profile.label} {...profile} />)}
             <section className="card alerts-card span-4">
               <div className="card-head">
                 <SectionTitle>활성 알림</SectionTitle>
-                <span className="alert-count">{alerts.length}건</span>
+                <span className="alert-count">{monitoring.alerts.length}건</span>
               </div>
               <div className="active-alert-list">
                 {visibleAlerts.map((alert) => (
@@ -893,11 +790,11 @@ export function App() {
             <section className="card devices-card span-8">
               <SectionTitle>장비 상태</SectionTitle>
               <div className="device-grid">
-                {devices.map((device) => (
+                {monitoring.devices.map((device) => (
                   <div className="device" key={device.label}>
                     <div>
                       <span className="device-name">{device.label}</span>
-                      <span className="status-text ok">정상</span>
+                      <span className={`status-text ${device.status === "normal" ? "ok" : "error"}`}>{device.status === "normal" ? "정상" : "수신 없음"}</span>
                       <span className="device-meta">최근 수신 {device.received}</span>
                       <span className="device-meta">지연 {device.latency}</span>
                     </div>

@@ -15,6 +15,23 @@ test("프로덕션 빌드의 대시보드 진입점을 제공한다", async ({ p
   await expect(page.getByText("LiDAR 2 일부 측정 불가")).toBeVisible();
 });
 
+test("합성 시나리오 데이터를 화면에서 확인할 수 있다", async ({ page }) => {
+  await page.goto("/?scenario=collection-required");
+
+  await expect(page.getByText("대표 적재율 84%")).toBeVisible();
+});
+
+test("합성 데이터의 로딩, 오류와 데이터 없음 상태를 구분한다", async ({ page }) => {
+  await page.goto("/?scenario=loading");
+  await expect(page.getByRole("main", { name: "데이터를 불러오는 중입니다." })).toBeVisible();
+
+  await page.goto("/?scenario=request-error");
+  await expect(page.getByRole("main", { name: "데이터를 불러올 수 없습니다." })).toBeVisible();
+
+  await page.goto("/?scenario=no-data");
+  await expect(page.getByRole("main", { name: "표시할 모니터링 데이터가 없습니다." })).toBeVisible();
+});
+
 test("상단 알림함과 관리자 메뉴를 제공한다", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("아이디").fill("admin");

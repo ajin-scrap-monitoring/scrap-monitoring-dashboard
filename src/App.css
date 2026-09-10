@@ -128,6 +128,13 @@ button { cursor: pointer; }
 .section-title::before { flex: 0 0 5px; width: 5px; height: 20px; border-radius: 2px; background: #f58a07; content: ""; transform: translateY(1px); }
 .status-text { font-weight: 700; }
 .status-text.ok { color: #0aa45b; }
+.status-text.warning { color: #c56d05; }
+.status-text.error { color: #cf3434; }
+
+.dashboard-state { display: grid; min-height: 100vh; place-items: center; padding: 32px; background: #f4f7fa; text-align: center; }
+.dashboard-state section { width: min(100%, 460px); padding: 38px 42px; border: 1px solid #d8e0e9; border-radius: 6px; background: #ffffff; box-shadow: 0 4px 18px rgba(16, 24, 40, 0.06); }
+.dashboard-state h1 { margin: 0; color: #16243d; font-size: 25px; font-weight: 700; }
+.dashboard-state p { margin: 12px 0 0; color: #61708a; font-size: 15px; line-height: 1.6; }
 
 .kpi-card { padding: 14px 16px; }
 .kpi-content { padding: 10px 2px 0; }
