@@ -8,20 +8,21 @@
 
 ## 구성 요소
 
-현재 CI 실행에 참여하는 구성 요소는 10개다.
+현재 CI 실행에 참여하는 구성 요소는 11개다.
 
 | 구성 요소 | 현재 위치 또는 값 | 역할 |
 | --- | --- | --- |
 | workflow 파일 | `.github/workflows/ci.yml` | GitHub가 실행할 절차 기록 |
 | event | `pull_request`, `push` | workflow 시작 조건 |
 | permission | `contents: read` | workflow token의 Repository 권한 제한 |
-| job | `ci` | 같은 runner에서 실행할 작업 묶음 |
-| runner | `ubuntu-latest` | 명령을 실제로 실행할 임시 Linux 환경 |
+| job | `ci`, `container` | 검증 범위별 작업 묶음 |
+| runner | `ubuntu-24.04` | 명령을 실제로 실행할 임시 Linux 환경 |
+| 실행 컨테이너 | Playwright Noble 이미지 | `ci` job의 브라우저 검증 환경 |
 | step | workflow의 `steps` | runner가 순서대로 실행할 개별 작업 |
 | action | `actions/checkout`, `actions/setup-node`, `pnpm/setup` | step에서 사용하는 재사용 프로그램 |
-| shell 명령 | `pnpm install`, `pnpm run build` | Repository의 실제 검증 수행 |
+| shell 명령 | `pnpm install`, lint, test, image 검증 | Repository의 실제 검증 수행 |
 | cache | pnpm store cache | package 다운로드 시간 단축 |
-| check 결과 | `CI` | 성공 또는 실패를 GitHub에 표시 |
+| check 결과 | `CI`, `Container` | 성공 또는 실패를 GitHub에 표시 |
 
 workflow 파일만 Git으로 추적한다. runner, cache와 check 결과는 GitHub가 실행 중에
 만들고 관리한다.
@@ -40,8 +41,8 @@ GitHub Actions는 Repository에 기록된 파일만 받은 새 runner에서 설�
 다시 실행한다. 이 과정이 성공하면 다른 환경에서도 현재 commit을 재현할 수 있다는
 근거가 생긴다.
 
-현재 CI는 코드를 배포하거나 서버를 실행하는 절차가 아니다. Repository 파일만으로
-의존성을 설치하고 타입 검사와 프로덕션 빌드를 완료할 수 있는지 확인한다.
+현재 CI는 코드를 배포하지 않는다. Repository 파일만으로 의존성, 정적 검사, 테스트,
+프로덕션 빌드와 컨테이너 런타임을 재현할 수 있는지 확인한다.
 
 ## 로컬 검증과 CI 검증
 
@@ -69,7 +70,7 @@ GitHub Actions는 같은 결과가 별도 환경에서도 재현되는지 확인
 | `name` | `CI` | GitHub 화면에 표시할 workflow 이름 |
 | `on` | `pull_request`, `push` | workflow를 시작할 event |
 | `permissions` | `contents: read` | 자동 발급 token의 Repository contents 권한을 읽기로 제한 |
-| `jobs` | `ci` | 실행할 job 정의 |
+| `jobs` | `ci`, `container` | 실행할 job 정의 |
 
 GitHub는 workflow 실행마다 자동 token을 제공한다. 현재 `contents: read`는 이
 token으로 Repository 내용을 읽을 수 있지만 변경 내용을 push할 수는 없게 한다.
@@ -104,12 +105,13 @@ Workflow
 | 용어 | 현재 의미 |
 | --- | --- |
 | workflow | `.github/workflows/ci.yml`에 기록된 전체 자동화 절차 |
-| job | runner 하나에서 실행하는 `ci` 작업 묶음 |
+| job | runner 하나에서 실행하는 `ci` 또는 `container` 작업 묶음 |
 | step | checkout, 도구 준비, 설치와 빌드 같은 개별 작업 |
 
-현재 workflow에는 `ci` job 하나만 있다. 이 job은 GitHub 화면에 `CI`라는 이름으로
-표시되고, 최대 실행 시간은 `timeout-minutes: 10`에 따라 10분이다. GitHub는 이
-job에 runner 하나를 할당하고 step을 위에서 아래로 실행한다.
+현재 workflow에는 2개 job이 있다. `ci` job은 GitHub 화면에 `CI`로 표시되고 20분
+제한 안에서 Playwright Noble 컨테이너로 실행한다. `container` job은 `Container`로
+표시되고 15분 제한 안에서 Linux host runner로 실행한다. GitHub는 각 job에 runner를
+할당하고 step을 위에서 아래로 실행한다.
 
 앞 step이 실패하면 뒤 step은 기본적으로 실행하지 않는다. 따라서 마지막 build
 step이 실행됐다는 것은 앞의 checkout, Node.js 준비, pnpm 준비와 의존성 설치가
@@ -117,8 +119,9 @@ step이 실행됐다는 것은 앞의 checkout, Node.js 준비, pnpm 준비와 �
 
 ## runner
 
-runner는 workflow 명령을 실제로 실행하는 환경이다. 현재 `runs-on: ubuntu-latest`가
-GitHub가 제공하는 최신 지원 Ubuntu 환경을 요청한다.
+runner는 workflow 명령을 실제로 실행하는 환경이다. 현재 `runs-on: ubuntu-24.04`가
+Ubuntu 24.04 환경을 요청한다. `ci` job은 이 host에서 Playwright Noble 컨테이너를 추가로
+실행하고 `container` job은 host에서 Docker Buildx와 컨테이너 검증을 실행한다.
 
 runner는 프로젝트 전용 운영 서버가 아니다. CI job을 실행하기 위한 임시
 환경이다. runner에는 현재 Repository의 로컬 `node_modules/`와 `dist/`가 전달되지
@@ -143,14 +146,16 @@ action은 현재 프로젝트의 npm package가 아니다. `package.json`이나
 
 ## 현재 step 실행 순서
 
-현재 `ci` job의 step은 5개다.
+현재 `ci` job의 step은 7개고 `container` job의 step은 6개다.
 
 ```text
 Checkout Repository
   -> Setup Node.js
   -> Setup pnpm
   -> Frozen Install
-  -> Build
+  -> Lint
+  -> Component Test
+  -> Build and Browser Test
 ```
 
 각 step의 입력과 결과는 다음과 같다.
@@ -161,7 +166,9 @@ Checkout Repository
 | 2 | Set up Node.js | `.node-version` | Node.js 24.19.0 준비 |
 | 3 | Set up pnpm | `packageManager` | pnpm 11.23.0 준비 |
 | 4 | Verify dependency installation | `package.json`, `pnpm-lock.yaml` | `node_modules/` 설치 |
-| 5 | Build | 소스와 설정 | 타입 검사와 `dist/` 생성 |
+| 5 | Lint | ESLint 설정과 소스 | 경고 없는 정적 검사 |
+| 6 | Run component tests | Vitest 설정과 소스 | 컴포넌트와 데이터 소스 검증 |
+| 7 | Build and run browser tests | 소스와 Playwright 설정 | 타입 검사, `dist/` 생성과 Chromium 검증 |
 
 ## checkout
 
@@ -241,35 +248,41 @@ cache는 이전 workflow 실행에서 내려받은 pnpm store 내용을 다음 �
 cache가 비어 있어도 package registry에 접근할 수 있으면 frozen install은 동작해야
 한다. cache를 삭제하거나 cache를 사용하지 않아도 의존성 version이 바뀌지 않는다.
 
-## build step
+## 빌드와 브라우저 테스트 step
 
-마지막 step은 다음 명령을 실행한다.
+`ci` job의 마지막 step은 다음 명령을 실행한다.
 
 ```sh
-pnpm run build
+pnpm run test:e2e
 ```
 
+이 명령은 `pnpm run build` 뒤 Playwright Chromium 테스트를 실행한다. `pnpm run build`의
 실제 실행 내용은 `tsc -b && vite build`다.
 
 1. TypeScript가 앱 소스와 Vite 설정을 타입 검사한다.
 2. 타입 오류가 있으면 step이 실패한다.
 3. 타입 오류가 없으면 Vite가 `dist/`를 생성한다.
-4. 두 명령이 모두 성공하면 build step이 성공한다.
-5. 모든 step이 성공하면 `CI` check가 성공한다.
+4. Vite 빌드와 Chromium 테스트가 모두 성공하면 마지막 step이 성공한다.
+5. 모든 `ci` step이 성공하면 `CI` check가 성공한다.
 
-현재 CI가 검증하는 대상은 2개다.
+현재 CI가 검증하는 대상은 7개다.
 
 | 검증 대상 | 명령 |
 | --- | --- |
+| 정적 검사 | `pnpm run lint` |
+| 컴포넌트와 데이터 소스 | `pnpm run test` |
 | TypeScript 타입 | `tsc -b` |
 | 프로덕션 정적 빌드 | `vite build` |
+| Chromium 브라우저 흐름 | `playwright test` |
+| OCI 이미지 런타임 | `verify-container-image.sh` |
+| reverse proxy 통합 | `test/proxy/integration.mjs` |
 
-정적 검사, 단위 테스트, 컴포넌트 테스트와 End-to-End (E2E) 테스트는 아직 현재
-workflow에 포함되지 않는다.
+`container` job은 `linux/amd64` OCI 이미지를 별도로 빌드하고 Nginx 런타임과 reverse
+proxy 통합을 검증한다.
 
 ## CI가 현재 하지 않는 일
 
-현재 workflow가 하지 않는 일은 4개다.
+현재 CI workflow가 하지 않는 일은 4개다.
 
 1. `dist/`를 GitHub Actions artifact로 보존하지 않는다.
 2. GitHub Release를 만들지 않는다.
@@ -285,7 +298,7 @@ runner에서 생성한 `dist/`는 build 성공 확인에만 사용된다.
 GitHub의 workflow run 화면에서 확인할 대상은 5개다.
 
 - workflow를 시작한 event와 commit ID
-- `CI` job의 성공 또는 실패
+- `CI`와 `Container` job의 성공 또는 실패
 - 실패한 첫 step
 - 해당 step의 명령 출력
 - 명령의 종료 코드(exit code)와 오류 메시지
