@@ -419,6 +419,7 @@ function RecordingsPage({ recordings, headerNotifications, status }: { recording
   const [isPlaying, setIsPlaying] = useState(false);
   const [recordingOpen, setRecordingOpen] = useState(false);
   const [recordingPage, setRecordingPage] = useState(0);
+  const [downloadState, setDownloadState] = useState<"idle" | "processing" | "complete">("idle");
   const closeRecording = useCallback(() => setRecordingOpen(false), []);
   const recordingModalRef = useModalFocus<HTMLDivElement>(recordingOpen, closeRecording);
   const visibleRecordings = recordType === "전체" ? recordings : recordings.filter((recording) => recording.type === recordType);
@@ -426,6 +427,10 @@ function RecordingsPage({ recordings, headerNotifications, status }: { recording
   const pageStart = recordingPage * recordingsPerPage;
   const pagedRecordings = visibleRecordings.slice(pageStart, pageStart + recordingsPerPage);
   const selectedRecording = visibleRecordings[selectedIndex] ?? visibleRecordings[0];
+  const requestDownload = () => {
+    setDownloadState("processing");
+    window.setTimeout(() => setDownloadState("complete"), 400);
+  };
 
   return (
     <DashboardPageShell activePage="recordings" headerNotifications={headerNotifications}>
@@ -436,7 +441,7 @@ function RecordingsPage({ recordings, headerNotifications, status }: { recording
           <div className="recordings-main">
             <section className="card recordings-list"><div className="recordings-card-head"><SectionTitle>녹화 목록</SectionTitle><span>{visibleRecordings.length}건</span></div><div className="recordings-list-items">{pagedRecordings.map((recording, index) => <button key={recording.date} className={`recording-item ${selectedRecording.date === recording.date ? "selected" : ""}`} type="button" onClick={() => { setSelectedIndex(pageStart + index); setIsPlaying(false); }}><img src={cameraFrame} alt="" /><span className="recording-item-main"><strong>{recording.date}</strong><span>{recording.time}</span><span className="status-text ok">정상</span></span><span className="recording-item-side"><span className={`recording-type ${recording.tone}`}>{recording.type}</span><span>{recording.duration}</span></span></button>)}</div><div className="recordings-pagination"><button type="button" aria-label="이전 녹화 목록 페이지" disabled={recordingPage === 0} onClick={() => { const page = recordingPage - 1; setRecordingPage(page); setSelectedIndex(page * recordingsPerPage); }}>&lt;</button><span>{recordingPage + 1} / {totalRecordingPages}</span><button type="button" aria-label="다음 녹화 목록 페이지" disabled={recordingPage === totalRecordingPages - 1} onClick={() => { const page = recordingPage + 1; setRecordingPage(page); setSelectedIndex(page * recordingsPerPage); }}>&gt;</button></div></section>
             <section className="card recording-player"><SectionTitle>녹화 영상</SectionTitle><div className="recording-player-center"><div className="recording-stage"><div className="recording-frame"><img src={cameraFrame} alt={`${selectedRecording.date} 녹화 영상`} /><span className="recorded-time">{selectedRecording.date} 00:12:36</span><button className="recording-expand" type="button" aria-label="녹화 영상 크게 보기" onClick={() => setRecordingOpen(true)}><ExpandIcon /></button></div></div><div className="recording-controls"><button type="button" aria-label={isPlaying ? "일시 정지" : "재생"} onClick={() => setIsPlaying((playing) => !playing)}>{isPlaying ? "||" : ">"}</button><div className="recording-timeline" aria-label="재생 위치"><span /></div><time>00:12:36</time></div></div></section>
-            <aside className="recordings-side"><section className="card recording-info"><SectionTitle>녹화 정보</SectionTitle><dl><div><dt>시작 시각</dt><dd>{selectedRecording.date} 00:00:00</dd></div><div><dt>종료 시각</dt><dd>{selectedRecording.end}</dd></div><div><dt>기간</dt><dd>{selectedRecording.duration}</dd></div><div><dt>발생 유형</dt><dd><span className={`recording-type ${selectedRecording.tone}`}>{selectedRecording.type}</span></dd></div><div><dt>파일 형식</dt><dd>MP4</dd></div><div><dt>비디오 코덱</dt><dd>H.264</dd></div><div><dt>해상도</dt><dd>640 x 480</dd></div><div><dt>화면 비율</dt><dd>4:3</dd></div><div><dt>프레임 속도</dt><dd>30 fps</dd></div><div><dt>파일 용량</dt><dd>1.8 GB</dd></div><div><dt>재생 상태</dt><dd><span className="status-text ok">정상</span></dd></div></dl></section><section className="card recording-download"><SectionTitle>녹화 파일</SectionTitle><p>선택한 녹화 영상을 다운로드할 수 있습니다.</p><button type="button">녹화 영상 다운로드</button></section></aside>
+            <aside className="recordings-side"><section className="card recording-info"><SectionTitle>녹화 정보</SectionTitle><dl><div><dt>시작 시각</dt><dd>{selectedRecording.date} 00:00:00</dd></div><div><dt>종료 시각</dt><dd>{selectedRecording.end}</dd></div><div><dt>기간</dt><dd>{selectedRecording.duration}</dd></div><div><dt>발생 유형</dt><dd><span className={`recording-type ${selectedRecording.tone}`}>{selectedRecording.type}</span></dd></div><div><dt>파일 형식</dt><dd>MP4</dd></div><div><dt>비디오 코덱</dt><dd>H.264</dd></div><div><dt>해상도</dt><dd>640 x 480</dd></div><div><dt>화면 비율</dt><dd>4:3</dd></div><div><dt>프레임 속도</dt><dd>30 fps</dd></div><div><dt>파일 용량</dt><dd>1.8 GB</dd></div><div><dt>재생 상태</dt><dd><span className="status-text ok">정상</span></dd></div></dl></section><section className="card recording-download"><SectionTitle>녹화 파일</SectionTitle><p>선택한 녹화 영상의 다운로드 요청을 확인합니다.</p><button type="button" disabled={downloadState === "processing"} onClick={requestDownload}>{downloadState === "processing" ? "다운로드 요청 확인 중" : "녹화 영상 다운로드"}</button>{downloadState === "complete" && <p role="status">다운로드는 서버 연동 후 시작됩니다.</p>}</section></aside>
           </div>
         </div>
       </main>
@@ -457,6 +462,7 @@ function AdminPage({ admin, headerNotifications }: { admin: DashboardData["admin
   const [policyEvents, setPolicyEvents] = useState({ collection: true, device: true, error: true });
   const [recoveryNotice, setRecoveryNotice] = useState(true);
   const [testChannels, setTestChannels] = useState({ email: true, sms: true });
+  const [testAlertState, setTestAlertState] = useState<"idle" | "processing" | "complete" | "invalid">("idle");
   const [recipientPage, setRecipientPage] = useState(0);
   const [recipientSettings, setRecipientSettings] = useState(admin.recipientSettings);
   const [selectedRecipientEmail, setSelectedRecipientEmail] = useState<string | null>(null);
@@ -467,6 +473,14 @@ function AdminPage({ admin, headerNotifications }: { admin: DashboardData["admin
   const visibleRecipients = recipients.slice(recipientPage * recipientsPerPage, (recipientPage + 1) * recipientsPerPage);
   const selectedRecipient = recipients.find((recipient) => recipient.email === selectedRecipientEmail);
   const selectedRecipientSettings = selectedRecipientEmail ? recipientSettings[selectedRecipientEmail] : undefined;
+  const requestTestAlert = () => {
+    if (!testChannels.email && !testChannels.sms) {
+      setTestAlertState("invalid");
+      return;
+    }
+    setTestAlertState("processing");
+    window.setTimeout(() => setTestAlertState("complete"), 400);
+  };
 
   const togglePolicyEvent = (key: keyof typeof policyEvents) => {
     setPolicyEvents((events) => ({ ...events, [key]: !events[key] }));
@@ -539,7 +553,7 @@ function AdminPage({ admin, headerNotifications }: { admin: DashboardData["admin
               <div className="policy-actions"><button className="admin-secondary" type="button">취소</button><button className="admin-primary compact" type="button">정책 저장</button></div>
             </section>
             <section className="card test-alert-card">
-              <SectionTitle>테스트 알림</SectionTitle><p className="test-alert-intro">선택한 대상과 채널로 고정 테스트 메시지를 발송합니다.</p><label className="admin-field"><span>등록 대상</span><select defaultValue="김현수"><option>김현수</option><option>박영진</option><option>이정민</option></select></label><div className="admin-field"><span>채널 선택</span><div className="test-channels"><label className="admin-check"><input type="checkbox" checked={testChannels.email} onChange={(event) => setTestChannels((channels) => ({ ...channels, email: event.target.checked }))} /><span aria-hidden="true" /><b>이메일</b></label><label className="admin-check"><input type="checkbox" checked={testChannels.sms} onChange={(event) => setTestChannels((channels) => ({ ...channels, sms: event.target.checked }))} /><span aria-hidden="true" /><b>문자</b></label></div></div><div className="test-message"><strong>발송 내용</strong><span>스크랩 모니터링 테스트 알림입니다. 이 메시지를 받았다면 알림 수신 설정이 정상입니다.</span></div><button className="admin-outline-button" type="button">테스트 알림 보내기</button>
+              <SectionTitle>테스트 알림</SectionTitle><p className="test-alert-intro">선택한 대상과 채널로 고정 테스트 메시지를 발송합니다.</p><label className="admin-field"><span>등록 대상</span><select defaultValue="김현수"><option>김현수</option><option>박영진</option><option>이정민</option></select></label><div className="admin-field"><span>채널 선택</span><div className="test-channels"><label className="admin-check"><input type="checkbox" checked={testChannels.email} onChange={(event) => setTestChannels((channels) => ({ ...channels, email: event.target.checked }))} /><span aria-hidden="true" /><b>이메일</b></label><label className="admin-check"><input type="checkbox" checked={testChannels.sms} onChange={(event) => setTestChannels((channels) => ({ ...channels, sms: event.target.checked }))} /><span aria-hidden="true" /><b>문자</b></label></div></div><div className="test-message"><strong>발송 내용</strong><span>스크랩 모니터링 테스트 알림입니다. 이 메시지를 받았다면 알림 수신 설정이 정상입니다.</span></div><button className="admin-outline-button" type="button" disabled={testAlertState === "processing"} onClick={requestTestAlert}>{testAlertState === "processing" ? "테스트 알림 확인 중" : "테스트 알림 보내기"}</button>{testAlertState === "invalid" && <p role="alert">테스트 알림을 보낼 채널을 하나 이상 선택하세요.</p>}{testAlertState === "complete" && <p role="status">테스트 알림은 서버 연동 후 실제 발송됩니다.</p>}
             </section>
           </div>
         </div>
