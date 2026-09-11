@@ -2,9 +2,9 @@ import type { DashboardData, DashboardStatus } from "../domain/dashboard";
 
 import type { DashboardDataRequestOptions, DashboardDataSource } from "./dashboard-data-source";
 
-export type MockScenario = DashboardStatus | "live-update" | "loading" | "request-error";
+export type MockScenario = DashboardStatus | "live-update" | "operation-cycle" | "loading" | "request-error";
 
-const mockScenarios = ["normal", "collection-required", "measurement-error", "disconnected", "no-data", "live-update", "loading", "request-error"] as const satisfies readonly MockScenario[];
+const mockScenarios = ["normal", "collection-required", "measurement-error", "disconnected", "no-data", "live-update", "operation-cycle", "loading", "request-error"] as const satisfies readonly MockScenario[];
 
 const loadHistoryTimes = [
   "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00",
@@ -113,7 +113,7 @@ const baseDashboardData: DashboardData = {
 
 function dashboardDataFor(scenario: MockScenario): DashboardData {
   const data = structuredClone(baseDashboardData);
-  data.monitoring.status = scenario === "loading" || scenario === "request-error" || scenario === "live-update" ? "normal" : scenario;
+  data.monitoring.status = scenario === "loading" || scenario === "request-error" || scenario === "live-update" || scenario === "operation-cycle" ? "normal" : scenario;
 
   switch (scenario) {
     case "collection-required":
@@ -156,6 +156,48 @@ function liveUpdateDashboardData() {
   return data;
 }
 
+function operationCycleData(step: number) {
+  const data = dashboardDataFor("normal");
+  if (step === 0) {
+    data.monitoring.status = "collection-required";
+    data.monitoring.summary.loadPercent = 80;
+    data.monitoring.alerts[0] = {
+      detail: "대표 적재율 80%",
+      level: "warning",
+      time: "10:25",
+      title: "수거 필요",
+    };
+  }
+  if (step === 1) {
+    data.monitoring.summary.loadPercent = 4;
+    data.monitoring.summary.recentChange = "-76%";
+    data.monitoring.alerts[0] = {
+      detail: "수거 작업이 완료되었습니다.",
+      level: "warning",
+      time: "10:26",
+      title: "수거 완료",
+    };
+  }
+  if (step === 2) {
+    data.monitoring.status = "measurement-error";
+    data.monitoring.devices[1] = {
+      label: "LiDAR 2",
+      received: "10:27:01",
+      latency: "-",
+      status: "unavailable",
+    };
+  }
+  if (step === 3) {
+    data.monitoring.status = "disconnected";
+    data.monitoring.devices = data.monitoring.devices.map((device) => ({
+      ...device,
+      latency: "수신 없음",
+      status: "unavailable",
+    }));
+  }
+  return data;
+}
+
 function waitForMockLoading(signal?: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
     const finish = () => {
@@ -186,6 +228,12 @@ export function createMockDashboardDataSource(scenario: MockScenario = "normal")
     subscribe: scenario === "live-update" ? (listener) => {
       const timeout = window.setTimeout(() => listener(liveUpdateDashboardData()), 1200);
       return () => window.clearTimeout(timeout);
+    } : scenario === "operation-cycle" ? (listener) => {
+      const timers = [0, 1, 2, 3, 4].map((step) => window.setTimeout(
+        () => listener(step === 4 ? dashboardDataFor("normal") : operationCycleData(step)),
+        (step + 1) * 500,
+      ));
+      return () => timers.forEach((timer) => window.clearTimeout(timer));
     } : undefined,
   };
 }

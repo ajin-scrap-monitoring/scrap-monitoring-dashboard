@@ -215,10 +215,11 @@ Programming Interface) 호환성을 검증한다.
 합성 데이터를 제공한다. 현황의 대표 적재율, 수거 임계율, 수거 주기, 예상 도달 시각,
 마지막 측정 시각과 영상 시각도 이 데이터 소스가 제공한다. 기본 시나리오는 `normal`이며 개발 환경에서 URL query의
 `scenario`로 `collection-required`, `measurement-error`, `disconnected`, `no-data`,
-`loading`, `request-error`, `live-update` 상태를 선택할 수 있다. `/?scenario=measurement-error`은
+`loading`, `request-error`, `live-update`, `operation-cycle` 상태를 선택할 수 있다. `/?scenario=measurement-error`은
 LiDAR 2 측정 오류 데이터를 표시한다. `loading`은 1.2초 뒤 정상 데이터를 반환하고,
 `request-error`는 데이터 소스 요청 실패와 재시도 화면을 표시한다. `live-update`는 초기
-스냅샷 뒤 1.2초에 새 측정 스냅샷을 구독자로 전달한다.
+스냅샷 뒤 1.2초에 새 측정 스냅샷을 구독자로 전달한다. `operation-cycle`은 수거 필요,
+수거 완료, LiDAR 측정 오류, 연결 끊김, 정상 복구 순서의 스냅샷을 0.5초 간격으로 전달한다.
 
 합성 데이터 소스는 외부 API를 호출하지 않고 호출마다 독립된 데이터를 반환한다. 이후
 서버 계약이 확정되면 실제 API 어댑터가 같은 데이터 소스 인터페이스를 구현하고 서버
@@ -272,10 +273,10 @@ Playwright는 `e2e/`의 브라우저 테스트를 1440 x 900과 1920 x 1080 Chro
 서버에서 브라우저 테스트를 수행한다. 실패한 테스트의 screenshot과 trace는 Git에서
 제외한 `test-results/`에 저장한다.
 
-현재 Playwright 테스트는 대시보드 진입, 합성 실시간 갱신, 상단 브랜드 이동, 알림함 읽음 처리와 닫기,
+현재 Playwright 테스트는 대시보드 진입, 합성 실시간 갱신과 운영 주기 상태 전이, 상단 브랜드 이동, 알림함 읽음 처리와 닫기,
 관리자 메뉴와 로그인 및 로그아웃, 비로그인 화면 제한, 관리자 경로 제한, 적재율 이력의
 이벤트 상세 표시를 검증한다. Vitest는 합성 데이터 소스의 기본 데이터, 상태 시나리오,
-AbortSignal 취소, 구독 갱신과 호출 간 데이터 격리를 검증한다.
+AbortSignal 취소, 구독 갱신과 상태 전이, 호출 간 데이터 격리를 검증한다.
 
 CI의 호스트 runner는 Ubuntu 24.04로 고정한다. CI 작업은 `@playwright/test` 1.62.1과
 버전이 일치하는 공식 Playwright Noble 컨테이너
