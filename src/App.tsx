@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 import cameraFrame from "./assets/camera-frame.png";
+import { DashboardStatePage } from "./components/DashboardStatePage";
 import { useDashboardData } from "./data/use-dashboard-data";
 import type { DashboardDataSource } from "./data/dashboard-data-source";
 import type { DashboardData, HeaderNotification, LidarProfile, RecipientSettings } from "./domain/dashboard";
@@ -12,14 +13,6 @@ const applicationVersion = import.meta.env.VITE_APP_VERSION || "0.1.0";
 
 function SectionTitle({ children }: { children: string }) {
   return <h2 className="section-title">{children}</h2>;
-}
-
-function DashboardStateMessage({ description, onRetry, title }: { description: string; onRetry?: () => void; title: string }) {
-  return <main className="dashboard-state" aria-label={title}><section><h1>{title}</h1><p>{description}</p>{onRetry && <button className="primary-button" type="button" onClick={onRetry}>다시 시도</button>}</section></main>;
-}
-
-function DashboardStatePage({ description, onRetry, title }: { description: string; onRetry?: () => void; title: string }) {
-  return <div className="app-shell"><DashboardHeader activePage="monitoring" initialNotifications={[]} /><DashboardStateMessage title={title} description={description} onRetry={onRetry} /><footer className="app-footer"><span>Copyright 2026 AJIN INDUSTRIAL. All rights reserved.</span><span>Version {applicationVersion}</span></footer></div>;
 }
 
 function DashboardStatusLabel({ status }: { status: DashboardData["monitoring"]["status"] }) {
@@ -674,15 +667,17 @@ export function App({ dataSource }: { dataSource: DashboardDataSource }) {
     window.history.replaceState(null, "", "/login");
     return <LoginPage />;
   }
-  if (dashboardError) return <DashboardStatePage title="데이터를 불러올 수 없습니다." description="데이터 연결 상태를 확인한 뒤 다시 시도하세요." onRetry={reload} />;
-  if (dashboardData === null) return <DashboardStatePage title="데이터를 불러오는 중입니다." description="최신 모니터링 데이터를 준비하고 있습니다." />;
+  const statePageFooter = <footer className="app-footer"><span>Copyright 2026 AJIN INDUSTRIAL. All rights reserved.</span><span>Version {applicationVersion}</span></footer>;
+  const statePageHeader = <DashboardHeader activePage="monitoring" initialNotifications={[]} />;
+  if (dashboardError) return <DashboardStatePage title="데이터를 불러올 수 없습니다." description="데이터 연결 상태를 확인한 뒤 다시 시도하세요." onRetry={reload} header={statePageHeader} footer={statePageFooter} />;
+  if (dashboardData === null) return <DashboardStatePage title="데이터를 불러오는 중입니다." description="최신 모니터링 데이터를 준비하고 있습니다." header={statePageHeader} footer={statePageFooter} />;
 
   const { admin, history, lastMeasuredAt, monitoring, recordings } = dashboardData;
   const totalAlertPages = Math.max(1, Math.ceil(monitoring.alerts.length / alertsPerPage));
   const pageStart = alertPage * alertsPerPage;
   const visibleAlerts = monitoring.alerts.slice(pageStart, pageStart + alertsPerPage);
 
-  if (monitoring.status === "no-data") return <DashboardStatePage title="표시할 모니터링 데이터가 없습니다." description="조회 조건 또는 장비 데이터 수신 상태를 확인하세요." />;
+  if (monitoring.status === "no-data") return <DashboardStatePage title="표시할 모니터링 데이터가 없습니다." description="조회 조건 또는 장비 데이터 수신 상태를 확인하세요." header={statePageHeader} footer={statePageFooter} />;
   if (window.location.pathname === "/recordings") return <RecordingsPage recordings={recordings} headerNotifications={monitoring.headerNotifications} status={monitoring.status} />;
   if (window.location.pathname === "/history") return <HistoryPage history={history} headerNotifications={monitoring.headerNotifications} status={monitoring.status} />;
   if (window.location.pathname === "/admin") return <AdminPage admin={admin} headerNotifications={monitoring.headerNotifications} />;
