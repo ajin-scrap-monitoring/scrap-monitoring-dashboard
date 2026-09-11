@@ -236,9 +236,11 @@ LiDAR 2 측정 오류 데이터를 표시한다. `loading`은 1.2초 뒤 정상 
 
 ## 코드 구조와 작업 재개 기준
 
-브라우저 진입과 경로 분기는 `src/App.tsx`가 담당한다. `DashboardPageShell`은 현황,
-이력, 녹화 영상과 관리자 설정 화면의 상단 헤더와 하단 푸터를 공통으로 조립한다.
-화면별 상태와 상호작용은 같은 파일의 화면 컴포넌트가 관리한다.
+브라우저 진입과 경로 분기는 `src/App.tsx`가 담당한다.
+`src/components/DashboardShell.tsx`의 `DashboardPageShell`은 현황, 이력, 녹화 영상과
+관리자 설정 화면의 상단 헤더와 하단 푸터를 공통으로 조립한다. 공통 헤더는 인증 상태,
+알림 읽음 상태, 팝오버 닫기와 로그아웃 상호작용을 관리한다. 화면별 상태와 상호작용은
+`App.tsx`의 화면 컴포넌트가 관리한다.
 
 `src/domain/dashboard.ts`는 화면 데이터 모델의 정본이다.
 `src/data/dashboard-data-source.ts`는 단일 읽기와 선택적 갱신 경계인 `DashboardDataSource`를
