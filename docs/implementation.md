@@ -13,8 +13,8 @@ Vite 개발 및 빌드 기준선, Continuous Integration (CI) 검증, 제품 배
 코드 기반 UI (User Interface) 구현과 브라우저 검토 방식이 채택된 상태다. 최종 Open
 Container Initiative (OCI) 이미지의 책임 경계도 채택되어 있다. ESLint 정적 검사,
 Vitest 컴포넌트 테스트와 Playwright 브라우저 검증이 구현되어 있다. 현재 모니터링,
-이력, 녹화 영상, 로그인과 관리자 설정의 UI MVP가 구현되어 있다. Dockerfile, 이미지
-게시와 Release 구성은 구현되지 않은 상태다.
+이력, 녹화 영상, 로그인과 관리자 설정의 UI MVP가 구현되어 있다. 다단계 Dockerfile,
+Nginx 런타임 설정, 이미지 검증과 Git tag 기반 Release 구성이 구현되어 있다.
 
 ## 제품 배포 경계
 
@@ -44,6 +44,24 @@ Node.js, pnpm, 소스 코드, 자격 증명과 환경별 주소를 포함하지 
 Docker Compose, 이미지 버전 결합과 롤백을 관리한다. CA 개인 키와 서버 개인 키는 Git
 Repository와 컨테이너 이미지에 포함하지 않는다.
 
+빌드 단계는 digest로 고정한 `node:24.19.0-bookworm-slim` 이미지와 pnpm 11.23.0을
+사용한다. 런타임 단계는 digest로 고정한
+`nginxinc/nginx-unprivileged:1.30.4-alpine3.24-slim` 이미지를 사용한다. Nginx는 사용자
+`101`과 TCP 8080 포트로 실행한다. 컨테이너는 root file system을 읽기 전용으로 두고
+`/tmp`에 임시 파일 시스템을 연결해 실행할 수 있다. `/healthz`는 컨테이너 상태 확인
+경로다. HTML은 저장하지 않고 해시가 포함된 `/assets/` 자산은 장기 캐시한다. 이미지에는
+배포되는 글꼴과 JavaScript 런타임의 라이선스 고지를 포함하며 source map은 포함하지
+않는다.
+
+이미지 Registry는 GitHub Container Registry (GHCR)이며 이미지 이름은
+`ghcr.io/ajin-scrap-monitoring/scrap-monitoring-dashboard`다. 지원 플랫폼은
+`linux/amd64`다. Pull Request (PR)와 `main` push의 CI는 이미지를 빌드하고 런타임을
+검증하지만 게시하지 않는다. `vX.Y.Z` 형식의 Git tag가 Release workflow를 시작하며,
+동일한 이미지를 `X.Y.Z`와 `sha-<full-git-sha>` tag로 게시한다. `latest` tag는 게시하지
+않는다. Release workflow는 게시된 image digest를 workflow summary에 기록하고, 배포
+Repository는 tag가 아닌 digest로 이미지를 선택한다. 화면의 버전은 Release tag의
+`X.Y.Z` 값으로 빌드한다.
+
 운영 브라우저는 고정 사설 Internet Protocol (IP) 주소로 Nginx에 접속한다. 인터넷에서
 모니터링 서버로 들어오는 연결, 공개 도메인, 공개 Domain Name System (DNS)과 public
 Certificate Authority (CA)를 사용하지 않는다. 내부 브라우저에서 Nginx의
@@ -52,8 +70,8 @@ Transmission Control Protocol (TCP) 443 포트로 연결할 수 있어야 한다
 TLS는 프로젝트 전용 사설 Public Key Infrastructure (PKI)를 사용한다. CA 구성, 서버
 인증서 주입, Nginx TLS 설정과 갱신 절차는 배포 Repository의 책임이다.
 
-고정 사설 IP의 실제 값, 미디어 서비스의 ICE 후보와 허용 포트, Nginx base image,
-이미지 Registry, 이름, 지원 플랫폼, 태그, digest 기록과 게시 방식은 결정 대기 상태다.
+고정 사설 IP의 실제 값, 미디어 서비스의 ICE 후보와 허용 포트, GHCR package 공개 범위와
+배포 환경의 image pull 자격 증명 방식은 결정 대기 상태다.
 
 ## 제품 구현 기준선
 
@@ -224,8 +242,7 @@ UI 초안을 구현한다. 작업 요청자는 대상 Chrome 뷰포트에 렌더
 - 개발 대역 서비스와 시각 회귀 테스트 범위
 - 코드 포맷 정책
 - 실행 시점 설정과 자격 증명 경계
-- Nginx base image, 이미지 Registry, 지원 플랫폼, 태그와 digest 게시 계약
-- Release 조건과 배포 산출물
+- GHCR package 공개 범위와 배포 환경의 image pull 자격 증명 방식
 
 각 항목은 `docs/development-workflow.md`의 구현 기준선 단계에서 조사하고,
 채택한 결과와 근거만 이 문서에 반영한다.
@@ -249,9 +266,14 @@ pnpm run preview
 pnpm exec playwright install chromium
 pnpm run test:e2e
 pnpm run check
+docker build --platform linux/amd64 --tag scrap-monitoring-dashboard:local .
+docker run --read-only --tmpfs /tmp --publish 8080:8080 scrap-monitoring-dashboard:local
 ```
 
 `pnpm run preview`는 로컬에서 프로덕션 빌드 결과를 확인하는 명령이며 운영 웹
 서버로 사용하지 않는다. Chromium 설치는 Playwright 버전을 변경한 뒤 다시 실행한다.
 현재 CI는 공식 Playwright 컨테이너에서 frozen 설치, 정적 검사, 컴포넌트 테스트,
-타입 검사, 프로덕션 빌드와 두 뷰포트의 브라우저 테스트를 실행한다.
+타입 검사, 프로덕션 빌드와 두 뷰포트의 브라우저 테스트를 실행한다. 별도 container
+job은 `linux/amd64` 이미지를 빌드한 뒤 읽기 전용 root file system에서 Nginx 상태,
+SPA fallback, 보안 헤더, 자산 캐시, 라이선스 고지, source map과 런타임 빌드 도구
+부재를 검사한다.

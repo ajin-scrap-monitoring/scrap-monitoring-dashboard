@@ -46,3 +46,29 @@ jobs:
 
       - name: Build and run browser tests
         run: pnpm run test:e2e
+
+  container:
+    name: Container
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build container image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          load: true
+          platforms: linux/amd64
+          push: false
+          tags: scrap-monitoring-dashboard:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify container runtime
+        run: ./scripts/verify-container-image.sh scrap-monitoring-dashboard:test scrap-monitoring-dashboard-test 0.1.0

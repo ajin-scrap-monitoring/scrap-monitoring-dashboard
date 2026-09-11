@@ -6,6 +6,7 @@ import type { DashboardData, HeaderNotification, LidarProfile, RecipientSettings
 import "./App.css";
 
 const alertsPerPage = 4;
+const applicationVersion = import.meta.env.VITE_APP_VERSION || "0.1.0";
 
 function SectionTitle({ children }: { children: string }) {
   return <h2 className="section-title">{children}</h2>;
@@ -16,7 +17,7 @@ function DashboardStateMessage({ description, title }: { description: string; ti
 }
 
 function DashboardStatePage({ description, title }: { description: string; title: string }) {
-  return <div className="app-shell"><DashboardHeader activePage="monitoring" initialNotifications={[]} /><DashboardStateMessage title={title} description={description} /><footer className="app-footer"><span>Copyright 2026 AJIN INDUSTRIAL. All rights reserved.</span><span>Version 0.1.0</span></footer></div>;
+  return <div className="app-shell"><DashboardHeader activePage="monitoring" initialNotifications={[]} /><DashboardStateMessage title={title} description={description} /><footer className="app-footer"><span>Copyright 2026 AJIN INDUSTRIAL. All rights reserved.</span><span>Version {applicationVersion}</span></footer></div>;
 }
 
 function DashboardStatusLabel({ status }: { status: DashboardData["monitoring"]["status"] }) {
@@ -115,7 +116,7 @@ function DashboardPageShell({ activePage, children, headerNotifications }: { act
     <div className="app-shell">
       <DashboardHeader activePage={activePage} initialNotifications={headerNotifications} />
       {children}
-      <footer className="app-footer"><span>Copyright 2026 AJIN INDUSTRIAL. All rights reserved.</span><span>Version 0.1.0</span></footer>
+      <footer className="app-footer"><span>Copyright 2026 AJIN INDUSTRIAL. All rights reserved.</span><span>Version {applicationVersion}</span></footer>
     </div>
   );
 }
@@ -151,7 +152,7 @@ function LoginPage() {
         </div>
         <div className="login-intro-status">
           <span>Copyright 2026 AJIN INDUSTRIAL. All rights reserved.</span>
-          <span>Version 0.1.0</span>
+          <span>Version {applicationVersion}</span>
         </div>
       </section>
       <section className="login-form-area">

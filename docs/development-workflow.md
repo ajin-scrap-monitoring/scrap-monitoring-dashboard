@@ -233,8 +233,8 @@ Security (TLS), API와 signaling proxy, 실시간 갱신, 미디어 서비스, �
 검증한다. Web Real-Time Communication (WebRTC) 미디어는 Nginx를 경유하지 않고
 브라우저와 미디어 서비스 사이에서 검증한다.
 
-GitHub Actions 워크플로우는 이미지 빌드, 검사, 게시와 digest 기록 절차가 확정된 뒤
-자동화 수단으로 구성한다.
+GitHub Actions는 PR과 `main` push에서 이미지를 게시하지 않고 빌드와 런타임을 검증한다.
+`vX.Y.Z` Git tag는 검증한 `linux/amd64` 이미지를 GHCR에 게시하고 digest를 기록한다.
 
 ## 역할과 기록 경계
 
@@ -254,12 +254,11 @@ GitHub Actions 워크플로우는 이미지 빌드, 검사, 게시와 digest 기
 
 ## 현재 출발점
 
-프로젝트 목적과 범위, 현재 모니터링 화면 초안의 설계 참고안, 데스크톱 Chrome과
-뷰포트 기준, WebRTC 연결 경계와 OCI 이미지 책임은 준비되어 있다. 인증, 실시간 데이터
-형식, 미디어 signaling과 이미지 게시의 세부 계약은 미확정 상태다. Node.js, pnpm, React,
-TypeScript, Vite, ESLint, Vitest와 Playwright 기준선은 채택되어 있다. 다음 작업은 현재
-모니터링 화면 참고안에서 첫 구현 범위와 인수 조건을 Issue로 승인한 뒤 합성 데이터를
-사용하는 화면 골격을 구현하는 것이다.
+모니터링, 이력, 녹화 영상, 로그인과 관리자 설정의 UI MVP와 합성 데이터 경계가 구현되어
+있다. Node.js, pnpm, React, TypeScript, Vite, ESLint, Vitest와 Playwright 기준선이
+채택되어 있다. `linux/amd64` OCI 이미지의 Nginx 런타임, CI 검증과 Git tag 기반 GHCR
+게시 절차가 구현되어 있다. 실제 인증, 실시간 데이터, 미디어 signaling과 배포 환경의
+Nginx 설정은 외부 계약 확정 뒤 구현한다.
 
 ## 기술 기준 재검토 순서
 
