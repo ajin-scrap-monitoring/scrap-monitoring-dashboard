@@ -2,9 +2,10 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
 
 import { App } from "./App";
+import { createMockDashboardDataSource } from "./data/mock-dashboard-data-source";
 
 test("대시보드 주 영역을 렌더링한다", async () => {
-  render(<App />);
+  render(<App dataSource={createMockDashboardDataSource()} />);
 
   expect(await screen.findByRole("main", { name: "스크랩 모니터링 대시보드" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "스크랩 모니터링" })).toBeVisible();

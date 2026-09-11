@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 import cameraFrame from "./assets/camera-frame.png";
-import { createMockDashboardDataSource, resolveMockScenario } from "./data/mock-dashboard-data-source";
+import { useDashboardData } from "./data/use-dashboard-data";
+import type { DashboardDataSource } from "./data/dashboard-data-source";
 import type { DashboardData, HeaderNotification, LidarProfile, RecipientSettings } from "./domain/dashboard";
 import "./App.css";
 
@@ -12,12 +13,12 @@ function SectionTitle({ children }: { children: string }) {
   return <h2 className="section-title">{children}</h2>;
 }
 
-function DashboardStateMessage({ description, title }: { description: string; title: string }) {
-  return <main className="dashboard-state" aria-label={title}><section><h1>{title}</h1><p>{description}</p></section></main>;
+function DashboardStateMessage({ description, onRetry, title }: { description: string; onRetry?: () => void; title: string }) {
+  return <main className="dashboard-state" aria-label={title}><section><h1>{title}</h1><p>{description}</p>{onRetry && <button className="primary-button" type="button" onClick={onRetry}>다시 시도</button>}</section></main>;
 }
 
-function DashboardStatePage({ description, title }: { description: string; title: string }) {
-  return <div className="app-shell"><DashboardHeader activePage="monitoring" initialNotifications={[]} /><DashboardStateMessage title={title} description={description} /><footer className="app-footer"><span>Copyright 2026 AJIN INDUSTRIAL. All rights reserved.</span><span>Version {applicationVersion}</span></footer></div>;
+function DashboardStatePage({ description, onRetry, title }: { description: string; onRetry?: () => void; title: string }) {
+  return <div className="app-shell"><DashboardHeader activePage="monitoring" initialNotifications={[]} /><DashboardStateMessage title={title} description={description} onRetry={onRetry} /><footer className="app-footer"><span>Copyright 2026 AJIN INDUSTRIAL. All rights reserved.</span><span>Version {applicationVersion}</span></footer></div>;
 }
 
 function DashboardStatusLabel({ status }: { status: DashboardData["monitoring"]["status"] }) {
@@ -659,20 +660,10 @@ function HistoryPage({ history, headerNotifications, status }: { history: Dashbo
   );
 }
 
-export function App() {
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [dashboardError, setDashboardError] = useState(false);
+export function App({ dataSource }: { dataSource: DashboardDataSource }) {
   const [alertPage, setAlertPage] = useState(0);
   const [videoOpen, setVideoOpen] = useState(false);
-  const scenario = resolveMockScenario(new URLSearchParams(window.location.search).get("scenario"));
-
-  useEffect(() => {
-    let active = true;
-    void createMockDashboardDataSource(scenario).getDashboardData()
-      .then((data) => { if (active) setDashboardData(data); })
-      .catch(() => { if (active) setDashboardError(true); });
-    return () => { active = false; };
-  }, [scenario]);
+  const { data: dashboardData, error: dashboardError, reload } = useDashboardData(dataSource);
 
   useEffect(() => {
     if (!videoOpen) return undefined;
@@ -689,7 +680,7 @@ export function App() {
     window.history.replaceState(null, "", "/login");
     return <LoginPage />;
   }
-  if (dashboardError) return <DashboardStatePage title="데이터를 불러올 수 없습니다." description="데이터 연결 상태를 확인한 뒤 다시 시도하세요." />;
+  if (dashboardError) return <DashboardStatePage title="데이터를 불러올 수 없습니다." description="데이터 연결 상태를 확인한 뒤 다시 시도하세요." onRetry={reload} />;
   if (dashboardData === null) return <DashboardStatePage title="데이터를 불러오는 중입니다." description="최신 모니터링 데이터를 준비하고 있습니다." />;
 
   const { admin, history, lastMeasuredAt, monitoring, recordings } = dashboardData;

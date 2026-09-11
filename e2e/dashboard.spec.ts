@@ -21,12 +21,20 @@ test("합성 시나리오 데이터를 화면에서 확인할 수 있다", async
   await expect(page.getByText("대표 적재율 84%")).toBeVisible();
 });
 
+test("합성 실시간 갱신 시나리오는 새 스냅샷을 표시한다", async ({ page }) => {
+  await page.goto("/?scenario=live-update");
+
+  await expect(page.locator(".kpi-value")).toHaveText("75%");
+  await expect(page.getByText("마지막 측정 10:24:21")).toBeVisible();
+});
+
 test("합성 데이터의 로딩, 오류와 데이터 없음 상태를 구분한다", async ({ page }) => {
   await page.goto("/?scenario=loading");
   await expect(page.getByRole("main", { name: "데이터를 불러오는 중입니다." })).toBeVisible();
 
   await page.goto("/?scenario=request-error");
   await expect(page.getByRole("main", { name: "데이터를 불러올 수 없습니다." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "다시 시도" })).toBeVisible();
 
   await page.goto("/?scenario=no-data");
   await expect(page.getByRole("main", { name: "표시할 모니터링 데이터가 없습니다." })).toBeVisible();

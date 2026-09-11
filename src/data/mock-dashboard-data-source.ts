@@ -1,10 +1,10 @@
 import type { DashboardData, DashboardStatus } from "../domain/dashboard";
 
-import type { DashboardDataSource } from "./dashboard-data-source";
+import type { DashboardDataRequestOptions, DashboardDataSource } from "./dashboard-data-source";
 
-export type MockScenario = DashboardStatus | "loading" | "request-error";
+export type MockScenario = DashboardStatus | "live-update" | "loading" | "request-error";
 
-const mockScenarios = ["normal", "collection-required", "measurement-error", "disconnected", "no-data", "loading", "request-error"] as const satisfies readonly MockScenario[];
+const mockScenarios = ["normal", "collection-required", "measurement-error", "disconnected", "no-data", "live-update", "loading", "request-error"] as const satisfies readonly MockScenario[];
 
 const loadHistoryTimes = [
   "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00",
@@ -113,7 +113,7 @@ const baseDashboardData: DashboardData = {
 
 function dashboardDataFor(scenario: MockScenario): DashboardData {
   const data = structuredClone(baseDashboardData);
-  data.monitoring.status = scenario === "loading" || scenario === "request-error" ? "normal" : scenario;
+  data.monitoring.status = scenario === "loading" || scenario === "request-error" || scenario === "live-update" ? "normal" : scenario;
 
   switch (scenario) {
     case "collection-required":
@@ -145,13 +145,48 @@ function dashboardDataFor(scenario: MockScenario): DashboardData {
   return data;
 }
 
+function liveUpdateDashboardData() {
+  const data = dashboardDataFor("normal");
+  data.lastMeasuredAt = "10:24:21";
+  data.monitoring.videoTimestamp = "2026-09-10 10:24:21";
+  data.monitoring.summary.loadPercent = 75;
+  data.monitoring.summary.recentChange = "+5%";
+  data.monitoring.loadHistory[data.monitoring.loadHistory.length - 1].value = 75;
+  data.monitoring.alerts[0] = { detail: "대표 적재율 75%", level: "warning", time: "10:24", title: "수거 예정" };
+  return data;
+}
+
+function waitForMockLoading(signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const finish = () => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    };
+    const timeout = window.setTimeout(finish, 1200);
+    const abort = () => {
+      window.clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+      reject(new DOMException("합성 데이터 요청이 취소되었습니다.", "AbortError"));
+    };
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
 export function createMockDashboardDataSource(scenario: MockScenario = "normal"): DashboardDataSource {
   return {
-    getDashboardData: async () => {
+    getDashboardData: async (options: DashboardDataRequestOptions = {}) => {
       if (scenario === "request-error") throw new Error("합성 데이터 요청 오류");
-      if (scenario === "loading") await new Promise((resolve) => window.setTimeout(resolve, 1200));
+      if (scenario === "loading") await waitForMockLoading(options.signal);
       return dashboardDataFor(scenario);
     },
+    subscribe: scenario === "live-update" ? (listener) => {
+      const timeout = window.setTimeout(() => listener(liveUpdateDashboardData()), 1200);
+      return () => window.clearTimeout(timeout);
+    } : undefined,
   };
 }
 
