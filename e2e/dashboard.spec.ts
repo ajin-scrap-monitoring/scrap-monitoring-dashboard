@@ -100,6 +100,20 @@ test("상단 브랜드는 현황 화면으로 이동한다", async ({ page }) =>
   await expect(page.getByRole("main", { name: "스크랩 모니터링 대시보드" })).toBeVisible();
 });
 
+test("외부 연동 전 요청은 처리 범위를 화면에 표시한다", async ({ page }) => {
+  await page.goto("/recordings");
+  await page.getByRole("button", { name: "녹화 영상 다운로드" }).click();
+  await expect(page.getByRole("status")).toHaveText("다운로드는 서버 연동 후 시작됩니다.");
+
+  await page.goto("/login");
+  await page.getByLabel("아이디").fill("admin");
+  await page.getByLabel("비밀번호").fill("test");
+  await page.getByRole("button", { name: "로그인", exact: true }).click();
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "테스트 알림 보내기" }).click();
+  await expect(page.getByRole("status")).toHaveText("테스트 알림은 서버 연동 후 실제 발송됩니다.");
+});
+
 test("적재율 이력의 이벤트 트랙에서 상세 정보를 제공한다", async ({ page }) => {
   await page.goto("/history");
 
