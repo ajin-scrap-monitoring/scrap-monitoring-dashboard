@@ -70,8 +70,9 @@ Transmission Control Protocol (TCP) 443 포트로 연결할 수 있어야 한다
 TLS는 프로젝트 전용 사설 Public Key Infrastructure (PKI)를 사용한다. CA 구성, 서버
 인증서 주입, Nginx TLS 설정과 갱신 절차는 배포 Repository의 책임이다.
 
-고정 사설 IP의 실제 값, 미디어 서비스의 ICE 후보와 허용 포트, GHCR package 공개 범위와
-배포 환경의 image pull 자격 증명 방식은 결정 대기 상태다.
+GHCR container package는 private이다. 배포 환경은 image pull 자격 증명을 사용해야 한다.
+고정 사설 IP의 실제 값, 미디어 서비스의 ICE 후보와 허용 포트, 배포 환경의 image pull
+자격 증명 주입 방식은 결정 대기 상태다.
 
 ## 제품 구현 기준선
 
@@ -242,7 +243,7 @@ UI 초안을 구현한다. 작업 요청자는 대상 Chrome 뷰포트에 렌더
 - 개발 대역 서비스와 시각 회귀 테스트 범위
 - 코드 포맷 정책
 - 실행 시점 설정과 자격 증명 경계
-- GHCR package 공개 범위와 배포 환경의 image pull 자격 증명 방식
+- 배포 환경의 image pull 자격 증명 주입 방식
 
 각 항목은 `docs/development-workflow.md`의 구현 기준선 단계에서 조사하고,
 채택한 결과와 근거만 이 문서에 반영한다.
