@@ -208,8 +208,9 @@ Programming Interface) 호환성을 검증한다.
 `src/data/dashboard-data-source.ts`의 데이터 소스 인터페이스를 사용한다.
 `DashboardDataSource`는 AbortSignal을 받는 초기 조회와 선택적 스냅샷 구독을 정의한다.
 `src/data/use-dashboard-data.ts`는 초기 조회, 취소, 오류, 재시도와 구독 스냅샷을 화면 상태로
-변환한다. `src/main.tsx`가 데이터 소스를 선택해 `App`에 주입하므로 화면 컴포넌트는 구현체를
-직접 생성하지 않는다.
+변환하며, 구독 스냅샷이 먼저 도착한 경우 늦은 초기 응답이 최신 상태를 덮어쓰지 않도록 한다.
+`src/main.tsx`가 데이터 소스를 선택해 `App`에 주입하므로 화면 컴포넌트는 구현체를 직접
+생성하지 않는다.
 
 `src/data/mock-dashboard-data-source.ts`는 현황, 이력, 녹화 목록, 알림과 관리자 설정의
 합성 데이터를 제공한다. 현황의 대표 적재율, 수거 임계율, 수거 주기, 예상 도달 시각,
@@ -242,8 +243,8 @@ LiDAR 2 측정 오류 데이터를 표시한다. `loading`은 1.2초 뒤 정상 
 브라우저 진입과 경로 분기는 `src/App.tsx`가 담당한다.
 `src/components/DashboardShell.tsx`의 `DashboardPageShell`은 현황, 이력, 녹화 영상과
 관리자 설정 화면의 상단 헤더와 하단 푸터를 공통으로 조립한다. 공통 헤더는 인증 상태,
-알림 읽음 상태, 팝오버 닫기와 로그아웃 상호작용을 관리한다. 화면별 상태와 상호작용은
-`App.tsx`의 화면 컴포넌트가 관리한다.
+갱신된 알림 목록과 기존 읽음 상태 병합, 팝오버 닫기와 로그아웃 상호작용을 관리한다.
+화면별 상태와 상호작용은 `App.tsx`의 화면 컴포넌트가 관리한다.
 
 `src/domain/dashboard.ts`는 화면 데이터 모델의 정본이다.
 `src/data/dashboard-data-source.ts`는 단일 읽기와 선택적 갱신 경계인 `DashboardDataSource`를

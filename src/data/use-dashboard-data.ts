@@ -34,13 +34,14 @@ export function useDashboardData(dataSource: DashboardDataSource): DashboardData
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
+    let hasSubscriptionSnapshot = false;
     void dataSource.getDashboardData({ signal: controller.signal })
       .then((nextData) => {
-        if (!active) return;
+        if (!active || hasSubscriptionSnapshot) return;
         setData(nextData);
       })
       .catch((nextError: unknown) => {
-        if (!active || isAbortError(nextError)) return;
+        if (!active || hasSubscriptionSnapshot || isAbortError(nextError)) return;
         setError(toError(nextError));
       })
       .finally(() => {
@@ -49,6 +50,7 @@ export function useDashboardData(dataSource: DashboardDataSource): DashboardData
 
     const unsubscribe = dataSource.subscribe?.((nextData) => {
       if (!active) return;
+      hasSubscriptionSnapshot = true;
       setData(nextData);
       setError(null);
       setIsLoading(false);
