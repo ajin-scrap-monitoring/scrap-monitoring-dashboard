@@ -27,6 +27,10 @@ FROM nginxinc/nginx-unprivileged:1.30.4-alpine3.24-slim@sha256:3a4485bf084957d56
 COPY nginx/default.conf /etc/nginx/conf.d/default.conf
 # 여러 location에서 함께 사용하는 보안 응답 헤더 설정을 이미지에 복사한다.
 COPY nginx/security-headers.conf /etc/nginx/security-headers.conf
+COPY nginx/00-proxy-map.conf nginx/01-observability.conf /etc/nginx/conf.d/
+COPY nginx/includes /etc/nginx/includes
+COPY nginx/runtime /etc/nginx/runtime
+COPY nginx/upstreams /etc/nginx/upstreams
 # build 단계의 /app/dist만 Nginx가 제공하는 정적 파일 경로로 복사한다.
 # --from=build는 현재 runtime 단계가 아니라 앞서 이름을 붙인 build 단계에서 가져온다는 뜻이다.
 COPY --from=build /app/dist /usr/share/nginx/html
