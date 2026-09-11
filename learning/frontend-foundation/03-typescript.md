@@ -12,12 +12,12 @@ TypeScript 타입 검사가 무엇인지 이해하고, 내가 입력하는 pnpm 
 
 | 구성 요소 | 위치 | 역할 |
 | --- | --- | --- |
-| TypeScript 소스 | `src/*.tsx`, `vite.config.ts` | 타입 검사 입력 |
+| TypeScript 소스 | `src/*.tsx`, `vite.config.ts`, `playwright.config.ts`, `e2e/` | 타입 검사 입력 |
 | TypeScript 컴파일러 | `node_modules/typescript` | `tsc` 명령과 타입 검사 제공 |
 | pnpm script | `package.json` | 사람이 입력할 프로젝트 명령 정의 |
 | 루트 TypeScript 설정 | `tsconfig.json` | 검사할 하위 설정 2개 연결 |
 | 브라우저 코드 설정 | `tsconfig.app.json` | `src/` 검사 규칙 정의 |
-| Node.js 코드 설정 | `tsconfig.node.json` | `vite.config.ts` 검사 규칙 정의 |
+| Node.js 코드 설정 | `tsconfig.node.json` | Vite와 Playwright 설정 및 End-to-End (E2E) 코드 검사 규칙 정의 |
 | Vite | `node_modules/vite` | 검사 완료 후 브라우저용 JavaScript 생성 |
 | 검사 부산물 | `node_modules/.tmp/*.tsbuildinfo` | TypeScript 검사 정보 저장 |
 
@@ -110,7 +110,7 @@ Vite는 빠른 변환을 담당하지만 TypeScript 타입 오류를 검사하�
 | 코드 | 실제 실행 환경 | 필요한 전역 기능과 타입 |
 | --- | --- | --- |
 | `src/` | 브라우저 | `document`, Document Object Model (DOM), 브라우저 기능 |
-| `vite.config.ts` | Node.js | Node.js module과 실행 환경 |
+| `vite.config.ts`, `playwright.config.ts`, `e2e/` | Node.js와 Playwright | Node.js module, Playwright Application Programming Interface (API)와 실행 환경 |
 
 DOM은 브라우저가 Hypertext Markup Language (HTML) 문서를 메모리에 표현하는
 객체 구조다. `document` 객체는 브라우저가 제공하므로 Node.js에서 기본 제공되지
@@ -122,7 +122,7 @@ DOM은 브라우저가 Hypertext Markup Language (HTML) 문서를 메모리에 �
 ```text
 tsconfig.json
   -> tsconfig.app.json  -> src
-  -> tsconfig.node.json -> vite.config.ts
+  -> tsconfig.node.json -> vite.config.ts, playwright.config.ts, e2e
 ```
 
 ## 루트 `tsconfig.json`과 `-b`
@@ -144,7 +144,7 @@ tsconfig.json
 
 `tsc -b`의 `-b`는 TypeScript가 build mode라고 부르는 실행 선택지다. build
 mode는 루트 설정의 `references`를 따라 여러 TypeScript 설정을 처리한다.
-현재 두 하위 설정은 서로를 참조하지 않으며, `tsc -b`는 두 설정을 모두 검사한다.
+현재 두 하위 설정은 서로를 참조하지 않으며, `tsc -b`는 두 설정과 연결된 소스를 모두 검사한다.
 
 여기서 build mode는 Vite의 프로덕션 빌드와 같은 뜻이 아니다.
 
@@ -191,7 +191,8 @@ polyfill이 아니다.
 
 ## `tsconfig.node.json`
 
-이 설정은 `include: ["vite.config.ts"]`에 따라 Vite 설정 파일만 검사한다.
+이 설정은 `include: ["vite.config.ts", "playwright.config.ts", "e2e"]`에 따라 Vite 설정,
+Playwright 설정과 End-to-End (E2E) 테스트 파일을 검사한다.
 
 | 설정 | 역할 |
 | --- | --- |
@@ -201,7 +202,7 @@ polyfill이 아니다.
 | `module: NodeNext` | Node.js의 module 해석 방식 적용 |
 | `lib: ["ES2023"]` | 브라우저 DOM 타입을 제외한 JavaScript 타입 사용 |
 | `noEmit: true` | JavaScript 출력 금지 |
-| `include: ["vite.config.ts"]` | Vite 설정 파일만 검사 대상으로 지정 |
+| `include: ["vite.config.ts", "playwright.config.ts", "e2e"]` | Vite와 Playwright 설정 및 E2E 파일을 검사 대상으로 지정 |
 
 `skipLibCheck`, `allowImportingTsExtensions`, `verbatimModuleSyntax`,
 `moduleDetection`, `strict`, `isolatedModules`, `noUnusedLocals`,

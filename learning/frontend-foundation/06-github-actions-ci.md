@@ -41,12 +41,12 @@ GitHub Actions는 Repository에 기록된 파일만 받은 새 runner에서 설�
 다시 실행한다. 이 과정이 성공하면 다른 환경에서도 현재 commit을 재현할 수 있다는
 근거가 생긴다.
 
-현재 CI는 코드를 배포하지 않는다. Repository 파일만으로 의존성, 정적 검사, 테스트,
+현재 `ci.yml`의 CI workflow는 코드를 배포하지 않는다. Repository 파일만으로 의존성, 정적 검사, 테스트,
 프로덕션 빌드와 컨테이너 런타임을 재현할 수 있는지 확인한다.
 
 ## 로컬 검증과 CI 검증
 
-두 검증은 같은 명령을 사용하지만 실행 위치가 다르다.
+두 검증은 같은 입력과 핵심 도구를 사용하지만 실행 위치와 명령 묶음이 다르다.
 
 | 항목 | 로컬 검증 | CI 검증 |
 | --- | --- | --- |
@@ -56,7 +56,7 @@ GitHub Actions는 Repository에 기록된 파일만 받은 새 runner에서 설�
 | Node.js 버전 입력 | `.node-version` | `.node-version` |
 | pnpm 버전 입력 | `packageManager` | `packageManager` |
 | 의존성 입력 | `pnpm-lock.yaml` | `pnpm-lock.yaml` |
-| 핵심 빌드 명령 | `pnpm run build` | `pnpm run build` |
+| 핵심 검증 명령 | `pnpm run check` | `pnpm run lint`, `pnpm run test`, `pnpm run test:e2e`와 container job |
 
 CI가 로컬 검증을 대신하지 않는다. 개발자는 먼저 로컬에서 오류를 확인하고,
 GitHub Actions는 같은 결과가 별도 환경에서도 재현되는지 확인한다.
@@ -113,8 +113,8 @@ Workflow
 표시되고 15분 제한 안에서 Linux host runner로 실행한다. GitHub는 각 job에 runner를
 할당하고 step을 위에서 아래로 실행한다.
 
-앞 step이 실패하면 뒤 step은 기본적으로 실행하지 않는다. 따라서 마지막 build
-step이 실행됐다는 것은 앞의 checkout, Node.js 준비, pnpm 준비와 의존성 설치가
+앞 step이 실패하면 뒤 step은 기본적으로 실행하지 않는다. 따라서 마지막 브라우저
+테스트 step이 실행됐다는 것은 앞의 checkout, Node.js 준비, pnpm 준비와 의존성 설치가
 성공했다는 뜻이다.
 
 ## runner
@@ -314,7 +314,7 @@ GitHub에 push하기 전에는 다음 명령으로 핵심 절차를 로컬에서
 node --version
 pnpm --version
 pnpm install --frozen-lockfile
-pnpm run build
+pnpm run check
 ```
 
 로컬에서 이 명령이 성공해도 CI 성공을 완전히 보장하지는 않는다. CI는 별도 Linux
