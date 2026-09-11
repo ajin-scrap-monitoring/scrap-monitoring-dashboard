@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 
+import type { DashboardData } from "../domain/dashboard";
 import { createMockDashboardDataSource } from "./mock-dashboard-data-source";
 
 test("기본 합성 데이터는 화면에 필요한 데이터를 제공한다", async () => {
@@ -40,4 +41,24 @@ test("호출마다 독립된 합성 데이터를 반환한다", async () => {
   const second = await source.getDashboardData();
 
   expect(second.monitoring.alerts[0].detail).toBe("대표 적재율 82%");
+});
+
+test("합성 데이터 요청은 AbortSignal로 취소할 수 있다", async () => {
+  const controller = new AbortController();
+  const request = createMockDashboardDataSource("loading").getDashboardData({ signal: controller.signal });
+  controller.abort();
+
+  await expect(request).rejects.toMatchObject({ name: "AbortError" });
+});
+
+test("live-update 시나리오는 구독자에게 새 스냅샷을 전달한다", async () => {
+  const updates: DashboardData[] = [];
+  const source = createMockDashboardDataSource("live-update");
+  const unsubscribe = source.subscribe?.((data) => updates.push(data));
+
+  await new Promise((resolve) => window.setTimeout(resolve, 1200));
+
+  expect(updates).toHaveLength(1);
+  expect(updates[0].monitoring.summary.loadPercent).toBe(75);
+  unsubscribe?.();
 });

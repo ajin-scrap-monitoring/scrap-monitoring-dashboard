@@ -135,6 +135,7 @@ button { cursor: pointer; }
 .dashboard-state section { width: min(100%, 460px); padding: 38px 42px; border: 1px solid #d8e0e9; border-radius: 6px; background: #ffffff; box-shadow: 0 4px 18px rgba(16, 24, 40, 0.06); }
 .dashboard-state h1 { margin: 0; color: #16243d; font-size: 25px; font-weight: 700; }
 .dashboard-state p { margin: 12px 0 0; color: #61708a; font-size: 15px; line-height: 1.6; }
+.dashboard-state .primary-button { min-width: 112px; margin-top: 24px; }
 
 .kpi-card { padding: 14px 16px; }
 .kpi-content { padding: 10px 2px 0; }
