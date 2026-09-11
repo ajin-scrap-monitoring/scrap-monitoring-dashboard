@@ -14,7 +14,7 @@ Vite가 왜 필요한지 이해하고, 개발 서버와 프로덕션 빌드가 �
 | --- | --- | --- |
 | pnpm script | `package.json` | 사람이 입력할 Vite 관련 명령 정의 |
 | Vite | `node_modules/vite` | 개발 서버, 소스 변환과 프로덕션 빌드 제공 |
-| Vite 설정 | `vite.config.ts` | React plugin 등록 |
+| Vite 설정 | `vite.config.ts` | React plugin과 Vitest 실행 환경 등록 |
 | React plugin | `@vitejs/plugin-react` | React JavaScript XML (JSX) 변환과 Fast Refresh 지원 |
 | Hypertext Markup Language (HTML) 진입 파일 | `index.html` | 브라우저가 처음 받을 문서 |
 | JavaScript 진입 파일 | `src/main.tsx` | 애플리케이션 소스 연결 시작점 |
@@ -105,6 +105,7 @@ module은 import 또는 export를 사용하는 코드 파일이다. 현재 주�
 index.html -> src/main.tsx -> src/App.tsx
                           -> react
                           -> react-dom
+             -> src/data/mock-dashboard-data-source.ts
 ```
 
 한 module이 다른 module을 import하는 연결 전체를 module graph라고 부른다.
@@ -121,21 +122,28 @@ module graph라는 용어는 새로운 실행 단계가 아니다. 어떤 파일
 현재 설정은 다음과 같다.
 
 ```ts
-import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    environment: "jsdom",
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    setupFiles: ["./src/test/setup.ts"],
+  },
 });
 ```
 
-이 설정이 하는 일은 React plugin 하나를 Vite에 등록하는 것이다.
+이 설정은 React plugin을 Vite에 등록하고 Vitest가 사용할 테스트 환경과 파일 범위를
+함께 선언한다.
 
 | 코드 | 역할 |
 | --- | --- |
-| `defineConfig` | Vite 설정 객체 작성 지원 |
+| `defineConfig` | Vite와 Vitest 설정 객체 작성 지원 |
 | `react()` | React용 Vite plugin 생성 |
 | `plugins: [react()]` | 개발 서버와 빌드에 React plugin 적용 |
+| `test` | Vitest의 jsdom 환경, 수집 범위와 초기화 파일 설정 |
 
 React plugin은 React JSX 변환과 개발 중 Fast Refresh를 지원한다. Fast Refresh는
 컴포넌트 파일을 저장했을 때 가능한 경우 현재 화면 상태를 유지하면서 변경된
@@ -171,6 +179,9 @@ dist/
   index.html
   assets/
     index-<content-hash>.js
+    index-<content-hash>.css
+    camera-frame-<content-hash>.png
+    NotoSansKR-<content-hash>.ttf
 ```
 
 파일 이름의 hash는 파일 내용을 기준으로 만든 식별값이다. JavaScript 내용이
@@ -244,6 +255,7 @@ Nginx 설정, TLS, FastAPI reverse proxy와 컨테이너 구성은 `vite.config.
 | 개발 서버 프로세스 | `pnpm run dev` | 제외 | 개발 종료 시 중단 |
 | `dist/index.html` | `pnpm run build` | 제외 | 소스에서 다시 생성 |
 | `dist/assets/*.js` | `pnpm run build` | 제외 | 소스에서 다시 생성 |
+| `dist/assets/*.css`, 이미지와 글꼴 | `pnpm run build` | 제외 | 소스와 자산에서 다시 생성 |
 | preview 서버 프로세스 | `pnpm run preview` | 제외 | 확인 종료 시 중단 |
 
 `dist/` 안의 파일을 직접 수정하지 않는다. `index.html`, `src/` 또는 Vite 설정을

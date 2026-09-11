@@ -34,9 +34,9 @@ pnpm이 패키지 선언, 버전 해석, 설치, 명령 실행을 어떻게 연�
 | `engines` | 허용하는 Node.js 주 버전 선언 |
 | `scripts` | 반복 실행할 프로젝트 명령 선언 |
 | `dependencies` | 애플리케이션 코드가 사용하는 직접 의존성 |
-| `devDependencies` | 타입 검사와 빌드에 사용하는 직접 의존성 |
+| `devDependencies` | 정적 검사, 테스트, 타입 검사와 빌드에 사용하는 직접 의존성 |
 
-`dependencies`와 `devDependencies`의 패키지를 합치면 직접 의존성은 8개다.
+`dependencies`와 `devDependencies`의 패키지를 합치면 직접 의존성은 21개다.
 
 ## 직접 의존성과 전이 의존성
 
@@ -55,7 +55,7 @@ React를 예로 들면 이 프로젝트는 `react`를 직접 선택한다. React
 | 분류 | 현재 패키지 | 사용 시점 |
 | --- | --- | --- |
 | `dependencies` | `react`, `react-dom` | 애플리케이션 소스 구성과 번들 생성 |
-| `devDependencies` | TypeScript, Vite, React plugin과 type 패키지 | 개발, 타입 검사와 빌드 |
+| `devDependencies` | ESLint 계열, Vitest와 Testing Library, Playwright, TypeScript, Vite와 type 패키지 | 정적 검사, 테스트, 개발, 타입 검사와 빌드 |
 
 정적 프론트엔드에서는 React 패키지의 필요한 코드가 Vite 빌드 결과에 포함된다.
 운영 브라우저가 서버의 `node_modules/`를 직접 읽거나 pnpm을 실행하지 않는다.
@@ -89,14 +89,19 @@ lock file은 pnpm이 생성하고 갱신한다. 사람이 일반 문서처럼 �
 
 ## script 실행 흐름
 
-현재 script는 4개다.
+현재 script는 9개다.
 
 | 명령 | 실제 실행 | 역할 |
 | --- | --- | --- |
 | `pnpm run dev` | `vite` | 개발 서버 실행 |
+| `pnpm run lint` | `eslint . --max-warnings 0` | 경고 없는 정적 검사 |
 | `pnpm run typecheck` | `tsc -b` | TypeScript 프로젝트 전체 타입 검사 |
+| `pnpm run test` | `vitest run` | 단위, 컴포넌트와 데이터 소스 테스트 1회 실행 |
+| `pnpm run test:watch` | `vitest` | 테스트 감시 실행 |
+| `pnpm run test:e2e` | `pnpm run build && playwright test` | 프로덕션 빌드와 Chromium 브라우저 테스트 |
 | `pnpm run build` | `tsc -b && vite build` | 타입 검사 후 프로덕션 빌드 |
 | `pnpm run preview` | `vite preview` | 생성된 `dist/`의 로컬 확인 |
+| `pnpm run check` | `pnpm run lint && pnpm run test && pnpm run test:e2e` | 로컬 전체 검증 |
 
 pnpm은 script를 실행할 때 `node_modules/.bin`의 로컬 실행 파일을 찾을 수 있게
 환경을 구성한다. 따라서 전역으로 TypeScript나 Vite를 별도 설치하지 않아도 된다.

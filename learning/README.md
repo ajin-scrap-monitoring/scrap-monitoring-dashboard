@@ -27,7 +27,7 @@
 
 ## 전체 실행 구조
 
-현재 기준선의 주요 실행 주체는 8개다.
+현재 기준선의 주요 실행 주체는 10개다.
 
 | 실행 주체 | 역할 |
 | --- | --- |
@@ -39,6 +39,8 @@
 | Vite | 개발 서버, 소스 변환과 프로덕션 빌드 |
 | 브라우저 | 빌드된 JavaScript 실행과 화면 렌더링 |
 | GitHub Actions runner | 새 Linux 환경에서 설치와 빌드 반복 |
+| Docker Buildx | `linux/amd64` OCI 이미지 빌드 |
+| Playwright 실행 컨테이너 | CI 브라우저 테스트에 필요한 Chromium과 Linux 라이브러리 제공 |
 
 로컬 개발 흐름은 다음과 같다.
 
@@ -56,10 +58,9 @@ index.html + source files + vite.config.ts -> Vite -> Browser
 Continuous Integration (CI) 흐름은 다음과 같다.
 
 ```text
-GitHub event -> Runner -> Checkout -> Node.js + pnpm
-                                  -> Frozen install
-                                  -> Type check
-                                  -> Vite build
+GitHub event -> Runner -> Checkout -> Node.js + pnpm -> Frozen install
+                                  -> Lint -> Component test -> Build -> Browser test
+                                  -> Docker Buildx -> linux/amd64 image -> Runtime and proxy test
 ```
 
 ## 파일과 부산물 구분

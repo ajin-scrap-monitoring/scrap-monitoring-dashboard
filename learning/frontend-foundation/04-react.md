@@ -20,8 +20,8 @@ React가 담당하는 일과 브라우저가 담당하는 일도 구분한다.
 | `StrictMode` | `src/main.tsx` | 개발 중 React 코드의 문제 탐지 지원 |
 | Vite | 개발 서버와 빌드 도구 | TSX를 브라우저용 JavaScript로 변환 |
 
-현재 `App` 컴포넌트는 내용이 없는 `main` element 하나만 만든다. 따라서
-애플리케이션이 정상 실행돼도 화면에는 별도의 문구가 표시되지 않는다.
+현재 `App` 컴포넌트는 주입받은 데이터 소스로 대시보드 데이터를 조회하고 경로와
+인증 상태에 따라 로그인, 상태 안내, 현황, 이력, 녹화 영상 또는 관리자 화면을 선택한다.
 
 ## HTML 파일과 DOM
 
@@ -55,12 +55,12 @@ element(요소)를 DOM 객체로 만든다. JavaScript는 이 DOM을 조회하�
 4. 브라우저가 HTML에 연결된 JavaScript를 실행한다.
 5. `src/main.tsx`가 `document.getElementById("root")`로 빈 `div`를 찾는다.
 6. `createRoot(rootElement)`가 이 `div`를 React가 관리할 영역으로 지정한다.
-7. React가 `App` 컴포넌트를 실행한다.
-8. `App`이 `main` element 구조를 반환한다.
-9. `react-dom`이 `main` element를 실제 DOM에 반영한다.
+7. React가 `App` 컴포넌트를 실행하고 `dataSource`를 전달한다.
+8. `App`이 데이터 소스의 상태와 현재 경로에 맞는 화면 구조를 반환한다.
+9. `react-dom`이 선택된 화면 구조를 실제 DOM에 반영한다.
 
 ```text
-index.html -> div#root -> main.tsx -> App -> main element -> Browser DOM
+index.html -> div#root -> main.tsx -> App(dataSource) -> page -> Browser DOM
 ```
 
 브라우저가 원본 `.tsx` 파일을 직접 이해하는 것은 아니다. 개발 중에는 Vite가
@@ -74,11 +74,15 @@ index.html -> div#root -> main.tsx -> App -> main element -> Browser DOM
 1. React와 `createRoot`를 가져온다.
 2. `App` 컴포넌트를 가져온다.
 3. HTML의 `div#root`를 찾는다.
-4. 해당 위치에 `App`을 렌더링한다.
+4. 합성 데이터 소스를 선택해 해당 위치에 `App`을 렌더링한다.
 
 현재 핵심 코드는 다음과 같다.
 
 ```tsx
+const dataSource = createMockDashboardDataSource(resolveMockScenario(
+  new URLSearchParams(window.location.search).get("scenario"),
+));
+
 const rootElement = document.getElementById("root");
 
 if (rootElement === null) {
@@ -87,7 +91,7 @@ if (rootElement === null) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <App />
+    <App dataSource={dataSource} />
   </StrictMode>,
 );
 ```
@@ -101,28 +105,44 @@ createRoot(rootElement).render(
 ## 컴포넌트와 `App`
 
 React 컴포넌트는 화면의 일부를 표현하는 JavaScript 함수다. 현재 `App`은
-애플리케이션 전체의 시작 컴포넌트다.
+애플리케이션 전체의 시작 컴포넌트이며 데이터 조회와 경로별 화면 선택을 담당한다.
+실제 구현의 흐름을 단순화하면 다음과 같다.
 
 ```tsx
-export function App() {
-  return <main aria-label="스크랩 모니터링 대시보드" />;
+type AppProps = { dataSource: DashboardDataSource };
+
+export function App({ dataSource }: AppProps) {
+  const { data: dashboardData, error: dashboardError, reload } = useDashboardData(dataSource);
+
+  if (window.location.pathname === "/login") return <LoginPage />;
+  if (dashboardError) return <DashboardStatePage />;
+  if (dashboardData === null) return <DashboardStatePage />;
+
+  if (window.location.pathname === "/history") {
+    return <HistoryPage />;
+  }
+
+  return <DashboardPageShell />;
 }
 ```
+
+화면별 property와 상태 안내 문구는 예시에서 생략했다. 실제 `App`은 같은 분기에서
+인증 상태, 관리자 경로, 녹화 영상과 관리자 설정을 함께 처리한다.
 
 이 코드의 각 부분은 다음 역할을 한다.
 
 | 코드 | 역할 |
 | --- | --- |
 | `export` | 다른 파일이 `App`을 import할 수 있게 함 |
-| `function App()` | `App`이라는 React 컴포넌트 정의 |
-| `return` | 컴포넌트가 표현할 화면 구조 반환 |
-| `<main />` | 문서의 주요 콘텐츠 영역 표현 |
-| `aria-label` | `main` 영역의 접근 가능한 이름 제공 |
+| `App({ dataSource })` | 외부에서 데이터 소스 구현을 주입받음 |
+| `useDashboardData` | 초기 조회, 오류, 재시도와 실시간 스냅샷을 화면 상태로 변환 |
+| `window.location.pathname` | 현재 경로에 맞는 화면 선택 |
+| `return` | 선택된 화면 구조 반환 |
 
 컴포넌트 이름은 대문자로 시작한다. JSX가 소문자 이름을 HTML element로 해석하고
 대문자 이름을 React 컴포넌트로 해석하기 때문이다.
 
-애플리케이션 코드가 `App()`을 직접 호출하지 않는다. `<App />`을 전달받은 React가
+애플리케이션 코드가 `App()`을 직접 호출하지 않는다. `<App dataSource={dataSource} />`를 전달받은 React가
 첫 화면을 계산할 때 `App` 함수를 호출한다. 개발 환경의 `StrictMode`는 검사를 위해
 이 함수를 추가 호출할 수 있다.
 
@@ -166,10 +186,9 @@ JavaScript로 변환한다. TypeScript는 변환 전에 JSX 표현과 component 
 | ref 정리 | DOM 참조 callback의 설정과 정리 추가 실행 |
 | 사용 중단 Application Programming Interface (API) | React가 사용 중단을 예고한 API 사용 경고 |
 
-현재 `App`에는 effect와 ref callback이 없다. 현재 코드에서 직접 관찰할 수 있는
-동작은 개발 환경에서 `App` 함수가 추가 호출될 수 있다는 점이다. 이후 effect나
-네트워크 요청을 추가하면 개발 중 같은 로그나 요청이 두 번 관찰되는 원인을
-`StrictMode`와 실제 중복 호출로 나눠 확인해야 한다.
+현재 `App`은 데이터 조회 Hook을 호출하고 자식 화면과 모달 Hook은 effect와 ref를
+사용한다. 개발 환경에서 `StrictMode`가 컴포넌트와 effect를 추가 실행할 수 있으므로
+데이터 소스 구독과 모달 이벤트 정리가 정상적으로 수행되는지 확인해야 한다.
 
 프로덕션 빌드에서는 `StrictMode`의 추가 검사를 실행하지 않는다.
 
@@ -204,8 +223,8 @@ pnpm run dev
 ```
 
 Vite가 출력한 주소를 브라우저에서 열고 개발자 도구의 Elements panel을 확인한다.
-`div#root` 아래에 `main` element가 있으면 `index.html`, `main.tsx`, `App.tsx`와
-React DOM 연결이 동작한 것이다.
+`div#root` 아래에 대시보드의 `main` element가 있으면 `index.html`, `main.tsx`,
+`App.tsx`와 React DOM 연결이 동작한 것이다.
 
 ## 공식 자료
 
