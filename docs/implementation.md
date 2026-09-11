@@ -14,7 +14,7 @@ Vite 개발 및 빌드 기준선, Continuous Integration (CI) 검증, 제품 배
 Container Initiative (OCI) 이미지의 책임 경계도 채택되어 있다. ESLint 정적 검사,
 Vitest 컴포넌트 테스트와 Playwright 브라우저 검증이 구현되어 있다. 현재 모니터링,
 이력, 녹화 영상, 로그인과 관리자 설정의 UI MVP가 구현되어 있다. 다단계 Dockerfile,
-Nginx 런타임 설정, 이미지 검증과 Git tag 기반 Release 구성이 구현되어 있다.
+Nginx 런타임 설정, reverse proxy 배포 경계, 이미지 검증과 Git tag 기반 Release 구성이 구현되어 있다.
 
 ## 제품 배포 경계
 
@@ -35,9 +35,10 @@ Hypertext Transfer Protocol (HTTP)과 signaling 진입점은 Nginx만 사용하�
 사용한다. 서비스별 이미지는 Open Container Initiative (OCI) 호환 형식을 유지한다.
 
 이 Repository의 최종 배포 산출물은 Nginx와 Vite 정적 산출물을 포함한 OCI 이미지다.
-다단계 빌드는 Node.js와 pnpm으로 정적 파일을 생성하고 Nginx 런타임 단계에는 정적 파일과
-환경 독립적인 Single Page Application (SPA) 기본 설정만 복사한다. 최종 이미지에는
-Node.js, pnpm, 소스 코드, 자격 증명과 환경별 주소를 포함하지 않는다.
+다단계 빌드는 Node.js와 pnpm으로 정적 파일을 생성하고 Nginx 런타임 단계에는 정적 파일,
+환경 독립적인 Single Page Application (SPA) 기본 설정과 reverse proxy 공통 설정만 복사한다.
+최종 이미지에는 Node.js, pnpm, 소스 코드, 자격 증명, 환경별 주소와 실제 proxy 경로를
+포함하지 않는다.
 
 배포 Repository는 이 Repository가 게시한 이미지의 digest를 선택하고 환경별 Nginx
 설정, FastAPI upstream, Transport Layer Security (TLS), 인증서, 컨테이너 네트워크,
@@ -73,6 +74,64 @@ TLS는 프로젝트 전용 사설 Public Key Infrastructure (PKI)를 사용한�
 GHCR container package는 private이다. 배포 환경은 image pull 자격 증명을 사용해야 한다.
 고정 사설 IP의 실제 값, 미디어 서비스의 ICE 후보와 허용 포트, 배포 환경의 image pull
 자격 증명 주입 방식은 결정 대기 상태다.
+
+## Nginx reverse proxy 배포 경계
+
+Nginx 설정은 3개 영역으로 분리한다.
+
+| 영역 | 이미지 제공 내용 | 배포 Repository 책임 |
+| --- | --- | --- |
+| 기본 서버 | SPA fallback, `/healthz`, gzip, HTML 캐시 방지, 정적 자산 장기 캐시, 보안 헤더와 구조화 access log | 없음 |
+| HTTP 컨텍스트 | WebSocket Upgrade map과 `/etc/nginx/upstreams/*.conf` include | Docker DNS resolver, FastAPI upstream, `limit_req_zone` |
+| server 컨텍스트 | `/etc/nginx/runtime/*.conf` include와 공통 proxy header snippet | API와 signaling location, upstream 선택, rate limit 적용, request body 크기와 timeout |
+
+배포 Repository는 `/etc/nginx/upstreams/`와 `/etc/nginx/runtime/`을 함께 주입한다.
+전자는 `resolver`, shared memory `upstream`과 `server <docker-service>:<port> resolve`를
+선언한다. Docker Compose 환경에서는 Docker embedded DNS를 resolver로 사용하고 `resolve`와
+upstream `zone`을 함께 선언해 컨테이너 IP 변경 뒤 Nginx가 이름을 다시 해석할 수 있게 한다.
+후자는 확정된 API와 WebSocket signaling 경로별 `location`에서 공통 proxy snippet을 포함하고
+`proxy_pass`, `proxy_connect_timeout`, `proxy_send_timeout`, `proxy_read_timeout`,
+`client_max_body_size`와 API `limit_req`를 선언한다.
+
+공통 HTTP proxy snippet은 HTTP/1.1, 빈 `Connection` 헤더, `Host`, `X-Real-IP`,
+`X-Forwarded-For`, `X-Forwarded-Proto`, `X-Forwarded-Host`와 Nginx `$request_id`를 upstream에
+전달한다. WebSocket signaling snippet은 같은 헤더에 `Upgrade`, map으로 만든 `Connection`을
+추가하고 `proxy_buffering off`를 적용한다. access log는 standard output에 JSON 한 줄로
+기록하며 시각, request ID, 원격 주소, method, query string을 제외한 URI, 상태, 전송량,
+처리 시간과 upstream 응답 정보를 포함한다.
+
+WebRTC 미디어 location은 이미지와 배포 설정에 만들지 않는다. Nginx는 API와 signaling 요청만
+FastAPI에 reverse proxy하고 브라우저는 ICE 후보가 가리키는 미디어 서비스에 직접 연결한다.
+FastAPI readiness endpoint는 upstream 컨테이너의 healthcheck와 배포 orchestration이 사용한다.
+Nginx `/healthz`는 정적 웹 컨테이너의 readiness만 나타내며 FastAPI readiness를 대체하지 않는다.
+
+기본 보안 응답 헤더는 `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`,
+Content Security Policy (CSP), `frame-ancestors`, Permissions-Policy와 request ID다. 기본 CSP는
+same-origin 정적 파일만 허용하고 framing을 금지한다. 실제 API, signaling 또는 미디어 origin이
+확정되어 CSP 연결 출처가 필요하면 배포 Repository가 `/etc/nginx/security-headers.conf`를
+환경별 허용 출처로 주입한다.
+
+API 경로, signaling 경로, FastAPI upstream 이름, Docker service 이름과 port, resolver 주소,
+timeout, rate limit, request body 최대 크기, FastAPI readiness endpoint와 CSP 추가 출처는 외부
+계약 결정 대기 상태다. 이 값은 이미지의 기본 Nginx 설정에 넣지 않는다.
+
+## 배포 계약 결정 대기 항목
+
+배포 전에 다음 8개 항목을 결정한다.
+
+| 항목 | 결정 내용 | 결정 주체 |
+| --- | --- | --- |
+| API와 signaling 경로 | 외부 경로, HTTP method, upstream별 경로 보존 또는 변경 규칙 | 프론트엔드와 FastAPI 담당자 |
+| upstream과 Docker DNS | Docker Compose service 이름, port, resolver 주소, DNS cache 유효 시간과 resolver timeout | 배포 담당자 |
+| readiness | FastAPI readiness endpoint, 응답 조건, healthcheck와 배포 순서 | FastAPI와 배포 담당자 |
+| proxy timeout | API와 WebSocket별 connect, send, read timeout과 WebSocket ping 주기 | FastAPI와 미디어 담당자 |
+| 요청 제한 | API 종류별 request body 최대 크기, IP 또는 사용자 기준 rate limit, 초과 응답 상태 | FastAPI와 운영 담당자 |
+| 인증과 오류 | 인증 전달 방식, Cookie 사용 시 CSRF 방어, CORS, upstream 오류 응답 형식과 재시도 규칙 | FastAPI와 프론트엔드 담당자 |
+| ingress 신뢰 경계 | Nginx 앞단 proxy 유무, `real_ip_header`, 신뢰 proxy IP 대역과 client IP 기록 기준 | 배포 담당자 |
+| TLS와 CSP | TLS 종료 위치, HSTS 적용 조건, API와 signaling 및 미디어 origin의 CSP 허용 목록 | 배포와 보안 담당자 |
+
+이 목록의 실제 값은 배포 Repository에서 주입하는 Nginx 설정과 FastAPI 구현에만 기록한다.
+이 Repository에는 환경 독립적인 공통 설정과 검증만 유지한다.
 
 ## 제품 구현 기준선
 
@@ -275,6 +334,9 @@ docker run --read-only --tmpfs /tmp --publish 8080:8080 scrap-monitoring-dashboa
 서버로 사용하지 않는다. Chromium 설치는 Playwright 버전을 변경한 뒤 다시 실행한다.
 현재 CI는 공식 Playwright 컨테이너에서 frozen 설치, 정적 검사, 컴포넌트 테스트,
 타입 검사, 프로덕션 빌드와 두 뷰포트의 브라우저 테스트를 실행한다. 별도 container
-job은 `linux/amd64` 이미지를 빌드한 뒤 읽기 전용 root file system에서 Nginx 상태,
-SPA fallback, 보안 헤더, 자산 캐시, 라이선스 고지, source map과 런타임 빌드 도구
-부재를 검사한다.
+job은 `linux/amd64` 이미지를 빌드한 뒤 Nginx 설정 문법, 읽기 전용 root file system에서
+Nginx 상태, SPA fallback, 보안 헤더, 자산 캐시, 라이선스 고지, source map과 런타임 빌드 도구
+부재를 검사한다. 같은 job은 테스트 전용 FastAPI 대역 컨테이너와 Docker DNS를 사용해 API
+reverse proxy, forwarded header와 request ID, API rate limit와 request body 제한, read timeout,
+WebSocket 연결과 재연결, proxy buffering 비활성화, upstream DNS 재해석과 구조화 access log를
+검증한다. 테스트 전용 경로, upstream 이름, resolver와 timeout 값은 운영 계약이 아니다.
