@@ -28,6 +28,16 @@ test("합성 실시간 갱신 시나리오는 새 스냅샷을 표시한다", as
   await expect(page.getByText("마지막 측정 10:24:21")).toBeVisible();
 });
 
+test("합성 운영 주기 시나리오는 수거와 장애 상태를 순서대로 표시한다", async ({ page }) => {
+  await page.goto("/?scenario=operation-cycle");
+
+  await expect(page.getByText("대표 적재율 80%")).toBeVisible();
+  await expect(page.getByText("수거 완료", { exact: true })).toBeVisible({ timeout: 1500 });
+  await expect(page.getByText("측정 오류", { exact: true })).toBeVisible({ timeout: 1500 });
+  await expect(page.getByText("연결 끊김", { exact: true })).toBeVisible({ timeout: 1500 });
+  await expect(page.getByText("정상", { exact: true }).first()).toBeVisible({ timeout: 1500 });
+});
+
 test("영상 확대 모달은 키보드로 닫고 원래 제어 요소로 돌아간다", async ({ page }) => {
   await page.goto("/");
   const expand = page.getByRole("button", { name: "실시간 영상 크게 보기" });

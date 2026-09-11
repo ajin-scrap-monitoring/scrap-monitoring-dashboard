@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 
 import type { DashboardData } from "../domain/dashboard";
 import { createMockDashboardDataSource } from "./mock-dashboard-data-source";
@@ -60,5 +60,29 @@ test("live-update 시나리오는 구독자에게 새 스냅샷을 전달한다"
 
   expect(updates).toHaveLength(1);
   expect(updates[0].monitoring.summary.loadPercent).toBe(75);
+  unsubscribe?.();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+test("operation-cycle 시나리오는 수거와 장애 상태 전이를 순서대로 전달한다", () => {
+  vi.useFakeTimers();
+  const statuses: Array<{ status: string; loadPercent: number }> = [];
+  const source = createMockDashboardDataSource("operation-cycle");
+  const unsubscribe = source.subscribe?.((data) => {
+    statuses.push({ status: data.monitoring.status, loadPercent: data.monitoring.summary.loadPercent });
+  });
+
+  vi.advanceTimersByTime(2500);
+
+  expect(statuses).toEqual([
+    { status: "collection-required", loadPercent: 80 },
+    { status: "normal", loadPercent: 4 },
+    { status: "measurement-error", loadPercent: 72 },
+    { status: "disconnected", loadPercent: 72 },
+    { status: "normal", loadPercent: 72 },
+  ]);
   unsubscribe?.();
 });
