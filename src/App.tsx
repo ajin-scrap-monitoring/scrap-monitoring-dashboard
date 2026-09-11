@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 import cameraFrame from "./assets/camera-frame.png";
 import { useDashboardData } from "./data/use-dashboard-data";
 import type { DashboardDataSource } from "./data/dashboard-data-source";
 import type { DashboardData, HeaderNotification, LidarProfile, RecipientSettings } from "./domain/dashboard";
+import { useModalFocus } from "./use-modal-focus";
 import "./App.css";
 
 const alertsPerPage = 4;
@@ -66,6 +67,10 @@ function DashboardHeader({ activePage, initialNotifications }: { activePage: "mo
   const headerRef = useRef<HTMLElement>(null);
   const isAuthenticated = window.sessionStorage.getItem("scrap-monitoring-authenticated") === "true";
   const unreadCount = notifications.filter((notification) => !notification.read).length;
+  const closeNotifications = useCallback(() => setNotificationsOpen(false), []);
+  const closeUserMenu = useCallback(() => setUserMenuOpen(false), []);
+  useModalFocus<HTMLElement>(notificationsOpen, closeNotifications, ".notifications-popover");
+  useModalFocus<HTMLElement>(userMenuOpen, closeUserMenu, ".user-popover");
 
   useEffect(() => {
     const closePopoverOnOutsidePointer = (event: PointerEvent) => {
@@ -505,20 +510,13 @@ function RecordingsPage({ recordings, headerNotifications, status }: { recording
   const [isPlaying, setIsPlaying] = useState(false);
   const [recordingOpen, setRecordingOpen] = useState(false);
   const [recordingPage, setRecordingPage] = useState(0);
+  const closeRecording = useCallback(() => setRecordingOpen(false), []);
+  const recordingModalRef = useModalFocus<HTMLDivElement>(recordingOpen, closeRecording);
   const visibleRecordings = recordType === "전체" ? recordings : recordings.filter((recording) => recording.type === recordType);
   const totalRecordingPages = Math.max(1, Math.ceil(visibleRecordings.length / recordingsPerPage));
   const pageStart = recordingPage * recordingsPerPage;
   const pagedRecordings = visibleRecordings.slice(pageStart, pageStart + recordingsPerPage);
   const selectedRecording = visibleRecordings[selectedIndex] ?? visibleRecordings[0];
-
-  useEffect(() => {
-    if (!recordingOpen) return undefined;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setRecordingOpen(false);
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [recordingOpen]);
 
   return (
     <DashboardPageShell activePage="recordings" headerNotifications={headerNotifications}>
@@ -533,7 +531,7 @@ function RecordingsPage({ recordings, headerNotifications, status }: { recording
           </div>
         </div>
       </main>
-      {recordingOpen && <div className="video-modal" role="dialog" aria-modal="true" aria-label="녹화 영상 크게 보기" onClick={() => setRecordingOpen(false)}><div className="video-modal-panel" onClick={(event) => event.stopPropagation()}><button className="video-modal-close" type="button" aria-label="녹화 영상 닫기" onClick={() => setRecordingOpen(false)}>닫기</button><div className="video-modal-frame"><img src={cameraFrame} alt={`${selectedRecording.date} 녹화 영상 확대`} /><span className="recorded-time">{selectedRecording.date} 00:12:36</span></div></div></div>}
+      {recordingOpen && <div ref={recordingModalRef} className="video-modal" role="dialog" aria-modal="true" aria-label="녹화 영상 크게 보기" onClick={closeRecording}><div className="video-modal-panel" onClick={(event) => event.stopPropagation()}><button className="video-modal-close" type="button" aria-label="녹화 영상 닫기" onClick={closeRecording}>닫기</button><div className="video-modal-frame"><img src={cameraFrame} alt={`${selectedRecording.date} 녹화 영상 확대`} /><span className="recorded-time">{selectedRecording.date} 00:12:36</span></div></div></div>}
     </DashboardPageShell>
   );
 }
@@ -576,10 +574,13 @@ function AdminPage({ admin, headerNotifications }: { admin: DashboardData["admin
     return events.length ? events.join(", ") : "수신 안 함";
   };
 
-  const closeAddRecipient = () => {
+  const closeRecipientPanel = useCallback(() => setSelectedRecipientEmail(null), []);
+  const closeAddRecipient = useCallback(() => {
     setAddRecipientOpen(false);
     setAddRecipientError("");
-  };
+  }, []);
+  useModalFocus<HTMLElement>(selectedRecipient !== undefined && selectedRecipientSettings !== undefined, closeRecipientPanel, ".recipient-panel");
+  useModalFocus<HTMLElement>(addRecipientOpen, closeAddRecipient, ".recipient-add-modal");
 
   const addRecipient = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -663,16 +664,9 @@ function HistoryPage({ history, headerNotifications, status }: { history: Dashbo
 export function App({ dataSource }: { dataSource: DashboardDataSource }) {
   const [alertPage, setAlertPage] = useState(0);
   const [videoOpen, setVideoOpen] = useState(false);
+  const closeVideo = useCallback(() => setVideoOpen(false), []);
+  const videoModalRef = useModalFocus<HTMLDivElement>(videoOpen, closeVideo);
   const { data: dashboardData, error: dashboardError, reload } = useDashboardData(dataSource);
-
-  useEffect(() => {
-    if (!videoOpen) return undefined;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setVideoOpen(false);
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [videoOpen]);
 
   const isAuthenticated = window.sessionStorage.getItem("scrap-monitoring-authenticated") === "true";
   if (window.location.pathname === "/login") return <LoginPage />;
@@ -801,9 +795,9 @@ export function App({ dataSource }: { dataSource: DashboardDataSource }) {
         </div>
       </main>
       {videoOpen && (
-        <div className="video-modal" role="dialog" aria-modal="true" aria-label="실시간 영상 크게 보기" onClick={() => setVideoOpen(false)}>
+        <div ref={videoModalRef} className="video-modal" role="dialog" aria-modal="true" aria-label="실시간 영상 크게 보기" onClick={closeVideo}>
           <div className="video-modal-panel" onClick={(event) => event.stopPropagation()}>
-            <button className="video-modal-close" type="button" aria-label="영상 닫기" onClick={() => setVideoOpen(false)}>닫기</button>
+            <button className="video-modal-close" type="button" aria-label="영상 닫기" onClick={closeVideo}>닫기</button>
             <div className="video-modal-frame">
               <img src={cameraFrame} alt="스크랩 적재 공간 실시간 영상 확대" />
               <span className="live-indicator">LIVE</span>

@@ -28,6 +28,17 @@ test("합성 실시간 갱신 시나리오는 새 스냅샷을 표시한다", as
   await expect(page.getByText("마지막 측정 10:24:21")).toBeVisible();
 });
 
+test("영상 확대 모달은 키보드로 닫고 원래 제어 요소로 돌아간다", async ({ page }) => {
+  await page.goto("/");
+  const expand = page.getByRole("button", { name: "실시간 영상 크게 보기" });
+  await expand.click();
+  await expect(page.getByRole("dialog", { name: "실시간 영상 크게 보기" })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "실시간 영상 크게 보기" })).toBeHidden();
+  await expect(expand).toBeFocused();
+});
+
 test("합성 데이터의 로딩, 오류와 데이터 없음 상태를 구분한다", async ({ page }) => {
   await page.goto("/?scenario=loading");
   await expect(page.getByRole("main", { name: "데이터를 불러오는 중입니다." })).toBeVisible();
