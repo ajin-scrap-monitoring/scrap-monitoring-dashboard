@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1.7
+
+FROM node:24.19.0-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df AS build
+
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    corepack enable && \
+    corepack install --global pnpm@11.23.0 && \
+    pnpm install --frozen-lockfile
+
+COPY index.html tsconfig.json tsconfig.app.json tsconfig.node.json vite.config.ts ./
+COPY src ./src
+COPY docs/mockups/assets/OFL.txt /app/licenses/NotoSansKR-OFL.txt
+ARG APP_VERSION=0.1.0
+RUN VITE_APP_VERSION="$APP_VERSION" pnpm run build && \
+    cp node_modules/react/LICENSE /app/licenses/React-MIT.txt && \
+    cp node_modules/vite/LICENSE.md /app/licenses/Vite-MIT.txt
+
+FROM nginxinc/nginx-unprivileged:1.30.4-alpine3.24-slim@sha256:3a4485bf084957d56674ee22db07d77d5a281418815c5852827419d6d629d440 AS runtime
+
+COPY nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY nginx/security-headers.conf /etc/nginx/security-headers.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY --from=build /app/licenses /usr/share/licenses/scrap-monitoring-dashboard
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1

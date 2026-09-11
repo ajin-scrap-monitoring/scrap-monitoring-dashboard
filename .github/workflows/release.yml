@@ -1,0 +1,81 @@
+name: Release image
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    name: Build, verify and publish image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Prepare image metadata
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=${GITHUB_REF_NAME#v}
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must match vX.Y.Z." >&2
+            exit 1
+          fi
+          image_name=ghcr.io/${GITHUB_REPOSITORY,,}
+          echo "name=$image_name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build release image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          load: true
+          platforms: linux/amd64
+          push: false
+          build-args: |
+            APP_VERSION=${{ steps.image.outputs.version }}
+          tags: |
+            ${{ steps.image.outputs.name }}:${{ steps.image.outputs.version }}
+            ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.image.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify release image
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}:${{ steps.image.outputs.version }}
+          VERSION: ${{ steps.image.outputs.version }}
+        run: ./scripts/verify-container-image.sh "$IMAGE" scrap-monitoring-dashboard-release "$VERSION"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish release image
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+          VERSION: ${{ steps.image.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker push "$IMAGE_NAME:$VERSION"
+          docker push "$IMAGE_NAME:sha-$GITHUB_SHA"
+          digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE_NAME:$VERSION")
+          echo "Published $digest" >> "$GITHUB_STEP_SUMMARY"
