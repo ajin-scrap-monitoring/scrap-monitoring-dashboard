@@ -34,27 +34,25 @@ export function useDashboardData(dataSource: DashboardDataSource): DashboardData
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
-    let hasSubscriptionSnapshot = false;
+    let unsubscribe: (() => void) | undefined;
     void dataSource.getDashboardData({ signal: controller.signal })
       .then((nextData) => {
-        if (!active || hasSubscriptionSnapshot) return;
+        if (!active) return;
         setData(nextData);
+        unsubscribe = dataSource.subscribe?.((updatedData) => {
+          if (!active) return;
+          setData(updatedData);
+          setError(null);
+          setIsLoading(false);
+        });
       })
       .catch((nextError: unknown) => {
-        if (!active || hasSubscriptionSnapshot || isAbortError(nextError)) return;
+        if (!active || isAbortError(nextError)) return;
         setError(toError(nextError));
       })
       .finally(() => {
         if (active) setIsLoading(false);
       });
-
-    const unsubscribe = dataSource.subscribe?.((nextData) => {
-      if (!active) return;
-      hasSubscriptionSnapshot = true;
-      setData(nextData);
-      setError(null);
-      setIsLoading(false);
-    });
 
     return () => {
       active = false;

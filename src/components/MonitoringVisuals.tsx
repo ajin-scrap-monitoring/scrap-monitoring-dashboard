@@ -3,6 +3,30 @@ import { useState } from "react";
 import type { DashboardData, LidarProfile } from "../domain/dashboard";
 import { SectionTitle } from "./DashboardPrimitives";
 
+function clockAt(timestamp: number, reference: string) {
+  const match = reference.match(/(Z|([+-])(\d{2}):(\d{2}))$/i);
+  const offsetMinutes = match?.[1].toUpperCase() === "Z"
+    ? 0
+    : match ? (match[2] === "-" ? -1 : 1) * (Number(match[3]) * 60 + Number(match[4])) : 0;
+  const date = new Date(timestamp + offsetMinutes * 60_000);
+  return `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+function contiguousSegments<T>(items: readonly T[], isValid: (item: T) => boolean) {
+  const segments: T[][] = [];
+  let current: T[] = [];
+  for (const item of items) {
+    if (isValid(item)) {
+      current.push(item);
+    } else if (current.length > 0) {
+      segments.push(current);
+      current = [];
+    }
+  }
+  if (current.length > 0) segments.push(current);
+  return segments;
+}
+
 export function MeasurementDiagram({ lidar1Color, lidar2Color }: { lidar1Color: string; lidar2Color: string }) {
   const lidar1Points = "74.75,153 126,151 158,164 187,171 205,186 226,193 243.24,207";
   const lidar2Points = "252,102.93 245,132 231,159 211,191 190,226.72";
@@ -98,7 +122,16 @@ export function MeasurementDiagram({ lidar1Color, lidar2Color }: { lidar1Color: 
 }
 
 export function LoadChart({ samples, threshold }: { samples: DashboardData["monitoring"]["loadHistory"]; threshold: number }) {
-  const xValues = samples.map((_, index) => 40 + index * (370 / (samples.length - 1)));
+  const orderedSamples = [...samples].sort((leftSample, rightSample) => new Date(leftSample.measuredAt).getTime() - new Date(rightSample.measuredAt).getTime());
+  const firstTimestamp = new Date(orderedSamples[0]?.measuredAt ?? "").getTime();
+  const lastTimestamp = new Date(orderedSamples.at(-1)?.measuredAt ?? "").getTime();
+  const hasTimestampRange = Number.isFinite(firstTimestamp) && Number.isFinite(lastTimestamp) && lastTimestamp > firstTimestamp;
+  const xValues = orderedSamples.map((sample, index) => {
+    const ratio = hasTimestampRange
+      ? (new Date(sample.measuredAt).getTime() - firstTimestamp) / (lastTimestamp - firstTimestamp)
+      : orderedSamples.length <= 1 ? 0.5 : index / (orderedSamples.length - 1);
+    return 40 + ratio * 370;
+  });
   const yMin = 0;
   const yMax = 100;
   const yTickValues = [100, 80, 60, 40, 20, 0];
@@ -106,13 +139,25 @@ export function LoadChart({ samples, threshold }: { samples: DashboardData["moni
   const chartBottom = 148;
   const toY = (value: number) => chartBottom - (value - yMin) * ((chartBottom - chartTop) / (yMax - yMin));
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const pointY = samples.map((sample) => toY(sample.value));
-  const xTickIndices = [0, 3, 6, 9, 12, 15, 18, 21];
-  const xTickPositions = xTickIndices.map((index) => xValues[index]);
-  const xTickLabels = xTickIndices.map((index) => samples[index].time);
+  const plottedSamples = orderedSamples.map((sample, index) => ({
+    ...sample,
+    x: xValues[index],
+    y: sample.value === null ? null : toY(sample.value),
+  }));
+  const sampleSegments = contiguousSegments(plottedSamples, (sample) => sample.y !== null);
+  const tickInterval = 3 * 3_600_000;
+  const xTicks = hasTimestampRange
+    ? Array.from({ length: Math.floor((lastTimestamp - firstTimestamp) / tickInterval) + 1 }, (_, index) => {
+      const timestamp = firstTimestamp + index * tickInterval;
+      return {
+        label: clockAt(timestamp, orderedSamples[0].measuredAt),
+        x: 40 + ((timestamp - firstTimestamp) / (lastTimestamp - firstTimestamp)) * 370,
+      };
+    })
+    : orderedSamples.map((sample, index) => ({ label: sample.time, x: xValues[index] }));
 
   const activeX = activeIndex === null ? 0 : xValues[activeIndex];
-  const activeY = activeIndex === null ? 0 : pointY[activeIndex];
+  const activeY = activeIndex === null ? 0 : plottedSamples[activeIndex].y ?? 0;
   const tooltipX = Math.max(24, Math.min(activeX - 42, 364));
   const tooltipY = Math.max(4, activeY - 42);
 
@@ -122,7 +167,7 @@ export function LoadChart({ samples, threshold }: { samples: DashboardData["moni
         {yTickValues.map((value) => (
           <path key={`grid-h-${value}`} d={`M40 ${toY(value).toFixed(1)}H410`} />
         ))}
-        {xTickPositions.map((x) => (
+        {xTicks.map(({ x }) => (
           <path key={`grid-v-${x}`} d={`M${x} ${chartTop}V${chartBottom}`} />
         ))}
       </g>
@@ -137,17 +182,22 @@ export function LoadChart({ samples, threshold }: { samples: DashboardData["moni
       </g>
       <path d={`M40 ${toY(threshold)}H410`} stroke="#607086" strokeDasharray="5 5" strokeOpacity="0.58" strokeWidth="1.5" />
       <text x="408" y="39" transform="translate(408 0) scale(0.69 1) translate(-408 0)" fill="#526278" fontSize="10" fontWeight="600" textAnchor="end">수거 임계율 {threshold}%</text>
-      <path d={`M${xValues[0]} ${pointY[0]} ${xValues.slice(1).map((x, index) => `L${x} ${pointY[index + 1]}`).join(" ")} V${chartBottom} H${xValues[0]} Z`} fill="#f58a07" fillOpacity="0.1" />
-      <polyline points={`${xValues.map((x, index) => `${x},${pointY[index]}`).join(" ")}`} fill="none" stroke="#f58a07" strokeWidth="4" />
-      {xValues.map((cx, index) => (
+      {sampleSegments.length > 0 ? sampleSegments.map((segment, index) => {
+        const linePath = segment.map((sample, sampleIndex) => `${sampleIndex === 0 ? "M" : "L"}${sample.x} ${sample.y}`).join(" ");
+        return <g key={`load-segment-${index}`}>
+          <path d={`${linePath}V${chartBottom}H${segment[0].x}Z`} fill="#f58a07" fillOpacity="0.1" />
+          <path className="load-chart-line" d={linePath} fill="none" stroke="#f58a07" strokeWidth="4" />
+        </g>;
+      }) : <text x="225" y="92" fill="#61708a" fontSize="11" textAnchor="middle">최근 적재율 데이터가 없습니다.</text>}
+      {plottedSamples.map((sample, index) => sample.value !== null && (
         <circle
-          key={`target-${cx}`}
+          key={`target-${sample.x}`}
           className="chart-point-target"
-          cx={cx}
-          cy={pointY[index]}
+          cx={sample.x}
+          cy={sample.y ?? 0}
           r="11"
           tabIndex={0}
-          aria-label={`${samples[index].time} 대표 적재율 ${samples[index].value}%`}
+          aria-label={`${sample.time} 대표 적재율 ${sample.value}%`}
           onPointerEnter={() => setActiveIndex(index)}
           onPointerLeave={() => setActiveIndex(null)}
           onFocus={() => setActiveIndex(index)}
@@ -157,14 +207,14 @@ export function LoadChart({ samples, threshold }: { samples: DashboardData["moni
       {activeIndex !== null && (
         <g className="chart-tooltip" transform={`translate(${tooltipX} ${tooltipY})`} pointerEvents="none">
           <rect width="84" height="34" rx="4" />
-          <text x="8" y="14">{samples[activeIndex].time}</text>
-          <text x="8" y="27">대표 적재율 {samples[activeIndex].value}%</text>
+          <text x="8" y="14">{orderedSamples[activeIndex].time}</text>
+          <text x="8" y="27">대표 적재율 {orderedSamples[activeIndex].value}%</text>
         </g>
       )}
       <g fill="#61708a" fontSize="11">
-        {xTickPositions.map((x, idx) => (
+        {xTicks.map(({ label, x }) => (
           <text key={`x-${x}`} x={x} y="166" textAnchor="middle">
-            {xTickLabels[idx]}
+            {label}
           </text>
         ))}
       </g>
@@ -172,7 +222,7 @@ export function LoadChart({ samples, threshold }: { samples: DashboardData["moni
   );
 }
 
-export function ProfileChart({ average, color, label, maximum, minimum, values }: LidarProfile) {
+export function ProfileChart({ average, color, label, maximum, minimum, samples }: LidarProfile) {
   const stroke = color === "blue" ? "#1677e8" : "#0ba58f";
   const axisTextColor = color === "blue" ? "#0b3f8d" : "#066f5e";
   const yMin = 0;
@@ -180,14 +230,16 @@ export function ProfileChart({ average, color, label, maximum, minimum, values }
   const yStep = 2;
   const chart = { left: 40, right: 410, top: 20, bottom: 148 };
   const gridYValues = Array.from({ length: yMax / yStep + 1 }, (_, index) => index * yStep);
-  const gridXValues = [
-    { index: 0, value: "A" },
-    { index: values.length - 1, value: "B" },
-  ];
+  const gridXValues = [{ positionRatio: 0, value: "A" }, { positionRatio: 1, value: "B" }];
   const toY = (value: number) => chart.bottom - (value - yMin) * ((chart.bottom - chart.top) / (yMax - yMin));
-  const toX = (index: number) => chart.left + ((chart.right - chart.left) / (values.length - 1)) * index;
-  const profilePath = values.map((value, index) => `${index === 0 ? "M" : "L"}${toX(index)} ${toY(value)}`).join(" ");
-  const fillPath = `${profilePath}V${chart.bottom}H${chart.left}Z`;
+  const toX = (positionRatio: number) => chart.left + (chart.right - chart.left) * Math.max(0, Math.min(1, positionRatio));
+  const orderedSamples = [...samples].sort((leftSample, rightSample) => leftSample.positionRatio - rightSample.positionRatio);
+  const plottedSamples = orderedSamples.map((sample) => ({
+    ...sample,
+    x: toX(sample.positionRatio),
+    y: sample.height === null ? null : toY(sample.height),
+  }));
+  const profileSegments = contiguousSegments(plottedSamples, (sample) => sample.y !== null);
 
   return (
     <section className="card chart-card span-4">
@@ -216,7 +268,7 @@ export function ProfileChart({ average, color, label, maximum, minimum, values }
           {gridXValues.map((tick) => (
             <text
               key={`profile-x-${tick.value}`}
-              x={toX(tick.index).toFixed(1)}
+              x={toX(tick.positionRatio).toFixed(1)}
               y="166"
               fill={axisTextColor}
               textAnchor="middle"
@@ -227,8 +279,13 @@ export function ProfileChart({ average, color, label, maximum, minimum, values }
             </text>
           ))}
         </g>
-        <path d={fillPath} fill={stroke} fillOpacity="0.08" />
-        <path d={profilePath} fill="none" stroke={stroke} strokeWidth="4" />
+        {profileSegments.length > 0 ? profileSegments.map((segment, index) => {
+          const linePath = segment.map((sample, sampleIndex) => `${sampleIndex === 0 ? "M" : "L"}${sample.x} ${sample.y}`).join(" ");
+          return <g key={`profile-segment-${index}`}>
+            <path d={`${linePath}V${chart.bottom}H${segment[0].x}Z`} fill={stroke} fillOpacity="0.08" />
+            <path className="profile-chart-line" d={linePath} fill="none" stroke={stroke} strokeWidth="4" />
+          </g>;
+        }) : <text x="225" y="92" fill="#61708a" fontSize="11" textAnchor="middle">유효한 높이 데이터가 없습니다.</text>}
       </svg>
     </section>
   );

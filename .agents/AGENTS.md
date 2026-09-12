@@ -17,19 +17,20 @@
 
 ## 문서 체계
 
-프로젝트 문서는 역할 4개로 구분한다.
+프로젝트 문서는 역할 5개로 구분한다.
 
 | 문서 | 역할 |
 | --- | --- |
 | `docs/project-spec.md` | 제품 명세의 정본 |
 | `docs/implementation.md` | 채택한 기술과 현재 구현 상태의 정본 |
 | `docs/development-workflow.md` | 개발 단계와 완료 조건의 정본 |
+| `docs/contracts/README.md` | 외부 연동 계약 항목과 확정 절차의 정본 |
 | `docs/design-reference.md` | 정본이 아닌 미확정 설계 참고안 |
 
 현재 작업 요청과 확인된 외부 계약이 가장 우선한다. 제품 요구사항은
 `docs/project-spec.md`, 채택한 구현 결정과 현재 구현 상태는
-`docs/implementation.md`를 따른다. `docs/design-reference.md`만 근거로 요구사항이나
-구현 결정을 확정하지 않는다.
+`docs/implementation.md`, 외부 연동 계약 작업은 `docs/contracts/README.md`를 따른다.
+`docs/design-reference.md`만 근거로 요구사항이나 구현 결정을 확정하지 않는다.
 
 같은 사실은 하나의 정본에만 기록한다. `README.md`는 Repository와 문서의 진입점만
 제공한다.
@@ -39,8 +40,9 @@
 1. `git status`와 관련 파일을 확인하여 기존 변경을 구분한다.
 2. `docs/project-spec.md`에서 작업의 목적, 범위와 외부 경계를 확인한다.
 3. `docs/implementation.md`에서 현재 채택된 구현과 미확정 결정을 확인한다.
-4. 단계와 완료 조건이 필요하면 `docs/development-workflow.md`를 확인한다.
-5. 구체적인 설계 예시가 필요할 때만 `docs/design-reference.md`를 참고한다.
+4. 외부 연동 작업은 `docs/contracts/README.md`에서 계약 항목과 확정 절차를 확인한다.
+5. 단계와 완료 조건이 필요하면 `docs/development-workflow.md`를 확인한다.
+6. 구체적인 설계 예시가 필요할 때만 `docs/design-reference.md`를 참고한다.
 
 제품 도구, 의존성, 소스 코드와 GitHub Actions 워크플로우의 채택 상태는
 `docs/implementation.md`를 따른다.

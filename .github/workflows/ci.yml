@@ -38,6 +38,9 @@ jobs:
       - name: Verify dependency installation
         run: pnpm install --frozen-lockfile
 
+      - name: Verify API contract
+        run: pnpm run contract:check
+
       - name: Lint
         run: pnpm run lint
 

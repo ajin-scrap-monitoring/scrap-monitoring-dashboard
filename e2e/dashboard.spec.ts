@@ -49,7 +49,11 @@ test("기간 선택기는 키보드로 날짜를 선택하고 조회 전 결과�
   for (const path of ["/history", "/recordings"]) {
     await page.goto(path);
     const start = page.getByRole("textbox", { name: "시작 시각", exact: true });
+    const resultCount = path === "/history"
+      ? page.locator(".history-card-head > span")
+      : page.locator(".recordings-card-head > span");
     const previous = await start.inputValue();
+    const previousResultCount = await resultCount.textContent();
     await page.getByRole("button", { name: "시작 시각 선택기 열기" }).click();
     await page.keyboard.press("ArrowRight");
     await page.keyboard.press("Enter");
@@ -57,7 +61,7 @@ test("기간 선택기는 키보드로 날짜를 선택하고 조회 전 결과�
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(start).not.toHaveValue(previous);
     await expect(page.getByRole("button", { name: "시작 시각 선택기 열기" })).toBeFocused();
-    await expect(page.getByText(path === "/history" ? "총 9건" : "8건", { exact: true })).toBeVisible();
+    await expect(resultCount).toHaveText(previousResultCount ?? "");
   }
 });
 
@@ -144,7 +148,7 @@ test("상단 브랜드는 현황 화면으로 이동한다", async ({ page }) =>
 test("외부 연동 전 요청은 처리 범위를 화면에 표시한다", async ({ page }) => {
   await page.goto("/recordings");
   await page.getByRole("button", { name: "녹화 영상 다운로드" }).click();
-  await expect(page.getByRole("status")).toHaveText("다운로드는 서버 연동 후 시작됩니다.");
+  await expect(page.getByRole("status")).toHaveText("예시 데이터에서는 파일을 다운로드하지 않습니다.");
 
   await page.goto("/login");
   await page.getByLabel("아이디").fill("admin");
@@ -152,7 +156,7 @@ test("외부 연동 전 요청은 처리 범위를 화면에 표시한다", asyn
   await page.getByRole("button", { name: "로그인", exact: true }).click();
   await page.goto("/admin");
   await page.getByRole("button", { name: "테스트 알림 보내기" }).click();
-  await expect(page.getByRole("status")).toHaveText("테스트 알림은 서버 연동 후 실제 발송됩니다.");
+  await expect(page.getByRole("status")).toHaveText("테스트 알림 요청을 접수했습니다.");
 });
 
 test("적재율 이력의 이벤트 트랙에서 상세 정보를 제공한다", async ({ page }) => {
@@ -204,7 +208,7 @@ test("이력과 녹화 목록의 필터 및 페이지 이동을 제공한다", a
   await page.getByRole("button", { name: "다음 녹화 목록 페이지" }).click();
   await expect(page.getByRole("img", { name: "2026-09-03 녹화 영상" })).toBeVisible();
   await page.locator(".recordings-query").getByRole("button", { name: "오류" }).click();
-  await expect(page.getByText("8건")).toBeVisible();
+  await expect(page.locator(".recordings-card-head > span")).toHaveText("7건");
   await page.locator(".recordings-query").getByRole("button", { name: "조회", exact: true }).click();
   await expect(page.getByText("2건")).toBeVisible();
 });

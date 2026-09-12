@@ -52,8 +52,63 @@ const server = createServer((request, response) => {
       forwardedFor: request.headers['x-forwarded-for'] ?? '',
       forwardedHost: request.headers['x-forwarded-host'] ?? '',
       forwardedProto: request.headers['x-forwarded-proto'] ?? '',
+      connection: request.headers.connection ?? '',
       requestId: request.headers['x-request-id'] ?? '',
     }))
+    return
+  }
+
+  if (request.url === '/contract-events/stream') {
+    response.writeHead(200, {
+      'cache-control': 'no-cache',
+      'content-type': 'text/event-stream',
+    })
+    response.flushHeaders()
+    response.write('id: 1\nevent: monitoring.snapshot\ndata: {"loadPercent":72}\n\n')
+    setTimeout(() => {
+      response.end('id: 2\nevent: monitoring.snapshot\ndata: {"loadPercent":73}\n\n')
+    }, 1200)
+    return
+  }
+
+  if (request.url === '/contract-whep/streams/camera-main' && request.method === 'POST') {
+    let body = ''
+    request.setEncoding('utf8')
+    request.on('data', (chunk) => { body += chunk })
+    request.on('end', () => {
+      if (!body.includes('v=0') || request.headers['content-type'] !== 'application/sdp') {
+        response.writeHead(422)
+        response.end()
+        return
+      }
+      response.writeHead(201, {
+        'content-type': 'application/sdp',
+        etag: '"whep-proxy-v1"',
+        location: '/contract-whep/sessions/session-1',
+        'x-forwarded-for-received': request.headers['x-forwarded-for'] ?? '',
+        'x-forwarded-host-received': request.headers['x-forwarded-host'] ?? '',
+        'x-forwarded-proto-received': request.headers['x-forwarded-proto'] ?? '',
+        'x-request-id-received': request.headers['x-request-id'] ?? '',
+      })
+      response.end('v=0\r\na=ice-options:trickle\r\na=contract-answer\r\n')
+    })
+    return
+  }
+
+  if (request.url === '/contract-whep/sessions/session-1' && request.method === 'PATCH') {
+    if (request.headers['if-match'] !== '"whep-proxy-v1"') {
+      response.writeHead(412)
+      response.end()
+      return
+    }
+    response.writeHead(204)
+    response.end()
+    return
+  }
+
+  if (request.url === '/contract-whep/sessions/session-1' && request.method === 'DELETE') {
+    response.writeHead(200)
+    response.end()
     return
   }
 

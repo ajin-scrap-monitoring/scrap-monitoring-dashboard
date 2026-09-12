@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
 import { DateTimeField } from "./DateTimeField";
-import { isValidDateTime } from "../date-range";
+import { isValidDateTime, recentRange } from "../date-range";
 
 function Example() {
   const [value, setValue] = useState("2026-09-03T12:30");
@@ -43,4 +43,11 @@ test("직접 입력한 날짜의 형식과 실제 존재 여부를 검증한다"
   expect(isValidDateTime("2026-02-30T12:30")).toBe(false);
   expect(isValidDateTime("2026-09-03T25:00")).toBe(false);
   expect(isValidDateTime("2026-09-03T12:30")).toBe(true);
+});
+
+test("빠른 기간은 브라우저 시간대와 무관한 벽시계 간격을 유지한다", () => {
+  expect(recentRange(24, "2026-03-09 01:30:45")).toEqual({
+    start: "2026-03-08T01:30",
+    end: "2026-03-09T01:30",
+  });
 });

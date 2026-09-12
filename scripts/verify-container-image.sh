@@ -16,6 +16,9 @@ fail() {
   exit 1
 }
 
+image_platform=$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image")
+[[ "$image_platform" == "linux/amd64" ]] || fail "Runtime image platform is $image_platform, expected linux/amd64."
+
 cleanup() {
   docker rm --force "$container_name" >/dev/null 2>&1 || true
 }

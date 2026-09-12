@@ -14,7 +14,9 @@ Vite 개발 및 빌드 기준선, Continuous Integration (CI) 검증, 제품 배
 Container Initiative (OCI) 이미지의 책임 경계도 채택되어 있다. ESLint 정적 검사,
 Vitest 컴포넌트 테스트와 Playwright 브라우저 검증이 구현되어 있다. 현재 모니터링,
 이력, 녹화 영상, 로그인과 관리자 설정의 UI MVP가 구현되어 있다. 다단계 Dockerfile,
-Nginx 런타임 설정, reverse proxy 배포 경계, 이미지 검증과 Git tag 기반 Release 구성이 구현되어 있다.
+Nginx 런타임 설정, reverse proxy 배포 경계, 이미지 검증과 Git tag 기반 Release 구성이
+구현되어 있다. 외부 연동 제안의 OpenAPI 생성 타입, HTTP adapter, Server-Sent Events
+(SSE) 상태 갱신과 WebRTC-HTTP Egress Protocol (WHEP) 형태의 영상 연결도 구현되어 있다.
 
 ## 제품 배포 경계
 
@@ -83,20 +85,21 @@ Nginx 설정은 3개 영역으로 분리한다.
 | --- | --- | --- |
 | 기본 서버 | SPA fallback, `/healthz`, gzip, HTML 캐시 방지, 정적 자산 장기 캐시, 보안 헤더와 구조화 access log | 없음 |
 | HTTP 컨텍스트 | WebSocket Upgrade map과 `/etc/nginx/upstreams/*.conf` include | Docker DNS resolver, FastAPI upstream, `limit_req_zone` |
-| server 컨텍스트 | `/etc/nginx/runtime/*.conf` include와 공통 proxy header snippet | API와 signaling location, upstream 선택, rate limit 적용, request body 크기와 timeout |
+| server 컨텍스트 | `/etc/nginx/runtime/*.conf` include와 HTTP, SSE 및 WebSocket proxy snippet | API와 signaling location, upstream 선택, rate limit 적용, request body 크기와 timeout |
 
 배포 Repository는 `/etc/nginx/upstreams/`와 `/etc/nginx/runtime/`을 함께 주입한다.
 전자는 `resolver`, shared memory `upstream`과 `server <docker-service>:<port> resolve`를
 선언한다. Docker Compose 환경에서는 Docker embedded DNS를 resolver로 사용하고 `resolve`와
 upstream `zone`을 함께 선언해 컨테이너 IP 변경 뒤 Nginx가 이름을 다시 해석할 수 있게 한다.
-후자는 확정된 API와 WebSocket signaling 경로별 `location`에서 공통 proxy snippet을 포함하고
+후자는 확정된 API, SSE와 signaling 경로별 `location`에서 공통 proxy snippet을 포함하고
 `proxy_pass`, `proxy_connect_timeout`, `proxy_send_timeout`, `proxy_read_timeout`,
 `client_max_body_size`와 API `limit_req`를 선언한다.
 
 공통 HTTP proxy snippet은 HTTP/1.1, 빈 `Connection` 헤더, `Host`, `X-Real-IP`,
 `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Forwarded-Host`와 Nginx `$request_id`를 upstream에
 전달한다. WebSocket signaling snippet은 같은 헤더에 `Upgrade`, map으로 만든 `Connection`을
-추가하고 `proxy_buffering off`를 적용한다. access log는 standard output에 JSON 한 줄로
+추가하고 `proxy_buffering off`를 적용한다. SSE streaming snippet은 buffering과 cache를
+비활성화한다. access log는 standard output에 JSON 한 줄로
 기록하며 시각, request ID, 원격 주소, method, query string을 제외한 URI, 상태, 전송량,
 처리 시간과 upstream 응답 정보를 포함한다.
 
@@ -115,23 +118,10 @@ API 경로, signaling 경로, FastAPI upstream 이름, Docker service 이름과 
 timeout, rate limit, request body 최대 크기, FastAPI readiness endpoint와 CSP 추가 출처는 외부
 계약 결정 대기 상태다. 이 값은 이미지의 기본 Nginx 설정에 넣지 않는다.
 
-## 배포 계약 결정 대기 항목
-
-배포 전에 다음 8개 항목을 결정한다.
-
-| 항목 | 결정 내용 | 결정 주체 |
-| --- | --- | --- |
-| API와 signaling 경로 | 외부 경로, HTTP method, upstream별 경로 보존 또는 변경 규칙 | 프론트엔드와 FastAPI 담당자 |
-| upstream과 Docker DNS | Docker Compose service 이름, port, resolver 주소, DNS cache 유효 시간과 resolver timeout | 배포 담당자 |
-| readiness | FastAPI readiness endpoint, 응답 조건, healthcheck와 배포 순서 | FastAPI와 배포 담당자 |
-| proxy timeout | API와 WebSocket별 connect, send, read timeout과 WebSocket ping 주기 | FastAPI와 미디어 담당자 |
-| 요청 제한 | API 종류별 request body 최대 크기, IP 또는 사용자 기준 rate limit, 초과 응답 상태 | FastAPI와 운영 담당자 |
-| 인증과 오류 | 인증 전달 방식, Cookie 사용 시 CSRF 방어, CORS, upstream 오류 응답 형식과 재시도 규칙 | FastAPI와 프론트엔드 담당자 |
-| ingress 신뢰 경계 | Nginx 앞단 proxy 유무, `real_ip_header`, 신뢰 proxy IP 대역과 client IP 기록 기준 | 배포 담당자 |
-| TLS와 CSP | TLS 종료 위치, HSTS 적용 조건, API와 signaling 및 미디어 origin의 CSP 허용 목록 | 배포와 보안 담당자 |
-
-이 목록의 실제 값은 배포 Repository에서 주입하는 Nginx 설정과 FastAPI 구현에만 기록한다.
-이 Repository에는 환경 독립적인 공통 설정과 검증만 유지한다.
+외부 연동과 배포 계약에서 결정할 전체 항목, 순서와 완료 조건은
+`docs/contracts/README.md`를 따른다. 실제 환경별 값은 배포 Repository에서 주입하는 Nginx
+설정과 FastAPI 구현에 기록한다. 이 Repository에는 환경 독립적인 공통 설정과 검증만
+유지한다.
 
 ## 제품 구현 기준선
 
@@ -182,6 +172,8 @@ TypeScript는 컴파일러 API를 사용하는 개발 도구와의 호환성을 
 | `@testing-library/user-event` | 14.6.6 | 사용자 입력과 상호작용 재현 | [npm](https://www.npmjs.com/package/@testing-library/user-event) | MIT |
 | `@testing-library/jest-dom` | 7.0.1 | DOM 상태 단언 | [npm](https://www.npmjs.com/package/@testing-library/jest-dom) | MIT |
 | `@playwright/test` | 1.62.1 | Chromium 브라우저 사용자 흐름 검증 | [npm](https://www.npmjs.com/package/@playwright/test) | Apache-2.0 |
+| `@redocly/cli` | 2.52.1 | OpenAPI 문법, 참조와 권장 규칙 검사 | [npm](https://www.npmjs.com/package/@redocly/cli) | MIT |
+| `openapi-typescript` | 7.13.0 | OpenAPI schema의 TypeScript 타입 생성과 생성물 일치 검사 | [npm](https://www.npmjs.com/package/openapi-typescript) | MIT |
 
 직접 의존성은 `package.json`에 정확한 버전으로 기록한다. `.npmrc`의
 `save-exact=true`는 pnpm이 새 직접 의존성을 정확한 버전으로 저장하게 한다.
@@ -208,7 +200,9 @@ Programming Interface) 호환성을 검증한다.
 `src/data/dashboard-data-source.ts`의 데이터 소스 인터페이스를 사용한다.
 `DashboardDataSource`는 AbortSignal을 받는 초기 조회와 선택적 스냅샷 구독을 정의한다.
 `src/data/use-dashboard-data.ts`는 초기 조회, 취소, 오류, 재시도와 구독 스냅샷을 화면 상태로
-변환하며, 구독 스냅샷이 먼저 도착한 경우 늦은 초기 응답이나 오류가 최신 상태를 덮어쓰지 않도록 한다.
+변환한다. 초기 조회가 성공한 뒤 실시간 구독을 시작하므로 기준 snapshot을 적용하기 전에
+후속 event를 처리하지 않는다. HTTP 어댑터는 화면 진입 시 함께 수행하는 모든 요청에 같은
+AbortSignal을 전달한다.
 `src/main.tsx`가 데이터 소스를 선택해 `App`에 주입하므로 화면 컴포넌트는 구현체를 직접
 생성하지 않는다.
 
@@ -224,17 +218,20 @@ LiDAR 2 측정 오류 데이터를 표시한다. `loading`은 1.2초 뒤 정상 
 `empty-lists`는 현황 측정값을 유지하면서 활성 알림, 이력 이벤트, 녹화 목록과 알림 대상이
 없는 상태를 제공한다.
 
-합성 데이터 소스는 외부 API를 호출하지 않고 호출마다 독립된 데이터를 반환한다. 이후
-서버 계약이 확정되면 실제 API 어댑터가 같은 데이터 소스 인터페이스를 구현하고 서버
-응답을 클라이언트 도메인 모델로 변환한다. API polling과 WebSocket 갱신은 어댑터가 선택적
-구독을 구현해 연결한다. 화면 컴포넌트는 서버 DTO (Data Transfer Object)에 직접 의존하지
-않는다. 현황 영상, 녹화 목록의 썸네일, 녹화 재생 화면과 확대 화면은
+합성 데이터 소스의 인스턴스는 화면에서 수행한 설정과 알림 변경을 유지하며 다른 인스턴스와
+상태를 공유하지 않는다. `src/data/http-dashboard-data-source.ts`의 HTTP 어댑터는 제안 계약의
+응답을 같은 도메인 모델로 변환하고 HTTP 요청과 SSE 구독을 처리한다. 화면 컴포넌트는 서버
+DTO (Data Transfer Object)에 직접 의존하지 않는다. 운영 빌드는 HTTP 어댑터를 사용한다.
+개발 환경과 브라우저 테스트 빌드는 기본적으로 합성 데이터 소스를 사용하며 `source=api`와
+`source=mock` query로 session 단위 데이터 소스를 선택할 수 있다. 현황 영상, 녹화 목록의
+썸네일, 녹화 재생 화면과 확대 화면은
 `src/assets/camera-frame.png`의 현장 구성 합성 이미지를 예시로 사용한다. 개발 환경과
 배포 빌드에 같은 이미지를 포함한다. 이미지는 정적인 예시이며 실제 영상 재생 상태를
 나타내지 않는다.
 
-녹화 영상 다운로드와 테스트 알림은 서버 연동 전 합성 환경에서 요청 확인 상태와
-연동 필요 결과만 표시한다. 브라우저는 파일을 내려받거나 이메일과 문자를 발송하지 않는다.
+합성 데이터 소스의 녹화 영상 다운로드와 테스트 알림은 요청 확인 상태만 표시한다. HTTP
+어댑터는 계약이 제공한 다운로드 경로를 사용하고 테스트 알림 endpoint의 접수 여부만
+확인한다. 실제 채널 수신 여부는 사용자가 별도로 확인한다.
 
 이력의 빠른 기간 선택은 최근 24시간, 최근 7일, 최근 30일과 최근 90일이며 기본값은 최근 7일이다.
 선택 시 데이터 소스가 제공한 이력 종료 시각을 기준으로 시작과 종료 시각을 채우고,
@@ -245,9 +242,11 @@ LiDAR 2 측정 오류 데이터를 표시한다. `loading`은 1.2초 뒤 정상 
 유지한다. 예시 데이터의 시간 기준은 `history.startsAt`과 `history.endsAt`이다.
 
 녹화 영상의 조회 조건은 이력과 같은 빠른 기간 선택, 입력칸 배치와 조회 버튼 적용 방식을
-사용한다. 빠른 기간은 녹화 목록의 마지막 종료 시각을 기준으로 계산하며 기본값은 최근
-7일이다. 선택 기간과 녹화 구간이 겹치고 이벤트 유형이 일치하는 영상을 조회한다.
+사용한다. 빠른 기간은 데이터 소스가 제공한 서버 기준 조회 종료 시각으로 계산하며 기본값은
+최근 7일이다. 선택 기간과 녹화 구간이 겹치고 이벤트 유형이 일치하는 영상을 조회한다.
 조회 시 목록 첫 페이지와 첫 영상으로 이동하고 재생 및 다운로드 요청 표시를 초기화한다.
+이력의 관련 녹화 링크로 진입하면 녹화 식별자로 메타데이터를 직접 조회하고 해당 영상의
+시작 및 종료 시각을 초기 조회 구간으로 사용한다.
 빠른 기간 목록과 날짜 계산은 `src/date-range.ts`, 입력칸 배치는 공통 `.query-controls`로
 관리한다.
 
@@ -258,17 +257,18 @@ Escape와 바깥 클릭으로 닫기를 지원한다. 직접 입력한 날짜의
 
 녹화 정보의 보관 기간은 데이터 소스의 `retentionStartsAt`과 `retentionEndsAt`을 표시한다.
 합성 데이터의 보관 시각은 화면 검토용 예시이며 실제 보관 정책과 자동 삭제 동작을
-정의하지 않는다. 실제 보관 시각은 서버 계약 확정 후 어댑터에서 전달한다.
+정의하지 않는다. HTTP 어댑터는 서버 응답의 보관 시작 시각과 만료 시각을 표시 형식으로
+변환한다.
 
-현황의 수거 임계율 아래에는 `admin.preCollectionAlert`의 사전 알림 기준을 보조 정보로
-표시하며 비활성 상태는 사전 알림 꺼짐으로 표시한다. 관리자 화면도 같은 데이터로
-초기화한다. 관리자 저장은 페이지 내부 예시 상태이며 화면 간 저장값 동기화는 구현하지 않는다.
+현황의 수거 임계율 아래에는 monitoring snapshot의 사전 알림 기준을 보조 정보로
+표시하며 비활성 상태는 사전 알림 꺼짐으로 표시한다. 관리자 화면은 알림 설정 응답으로
+초기화한다.
 
 관리자 수거 설정은 1~100의 정수 임계율과 그보다 낮은 사전 알림 기준을 검증한다.
-잘못된 입력은 현재 적용값을 유지하며 오류를 표시한다. 알림 정책 저장은 페이지 내부
-예시 정책을 갱신하고 취소는 마지막 저장값을 복원한다. 테스트 알림 대상은 등록된 전체
+잘못된 입력은 현재 적용값을 유지하며 오류를 표시한다. 알림 정책 저장은 데이터 소스를
+통해 반영하고 취소는 마지막 저장값을 복원한다. 테스트 알림 대상은 등록된 전체
 인원에서 선택하며 빈 목록에서는 대상 선택을 비활성화한다. 설정 저장 피드백은 서버
-영속화와 구분한다. 알림 대상 추가 모달은 dialog 의미와 키보드 포커스 복원을 제공한다.
+응답을 기준으로 표시한다. 알림 대상 추가 모달은 dialog 의미와 키보드 포커스 복원을 제공한다.
 조회나 대상 변경으로 요청 표시를 초기화하면 이전 완료 타이머도 취소한다.
 
 관리자 설정의 발송 시점, 반복 알림, 최대 반복 횟수와 등록 대상 선택은
@@ -276,11 +276,12 @@ Escape와 바깥 클릭으로 닫기를 지원한다. 직접 입력한 날짜의
 사용하며 방향키, Home, End로 이동하고 Enter 또는 Space로 선택한다. Escape는 선택 변경
 없이 닫고, Tab과 바깥 클릭도 목록을 닫는다.
 
-로그인은 UI MVP의 브라우저 세션 상태다. 로그인 제출은 `sessionStorage`에 상태를
-기록하고 로그아웃은 이를 삭제한다. 비로그인 사용자는 현황, 이력과 녹화 영상을 조회할
-수 있으며 관리자 설정, 사용자 메뉴와 개인 알림함은 표시하지 않는다. `/admin` 직접
-접근은 로그인 화면으로 이동한다. 실제 인증, 역할, 토큰, 세션 만료와 서버 요청 보호는
-백엔드 계약 뒤 구현한다.
+합성 데이터 소스의 로그인은 `sessionStorage`에 상태를 기록하고 로그아웃은 이를 삭제한다.
+HTTP 어댑터는 same-origin session Cookie를 포함한 요청, session 응답의 CSRF token과 사용자
+역할을 사용한다. 비로그인 사용자는 현황, 이력과 녹화 영상을 조회할 수 있으며 관리자 설정,
+사용자 메뉴와 개인 알림함은 표시하지 않는다. 관리자 역할이 아닌 사용자의 `/admin` 직접
+접근은 접근 제한 상태를 표시한다. 인증된 session이 API `401` 또는 SSE `session.expired`로
+만료되면 로그인 화면으로 이동한다.
 
 ## 코드 구조와 작업 재개 기준
 
@@ -301,22 +302,43 @@ A와 B 원의 중심은 해당 끝점과 일치한다. 반투명 면은 센서 �
 `src/domain/dashboard.ts`는 화면 데이터 모델의 정본이다.
 `src/data/dashboard-data-source.ts`는 단일 읽기와 선택적 갱신 경계인 `DashboardDataSource`를
 정의한다. `src/data/use-dashboard-data.ts`는 데이터 소스 수명 주기와 화면 상태를 관리한다.
-`src/data/mock-dashboard-data-source.ts`는 개발과 테스트에 사용하는 구현이다. 실제 API
-어댑터는 이 인터페이스를 구현하고 서버 응답을 도메인 모델로 변환한다.
+`src/data/mock-dashboard-data-source.ts`는 개발과 합성 시나리오 테스트에 사용하는 구현이다.
+`src/data/http-dashboard-data-source.ts`는 제안 API를 호출하고 응답을 도메인 모델로 변환하는
+운영 구현이다. `src/components/whep-client.ts`와 `WhepVideo.tsx`는 WHEP 형태의 signaling,
+미디어 연결, 종료와 재연결을 처리한다. 제안 계약, 실시간 규칙과 화면별 API 매핑은
+`docs/contracts/proposal/`에 있다. OpenAPI 생성 타입은 `src/generated/api-contract.ts`에
+추적하며 계약 변경 시 함께 갱신한다.
 
-다음 세션에서 UI와 합성 데이터를 변경할 때는 `pnpm run dev`로 실행하고 필요한 상태를
-`scenario` query로 확인한다. 변경 완료 전에는 `pnpm run check`를 실행한다. 실제 API,
-인증, 실시간 갱신과 미디어 계약은 외부 역할의 확정 없이 구현하지 않는다.
+HTTP 어댑터의 최초 이력 및 녹화 조회와 이후 사용자 조회는 monitoring snapshot의
+`serverTime`에 포함된 명시적 UTC offset을 유지한다. 브라우저 운영체제의 시간대는 조회
+구간에 영향을 주지 않는다. LiDAR profile은 LiDAR 1과 LiDAR 2 카드로 고정하며 응답에서
+누락된 profile은 정보 없음으로 표시한다. 유효하지 않은 최근 적재율과 LiDAR 표본은 축의
+시각 또는 위치는 유지하되 그래프 선을 연결하지 않는다. 알림 대상 생성과 변경은 요청값이
+아니라 서버가 반환한 대상 및 수신 설정을 화면에 적용한다.
+
+SSE 구독은 최근 event ID 1024개로 중복을 제거하고 개인 알림 목록은 최근 20건으로 제한한다.
+재동기화는 snapshot과 인증 사용자의 개인 알림함을 다시 조회한다. 재조회 중 같은 영역의
+새 event가 도착하면 해당 영역의 늦은 응답을 폐기한다. WHEP client는
+`201 Created` 응답에서 Entity Tag (ETag)와 trickle ICE 협상을 확인한 뒤 후보와 수집 완료를 전송한다.
+`406 Not Acceptable` counter-offer에서는 ICE 수집을 완료하고 전체 SDP answer를 `If-Match`
+없이 먼저 전송한다. 서버의 `Retry-After`가 있으면 재연결 지연에 사용한다. 영상 확대 전환과
+화면 종료는 기존 WHEP session을 닫으며 동시에 활성화되는 재생 session은 하나다.
+
+UI와 합성 데이터를 변경할 때는 `pnpm run dev`로 실행하고 필요한 상태를 `scenario` query로
+확인한다. 제안 API 동작은 `source=api`와 계약 테스트 서버로 확인한다. 변경 완료 전에는
+`pnpm run check`를 실행한다. 제안 계약은 외부 담당자의 승인 전까지 확정 계약으로 취급하지
+않는다.
 
 ## 정적 검사와 테스트 기준선
 
-검증 계층은 3개다.
+검증 계층은 4개다.
 
 | 계층 | 도구 | 범위 |
 | --- | --- | --- |
+| 계약 검사 | Redocly CLI와 openapi-typescript | OpenAPI 문법, 참조, 권장 규칙과 생성 타입 일치 |
 | 정적 검사 | ESLint와 typescript-eslint | TypeScript 타입 기반 규칙, React Hooks와 Fast Refresh 경계 |
 | 컴포넌트 테스트 | Vitest, jsdom과 Testing Library | `src/`의 렌더링, 상태와 사용자 상호작용 |
-| 브라우저 테스트 | Playwright Chromium | 프로덕션 빌드의 사용자 흐름과 대상 뷰포트 렌더링 |
+| 브라우저 테스트 | Playwright Chromium | 합성 데이터와 제안 API의 사용자 흐름 및 대상 뷰포트 렌더링 |
 
 `eslint.config.js`는 ESLint flat config, 권장 TypeScript 타입 검사, React Hooks와 Vite
 Fast Refresh 규칙을 적용한다. `pnpm run lint`는 경고를 허용하지 않는다.
@@ -327,18 +349,24 @@ Vitest는 `src/**/*.{test,spec}.{ts,tsx}`만 수집하고 jsdom에서 실행한�
 감시한다.
 
 Playwright는 `e2e/`의 브라우저 테스트를 1440 x 900과 1920 x 1080 Chromium 뷰포트에서
-실행한다. `pnpm run test:e2e`는 타입 검사와 프로덕션 빌드를 완료한 뒤 Vite preview
-서버에서 브라우저 테스트를 수행한다. 빌드 뒤 `scripts/verify-build-output.mjs`가 초기와
-전체 JavaScript, CSS, 웹폰트와 전체 정적 자산의 크기 예산을 검사한다. 실패한 테스트의
-screenshot과 trace는 Git에서 제외한 `test-results/`에 저장한다.
+실행한다. `pnpm run test:e2e`는 타입 검사와 운영 빌드의 크기 예산 검사를 완료한 뒤 합성
+데이터가 포함된 별도 빌드를 Vite preview 서버에서 검증한다. 운영 빌드 뒤
+`scripts/verify-build-output.mjs`가 초기와 전체 JavaScript, CSS, 웹폰트와 전체 정적 자산의
+크기 예산을 검사한다. 실패한 테스트의 screenshot과 trace는 Git에서 제외한
+`test-results/`에 저장한다.
 
 현재 Playwright 테스트는 대시보드 진입, 합성 실시간 갱신과 운영 주기 상태 전이, 상단 브랜드 이동, 알림함 읽음 처리와 닫기,
 관리자 메뉴와 로그인 및 로그아웃, 비로그인 화면 제한, 관리자 경로 제한, 적재율 이력의
 이벤트 상세 표시, 빈 목록, 필터와 페이지 이동, 대상 뷰포트의 수평 오버플로와 카드 잘림,
 푸터 겹침, 대화형 요소의 접근 가능한 이름, 이미지 대체 텍스트와 외부 연동 전 요청
-피드백을 검증한다. Vitest는 합성 데이터 소스의 기본 데이터,
+피드백을 검증한다. 계약 테스트 서버를 사용하는 브라우저 테스트는 로그인, session Cookie와
+CSRF, 화면별 조회, SSE 갱신, 알림 읽음, 녹화 재생 및 다운로드, 관리자 설정과 알림 대상 변경,
+테스트 알림, 로그아웃과 WHEP session 수명을 검증한다. Vitest는 합성 데이터 소스의 기본 데이터,
 상태와 빈 목록 시나리오, AbortSignal 취소, 구독 갱신과 상태 전이, 호출 간 데이터 격리,
-페이지별 필터와 페이지 이동, 관리자 입력 검증과 로그인 입력 상호작용을 검증한다.
+페이지별 필터와 페이지 이동, 관리자 입력 검증과 로그인 입력 상호작용을 검증한다. HTTP
+어댑터의 요청과 변환, 오류와 session 만료, SSE 순서와 재동기화 및 WHEP 정상, counter-offer,
+ICE 전달, 종료와 재연결도 Vitest에서 검증한다. 계약 예제의 최근 24시간 표본 순서와 간격,
+수거 필요 marker 및 당시 적용 임계율의 일치 여부도 함께 검증한다.
 
 CI의 호스트 runner는 Ubuntu 24.04로 고정한다. CI 작업은 `@playwright/test` 1.62.1과
 버전이 일치하는 공식 Playwright Noble 컨테이너
@@ -349,8 +377,8 @@ Node.js와 pnpm은 컨테이너 안에서도 각각 `.node-version`과 `package.
 `packageManager`에 기록된 버전을 사용한다. CI가 사용하는 외부 GitHub Action은 upstream
 Repository의 전체 commit SHA로 고정한다.
 
-`pnpm run check`는 정적 검사, 컴포넌트 테스트, 타입 검사, 프로덕션 빌드와 브라우저
-테스트를 순서대로 실행하는 전체 로컬 검증 명령이다.
+`pnpm run check`는 계약 검사, 정적 검사, 컴포넌트 테스트, 타입 검사, 프로덕션 빌드와
+브라우저 테스트를 순서대로 실행하는 전체 로컬 검증 명령이다.
 
 ## UI 구현과 검토 기준선
 
@@ -364,7 +392,7 @@ UI 초안을 구현한다. 작업 요청자는 대상 Chrome 뷰포트에 렌더
 완료 조건은 `docs/development-workflow.md`를 따른다.
 
 배포 웹폰트는 전체 글리프를 유지한 WOFF2 형식이며 `font-display: swap`을 사용한다. 합성
-영상은 SVG 형식으로 제공한다. 1440 x 900에서는 1920 x 1080과 같은 카드 높이와 간격을
+영상은 PNG 형식으로 제공한다. 1440 x 900에서는 1920 x 1080과 같은 카드 높이와 간격을
 유지하고 페이지 세로 스크롤을 사용한다. 하단 푸터는 문서 흐름에 배치해 카드 위에
 겹치지 않는다.
 
@@ -373,11 +401,14 @@ UI 초안을 구현한다. 작업 요청자는 대상 Chrome 뷰포트에 렌더
 다음 항목은 결정 대기 상태다.
 
 - Chrome 최소 버전, 빌드 출력 호환성과 브라우저 Web API 지원 범위
-- 라우팅, 외부 상태, 입력, 시간, 시각화와 미디어 처리 방식
-- 디자인 토큰, 공통 스타일과 컴포넌트 재사용 경계
 - 시각 회귀 테스트 범위
 - 코드 포맷 정책
-- 실행 시점 설정과 자격 증명 경계
+- 제안 API의 외부 승인과 계약 정본
+- 인증, 접근 권한, CSRF와 session 수명
+- 측정 의미, 표본 주기, 이력 집계와 결측 처리
+- SSE event 보관, keep-alive, 재시도와 timeout
+- 미디어 서비스 WHEP 지원, offer 전 ICE server 전달, codec와 시청자 제한
+- 환경별 upstream, DNS, readiness, timeout, 요청 제한, TLS와 CSP 값
 
 각 항목은 `docs/development-workflow.md`의 구현 기준선 단계에서 조사하고,
 채택한 결과와 근거만 이 문서에 반영한다.
@@ -393,6 +424,8 @@ fnm use
 npx get-pnpm "$(node -p 'require("./package.json").packageManager.split("@").at(-1)')"
 pnpm install --frozen-lockfile
 pnpm run dev
+pnpm run contract:generate
+pnpm run contract:check
 pnpm run lint
 pnpm run typecheck
 pnpm run test
@@ -414,5 +447,6 @@ job은 `linux/amd64` 이미지를 빌드한 뒤 Nginx 설정 문법, 읽기 전�
 Nginx 상태, SPA fallback, 보안 헤더, 자산 캐시, 라이선스 고지, source map과 런타임 빌드 도구
 부재를 검사한다. 같은 job은 테스트 전용 FastAPI 대역 컨테이너와 Docker DNS를 사용해 API
 reverse proxy, forwarded header와 request ID, API rate limit와 request body 제한, read timeout,
-WebSocket 연결과 재연결, proxy buffering 비활성화, upstream DNS 재해석과 구조화 access log를
-검증한다. 테스트 전용 경로, upstream 이름, resolver와 timeout 값은 운영 계약이 아니다.
+즉시 전달되는 SSE와 buffering 비활성화, WHEP 형태의 `POST`, `PATCH` 및 `DELETE`, WebSocket
+Upgrade 호환성, upstream DNS 재해석과 구조화 access log를 검증한다. 테스트 전용 경로,
+upstream 이름, resolver와 timeout 값은 운영 계약이 아니다.
