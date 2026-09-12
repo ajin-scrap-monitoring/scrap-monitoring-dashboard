@@ -29,13 +29,54 @@ test("합성 실시간 갱신 시나리오는 새 스냅샷을 표시한다", as
 });
 
 test("합성 운영 주기 시나리오는 수거와 장애 상태를 순서대로 표시한다", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-09-10T10:00:00Z") });
+  await page.clock.pauseAt(new Date("2026-09-10T10:00:01Z"));
   await page.goto("/?scenario=operation-cycle");
-
+  await expect(page.getByRole("main")).toBeVisible();
+  await page.clock.runFor(500);
   await expect(page.getByText("대표 적재율 80%")).toBeVisible();
+  await page.clock.runFor(500);
   await expect(page.getByText("수거 완료", { exact: true })).toBeVisible({ timeout: 1500 });
-  await expect(page.getByText("측정 오류", { exact: true })).toBeVisible({ timeout: 1500 });
-  await expect(page.getByText("연결 끊김", { exact: true })).toBeVisible({ timeout: 1500 });
+  await page.clock.runFor(500);
+  await expect(page.locator(".page-meta").getByText("측정 오류", { exact: true })).toBeVisible({ timeout: 1500 });
+  await page.clock.runFor(500);
+  await expect(page.locator(".page-meta").getByText("연결 끊김", { exact: true })).toBeVisible({ timeout: 1500 });
+  await page.clock.runFor(500);
   await expect(page.getByText("정상", { exact: true }).first()).toBeVisible({ timeout: 1500 });
+});
+
+test("기간 선택기는 키보드로 날짜를 선택하고 조회 전 결과를 유지한다", async ({ page }) => {
+  for (const path of ["/history", "/recordings"]) {
+    await page.goto(path);
+    const start = page.getByRole("textbox", { name: "시작 시각", exact: true });
+    const previous = await start.inputValue();
+    await page.getByRole("button", { name: "시작 시각 선택기 열기" }).click();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(start).not.toHaveValue(previous);
+    await expect(page.getByRole("button", { name: "시작 시각 선택기 열기" })).toBeFocused();
+    await expect(page.getByText(path === "/history" ? "총 9건" : "8건", { exact: true })).toBeVisible();
+  }
+});
+
+test("관리자 정책 취소와 대상 추가 모달의 키보드 닫기를 제공한다", async ({ page }) => {
+  await page.addInitScript("window.sessionStorage.setItem('scrap-monitoring-authenticated', 'true')");
+  await page.goto("/admin");
+  const timing = page.getByRole("combobox", { name: "발송 시점", exact: true });
+  await timing.click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await expect(timing).toHaveText("5분 후");
+  await page.locator(".policy-actions").getByRole("button", { name: "취소", exact: true }).click();
+  await expect(timing).toHaveText("즉시");
+  const add = page.getByRole("button", { name: "알림 대상 추가", exact: true });
+  await add.click();
+  await expect(page.getByRole("dialog", { name: "알림 대상 추가" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(add).toBeFocused();
 });
 
 test("영상 확대 모달은 키보드로 닫고 원래 제어 요소로 돌아간다", async ({ page }) => {
@@ -119,7 +160,7 @@ test("적재율 이력의 이벤트 트랙에서 상세 정보를 제공한다",
 
   const eventMarker = page.getByLabel("2026-09-03 12:00 수거 필요 대표 적재율 80% 도달");
   await eventMarker.hover();
-  const chart = page.getByLabel("최근 1주일 대표 적재율 변화 그래프");
+  const chart = page.getByLabel("조회 기간 대표 적재율 변화 그래프");
   await expect(chart.getByText("2026-09-03 12:00 수거 필요")).toBeVisible();
   await expect(chart.getByText("대표 적재율 80% 도달")).toBeVisible();
 });
@@ -155,12 +196,16 @@ test("이력과 녹화 목록의 필터 및 페이지 이동을 제공한다", a
   await page.getByRole("button", { name: "다음 이벤트 페이지" }).click();
   await expect(page.getByText("2 / 2")).toBeVisible();
   await page.locator(".history-query").getByRole("button", { name: "오류" }).click();
+  await expect(page.getByText("총 9건")).toBeVisible();
+  await page.locator(".history-query").getByRole("button", { name: "조회", exact: true }).click();
   await expect(page.getByText("총 1건")).toBeVisible();
 
   await page.goto("/recordings");
   await page.getByRole("button", { name: "다음 녹화 목록 페이지" }).click();
   await expect(page.getByRole("img", { name: "2026-09-03 녹화 영상" })).toBeVisible();
   await page.locator(".recordings-query").getByRole("button", { name: "오류" }).click();
+  await expect(page.getByText("8건")).toBeVisible();
+  await page.locator(".recordings-query").getByRole("button", { name: "조회", exact: true }).click();
   await expect(page.getByText("2건")).toBeVisible();
 });
 

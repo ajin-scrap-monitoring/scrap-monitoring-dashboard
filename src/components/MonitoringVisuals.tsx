@@ -4,6 +4,8 @@ import type { DashboardData, LidarProfile } from "../domain/dashboard";
 import { SectionTitle } from "./DashboardPrimitives";
 
 export function MeasurementDiagram({ lidar1Color, lidar2Color }: { lidar1Color: string; lidar2Color: string }) {
+  const lidar1Points = "74.75,153 126,151 158,164 187,171 205,186 226,193 243.24,207";
+  const lidar2Points = "252,102.93 245,132 231,159 211,191 190,226.72";
   return (
     <svg className="measurement-svg" viewBox="0 0 440 275" role="img" aria-label="LiDAR 1과 LiDAR 2 측정선 배치">
       <defs>
@@ -52,13 +54,13 @@ export function MeasurementDiagram({ lidar1Color, lidar2Color }: { lidar1Color: 
       <path d="M45 158 221 214 338 82 281 64 184 123 100 96Z" fill="none" stroke="#30485b" strokeWidth="3" />
       <path d="M45 202 221 258 338 126 281 108 184 167 100 140Z" fill="none" stroke="#647789" strokeWidth="1.4" />
       <path d="M45 158v44M221 214v44M338 82v44M281 64v44M184 123v44M100 96v44" stroke="#40586b" strokeWidth="2" />
-      <polygon points="122,103 91,153 126,151 158,164 187,171 213,186 240,193 262,207 122,103" fill="#1677e8" fillOpacity="0.4" stroke="none" />
-      <polygon points="254,80 270,109 270,131 259,150 248,169 235,191 220,218 254,80" fill="#0ba58f" fillOpacity="0.44" stroke="none" />
+      <polygon points={`122,103 ${lidar1Points}`} fill="#1677e8" fillOpacity="0.4" stroke="none" />
+      <polygon points={`238,90.15 ${lidar2Points}`} fill="#0ba58f" fillOpacity="0.44" stroke="none" />
       <g>
-        <polyline points="91,153 126,151 158,164 187,171 213,186 240,193 262,207" fill="none" stroke="#ffffff" strokeWidth="7" />
-        <polyline points="91,153 126,151 158,164 187,171 213,186 240,193 262,207" fill="none" stroke="#1677e8" strokeWidth="4" />
-        <polyline points="270,109 270,131 259,150 248,169 235,191 220,218" fill="none" stroke="#ffffff" strokeWidth="7" />
-        <polyline points="270,109 270,131 259,150 248,169 235,191 220,218" fill="none" stroke="#0ba58f" strokeWidth="4" />
+        <polyline points={lidar1Points} fill="none" stroke="#ffffff" strokeWidth="7" strokeLinejoin="round" />
+        <polyline points={lidar1Points} fill="none" stroke="#1677e8" strokeWidth="4" strokeLinejoin="round" />
+        <polyline points={lidar2Points} fill="none" stroke="#ffffff" strokeWidth="7" strokeLinejoin="round" />
+        <polyline points={lidar2Points} fill="none" stroke="#0ba58f" strokeWidth="4" strokeLinejoin="round" />
       </g>
 
       <path d="M158 95 202 109 270 32 226 18Z" fill="#3f5261" stroke="#304555" strokeWidth="2.5" />
@@ -67,25 +69,25 @@ export function MeasurementDiagram({ lidar1Color, lidar2Color }: { lidar1Color: 
       <path d="M143 112 187 126 175 145 131 131Z" fill="#edcfaa" stroke="#c47a25" strokeWidth="2" />
       <path d="M143 112 187 126" stroke="#a75f17" strokeWidth="2.4" />
 
-      <g transform="translate(91 153)">
+      <g transform="translate(74.75 153)">
         <circle r="8" fill="#ffffff" stroke={lidar1Color} strokeWidth="2.2" />
         <text x="0" y="4" fill={lidar1Color} fontSize="10" fontWeight="700" textAnchor="middle">A</text>
       </g>
-      <g transform="translate(262 207)">
+      <g transform="translate(243.24 207)">
         <circle r="8" fill="#ffffff" stroke={lidar1Color} strokeWidth="2.2" />
         <text x="0" y="4" fill={lidar1Color} fontSize="10" fontWeight="700" textAnchor="middle">B</text>
       </g>
-      <g transform="translate(270 109)">
+      <g transform="translate(252 102.93)">
         <circle r="8" fill="#ffffff" stroke={lidar2Color} strokeWidth="2.2" />
         <text x="0" y="4" fill={lidar2Color} fontSize="10" fontWeight="700" textAnchor="middle">B</text>
       </g>
-      <g transform="translate(220 218)">
+      <g transform="translate(190 226.72)">
         <circle r="8" fill="#ffffff" stroke={lidar2Color} strokeWidth="2.2" />
         <text x="0" y="4" fill={lidar2Color} fontSize="10" fontWeight="700" textAnchor="middle">A</text>
       </g>
       <circle cx="122" cy="103" r="7" fill="#ffffff" stroke="#40586b" strokeWidth="2" />
       <text x="58" y="82" fill="#1677e8" fontSize="15" fontWeight="700">LiDAR 1</text>
-      <circle cx="254" cy="80" r="7" fill="#ffffff" stroke="#40586b" strokeWidth="2" />
+      <circle cx="238" cy="90.15" r="7" fill="#ffffff" stroke="#40586b" strokeWidth="2" />
       <text x="296" y="65" fill="#087c6c" fontSize="15" fontWeight="700">LiDAR 2</text>
       <path d="M288 229h24" stroke="#1677e8" strokeWidth="4" />
       <text x="319" y="233" fill="#52657a" fontSize="11">LiDAR 1 표면 측정선</text>
@@ -105,7 +107,7 @@ export function LoadChart({ samples, threshold }: { samples: DashboardData["moni
   const toY = (value: number) => chartBottom - (value - yMin) * ((chartBottom - chartTop) / (yMax - yMin));
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const pointY = samples.map((sample) => toY(sample.value));
-  const xTickIndices = [0, 3, 6, 9, 12, 15, 18, 21, 23];
+  const xTickIndices = [0, 3, 6, 9, 12, 15, 18, 21];
   const xTickPositions = xTickIndices.map((index) => xValues[index]);
   const xTickLabels = xTickIndices.map((index) => samples[index].time);
 
@@ -137,9 +139,6 @@ export function LoadChart({ samples, threshold }: { samples: DashboardData["moni
       <text x="408" y="39" transform="translate(408 0) scale(0.69 1) translate(-408 0)" fill="#526278" fontSize="10" fontWeight="600" textAnchor="end">수거 임계율 {threshold}%</text>
       <path d={`M${xValues[0]} ${pointY[0]} ${xValues.slice(1).map((x, index) => `L${x} ${pointY[index + 1]}`).join(" ")} V${chartBottom} H${xValues[0]} Z`} fill="#f58a07" fillOpacity="0.1" />
       <polyline points={`${xValues.map((x, index) => `${x},${pointY[index]}`).join(" ")}`} fill="none" stroke="#f58a07" strokeWidth="4" />
-      <g fill="#f58a07">
-        {xValues.map((cx, index) => <circle key={cx} cx={cx} cy={pointY[index]} r="4" />)}
-      </g>
       {xValues.map((cx, index) => (
         <circle
           key={`target-${cx}`}

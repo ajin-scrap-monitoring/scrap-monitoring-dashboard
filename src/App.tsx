@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useState } from "react";
 
 import { ROUTES, hasAuthenticationSession } from "./app-routing";
-import cameraFrame from "./assets/camera-frame.svg";
+import cameraFrame from "./assets/camera-frame.png";
 import { ApplicationFooter, DashboardHeader, DashboardPageShell } from "./components/DashboardShell";
 import { DashboardStatePage } from "./components/DashboardStatePage";
 import { DashboardStatusLabel, ExpandIcon, SectionTitle } from "./components/DashboardPrimitives";
@@ -77,10 +77,11 @@ function DashboardApplication({ dataSource }: { dataSource: DashboardDataSource 
                   <div className="mini-stat">
                     <span className="label">수거 임계율</span>
                     <strong>{monitoring.summary.collectionThreshold}%</strong>
+                    <span className="pre-alert-summary">{admin.preCollectionAlert.enabled ? `사전 알림 기준 ${admin.preCollectionAlert.threshold}%` : "사전 알림 꺼짐"}</span>
                   </div>
                   <div className="mini-stat">
                     <span className="label">운영 상태</span>
-                    <strong className="status-text ok">적재중</strong>
+                    <strong className="status-text ok">적재 중</strong>
                   </div>
                   <div className="mini-stat">
                     <span className="label">예상 도달</span>
@@ -97,7 +98,7 @@ function DashboardApplication({ dataSource }: { dataSource: DashboardDataSource 
             </section>
             <section className="card top-card span-4 video-card">
               <div className="live-frame">
-                <img src={cameraFrame} alt="스크랩 적재 공간 합성 영상 예시" />
+                <img src={cameraFrame} alt="스크랩 적재 공간 영상 예시" />
                 <span className="live-indicator">LIVE</span>
                 <span className="live-time">{monitoring.videoTimestamp}</span>
                 <button className="fullscreen" type="button" aria-label="실시간 영상 크게 보기" onClick={() => setVideoOpen(true)}><ExpandIcon /></button>

@@ -65,6 +65,8 @@ export type HistoryChartEvent = {
 };
 
 export type Recording = {
+  retentionStartsAt: string;
+  retentionEndsAt: string;
   date: string;
   detail: string;
   duration: string;
@@ -99,10 +101,13 @@ export type DashboardStatus = "normal" | "collection-required" | "measurement-er
 export type DashboardData = {
   lastMeasuredAt: string;
   admin: {
+    preCollectionAlert: { enabled: boolean; threshold: number };
     recipientSettings: Record<string, RecipientSettings>;
     recipients: NotificationRecipient[];
   };
   history: {
+    startsAt: string;
+    endsAt: string;
     chartEvents: HistoryChartEvent[];
     loadSamples: HistoryLoadSample[];
     events: HistoryEvent[];

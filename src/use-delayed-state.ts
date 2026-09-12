@@ -16,5 +16,13 @@ export function useDelayedState<T>(initialState: T): [T, Dispatch<SetStateAction
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
   }, []);
 
-  return [state, setState, setStateAfter];
+  const setImmediateState: Dispatch<SetStateAction<T>> = useCallback((value) => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    setState(value);
+  }, []);
+
+  return [state, setImmediateState, setStateAfter];
 }
