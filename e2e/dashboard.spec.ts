@@ -136,3 +136,89 @@ test("비로그인 사용자는 조회 화면만 사용한다", async ({ page })
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("link", { name: "현황 보기" })).toBeVisible();
 });
+
+test("빈 부가 목록은 각 화면의 빈 상태를 유지한다", async ({ page }) => {
+  await page.goto("/history?scenario=empty-lists");
+  await expect(page.getByText("조회된 이벤트가 없습니다.")).toBeVisible();
+
+  await page.goto("/recordings?scenario=empty-lists");
+  await expect(page.getByText("조회된 녹화 영상이 없습니다.")).toBeVisible();
+  await expect(page.getByText("선택할 수 있는 녹화 영상이 없습니다.")).toBeVisible();
+
+  await page.addInitScript("window.sessionStorage.setItem('scrap-monitoring-authenticated', 'true')");
+  await page.goto("/admin?scenario=empty-lists");
+  await expect(page.getByText("등록된 알림 대상이 없습니다.")).toBeVisible();
+});
+
+test("이력과 녹화 목록의 필터 및 페이지 이동을 제공한다", async ({ page }) => {
+  await page.goto("/history");
+  await page.getByRole("button", { name: "다음 이벤트 페이지" }).click();
+  await expect(page.getByText("2 / 2")).toBeVisible();
+  await page.locator(".history-query").getByRole("button", { name: "오류" }).click();
+  await expect(page.getByText("총 1건")).toBeVisible();
+
+  await page.goto("/recordings");
+  await page.getByRole("button", { name: "다음 녹화 목록 페이지" }).click();
+  await expect(page.getByRole("img", { name: "2026-09-03 녹화 영상" })).toBeVisible();
+  await page.locator(".recordings-query").getByRole("button", { name: "오류" }).click();
+  await expect(page.getByText("2건")).toBeVisible();
+});
+
+test("주요 페이지는 대상 뷰포트에서 수평으로 넘치지 않는다", async ({ page }) => {
+  await page.addInitScript("window.sessionStorage.setItem('scrap-monitoring-authenticated', 'true')");
+
+  const pages = [
+    ["/", "스크랩 모니터링", 1],
+    ["/history", "이력", 1],
+    ["/recordings", "녹화 영상", 1],
+    ["/admin", "관리자 설정", 1],
+    ["/login", "로그인", 2],
+  ] as const;
+
+  for (const [path, heading, level] of pages) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { name: heading, exact: true, level })).toBeVisible();
+    const horizontalOverflow = await page.evaluate<number>(
+      "document.documentElement.scrollWidth - document.documentElement.clientWidth",
+    );
+    const maximumCardOverflow = await page.evaluate<number>(
+      "Math.max(0, ...[...document.querySelectorAll('.card')].map((element) => element.scrollHeight - element.clientHeight))",
+    );
+    const footerOverlapCount = await page.evaluate<number>(
+      "(() => { const footer = document.querySelector('.app-footer'); if (!footer) return 0; const footerRect = footer.getBoundingClientRect(); return [...document.querySelectorAll('.card')].filter((element) => { const cardRect = element.getBoundingClientRect(); return cardRect.bottom > footerRect.top && cardRect.top < footerRect.bottom; }).length; })()",
+    );
+    const documentHeight = await page.evaluate<number>("document.documentElement.scrollHeight");
+    expect(horizontalOverflow).toBeLessThanOrEqual(0);
+    expect(maximumCardOverflow).toBeLessThanOrEqual(2);
+    expect(footerOverlapCount).toBe(0);
+    expect(documentHeight).toBeLessThanOrEqual(1100);
+  }
+});
+
+test("주요 페이지의 대화형 요소와 이미지에 접근 가능한 이름을 제공한다", async ({ page }) => {
+  await page.addInitScript("window.sessionStorage.setItem('scrap-monitoring-authenticated', 'true')");
+
+  for (const path of ["/", "/history", "/recordings", "/admin", "/login"]) {
+    await page.goto(path);
+    await expect(page.locator("main")).toBeVisible();
+
+    const unnamedControls = await page.evaluate<string[]>(`[...document.querySelectorAll('button, input, select, textarea, a[href]')]
+      .filter((element) => {
+        const ariaLabel = element.getAttribute('aria-label')?.trim();
+        const labelledBy = element.getAttribute('aria-labelledby')
+          ?.split(/\\s+/)
+          .map((id) => document.getElementById(id)?.textContent?.trim() ?? '')
+          .join(' ')
+          .trim();
+        const labels = 'labels' in element
+          ? [...(element.labels ?? [])].map((label) => label.textContent?.trim() ?? '').join(' ').trim()
+          : '';
+        return !ariaLabel && !labelledBy && !labels && !element.textContent?.trim() && !element.getAttribute('title');
+      })
+      .map((element) => element.outerHTML)`);
+    const imagesWithoutAlt = await page.locator("img:not([alt])").count();
+
+    expect(unnamedControls).toEqual([]);
+    expect(imagesWithoutAlt).toBe(0);
+  }
+});

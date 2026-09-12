@@ -11,7 +11,7 @@ export function useModalFocus<T extends HTMLElement>(isOpen: boolean, onClose: (
     returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const modal = () => modalRef.current ?? (selector ? document.querySelector<T>(selector) : null);
     const focusFirstElement = () => modal()?.querySelector<HTMLElement>(focusableSelector)?.focus();
-    window.setTimeout(focusFirstElement, 0);
+    const focusTimer = window.setTimeout(focusFirstElement, 0);
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -35,6 +35,7 @@ export function useModalFocus<T extends HTMLElement>(isOpen: boolean, onClose: (
 
     window.addEventListener("keydown", handleKeyDown);
     return () => {
+      window.clearTimeout(focusTimer);
       window.removeEventListener("keydown", handleKeyDown);
       returnFocusRef.current?.focus();
     };
