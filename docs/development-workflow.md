@@ -257,8 +257,9 @@ GitHub Actions는 PR과 `main` push에서 이미지를 게시하지 않고 빌�
 모니터링, 이력, 녹화 영상, 로그인과 관리자 설정의 UI MVP와 합성 데이터 경계가 구현되어
 있다. Node.js, pnpm, React, TypeScript, Vite, ESLint, Vitest와 Playwright 기준선이
 채택되어 있다. `linux/amd64` OCI 이미지의 Nginx 런타임, CI 검증과 Git tag 기반 GHCR
-게시 절차가 구현되어 있다. 실제 인증, 실시간 데이터, 미디어 signaling과 배포 환경의
-Nginx 설정은 외부 계약 확정 뒤 구현한다.
+게시 절차가 구현되어 있다. 제안 OpenAPI의 HTTP 어댑터, SSE 상태 갱신과 WHEP 형태의
+signaling client가 구현되어 있다. 실제 외부 서비스 연동과 환경별 Nginx 설정은 계약 승인과
+배포 입력값 확정 뒤 검증한다.
 
 ## 기술 기준 재검토 순서
 

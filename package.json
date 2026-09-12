@@ -12,11 +12,13 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "pnpm run build && pnpm run verify:build-output && playwright test",
+    "test:e2e": "pnpm run build && pnpm run verify:build-output && VITE_ENABLE_MOCK_DATA=true vite build && playwright test",
     "build": "tsc -b && vite build",
     "verify:build-output": "node scripts/verify-build-output.mjs",
+    "contract:generate": "openapi-typescript docs/contracts/proposal/openapi.yaml --output src/generated/api-contract.ts --immutable",
+    "contract:check": "redocly lint docs/contracts/proposal/openapi.yaml && openapi-typescript docs/contracts/proposal/openapi.yaml --output src/generated/api-contract.ts --immutable --check",
     "preview": "vite preview",
-    "check": "pnpm run lint && pnpm run test && pnpm run test:e2e"
+    "check": "pnpm run contract:check && pnpm run lint && pnpm run test && pnpm run test:e2e"
   },
   "dependencies": {
     "react": "19.2.8",
@@ -25,6 +27,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.62.1",
+    "@redocly/cli": "2.52.1",
     "@testing-library/dom": "10.4.1",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.2",
@@ -38,6 +41,7 @@
     "eslint-plugin-react-refresh": "0.5.4",
     "globals": "17.11.0",
     "jsdom": "30.0.1",
+    "openapi-typescript": "7.13.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.67.0",
     "vite": "8.2.2",

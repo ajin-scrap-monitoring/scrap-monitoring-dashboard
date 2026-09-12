@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, expect, test } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 
 import { AUTHENTICATION_SESSION_KEY } from "../app-routing";
 import { createMockDashboardDataSource } from "../data/mock-dashboard-data-source";
@@ -117,6 +117,25 @@ test("녹화 조회는 겹치는 기간을 찾고 잘못된 기간에서는 기�
   expect(screen.getByText("조회된 녹화 영상이 없습니다.")).toBeVisible();
 });
 
+test("재생 또는 다운로드 경로가 없는 녹화 상태를 명시한다", async () => {
+  const data = await createMockDashboardDataSource().getDashboardData();
+  const recording = {
+    ...data.recordings[0],
+    contentUrl: undefined,
+    downloadUrl: undefined,
+    sample: false,
+    status: "expired" as const,
+    thumbnailUrl: undefined,
+  };
+
+  render(<RecordingsPage recordings={[recording]} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="normal" />);
+
+  expect(screen.getByText("재생 가능한 영상이 없습니다.")).toBeVisible();
+  expect(screen.getByRole("button", { name: "다운로드 불가" })).toBeDisabled();
+  expect(screen.getByText("이 녹화 영상은 다운로드할 수 없습니다.")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "녹화 영상 크게 보기" })).not.toBeInTheDocument();
+});
+
 test("빈 이력, 녹화 목록과 알림 대상에 명시적인 상태를 표시한다", async () => {
   const data = await createMockDashboardDataSource("empty-lists").getDashboardData();
   const { unmount } = render(<HistoryPage history={data.history} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="normal" />);
@@ -180,6 +199,33 @@ test("관리자 임계율은 범위 밖 값과 사전 알림 기준 역전을 �
   await user.click(screen.getByRole("button", { name: "수거 설정 저장" }));
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(document.querySelector(".threshold-applied strong")).toHaveTextContent("85%");
+});
+
+test("관리자 설정 저장은 서버가 정규화한 응답을 화면 기준으로 사용한다", async () => {
+  const user = userEvent.setup();
+  const dataSource = createMockDashboardDataSource();
+  const data = await dataSource.getDashboardData();
+  dataSource.replaceAlertSettings = vi.fn((settings) => Promise.resolve({
+    ...settings,
+    collectionThreshold: 84,
+    preCollectionAlert: { enabled: true, threshold: 69 },
+    sendDelayMinutes: 0,
+    version: '"settings-v2"',
+  }));
+  render(<AdminPage admin={data.admin} dataSource={dataSource} headerNotifications={[]} />);
+
+  fireEvent.change(screen.getByLabelText("변경값"), { target: { value: "85" } });
+  await user.click(screen.getByRole("button", { name: "수거 설정 저장" }));
+  expect(await screen.findByText("수거 설정을 저장했습니다.")).toBeVisible();
+  expect(screen.getByLabelText("변경값")).toHaveValue(84);
+  expect(document.querySelector(".threshold-applied strong")).toHaveTextContent("84%");
+
+  const timing = screen.getByRole("combobox", { name: "발송 시점" });
+  await user.click(timing);
+  await user.click(screen.getByRole("option", { name: "5분 후" }));
+  await user.click(screen.getByRole("button", { name: "정책 저장" }));
+  expect(await screen.findByText("알림 정책을 저장했습니다.")).toBeVisible();
+  expect(timing).toHaveTextContent("즉시");
 });
 
 test("정책 취소는 저장값을 복원하고 테스트 대상은 등록된 전체 인원을 제공한다", async () => {

@@ -93,6 +93,7 @@ button { cursor: pointer; }
 .header-notification:hover { background: #fff9f1; }
 .header-notification.read { background: #f8fafc; }
 .header-notification-dot { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; }
+.header-notification-dot.info { background: #1677e8; }
 .header-notification-dot.warning { background: #f58a07; }
 .header-notification-dot.error { background: #d13e35; }
 .header-notification strong, .header-notification small { display: block; }
@@ -163,7 +164,7 @@ button { cursor: pointer; }
 .top-card { display: flex; flex-direction: column; }
 
 .live-frame { position: relative; flex: 1 1 auto; width: auto; height: auto; max-width: 100%; max-height: 100%; aspect-ratio: 4 / 3; margin: 0 auto; overflow: hidden; border: 2px solid #282c30; border-radius: 5px; background: #15181b; }
-.live-frame img { width: 100%; height: 100%; object-fit: cover; }
+.live-frame img, .live-frame video { display: block; width: 100%; height: 100%; object-fit: cover; }
 .live-indicator { position: absolute; top: 10px; left: 10px; display: inline-flex; height: 24px; align-items: center; padding: 0 8px; border-radius: 3px; background: #d93434; color: #ffffff; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; line-height: 1; }
 .fullscreen { position: absolute; right: 8px; bottom: 8px; display: grid; width: 32px; height: 32px; place-items: center; padding: 0; border: 0; border-radius: 3px; background: rgba(15, 17, 20, 0.78); color: #ffffff; }
 .expand-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
@@ -171,7 +172,9 @@ button { cursor: pointer; }
 .video-modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 32px; background: rgba(8, 14, 22, 0.78); }
 .video-modal-panel { position: relative; width: min(1200px, 94vw); padding: 18px; border: 1px solid #52657a; border-radius: 6px; background: #15181b; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35); }
 .video-modal-frame { position: relative; }
-.video-modal-frame img { display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 3px; }
+.video-modal-frame img, .video-modal-frame video { display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 3px; }
+.video-connection-state, .video-retry { position: absolute; left: 50%; top: 50%; z-index: 3; transform: translate(-50%, -50%); border: 0; border-radius: 4px; padding: 8px 12px; background: rgb(15 23 42 / 78%); color: #fff; font: inherit; }
+.video-retry { cursor: pointer; background: #f58a07; font-weight: 700; }
 .video-modal-frame .live-indicator { top: 10px; left: 10px; }
 .video-modal-frame .live-time { top: 10px; right: 10px; }
 .video-modal-close { position: absolute; top: -42px; right: 0; z-index: 2; min-width: 68px; height: 34px; padding: 0 16px; border: 0; border-radius: 4px; background: #f58a07; color: #1f2225; font-size: 14px; font-weight: 700; }
@@ -202,6 +205,7 @@ button { cursor: pointer; }
 .active-alert strong { flex: 0 0 auto; font-size: 14px; }
 .active-alert span { color: #61708a; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .active-alert time { flex: 0 0 auto; color: #61708a; font-size: 12px; }
+.alert-info { color: #1677e8; }
 .alert-warning { color: #f58a07; }
 .alert-error { color: #e83232; }
 .pagination { display: flex; height: 30px; align-items: center; justify-content: center; gap: 14px; color: #61708a; font-size: 12px; font-weight: 700; }
@@ -211,6 +215,7 @@ button { cursor: pointer; }
 
 .devices-card { display: flex; flex-direction: column; }
 .device-grid { display: grid; flex: 1; align-content: start; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-top: 6px; }
+.device-grid > .collection-empty { grid-column: 1 / -1; }
 .device { display: grid; min-height: 86px; align-items: center; padding: 9px 12px; border: 1px solid #e2e7ed; border-radius: 5px; }
 .device-name { display: block; margin-bottom: 5px; font-size: 14px; font-weight: 700; }
 .device-meta { display: block; margin-top: 4px; color: #61708a; font-size: 11px; }
@@ -290,6 +295,7 @@ button { cursor: pointer; }
 .recording-item:first-child { border-top: 0; }
 .recording-item.selected { border: 1px solid #f58a07; border-radius: 5px; background: #fffaf3; }
 .recording-item img { width: 92px; height: 69px; border-radius: 3px; object-fit: cover; }
+.recording-thumbnail-empty { display: grid; width: 92px; height: 69px; place-items: center; border-radius: 3px; background: #e9edf1; color: #718096; font-size: 10px; font-weight: 700; }
 .recording-item-main, .recording-item-side { display: grid; min-width: 0; gap: 4px; }
 .recording-item-main strong { font-size: 15px; }
 .recording-item-main > span:not(.status-text), .recording-item-side > span:last-child { color: #61708a; font-size: 12px; white-space: nowrap; }
@@ -303,7 +309,8 @@ button { cursor: pointer; }
 .recording-player-center { position: absolute; top: 50%; left: 50%; width: min(calc(100% - 32px), 880px); transform: translate(-50%, -50%); }
 .recording-stage { display: flex; width: 100%; justify-content: center; }
 .recording-frame { position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border: 2px solid #282c30; border-radius: 4px 4px 0 0; background: #15181b; }
-.recording-frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.recording-frame img, .recording-frame video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.recording-media-unavailable { display: grid; width: 100%; height: 100%; place-items: center; color: #cbd3dc; font-size: 14px; font-weight: 700; }
 .recorded-time { position: absolute; top: 10px; right: 10px; display: inline-flex; height: 24px; align-items: center; padding: 0 8px; border-radius: 3px; background: rgba(15, 17, 20, 0.72); color: #ffffff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; font-weight: 600; letter-spacing: 0.02em; line-height: 1; white-space: nowrap; }
 .recording-expand { position: absolute; right: 8px; bottom: 8px; display: grid; width: 32px; height: 32px; place-items: center; padding: 0; border: 0; border-radius: 3px; background: rgba(15, 17, 20, 0.78); color: #ffffff; }
 .recording-controls { display: flex; width: 100%; height: 44px; align-items: center; gap: 12px; padding: 0 12px; background: #282c30; color: #ffffff; }

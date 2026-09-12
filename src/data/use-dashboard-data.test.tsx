@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import type { DashboardDataSource } from "./dashboard-data-source";
 import { createMockDashboardDataSource } from "./mock-dashboard-data-source";
@@ -36,60 +36,55 @@ test("요청 오류 뒤 재시도하면 새 스냅샷을 표시한다", async ()
   expect(await screen.findByText("72%")).toBeVisible();
 });
 
-test("실시간 스냅샷은 늦게 도착한 초기 응답에 덮어쓰이지 않는다", async () => {
-  const staleData = await createMockDashboardDataSource().getDashboardData();
-  const latestData = structuredClone(staleData);
+test("초기 스냅샷을 적용한 뒤 실시간 구독을 시작한다", async () => {
+  const initialData = await createMockDashboardDataSource().getDashboardData();
+  const latestData = structuredClone(initialData);
   latestData.monitoring.summary.loadPercent = 91;
-  let resolveInitial: ((data: typeof staleData) => void) | undefined;
-  let publishSnapshot: ((data: typeof staleData) => void) | undefined;
+  let resolveInitial: ((data: typeof initialData) => void) | undefined;
+  let publishSnapshot: ((data: typeof initialData) => void) | undefined;
+  const subscribe = vi.fn((listener: (data: typeof initialData) => void) => {
+    publishSnapshot = listener;
+    return () => undefined;
+  });
   const dataSource: DashboardDataSource = {
     getDashboardData: () => new Promise((resolve) => {
       resolveInitial = resolve;
     }),
-    subscribe: (listener) => {
-      publishSnapshot = listener;
-      return () => undefined;
-    },
+    subscribe,
   };
 
   render(<DashboardDataHarness dataSource={dataSource} />);
+  expect(subscribe).not.toHaveBeenCalled();
+
+  await act(async () => {
+    resolveInitial?.(initialData);
+    await Promise.resolve();
+  });
+  expect(screen.getByText("72%")).toBeVisible();
+  expect(subscribe).toHaveBeenCalledOnce();
 
   act(() => {
     publishSnapshot?.(latestData);
-  });
-  expect(screen.getByText("91%")).toBeVisible();
-
-  act(() => {
-    resolveInitial?.(staleData);
   });
   expect(screen.getByText("91%")).toBeVisible();
 });
 
-test("실시간 스냅샷 뒤의 초기 요청 오류는 최신 상태를 지우지 않는다", async () => {
-  const latestData = await createMockDashboardDataSource().getDashboardData();
-  latestData.monitoring.summary.loadPercent = 93;
+test("초기 스냅샷 요청이 실패하면 실시간 구독을 시작하지 않는다", async () => {
   let rejectInitial: ((error: Error) => void) | undefined;
-  let publishSnapshot: ((data: typeof latestData) => void) | undefined;
+  const subscribe = vi.fn(() => () => undefined);
   const dataSource: DashboardDataSource = {
     getDashboardData: () => new Promise((_, reject) => {
       rejectInitial = reject;
     }),
-    subscribe: (listener) => {
-      publishSnapshot = listener;
-      return () => undefined;
-    },
+    subscribe,
   };
 
   render(<DashboardDataHarness dataSource={dataSource} />);
 
-  act(() => {
-    publishSnapshot?.(latestData);
-  });
-  expect(screen.getByText("93%")).toBeVisible();
-
-  act(() => {
+  await act(async () => {
     rejectInitial?.(new Error("stale failure"));
+    await Promise.resolve();
   });
-  expect(screen.getByText("93%")).toBeVisible();
-  expect(screen.queryByText("stale failure")).not.toBeInTheDocument();
+  expect(screen.getByText("stale failure")).toBeVisible();
+  expect(subscribe).not.toHaveBeenCalled();
 });

@@ -13,6 +13,7 @@ Repository다.
 | [`docs/mockups/README.md`](docs/mockups/README.md) | 코드 기반 화면 목업과 렌더링 방법 |
 | [`docs/development-workflow.md`](docs/development-workflow.md) | 요구사항, 설계, 구현, 검증과 배포 순서 |
 | [`docs/implementation.md`](docs/implementation.md) | 채택한 기술과 현재 구현 상태 |
+| [`docs/contracts/README.md`](docs/contracts/README.md) | 외부 연동 계약 항목, 결정 순서와 완료 조건 |
 
 ## 학습 자료
 

@@ -282,7 +282,7 @@
 | --- | --- | --- |
 | 대시보드 제공 | Hypertext Transfer Protocol (HTTP) 정적 파일 | Hypertext Markup Language (HTML), JavaScript와 Cascading Style Sheets (CSS) 로드 |
 | 상태 및 이력 데이터 | HTTP JavaScript Object Notation (JSON) | 현재 상태, 이력, 임계율과 알림 설정 요청 및 응답 |
-| 실시간 상태 갱신 | WebSocket | 상태와 알림의 변경 내용 수신 |
+| 실시간 상태 갱신 | Server-Sent Events (SSE) | 상태와 알림의 변경 내용 수신 |
 | 녹화 영상과 파일 | HTTP 미디어 및 다운로드 | 녹화 구간 조회, 재생과 녹화 영상 다운로드 |
 
 연동 설계 전에는 데이터 개체, 시간대, 오류 형식, 실시간 메시지의 순서와 중복, 재연결 후

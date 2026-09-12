@@ -1,0 +1,1843 @@
+openapi: 3.1.0
+info:
+  title: Scrap Monitoring Dashboard API Proposal
+  version: 0.1.0-proposal
+  summary: Frontend-driven HTTP API proposal
+  description: |
+    This document describes the HTTP interface currently required by the dashboard.
+    Every path, field, status code, and security scheme remains a proposal until the
+    responsible frontend, FastAPI, measurement, media, and deployment owners approve it.
+  license:
+    name: No license granted; see repository terms
+    url: https://github.com/ajin-scrap-monitoring/scrap-monitoring-dashboard
+x-contract-status: proposal
+x-pending-decisions:
+  - Contract source repository and approval owner
+  - Final API base path and version policy
+  - Authentication and CSRF protection
+  - Exact enum values and measurement semantics
+  - Pre-offer STUN and TURN server configuration delivery
+  - Rate limits, timeouts, and environment-specific upstream values
+servers:
+  - url: /
+    description: Same-origin Nginx endpoint
+security:
+  - sessionCookie: []
+tags:
+  - name: Session
+    description: Browser authentication session
+  - name: Monitoring
+    description: Current measurement and equipment state
+  - name: Realtime
+    description: Server-Sent Events for monitoring updates
+  - name: History
+    description: Representative load history and operational events
+  - name: Notifications
+    description: Current user's notification inbox
+  - name: Recordings
+    description: Recording metadata, playback, and download
+  - name: Administration
+    description: Alert policy and notification recipient management
+  - name: Streaming
+    description: WHEP-shaped WebRTC playback signaling
+paths:
+  /api/v1/session:
+    get:
+      tags: [Session]
+      operationId: getSession
+      summary: Get the current browser session
+      responses:
+        "200":
+          description: Authenticated session
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Session]
+      operationId: createSession
+      summary: Create a browser session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Session created and session Cookie set
+          headers:
+            Set-Cookie:
+              description: Proposed HttpOnly, Secure, and SameSite session Cookie
+              schema:
+                type: string
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [Session]
+      operationId: deleteSession
+      summary: Delete the current browser session
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Session deleted
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/monitoring/snapshot:
+    get:
+      tags: [Monitoring]
+      operationId: getMonitoringSnapshot
+      summary: Get the current monitoring snapshot
+      security: []
+      responses:
+        "200":
+          description: Current dashboard snapshot
+          headers:
+            Cache-Control:
+              description: Snapshot responses are not stored by shared caches
+              schema:
+                type: string
+                const: no-store
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitoringSnapshot"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/monitoring/events:
+    get:
+      tags: [Realtime]
+      operationId: streamMonitoringEvents
+      summary: Stream monitoring updates with Server-Sent Events
+      description: Monitoring events are public; notification.created is emitted only when a valid session Cookie is present.
+      security:
+        - {}
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/LastEventId"
+      x-event-data-schemas:
+        monitoring.snapshot:
+          $ref: "#/components/schemas/MonitoringSnapshot"
+        notification.created:
+          $ref: "#/components/schemas/Notification"
+        session.expired:
+          type: object
+          additionalProperties: false
+          required: [reason]
+          properties:
+            reason:
+              type: string
+              enum: [expired, revoked]
+        stream.resync-required:
+          type: object
+          additionalProperties: false
+          required: [reason, snapshotPath]
+          properties:
+            reason:
+              type: string
+              enum: [event_not_retained, stream_restarted, schema_changed]
+            snapshotPath:
+              type: string
+              format: uri-reference
+              const: /api/v1/monitoring/snapshot
+      responses:
+        "200":
+          description: SSE stream using id, event, data, and retry fields
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-cache
+            X-Accel-Buffering:
+              schema:
+                type: string
+                const: no
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE frames whose JSON data follows x-event-data-schemas
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/history/load:
+    get:
+      tags: [History]
+      operationId: getLoadHistory
+      summary: Get representative load percentage history
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - $ref: "#/components/parameters/EventCategoryFilter"
+      responses:
+        "200":
+          description: Representative load history
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoadHistory"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/events:
+    get:
+      tags: [History]
+      operationId: listEvents
+      summary: List operational events
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - $ref: "#/components/parameters/EventCategoryFilter"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Event page ordered by occurredAt descending
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventPage"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      summary: List notifications for the current user
+      parameters:
+        - name: unreadOnly
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Notification page ordered by occurredAt descending
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/notifications/{notificationId}:
+    patch:
+      tags: [Notifications]
+      operationId: updateNotification
+      summary: Update the current user's notification state
+      parameters:
+        - $ref: "#/components/parameters/NotificationId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationUpdate"
+      responses:
+        "200":
+          description: Updated notification
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/notifications/read-all:
+    post:
+      tags: [Notifications]
+      operationId: markAllNotificationsRead
+      summary: Mark all current notifications as read
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: All current notifications marked as read
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/recordings:
+    get:
+      tags: [Recordings]
+      operationId: listRecordings
+      summary: List recordings overlapping the requested interval
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - $ref: "#/components/parameters/EventCategoryFilter"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Recording page ordered by startedAt descending
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordingPage"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/recordings/{recordingId}:
+    get:
+      tags: [Recordings]
+      operationId: getRecording
+      summary: Get recording metadata by identifier
+      description: Supports direct navigation from an event outside the default recording list interval.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/RecordingId"
+      responses:
+        "200":
+          description: Recording metadata
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recording"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/recordings/{recordingId}/content:
+    get:
+      tags: [Recordings]
+      operationId: streamRecording
+      summary: Stream recording content with byte range support
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/RecordingId"
+        - name: Range
+          in: header
+          required: false
+          schema:
+            type: string
+          example: bytes=0-1048575
+      responses:
+        "200":
+          description: Entire recording content
+          headers:
+            Accept-Ranges:
+              schema:
+                type: string
+                const: bytes
+            Content-Length:
+              schema:
+                type: integer
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: Requested byte range
+          headers:
+            Accept-Ranges:
+              schema:
+                type: string
+                const: bytes
+            Content-Range:
+              schema:
+                type: string
+            Content-Length:
+              schema:
+                type: integer
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "416":
+          $ref: "#/components/responses/RangeNotSatisfiable"
+
+  /api/v1/recordings/{recordingId}/thumbnail:
+    get:
+      tags: [Recordings]
+      operationId: getRecordingThumbnail
+      summary: Get the recording preview image
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/RecordingId"
+      responses:
+        "200":
+          description: Recording preview image
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: public, max-age=3600
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/recordings/{recordingId}/download:
+    get:
+      tags: [Recordings]
+      operationId: downloadRecording
+      summary: Download recording content
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/RecordingId"
+      responses:
+        "200":
+          description: Recording attachment
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              example: attachment; filename="recording-example.mp4"
+            Content-Length:
+              schema:
+                type: integer
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/settings/alerts:
+    get:
+      tags: [Administration]
+      operationId: getAlertSettings
+      summary: Get alert settings
+      responses:
+        "200":
+          description: Current alert settings
+          headers:
+            ETag:
+              $ref: "#/components/headers/EntityTag"
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertSettings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      tags: [Administration]
+      operationId: replaceAlertSettings
+      summary: Replace alert settings
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AlertSettingsUpdate"
+      responses:
+        "200":
+          description: Updated alert settings
+          headers:
+            ETag:
+              $ref: "#/components/headers/EntityTag"
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertSettings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/notification-recipients:
+    get:
+      tags: [Administration]
+      operationId: listNotificationRecipients
+      summary: List notification recipients
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Notification recipient page ordered by name
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationRecipientPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Administration]
+      operationId: createNotificationRecipient
+      summary: Create a notification recipient
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationRecipientCreate"
+      responses:
+        "201":
+          description: Notification recipient created
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri-reference
+            ETag:
+              $ref: "#/components/headers/EntityTag"
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationRecipient"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/notification-recipients/{recipientId}:
+    patch:
+      tags: [Administration]
+      operationId: updateNotificationRecipient
+      summary: Update a notification recipient
+      parameters:
+        - $ref: "#/components/parameters/RecipientId"
+        - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/NotificationRecipientPatch"
+      responses:
+        "200":
+          description: Updated notification recipient
+          headers:
+            ETag:
+              $ref: "#/components/headers/EntityTag"
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationRecipient"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/notifications/test:
+    post:
+      tags: [Administration]
+      operationId: sendTestNotification
+      summary: Queue a test notification
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TestNotificationRequest"
+      responses:
+        "202":
+          description: Test notification request accepted for asynchronous delivery
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/webrtc/streams/{streamId}:
+    post:
+      tags: [Streaming]
+      operationId: createWebRtcSession
+      summary: Create a WHEP-shaped WebRTC playback session
+      security: []
+      parameters:
+        - name: streamId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: "^[A-Za-z0-9][A-Za-z0-9._~-]*$"
+          example: camera-main
+      requestBody:
+        required: true
+        content:
+          application/sdp:
+            schema:
+              type: string
+            example: "v=0\r\n..."
+      responses:
+        "201":
+          description: WebRTC session created with required ETag and a Trickle ICE SDP answer
+          headers:
+            Location:
+              description: Required same-origin session resource URL used for PATCH and DELETE
+              schema:
+                type: string
+                format: uri-reference
+            ETag:
+              $ref: "#/components/headers/EntityTag"
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/sdp:
+              schema:
+                type: string
+              example: "v=0\r\na=ice-options:trickle\r\n..."
+        "406":
+          description: WebRTC counter-offer requiring a full ICE SDP answer PATCH
+          headers:
+            Location:
+              description: Required same-origin session resource URL used for the answer PATCH and later termination
+              schema:
+                type: string
+                format: uri-reference
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/sdp:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/StreamNotReady"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/webrtc/sessions/{sessionId}:
+    patch:
+      tags: [Streaming]
+      operationId: updateWebRtcSession
+      summary: Send an SDP answer or trickle ICE fragment to a WebRTC session
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/WebRtcSessionId"
+        - name: If-Match
+          in: header
+          required: false
+          description: Required with the latest ETag for trickle ICE; omitted for an SDP answer to a counter-offer
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/trickle-ice-sdpfrag:
+            schema:
+              type: string
+            example: "a=group:BUNDLE 0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=mid:0\r\na=ice-ufrag:example\r\na=ice-pwd:example-password\r\na=candidate:1 1 UDP 2122260223 192.0.2.1 5000 typ host\r\na=end-of-candidates\r\n"
+          application/sdp:
+            schema:
+              type: string
+              description: SDP answer sent only in response to a server counter-offer
+      responses:
+        "204":
+          description: SDP answer or ICE fragment accepted
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+    delete:
+      tags: [Streaming]
+      operationId: deleteWebRtcSession
+      summary: Delete a WebRTC playback session
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/WebRtcSessionId"
+      responses:
+        "200":
+          description: WebRTC session deleted
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: scrap_session
+      description: Proposed same-origin HttpOnly session Cookie; final authentication remains pending
+
+  headers:
+    RequestId:
+      description: Request identifier generated or propagated by the server
+      schema:
+        type: string
+        minLength: 1
+    EntityTag:
+      description: Strong entity-tag value, including the surrounding double quotes, used with If-Match
+      schema:
+        type: string
+        pattern: '^"[^"]+"$'
+        example: '"settings-contract-v1"'
+
+  parameters:
+    From:
+      name: from
+      in: query
+      required: true
+      description: Inclusive RFC 3339 start timestamp
+      schema:
+        type: string
+        format: date-time
+      example: "2026-09-03T00:00:00+09:00"
+    To:
+      name: to
+      in: query
+      required: true
+      description: Inclusive RFC 3339 end timestamp
+      schema:
+        type: string
+        format: date-time
+      example: "2026-09-10T00:00:00+09:00"
+    EventCategoryFilter:
+      name: eventCategory
+      in: query
+      required: false
+      description: Omission includes all event categories
+      schema:
+        $ref: "#/components/schemas/EventCategory"
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    LastEventId:
+      name: Last-Event-ID
+      in: header
+      required: false
+      description: Last SSE event ID successfully applied by the browser
+      schema:
+        type: string
+        minLength: 1
+    NotificationId:
+      name: notificationId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    RecordingId:
+      name: recordingId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    RecipientId:
+      name: recipientId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    WebRtcSessionId:
+      name: sessionId
+      in: path
+      required: true
+      description: Server-generated identifier that must be unpredictable enough to prevent session URL enumeration
+      schema:
+        type: string
+        minLength: 1
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: Latest ETag returned for the resource
+      schema:
+        type: string
+        pattern: '^"[^"]+"$'
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      description: Proposed CSRF token for state-changing Cookie-authenticated requests
+      schema:
+        type: string
+        minLength: 1
+
+  responses:
+    Unauthorized:
+      description: Authentication is absent or expired
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Forbidden:
+      description: The authenticated user lacks permission
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: The requested resource does not exist or is no longer retained
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Conflict:
+      description: The request conflicts with an existing resource
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    PreconditionFailed:
+      description: The If-Match value does not match the current resource version
+      headers:
+        ETag:
+          $ref: "#/components/headers/EntityTag"
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    PreconditionRequired:
+      description: A trickle ICE request omitted the required If-Match value
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    UnsupportedMediaType:
+      description: The request body does not use a media type accepted by this operation
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    ValidationError:
+      description: The request parameters or body are invalid
+      headers:
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    RangeNotSatisfiable:
+      description: The requested byte range cannot be served
+      headers:
+        Content-Range:
+          schema:
+            type: string
+          example: bytes */125829120
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    TooManyRequests:
+      description: The request rate exceeds the configured limit
+      headers:
+        Retry-After:
+          description: Delay in seconds before the client can retry
+          schema:
+            type: integer
+            minimum: 1
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    ServiceUnavailable:
+      description: Required measurement or media data is temporarily unavailable
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 0
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    StreamNotReady:
+      description: The requested stream is not publishing yet
+      headers:
+        Retry-After:
+          description: Delay in seconds before the client can retry session creation
+          schema:
+            type: integer
+            minimum: 0
+        X-Request-ID:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+
+  schemas:
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password, persistent]
+      properties:
+        username:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          minLength: 1
+          format: password
+        persistent:
+          type: boolean
+          description: Requests a persistent session within the server-defined maximum lifetime
+
+    Session:
+      type: object
+      additionalProperties: false
+      required: [user, expiresAt, csrfToken]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        expiresAt:
+          type: string
+          format: date-time
+          example: "2026-09-10T18:00:00+09:00"
+        csrfToken:
+          type: string
+          minLength: 1
+          description: Token sent in X-CSRF-Token for every state-changing request
+
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, displayName, role]
+      properties:
+        id:
+          type: string
+          example: user-example
+        displayName:
+          type: string
+          example: Example Operator
+        role:
+          type: string
+          enum: [viewer, administrator]
+
+    MonitoringSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - schemaVersion
+        - snapshotId
+        - serverTime
+        - measuredAt
+        - systemStatus
+        - operationState
+        - summary
+        - devices
+        - activeAlerts
+        - recentLoad
+        - lidarProfiles
+        - video
+      properties:
+        schemaVersion:
+          type: string
+          example: "1"
+        snapshotId:
+          type: string
+          example: snapshot-example-001
+        serverTime:
+          type: string
+          format: date-time
+          description: Server clock reference used for relative durations in the browser
+          example: "2026-09-10T10:24:20+09:00"
+        measuredAt:
+          type: string
+          format: date-time
+          example: "2026-09-10T10:24:18+09:00"
+        systemStatus:
+          $ref: "#/components/schemas/SystemStatus"
+        operationState:
+          $ref: "#/components/schemas/OperationState"
+        summary:
+          $ref: "#/components/schemas/MonitoringSummary"
+        devices:
+          type: array
+          description: Devices ordered by dashboard display position
+          items:
+            $ref: "#/components/schemas/DeviceStatus"
+        activeAlerts:
+          type: array
+          description: Active alerts ordered by occurredAt descending
+          items:
+            $ref: "#/components/schemas/Alert"
+        recentLoad:
+          type: array
+          description: Samples ordered by measuredAt ascending for the preceding 24 hours; invalid or missing buckets remain explicit LoadSample items
+          items:
+            $ref: "#/components/schemas/LoadSample"
+        lidarProfiles:
+          type: array
+          description: Available LiDAR profiles; each sample position is measured from line endpoint A toward B
+          items:
+            $ref: "#/components/schemas/LidarProfile"
+        video:
+          $ref: "#/components/schemas/LiveVideo"
+
+    SystemStatus:
+      type: string
+      enum: [normal, collection_required, measurement_error, disconnected, no_data]
+
+    OperationState:
+      type: string
+      enum: [idle, accumulating, collecting]
+
+    MonitoringSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - loadPercent
+        - collectionThresholdPercent
+        - preCollectionAlert
+        - loadChangeLastHourPercentagePoints
+        - averageCollectionCycleSeconds
+      properties:
+        loadPercent:
+          $ref: "#/components/schemas/Percent"
+        collectionThresholdPercent:
+          $ref: "#/components/schemas/Percent"
+        preCollectionAlert:
+          $ref: "#/components/schemas/PreCollectionAlert"
+        loadChangeLastHourPercentagePoints:
+          type: number
+          minimum: -100
+          maximum: 100
+          example: 4
+        lastCollectionAt:
+          type: [string, "null"]
+          format: date-time
+          example: "2026-09-10T08:24:00+09:00"
+        averageCollectionCycleSeconds:
+          type: [integer, "null"]
+          minimum: 0
+          example: 83400
+        expectedThresholdAt:
+          type: [string, "null"]
+          format: date-time
+          example: "2026-09-10T14:30:00+09:00"
+
+    PreCollectionAlert:
+      type: object
+      additionalProperties: false
+      required: [enabled, thresholdPercent]
+      properties:
+        enabled:
+          type: boolean
+        thresholdPercent:
+          $ref: "#/components/schemas/Percent"
+
+    DeviceStatus:
+      type: object
+      additionalProperties: false
+      required: [id, type, displayName, status]
+      properties:
+        id:
+          type: string
+          example: lidar-1
+        type:
+          type: string
+          enum: [lidar, camera, edge]
+        displayName:
+          type: string
+          example: LiDAR 1
+        status:
+          type: string
+          enum: [normal, delayed, unavailable]
+        lastReceivedAt:
+          type: [string, "null"]
+          format: date-time
+        latencyMilliseconds:
+          type: [integer, "null"]
+          minimum: 0
+
+    Alert:
+      type: object
+      additionalProperties: false
+      required: [id, type, severity, title, detail, occurredAt]
+      properties:
+        id:
+          type: string
+          example: alert-example-001
+        type:
+          $ref: "#/components/schemas/EventType"
+        severity:
+          type: string
+          enum: [info, warning, error]
+        title:
+          type: string
+          example: Collection required
+        detail:
+          type: string
+          example: Representative load percentage reached the collection threshold.
+        occurredAt:
+          type: string
+          format: date-time
+          example: "2026-09-10T10:20:00+09:00"
+
+    LoadSample:
+      type: object
+      additionalProperties: false
+      required: [measuredAt, valuePercent, valid]
+      properties:
+        measuredAt:
+          type: string
+          format: date-time
+        valuePercent:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 100
+        valid:
+          type: boolean
+
+    LidarProfile:
+      type: object
+      additionalProperties: false
+      required: [lidarId, measuredAt, unit, average, minimum, maximum, samples]
+      properties:
+        lidarId:
+          type: string
+          enum: [lidar-1, lidar-2]
+        measuredAt:
+          type: string
+          format: date-time
+        unit:
+          type: string
+          const: m
+        average:
+          type: number
+          minimum: 0
+          maximum: 10
+        minimum:
+          type: number
+          minimum: 0
+          maximum: 10
+        maximum:
+          type: number
+          minimum: 0
+          maximum: 10
+        samples:
+          type: array
+          description: Samples ordered by positionRatio ascending; invalid positions remain explicit LidarProfileSample items
+          minItems: 2
+          items:
+            $ref: "#/components/schemas/LidarProfileSample"
+
+    LidarProfileSample:
+      type: object
+      additionalProperties: false
+      required: [positionRatio, height, valid]
+      properties:
+        positionRatio:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Normalized position from measurement line A to B
+        height:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 10
+        valid:
+          type: boolean
+
+    LiveVideo:
+      type: object
+      additionalProperties: false
+      required: [streamId, capturedAt, status]
+      properties:
+        streamId:
+          type: string
+          example: camera-main
+        capturedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [available, delayed, unavailable]
+
+    LoadHistory:
+      type: object
+      additionalProperties: false
+      required: [from, to, bucketSeconds, samples, collectionThresholds, eventMarkers]
+      properties:
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        bucketSeconds:
+          type: integer
+          minimum: 60
+        samples:
+          type: array
+          items:
+            $ref: "#/components/schemas/LoadSample"
+        collectionThresholds:
+          type: array
+          minItems: 1
+          description: Threshold values ordered by effectiveAt; the first item applies at from
+          items:
+            $ref: "#/components/schemas/CollectionThresholdSample"
+        eventMarkers:
+          type: array
+          description: All graph markers in the requested interval after applying eventCategory
+          items:
+            $ref: "#/components/schemas/HistoryEventMarker"
+
+    CollectionThresholdSample:
+      type: object
+      additionalProperties: false
+      required: [effectiveAt, valuePercent]
+      properties:
+        effectiveAt:
+          type: string
+          format: date-time
+        valuePercent:
+          $ref: "#/components/schemas/Percent"
+
+    HistoryEventMarker:
+      type: object
+      additionalProperties: false
+      required: [id, type, category, severity, title, detail, occurredAt, valuePercent]
+      properties:
+        id:
+          type: string
+        type:
+          $ref: "#/components/schemas/HistoryMarkerType"
+        category:
+          $ref: "#/components/schemas/EventCategory"
+          description: alert for collection_required, collection for collection_completed, and error for error marker types
+        severity:
+          type: string
+          enum: [info, warning, error]
+        title:
+          type: string
+        detail:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        valuePercent:
+          $ref: "#/components/schemas/Percent"
+
+    EventCategory:
+      type: string
+      enum: [collection, alert, error]
+
+    EventType:
+      type: string
+      enum: [pre_collection_alert, collection_required, collection_started, collection_completed, measurement_error, device_error, video_delay]
+
+    HistoryMarkerType:
+      type: string
+      enum: [collection_required, collection_completed, measurement_error, device_error, video_delay]
+
+    ConfigurableAlertEventType:
+      type: string
+      enum: [collection_required, measurement_error, device_error]
+
+    Event:
+      type: object
+      additionalProperties: false
+      required: [id, type, category, severity, status, title, detail, occurredAt, recordingId]
+      properties:
+        id:
+          type: string
+        type:
+          $ref: "#/components/schemas/EventType"
+        category:
+          $ref: "#/components/schemas/EventCategory"
+        severity:
+          type: string
+          enum: [info, warning, error]
+        status:
+          type: string
+          enum: [active, resolved, completed]
+        title:
+          type: string
+        detail:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: [string, "null"]
+          format: date-time
+        recordingId:
+          type: [string, "null"]
+          description: Recording opened by the related recording action when available
+
+    Notification:
+      type: object
+      additionalProperties: false
+      required: [id, type, severity, title, detail, occurredAt, readAt]
+      properties:
+        id:
+          type: string
+          example: notification-example-001
+        type:
+          $ref: "#/components/schemas/EventType"
+        severity:
+          type: string
+          enum: [info, warning, error]
+        title:
+          type: string
+        detail:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        readAt:
+          type: [string, "null"]
+          format: date-time
+
+    NotificationUpdate:
+      type: object
+      additionalProperties: false
+      required: [read]
+      properties:
+        read:
+          type: boolean
+          const: true
+
+    Recording:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - startedAt
+        - endedAt
+        - durationSeconds
+        - eventCategory
+        - title
+        - detail
+        - containerFormat
+        - videoCodec
+        - widthPixels
+        - heightPixels
+        - frameRate
+        - sizeBytes
+        - retainedFrom
+        - retainedUntil
+        - status
+        - thumbnailPath
+        - contentPath
+        - downloadPath
+      properties:
+        id:
+          type: string
+          example: recording-example-001
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        durationSeconds:
+          type: integer
+          minimum: 0
+        eventCategory:
+          $ref: "#/components/schemas/EventCategory"
+        title:
+          type: string
+        detail:
+          type: string
+        containerFormat:
+          type: string
+          example: mp4
+        videoCodec:
+          type: string
+          example: h264
+        widthPixels:
+          type: integer
+          minimum: 1
+          example: 640
+        heightPixels:
+          type: integer
+          minimum: 1
+          example: 480
+        frameRate:
+          type: number
+          exclusiveMinimum: 0
+          example: 30
+        sizeBytes:
+          type: integer
+          minimum: 0
+        retainedFrom:
+          type: string
+          format: date-time
+        retainedUntil:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [available, processing, expired, unavailable]
+        thumbnailPath:
+          type: [string, "null"]
+          format: uri-reference
+          pattern: "^/(?!/)"
+          description: Same-origin preview image path; null when a preview is unavailable
+        contentPath:
+          type: [string, "null"]
+          format: uri-reference
+          pattern: "^/(?!/)"
+          description: Same-origin byte-range playback path; null unless playback is available
+        downloadPath:
+          type: [string, "null"]
+          format: uri-reference
+          pattern: "^/(?!/)"
+          description: Same-origin attachment download path; null unless download is available
+    AlertSettings:
+      type: object
+      additionalProperties: false
+      required: [version, collectionThresholdPercent, preCollectionAlert, eventTypes, sendDelayMinutes, repeatIntervalMinutes, maximumRepeatCount, recoveryNotificationEnabled]
+      properties:
+        version:
+          type: string
+          pattern: '^"[^"]+"$'
+          description: Strong entity-tag value, including the surrounding double quotes, accepted in If-Match for this resource
+        collectionThresholdPercent:
+          $ref: "#/components/schemas/Percent"
+        preCollectionAlert:
+          $ref: "#/components/schemas/PreCollectionAlert"
+        sendDelayMinutes:
+          type: integer
+          minimum: 0
+        repeatIntervalMinutes:
+          type: integer
+          minimum: 0
+        maximumRepeatCount:
+          type: integer
+          minimum: 1
+        recoveryNotificationEnabled:
+          type: boolean
+        eventTypes:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/ConfigurableAlertEventType"
+
+    AlertSettingsUpdate:
+      type: object
+      additionalProperties: false
+      required: [collectionThresholdPercent, preCollectionAlert, eventTypes, sendDelayMinutes, repeatIntervalMinutes, maximumRepeatCount, recoveryNotificationEnabled]
+      properties:
+        collectionThresholdPercent:
+          $ref: "#/components/schemas/Percent"
+        preCollectionAlert:
+          $ref: "#/components/schemas/PreCollectionAlert"
+        sendDelayMinutes:
+          type: integer
+          minimum: 0
+        repeatIntervalMinutes:
+          type: integer
+          minimum: 0
+        maximumRepeatCount:
+          type: integer
+          minimum: 1
+        recoveryNotificationEnabled:
+          type: boolean
+        eventTypes:
+          type: array
+          uniqueItems: true
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ConfigurableAlertEventType"
+
+    NotificationRecipient:
+      type: object
+      additionalProperties: false
+      required: [id, version, name, team, email, phone, enabled, channels, subscriptionMode, eventTypes]
+      properties:
+        id:
+          type: string
+        version:
+          type: string
+          pattern: '^"[^"]+"$'
+          description: Strong entity-tag value, including the surrounding double quotes, accepted in If-Match for this resource
+        name:
+          type: string
+        team:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: [string, "null"]
+        enabled:
+          type: boolean
+        channels:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/NotificationChannel"
+        subscriptionMode:
+          type: string
+          enum: [global, custom]
+        eventTypes:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/ConfigurableAlertEventType"
+
+    NotificationRecipientCreate:
+      type: object
+      additionalProperties: false
+      required: [name, team, email, phone, enabled, channels, subscriptionMode, eventTypes]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        team:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+        phone:
+          type: [string, "null"]
+        enabled:
+          type: boolean
+        channels:
+          type: array
+          uniqueItems: true
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/NotificationChannel"
+        subscriptionMode:
+          type: string
+          enum: [global, custom]
+        eventTypes:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/ConfigurableAlertEventType"
+
+    NotificationRecipientPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+        team:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+        phone:
+          type: [string, "null"]
+        enabled:
+          type: boolean
+        channels:
+          type: array
+          uniqueItems: true
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/NotificationChannel"
+        subscriptionMode:
+          type: string
+          enum: [global, custom]
+        eventTypes:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/ConfigurableAlertEventType"
+
+    NotificationChannel:
+      type: string
+      enum: [email, sms]
+
+    TestNotificationRequest:
+      type: object
+      additionalProperties: false
+      required: [recipientId, channels]
+      properties:
+        recipientId:
+          type: string
+          minLength: 1
+        channels:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/NotificationChannel"
+
+    EventPage:
+      type: object
+      additionalProperties: false
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Event"
+        page:
+          $ref: "#/components/schemas/PageMetadata"
+
+    NotificationPage:
+      type: object
+      additionalProperties: false
+      required: [items, page, unreadCount]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Notification"
+        page:
+          $ref: "#/components/schemas/PageMetadata"
+        unreadCount:
+          type: integer
+          minimum: 0
+
+    RecordingPage:
+      type: object
+      additionalProperties: false
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Recording"
+        page:
+          $ref: "#/components/schemas/PageMetadata"
+
+    NotificationRecipientPage:
+      type: object
+      additionalProperties: false
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotificationRecipient"
+        page:
+          $ref: "#/components/schemas/PageMetadata"
+
+    PageMetadata:
+      type: object
+      additionalProperties: false
+      required: [page, pageSize, totalItems, totalPages]
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+        totalItems:
+          type: integer
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+
+    Percent:
+      type: number
+      minimum: 0
+      maximum: 100
+
+    Problem:
+      type: object
+      additionalProperties: true
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          default: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+        code:
+          type: string
+          description: Stable application error code; clients must not parse detail
+        requestId:
+          type: string
+        invalidFields:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [field, code]
+            properties:
+              field:
+                type: string
+              code:
+                type: string
+              message:
+                type: string
