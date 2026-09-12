@@ -1,0 +1,236 @@
+import { useState } from "react";
+
+import type { DashboardData, LidarProfile } from "../domain/dashboard";
+import { SectionTitle } from "./DashboardPrimitives";
+
+export function MeasurementDiagram({ lidar1Color, lidar2Color }: { lidar1Color: string; lidar2Color: string }) {
+  return (
+    <svg className="measurement-svg" viewBox="0 0 440 275" role="img" aria-label="LiDAR 1과 LiDAR 2 측정선 배치">
+      <defs>
+        <clipPath id="scrapSurface">
+          <path d="M52 181 218 236 332 105 281 84 186 146 104 117Z" />
+        </clipPath>
+        <pattern id="scrapFrontFill" width="18" height="14" patternUnits="userSpaceOnUse">
+          <rect width="18" height="14" fill="#87949e" />
+          <path d="M1 4l7 2m3-4 5 3M4 11l6-2m3 3 4-2" stroke="#b9c2c8" strokeWidth="2" />
+          <path d="M0 8l4 1m6-2 5 2" stroke="#667783" strokeWidth="1.5" />
+        </pattern>
+        <pattern id="scrapSideFill" width="16" height="14" patternUnits="userSpaceOnUse">
+          <rect width="16" height="14" fill="#73828d" />
+          <path d="M1 3l6 3m3-4 5 2M3 11l5-3m3 4 4-3" stroke="#aeb9c0" strokeWidth="1.8" />
+          <path d="M0 7l4 2m5-2 5 3" stroke="#596b78" strokeWidth="1.4" />
+        </pattern>
+      </defs>
+      <path d="M45 158 221 214 221 258 45 202Z" fill="#d6e1e8" stroke="#40586b" strokeWidth="2" />
+      <path d="M221 214 338 82 338 126 221 258Z" fill="#c7d6df" stroke="#40586b" strokeWidth="2" />
+      <path d="M338 82 281 64 281 108 338 126Z" fill="#d5e1e7" stroke="#40586b" strokeWidth="2" />
+      <path d="M281 64 184 123 184 167 281 108Z" fill="#e0e8ed" stroke="#40586b" strokeWidth="2" />
+      <path d="M184 123 100 96 100 140 184 167Z" fill="#cfdae2" stroke="#40586b" strokeWidth="2" />
+      <path d="M100 96 45 158 45 202 100 140Z" fill="#e4ebef" stroke="#40586b" strokeWidth="2" />
+      <path d="M52 181 218 236 221 258 45 202Z" fill="url(#scrapFrontFill)" stroke="#667783" strokeWidth="1.2" />
+      <path d="M218 236 332 105 338 126 221 258Z" fill="url(#scrapSideFill)" stroke="#596b78" strokeWidth="1.2" />
+
+      <g clipPath="url(#scrapSurface)" stroke="#758390" strokeWidth="0.9">
+        <path d="M52 181 218 236 332 105 281 84 186 146 104 117Z" fill="#8e9ba6" />
+        <path d="M52 181 104 117 126 162Z" fill="#9ca7b0" />
+        <path d="M104 117 186 146 126 162Z" fill="#84929e" />
+        <path d="M186 146 181 190 126 162Z" fill="#a6afb7" />
+        <path d="M52 181 126 162 181 190Z" fill="#778691" />
+        <path d="M52 181 181 190 218 236Z" fill="#929ea8" />
+        <path d="M218 236 181 190 238 195Z" fill="#6f7f8c" />
+        <path d="M181 190 186 146 222 160Z" fill="#8996a1" />
+        <path d="M181 190 222 160 238 195Z" fill="#aab2b9" />
+        <path d="M238 195 222 160 286 137Z" fill="#7d8b97" />
+        <path d="M238 195 286 137 332 105Z" fill="#9da8b1" />
+        <path d="M222 160 247 116 286 137Z" fill="#adb5bc" />
+        <path d="M186 146 247 116 222 160Z" fill="#74838f" />
+        <path d="M186 146 281 84 247 116Z" fill="#97a3ad" />
+        <path d="M281 84 332 105 247 116Z" fill="#7b8995" />
+        <path d="M247 116 332 105 286 137Z" fill="#8c99a4" />
+      </g>
+
+      <path d="M45 158 221 214 338 82 281 64 184 123 100 96Z" fill="none" stroke="#30485b" strokeWidth="3" />
+      <path d="M45 202 221 258 338 126 281 108 184 167 100 140Z" fill="none" stroke="#647789" strokeWidth="1.4" />
+      <path d="M45 158v44M221 214v44M338 82v44M281 64v44M184 123v44M100 96v44" stroke="#40586b" strokeWidth="2" />
+      <polygon points="122,103 91,153 126,151 158,164 187,171 213,186 240,193 262,207 122,103" fill="#1677e8" fillOpacity="0.4" stroke="none" />
+      <polygon points="254,80 270,109 270,131 259,150 248,169 235,191 220,218 254,80" fill="#0ba58f" fillOpacity="0.44" stroke="none" />
+      <g>
+        <polyline points="91,153 126,151 158,164 187,171 213,186 240,193 262,207" fill="none" stroke="#ffffff" strokeWidth="7" />
+        <polyline points="91,153 126,151 158,164 187,171 213,186 240,193 262,207" fill="none" stroke="#1677e8" strokeWidth="4" />
+        <polyline points="270,109 270,131 259,150 248,169 235,191 220,218" fill="none" stroke="#ffffff" strokeWidth="7" />
+        <polyline points="270,109 270,131 259,150 248,169 235,191 220,218" fill="none" stroke="#0ba58f" strokeWidth="4" />
+      </g>
+
+      <path d="M158 95 202 109 270 32 226 18Z" fill="#3f5261" stroke="#304555" strokeWidth="2.5" />
+      <path d="m165 87 44 14m-36-23 44 14m-36-23 44 14m-36-23 44 14m-36-23 44 14m-36-23 44 14" stroke="#9caab4" strokeWidth="4" />
+      <path d="M158 95 202 109 187 126 143 112Z" fill="#f3e6d4" stroke="#c47a25" strokeWidth="2" />
+      <path d="M143 112 187 126 175 145 131 131Z" fill="#edcfaa" stroke="#c47a25" strokeWidth="2" />
+      <path d="M143 112 187 126" stroke="#a75f17" strokeWidth="2.4" />
+
+      <g transform="translate(91 153)">
+        <circle r="8" fill="#ffffff" stroke={lidar1Color} strokeWidth="2.2" />
+        <text x="0" y="4" fill={lidar1Color} fontSize="10" fontWeight="700" textAnchor="middle">A</text>
+      </g>
+      <g transform="translate(262 207)">
+        <circle r="8" fill="#ffffff" stroke={lidar1Color} strokeWidth="2.2" />
+        <text x="0" y="4" fill={lidar1Color} fontSize="10" fontWeight="700" textAnchor="middle">B</text>
+      </g>
+      <g transform="translate(270 109)">
+        <circle r="8" fill="#ffffff" stroke={lidar2Color} strokeWidth="2.2" />
+        <text x="0" y="4" fill={lidar2Color} fontSize="10" fontWeight="700" textAnchor="middle">B</text>
+      </g>
+      <g transform="translate(220 218)">
+        <circle r="8" fill="#ffffff" stroke={lidar2Color} strokeWidth="2.2" />
+        <text x="0" y="4" fill={lidar2Color} fontSize="10" fontWeight="700" textAnchor="middle">A</text>
+      </g>
+      <circle cx="122" cy="103" r="7" fill="#ffffff" stroke="#40586b" strokeWidth="2" />
+      <text x="58" y="82" fill="#1677e8" fontSize="15" fontWeight="700">LiDAR 1</text>
+      <circle cx="254" cy="80" r="7" fill="#ffffff" stroke="#40586b" strokeWidth="2" />
+      <text x="296" y="65" fill="#087c6c" fontSize="15" fontWeight="700">LiDAR 2</text>
+      <path d="M288 229h24" stroke="#1677e8" strokeWidth="4" />
+      <text x="319" y="233" fill="#52657a" fontSize="11">LiDAR 1 표면 측정선</text>
+      <path d="M288 250h24" stroke="#0ba58f" strokeWidth="4" />
+      <text x="319" y="254" fill="#52657a" fontSize="11">LiDAR 2 표면 측정선</text>
+    </svg>
+  );
+}
+
+export function LoadChart({ samples, threshold }: { samples: DashboardData["monitoring"]["loadHistory"]; threshold: number }) {
+  const xValues = samples.map((_, index) => 40 + index * (370 / (samples.length - 1)));
+  const yMin = 0;
+  const yMax = 100;
+  const yTickValues = [100, 80, 60, 40, 20, 0];
+  const chartTop = 20;
+  const chartBottom = 148;
+  const toY = (value: number) => chartBottom - (value - yMin) * ((chartBottom - chartTop) / (yMax - yMin));
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const pointY = samples.map((sample) => toY(sample.value));
+  const xTickIndices = [0, 3, 6, 9, 12, 15, 18, 21, 23];
+  const xTickPositions = xTickIndices.map((index) => xValues[index]);
+  const xTickLabels = xTickIndices.map((index) => samples[index].time);
+
+  const activeX = activeIndex === null ? 0 : xValues[activeIndex];
+  const activeY = activeIndex === null ? 0 : pointY[activeIndex];
+  const tooltipX = Math.max(24, Math.min(activeX - 42, 364));
+  const tooltipY = Math.max(4, activeY - 42);
+
+  return (
+    <svg className="chart-svg" viewBox="0 0 430 175" preserveAspectRatio="none" role="img" aria-label="최근 24시간 대표 적재율 그래프">
+      <g stroke="#e2e8ef" strokeWidth="1">
+        {yTickValues.map((value) => (
+          <path key={`grid-h-${value}`} d={`M40 ${toY(value).toFixed(1)}H410`} />
+        ))}
+        {xTickPositions.map((x) => (
+          <path key={`grid-v-${x}`} d={`M${x} ${chartTop}V${chartBottom}`} />
+        ))}
+      </g>
+      <g fill="#61708a" fontSize="10">
+        {yTickValues.map((tick) => (
+          <g key={`y-${tick}`}>
+            <text x="30" y={toY(tick).toFixed(1)} textAnchor="end" dominantBaseline="middle">
+              {tick}%
+            </text>
+          </g>
+        ))}
+      </g>
+      <path d={`M40 ${toY(threshold)}H410`} stroke="#607086" strokeDasharray="5 5" strokeOpacity="0.58" strokeWidth="1.5" />
+      <text x="408" y="39" transform="translate(408 0) scale(0.69 1) translate(-408 0)" fill="#526278" fontSize="10" fontWeight="600" textAnchor="end">수거 임계율 {threshold}%</text>
+      <path d={`M${xValues[0]} ${pointY[0]} ${xValues.slice(1).map((x, index) => `L${x} ${pointY[index + 1]}`).join(" ")} V${chartBottom} H${xValues[0]} Z`} fill="#f58a07" fillOpacity="0.1" />
+      <polyline points={`${xValues.map((x, index) => `${x},${pointY[index]}`).join(" ")}`} fill="none" stroke="#f58a07" strokeWidth="4" />
+      <g fill="#f58a07">
+        {xValues.map((cx, index) => <circle key={cx} cx={cx} cy={pointY[index]} r="4" />)}
+      </g>
+      {xValues.map((cx, index) => (
+        <circle
+          key={`target-${cx}`}
+          className="chart-point-target"
+          cx={cx}
+          cy={pointY[index]}
+          r="11"
+          tabIndex={0}
+          aria-label={`${samples[index].time} 대표 적재율 ${samples[index].value}%`}
+          onPointerEnter={() => setActiveIndex(index)}
+          onPointerLeave={() => setActiveIndex(null)}
+          onFocus={() => setActiveIndex(index)}
+          onBlur={() => setActiveIndex(null)}
+        />
+      ))}
+      {activeIndex !== null && (
+        <g className="chart-tooltip" transform={`translate(${tooltipX} ${tooltipY})`} pointerEvents="none">
+          <rect width="84" height="34" rx="4" />
+          <text x="8" y="14">{samples[activeIndex].time}</text>
+          <text x="8" y="27">대표 적재율 {samples[activeIndex].value}%</text>
+        </g>
+      )}
+      <g fill="#61708a" fontSize="11">
+        {xTickPositions.map((x, idx) => (
+          <text key={`x-${x}`} x={x} y="166" textAnchor="middle">
+            {xTickLabels[idx]}
+          </text>
+        ))}
+      </g>
+    </svg>
+  );
+}
+
+export function ProfileChart({ average, color, label, maximum, minimum, values }: LidarProfile) {
+  const stroke = color === "blue" ? "#1677e8" : "#0ba58f";
+  const axisTextColor = color === "blue" ? "#0b3f8d" : "#066f5e";
+  const yMin = 0;
+  const yMax = 10;
+  const yStep = 2;
+  const chart = { left: 40, right: 410, top: 20, bottom: 148 };
+  const gridYValues = Array.from({ length: yMax / yStep + 1 }, (_, index) => index * yStep);
+  const gridXValues = [
+    { index: 0, value: "A" },
+    { index: values.length - 1, value: "B" },
+  ];
+  const toY = (value: number) => chart.bottom - (value - yMin) * ((chart.bottom - chart.top) / (yMax - yMin));
+  const toX = (index: number) => chart.left + ((chart.right - chart.left) / (values.length - 1)) * index;
+  const profilePath = values.map((value, index) => `${index === 0 ? "M" : "L"}${toX(index)} ${toY(value)}`).join(" ");
+  const fillPath = `${profilePath}V${chart.bottom}H${chart.left}Z`;
+
+  return (
+    <section className="card chart-card span-4">
+      <div className="chart-title-row">
+        <SectionTitle>{label}</SectionTitle>
+        <div className={`profile-stat ${color}`}>
+          <span className="average"><span className="average-label">평균</span>{average}</span>
+          <span className="range">최소 {minimum} / 최대 {maximum}</span>
+        </div>
+      </div>
+      <svg className="chart-svg" viewBox="0 0 430 175" preserveAspectRatio="none" role="img" aria-label={label}>
+        <g stroke="#e2e8ef" strokeWidth="1">
+          {gridYValues.map((value) => (
+            <path key={`grid-h-${value}`} d={`M${chart.left} ${toY(value).toFixed(1)}H${chart.right}`} />
+          ))}
+          <path d={`M${chart.left} ${chart.top}V${chart.bottom}M${chart.left + (chart.right - chart.left) / 2} ${chart.top}V${chart.bottom}M${chart.right} ${chart.top}V${chart.bottom}`} />
+        </g>
+        <g fill="#61708a" fontSize="10">
+          {gridYValues.map((value) => (
+            <g key={`profile-y-${value}`}>
+              <text x="30" y={toY(value).toFixed(1)} textAnchor="end" dominantBaseline="middle">
+                {value}m
+              </text>
+            </g>
+          ))}
+          {gridXValues.map((tick) => (
+            <text
+              key={`profile-x-${tick.value}`}
+              x={toX(tick.index).toFixed(1)}
+              y="166"
+              fill={axisTextColor}
+              textAnchor="middle"
+              fontSize="12"
+              fontWeight="700"
+            >
+              {tick.value}
+            </text>
+          ))}
+        </g>
+        <path d={fillPath} fill={stroke} fillOpacity="0.08" />
+        <path d={profilePath} fill="none" stroke={stroke} strokeWidth="4" />
+      </svg>
+    </section>
+  );
+}

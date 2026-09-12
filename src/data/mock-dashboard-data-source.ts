@@ -2,9 +2,9 @@ import type { DashboardData, DashboardStatus } from "../domain/dashboard";
 
 import type { DashboardDataRequestOptions, DashboardDataSource } from "./dashboard-data-source";
 
-export type MockScenario = DashboardStatus | "live-update" | "operation-cycle" | "loading" | "request-error";
+export type MockScenario = DashboardStatus | "empty-lists" | "live-update" | "operation-cycle" | "loading" | "request-error";
 
-const mockScenarios = ["normal", "collection-required", "measurement-error", "disconnected", "no-data", "live-update", "operation-cycle", "loading", "request-error"] as const satisfies readonly MockScenario[];
+const mockScenarios = ["normal", "collection-required", "measurement-error", "disconnected", "no-data", "empty-lists", "live-update", "operation-cycle", "loading", "request-error"] as const satisfies readonly MockScenario[];
 
 const loadHistoryTimes = [
   "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00",
@@ -113,7 +113,9 @@ const baseDashboardData: DashboardData = {
 
 function dashboardDataFor(scenario: MockScenario): DashboardData {
   const data = structuredClone(baseDashboardData);
-  data.monitoring.status = scenario === "loading" || scenario === "request-error" || scenario === "live-update" || scenario === "operation-cycle" ? "normal" : scenario;
+  data.monitoring.status = scenario === "collection-required" || scenario === "measurement-error" || scenario === "disconnected" || scenario === "no-data"
+    ? scenario
+    : "normal";
 
   switch (scenario) {
     case "collection-required":
@@ -134,6 +136,15 @@ function dashboardDataFor(scenario: MockScenario): DashboardData {
       data.history.chartEvents = [];
       data.history.events = [];
       data.history.loadSamples = [];
+      data.recordings = [];
+      data.admin.recipientSettings = {};
+      data.admin.recipients = [];
+      break;
+    case "empty-lists":
+      data.monitoring.alerts = [];
+      data.monitoring.headerNotifications = [];
+      data.history.chartEvents = [];
+      data.history.events = [];
       data.recordings = [];
       data.admin.recipientSettings = {};
       data.admin.recipients = [];

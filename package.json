@@ -12,8 +12,9 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "pnpm run build && playwright test",
+    "test:e2e": "pnpm run build && pnpm run verify:build-output && playwright test",
     "build": "tsc -b && vite build",
+    "verify:build-output": "node scripts/verify-build-output.mjs",
     "preview": "vite preview",
     "check": "pnpm run lint && pnpm run test && pnpm run test:e2e"
   },

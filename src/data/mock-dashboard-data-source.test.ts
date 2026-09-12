@@ -34,6 +34,17 @@ test("데이터 없음과 요청 오류 시나리오를 제공한다", async () 
   await expect(createMockDashboardDataSource("request-error").getDashboardData()).rejects.toThrow("합성 데이터 요청 오류");
 });
 
+test("빈 목록 시나리오는 현황을 유지하고 부가 목록만 비운다", async () => {
+  const data = await createMockDashboardDataSource("empty-lists").getDashboardData();
+
+  expect(data.monitoring.status).toBe("normal");
+  expect(data.monitoring.loadHistory).toHaveLength(24);
+  expect(data.monitoring.alerts).toHaveLength(0);
+  expect(data.history.events).toHaveLength(0);
+  expect(data.recordings).toHaveLength(0);
+  expect(data.admin.recipients).toHaveLength(0);
+});
+
 test("호출마다 독립된 합성 데이터를 반환한다", async () => {
   const source = createMockDashboardDataSource();
   const first = await source.getDashboardData();

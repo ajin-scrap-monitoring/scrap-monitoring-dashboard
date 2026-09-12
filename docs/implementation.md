@@ -221,13 +221,15 @@ LiDAR 2 측정 오류 데이터를 표시한다. `loading`은 1.2초 뒤 정상 
 `request-error`는 데이터 소스 요청 실패와 재시도 화면을 표시한다. `live-update`는 초기
 스냅샷 뒤 1.2초에 새 측정 스냅샷을 구독자로 전달한다. `operation-cycle`은 수거 필요,
 수거 완료, LiDAR 측정 오류, 연결 끊김, 정상 복구 순서의 스냅샷을 0.5초 간격으로 전달한다.
+`empty-lists`는 현황 측정값을 유지하면서 활성 알림, 이력 이벤트, 녹화 목록과 알림 대상이
+없는 상태를 제공한다.
 
 합성 데이터 소스는 외부 API를 호출하지 않고 호출마다 독립된 데이터를 반환한다. 이후
 서버 계약이 확정되면 실제 API 어댑터가 같은 데이터 소스 인터페이스를 구현하고 서버
 응답을 클라이언트 도메인 모델로 변환한다. API polling과 WebSocket 갱신은 어댑터가 선택적
 구독을 구현해 연결한다. 화면 컴포넌트는 서버 DTO (Data Transfer Object)에 직접 의존하지
 않는다. 실시간 영상과 녹화 영상에는
-`src/assets/camera-frame.png`의 합성 라이브뷰 예시를 사용한다.
+`src/assets/camera-frame.svg`의 합성 라이브뷰 예시를 사용한다.
 
 녹화 영상 다운로드와 테스트 알림은 서버 연동 전 합성 환경에서 요청 확인 상태와
 연동 필요 결과만 표시한다. 브라우저는 파일을 내려받거나 이메일과 문자를 발송하지 않는다.
@@ -244,7 +246,11 @@ LiDAR 2 측정 오류 데이터를 표시한다. `loading`은 1.2초 뒤 정상 
 `src/components/DashboardShell.tsx`의 `DashboardPageShell`은 현황, 이력, 녹화 영상과
 관리자 설정 화면의 상단 헤더와 하단 푸터를 공통으로 조립한다. 공통 헤더는 인증 상태,
 갱신된 알림 목록과 기존 읽음 상태 병합, 팝오버 닫기와 로그아웃 상호작용을 관리한다.
-화면별 상태와 상호작용은 `App.tsx`의 화면 컴포넌트가 관리한다.
+로그인, 이력, 녹화 영상과 관리자 설정은 `src/pages/`에서 화면별 상태와 상호작용을
+관리한다. 이력, 녹화 영상과 관리자 설정 모듈은 해당 경로에 진입할 때 지연 로딩한다.
+`src/components/DashboardPrimitives.tsx`, `MonitoringVisuals.tsx`와 `Pagination.tsx`는
+공통 제목, 상태, 아이콘, 차트, 측정 영역과 페이지 이동을 제공한다. 경로와 합성 인증 세션
+키는 `src/app-routing.ts`에서 관리한다.
 
 `src/domain/dashboard.ts`는 화면 데이터 모델의 정본이다.
 `src/data/dashboard-data-source.ts`는 단일 읽기와 선택적 갱신 경계인 `DashboardDataSource`를
@@ -276,13 +282,17 @@ Vitest는 `src/**/*.{test,spec}.{ts,tsx}`만 수집하고 jsdom에서 실행한�
 
 Playwright는 `e2e/`의 브라우저 테스트를 1440 x 900과 1920 x 1080 Chromium 뷰포트에서
 실행한다. `pnpm run test:e2e`는 타입 검사와 프로덕션 빌드를 완료한 뒤 Vite preview
-서버에서 브라우저 테스트를 수행한다. 실패한 테스트의 screenshot과 trace는 Git에서
-제외한 `test-results/`에 저장한다.
+서버에서 브라우저 테스트를 수행한다. 빌드 뒤 `scripts/verify-build-output.mjs`가 초기와
+전체 JavaScript, CSS, 웹폰트와 전체 정적 자산의 크기 예산을 검사한다. 실패한 테스트의
+screenshot과 trace는 Git에서 제외한 `test-results/`에 저장한다.
 
 현재 Playwright 테스트는 대시보드 진입, 합성 실시간 갱신과 운영 주기 상태 전이, 상단 브랜드 이동, 알림함 읽음 처리와 닫기,
 관리자 메뉴와 로그인 및 로그아웃, 비로그인 화면 제한, 관리자 경로 제한, 적재율 이력의
-이벤트 상세 표시와 외부 연동 전 요청 피드백을 검증한다. Vitest는 합성 데이터 소스의 기본 데이터, 상태 시나리오,
-AbortSignal 취소, 구독 갱신과 상태 전이, 호출 간 데이터 격리를 검증한다.
+이벤트 상세 표시, 빈 목록, 필터와 페이지 이동, 대상 뷰포트의 수평 오버플로와 카드 잘림,
+푸터 겹침, 대화형 요소의 접근 가능한 이름, 이미지 대체 텍스트와 외부 연동 전 요청
+피드백을 검증한다. Vitest는 합성 데이터 소스의 기본 데이터,
+상태와 빈 목록 시나리오, AbortSignal 취소, 구독 갱신과 상태 전이, 호출 간 데이터 격리,
+페이지별 필터와 페이지 이동, 관리자 입력 검증과 로그인 입력 상호작용을 검증한다.
 
 CI의 호스트 runner는 Ubuntu 24.04로 고정한다. CI 작업은 `@playwright/test` 1.62.1과
 버전이 일치하는 공식 Playwright Noble 컨테이너
@@ -306,6 +316,11 @@ UI 초안을 구현한다. 작업 요청자는 대상 Chrome 뷰포트에 렌더
 세부 배치, 크기, 색상, 문구와 상호작용은 브라우저 검토와 코드 보정을 반복해 확정한다.
 확정된 공통 값은 코드의 디자인 토큰 또는 공통 스타일로 관리한다. 작업 순서와 단계별
 완료 조건은 `docs/development-workflow.md`를 따른다.
+
+배포 웹폰트는 전체 글리프를 유지한 WOFF2 형식이며 `font-display: swap`을 사용한다. 합성
+영상은 SVG 형식으로 제공한다. 1440 x 900에서는 1920 x 1080과 같은 카드 높이와 간격을
+유지하고 페이지 세로 스크롤을 사용한다. 하단 푸터는 문서 흐름에 배치해 카드 위에
+겹치지 않는다.
 
 ## 제품 구현 결정 상태
 
@@ -336,6 +351,7 @@ pnpm run lint
 pnpm run typecheck
 pnpm run test
 pnpm run build
+pnpm run verify:build-output
 pnpm run preview
 pnpm exec playwright install chromium
 pnpm run test:e2e

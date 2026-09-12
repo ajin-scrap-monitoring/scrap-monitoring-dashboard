@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { App } from "./App";
 import { createMockDashboardDataSource } from "./data/mock-dashboard-data-source";
@@ -21,4 +21,14 @@ test("대시보드 주 영역을 렌더링한다", async () => {
 
   fireEvent.pointerEnter(screen.getByLabelText("08:00 대표 적재율 72%"));
   expect(screen.getByText("대표 적재율 72%")).toBeVisible();
+});
+
+test("로그인 화면에서는 대시보드 데이터를 요청하지 않는다", () => {
+  const getDashboardData = vi.fn(async () => createMockDashboardDataSource().getDashboardData());
+  window.history.replaceState(null, "", "/login");
+
+  render(<App dataSource={{ getDashboardData }} />);
+
+  expect(screen.getByRole("main", { name: "관리자 로그인" })).toBeVisible();
+  expect(getDashboardData).not.toHaveBeenCalled();
 });
