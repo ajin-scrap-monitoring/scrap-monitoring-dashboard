@@ -49,6 +49,8 @@ const baseDashboardData: DashboardData = {
     ],
   },
   history: {
+    startsAt: "2026-09-03T00:00",
+    endsAt: "2026-09-10T00:00",
     events: [
       { time: "2026-09-09 12:33", type: "수거", tone: "complete", content: "수거 완료", detail: "정기 수거 작업 완료" },
       { time: "2026-09-09 12:00", type: "알림", tone: "warning", content: "수거 필요", detail: "대표 적재율 80% 도달" },
@@ -79,9 +81,10 @@ const baseDashboardData: DashboardData = {
     ],
   },
   recordings: [
-    ...["2026-09-09", "2026-09-08", "2026-09-07", "2026-09-06", "2026-09-05", "2026-09-04", "2026-09-03", "2026-09-02"].map((date, index) => ({ date, start: `${date} 00:00:00`, time: "00:00 - 23:59", type: (["수거", "알림", "오류", "수거", "알림", "수거", "오류", "수거"] as const)[index], tone: (["complete", "warning", "error", "complete", "warning", "complete", "error", "complete"] as const)[index], duration: "24:00:00", detail: (["정기 수거 작업 완료", "대표 적재율 80% 도달", "LiDAR 2 측정값 제외", "정기 수거 작업 완료", "대표 적재율 80% 도달", "정기 수거 작업 완료", "카메라 프레임 수신 지연", "정기 수거 작업 완료"] as const)[index], end: `${date} 23:59:59` })),
+    ...["2026-09-09", "2026-09-08", "2026-09-07", "2026-09-06", "2026-09-05", "2026-09-04", "2026-09-03", "2026-09-02"].map((date, index) => ({ date, start: `${date} 00:00:00`, time: "00:00 - 23:59", type: (["수거", "알림", "오류", "수거", "알림", "수거", "오류", "수거"] as const)[index], tone: (["complete", "warning", "error", "complete", "warning", "complete", "error", "complete"] as const)[index], duration: "24:00:00", detail: (["정기 수거 작업 완료", "대표 적재율 80% 도달", "LiDAR 2 측정값 제외", "정기 수거 작업 완료", "대표 적재율 80% 도달", "정기 수거 작업 완료", "카메라 프레임 수신 지연", "정기 수거 작업 완료"] as const)[index], end: `${date} 23:59:59`, retentionStartsAt: `${date} 00:00:00`, retentionEndsAt: `2026-10-${date.slice(-2)} 23:59:59` })),
   ],
   admin: {
+    preCollectionAlert: { enabled: true, threshold: 70 },
     recipients: [
       { name: "김현수", team: "생산관리팀", email: "kim@example.com", phone: "010-****-1234", channel: "이메일, 문자", enabled: true },
       { name: "박영진", team: "설비보전팀", email: "park@example.com", phone: "010-****-5678", channel: "문자", enabled: true },

@@ -1,9 +1,11 @@
 import { useCallback, useState } from "react";
 
-import cameraFrame from "../assets/camera-frame.svg";
+import cameraFrame from "../assets/camera-frame.png";
 import { DashboardPageShell } from "../components/DashboardShell";
 import { DashboardStatusLabel, ExpandIcon, SectionTitle } from "../components/DashboardPrimitives";
 import { Pagination } from "../components/Pagination";
+import { DateTimeField } from "../components/DateTimeField";
+import { isValidDateTime, recentPeriods, recentRange } from "../date-range";
 import type { DashboardData, HeaderNotification } from "../domain/dashboard";
 import { useDelayedState } from "../use-delayed-state";
 import { useModalFocus } from "../use-modal-focus";
@@ -19,6 +21,11 @@ type RecordingsPageProps = {
 };
 
 export function RecordingsPage({ recordings, headerNotifications, lastMeasuredAt, status }: RecordingsPageProps) {
+  const latestEnd = recordings.reduce((latest, recording) => recording.end > latest ? recording.end : latest, "") || new Date().toISOString();
+  const [range, setRange] = useState(() => recentRange(168, latestEnd));
+  const [preset, setPreset] = useState<number | null>(168);
+  const [applied, setApplied] = useState(() => ({ ...recentRange(168, latestEnd), type: "전체" }));
+  const [queryError, setQueryError] = useState("");
   const [recordType, setRecordType] = useState("전체");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -29,9 +36,10 @@ export function RecordingsPage({ recordings, headerNotifications, lastMeasuredAt
   const closeRecording = useCallback(() => setRecordingOpen(false), []);
   const recordingModalRef = useModalFocus<HTMLDivElement>(recordingOpen, closeRecording);
 
-  const visibleRecordings = recordType === "전체"
-    ? recordings
-    : recordings.filter((recording) => recording.type === recordType);
+  const visibleRecordings = recordings.filter((recording) =>
+    (applied.type === "전체" || recording.type === applied.type)
+    && new Date(recording.start.replace(" ", "T")).getTime() <= new Date(applied.end).getTime()
+    && new Date(recording.end.replace(" ", "T")).getTime() >= new Date(applied.start).getTime());
   const totalRecordingPages = Math.max(1, Math.ceil(visibleRecordings.length / recordingsPerPage));
   const pageStart = recordingPage * recordingsPerPage;
   const pagedRecordings = visibleRecordings.slice(pageStart, pageStart + recordingsPerPage);
@@ -61,32 +69,45 @@ export function RecordingsPage({ recordings, headerNotifications, lastMeasuredAt
         </div>
         <div className="recordings-content">
           <section className="card recordings-query">
-            <SectionTitle>검색 조건</SectionTitle>
-            <div className="recordings-query-controls">
-              <label>시작 시각<input type="datetime-local" defaultValue="2026-09-02T00:00" /></label>
-              <label>종료 시각<input type="datetime-local" defaultValue="2026-09-09T23:59" /></label>
+            <SectionTitle>조회 조건</SectionTitle>
+            <form className="query-controls" onSubmit={(event) => {
+              event.preventDefault();
+              if (!isValidDateTime(range.start) || !isValidDateTime(range.end) || new Date(range.start).getTime() >= new Date(range.end).getTime()) {
+                setQueryError("올바른 날짜와 시간을 입력하고, 종료 시각을 시작 시각보다 늦게 설정하세요.");
+                return;
+              }
+              setApplied({ ...range, type: recordType });
+              setSelectedIndex(0);
+              setRecordingPage(0);
+              setIsPlaying(false);
+              setRecordingOpen(false);
+              setDownloadState("idle");
+              setQueryError("");
+            }}>
+              <div className="query-type" role="group" aria-label="빠른 기간 선택">
+                <span>빠른 선택</span>
+                <div>{recentPeriods.map(({ hours, label }) => <button key={hours} type="button" className={preset === hours ? "selected" : ""} aria-pressed={preset === hours} onClick={() => { setRange(recentRange(hours, latestEnd)); setPreset(hours); }}>{label}</button>)}</div>
+              </div>
+              <DateTimeField label="시작 시각" value={range.start} onChange={(value) => { setRange({ ...range, start: value }); setPreset(null); }} />
+              <DateTimeField label="종료 시각" value={range.end} onChange={(value) => { setRange({ ...range, end: value }); setPreset(null); }} />
               <div className="query-type">
-                <span>녹화 유형</span>
+                <span>이벤트 유형</span>
                 <div>
                   {recordingTypes.map((type) => (
                     <button
                       key={type}
                       className={recordType === type ? "selected" : ""}
                       type="button"
-                      onClick={() => {
-                        setRecordType(type);
-                        setSelectedIndex(0);
-                        setRecordingPage(0);
-                        setIsPlaying(false);
-                      }}
+                      onClick={() => setRecordType(type)}
                     >
                       {type}
                     </button>
                   ))}
                 </div>
               </div>
-              <button className="primary-button" type="button">조회</button>
-            </div>
+              <button className="primary-button" type="submit">조회</button>
+            </form>
+            {queryError && <p role="alert">{queryError}</p>}
           </section>
           <div className="recordings-main">
             <section className="card recordings-list">
@@ -172,7 +193,7 @@ export function RecordingsPage({ recordings, headerNotifications, lastMeasuredAt
                       <div><dt>화면 비율</dt><dd>4:3</dd></div>
                       <div><dt>프레임 속도</dt><dd>30 fps</dd></div>
                       <div><dt>파일 용량</dt><dd>1.8 GB</dd></div>
-                      <div><dt>재생 상태</dt><dd><span className="status-text ok">정상</span></dd></div>
+                      <div className="recording-retention"><dt>보관 기간</dt><dd><span>{selectedRecording.retentionStartsAt}</span><span>~ {selectedRecording.retentionEndsAt}</span></dd></div>
                     </dl>
                   </section>
                   <section className="card recording-download">

@@ -58,7 +58,4 @@
     <path d="m349 232 13-11 13 15-11 14Z"></path>
   </g>
 
-  <rect x="18" y="18" width="154" height="30" rx="4" fill="#11171c" fill-opacity="0.8"></rect>
-  <circle cx="35" cy="33" r="5" fill="#f58a07"></circle>
-  <text x="49" y="38" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="1.2">SAMPLE LIVE VIEW</text>
 </svg>
