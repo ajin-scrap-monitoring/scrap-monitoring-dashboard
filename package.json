@@ -15,10 +15,12 @@
     "test:e2e": "pnpm run build && pnpm run verify:build-output && VITE_ENABLE_MOCK_DATA=true vite build && playwright test",
     "build": "tsc -b && vite build",
     "verify:build-output": "node scripts/verify-build-output.mjs",
+    "security:check": "./scripts/verify-repository-secrets.sh",
+    "tls:check": "./scripts/verify-tls-material.sh",
     "contract:generate": "openapi-typescript docs/contracts/proposal/openapi.yaml --output src/generated/api-contract.ts --immutable",
     "contract:check": "redocly lint docs/contracts/proposal/openapi.yaml && openapi-typescript docs/contracts/proposal/openapi.yaml --output src/generated/api-contract.ts --immutable --check",
     "preview": "vite preview",
-    "check": "pnpm run contract:check && pnpm run lint && pnpm run test && pnpm run test:e2e"
+    "check": "pnpm run security:check && pnpm run contract:check && pnpm run lint && pnpm run test && pnpm run test:e2e"
   },
   "dependencies": {
     "react": "19.2.8",

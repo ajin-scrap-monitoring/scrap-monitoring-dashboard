@@ -11,6 +11,16 @@ temp
 local-assets
 .env
 .env.*
+.secrets
+*.key
+*.pem
+*.crt
+*.cer
+*.p12
+*.pfx
+*.p8
+*.jks
+*.keystore
 docs/**
 !docs/mockups/
 !docs/mockups/assets/

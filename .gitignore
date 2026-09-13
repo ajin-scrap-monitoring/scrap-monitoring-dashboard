@@ -8,5 +8,15 @@ test-results/
 .env
 .env.*
 !.env.example
+/.secrets/
+*.key
+*.pem
+*.crt
+*.cer
+*.p12
+*.pfx
+*.p8
+*.jks
+*.keystore
 .DS_Store
 *.local
