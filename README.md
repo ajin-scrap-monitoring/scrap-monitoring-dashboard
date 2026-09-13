@@ -9,14 +9,33 @@
 signaling 요청을 FastAPI로 전달한다. WebRTC 미디어는 Nginx와 FastAPI를 통과하지 않고
 브라우저와 미디어 서비스 사이에서 전송된다.
 
-## 주요 기능
+## 현재 상태
+
+현재 화면과 사용자 흐름은 합성 데이터로 실행할 수 있고 제안 계약을 사용하는 클라이언트
+연동 경계까지 구현되어 있다. 실제 FastAPI와 미디어 서비스의 계약은 확정되지 않았으며
+실제 서비스 연동과 환경별 Nginx 설정은 진행하지 않은 상태다.
+
+| 영역 | 현재 상태 |
+| --- | --- |
+| 사용자 화면 | 현황, 이력, 녹화 영상, 로그인과 관리자 설정 UI 구현 및 브라우저 검증 완료 |
+| 개발 데이터 | 정상, 오류, 결측, 연결 변경과 운영 주기를 재현하는 합성 데이터 소스 구현 완료 |
+| 외부 연동 클라이언트 | 제안 OpenAPI 기반 HTTP adapter, SSE 갱신과 WHEP signaling 구현 및 대역 서버 검증 완료 |
+| 실제 서비스 연동 | 백엔드와 미디어 계약 승인 후 진행 |
+| 배포 산출물 | Nginx와 정적 파일을 포함한 `linux/amd64` OCI 이미지 및 Public GHCR 게시 절차 구현 완료 |
+| 운영 배포 | upstream, 경로, timeout, CSP와 실제 서비스 연결값 확정 후 배포 Repository에서 진행 |
+
+제안 계약은 [`docs/contracts/proposal/README.md`](docs/contracts/proposal/README.md)에 있으며
+승인 전까지 제품의 확정 계약으로 취급하지 않는다. 현재 구현과 남은 결정의 상세 내용은
+[`docs/implementation.md`](docs/implementation.md)에서 확인한다.
+
+## 구현된 화면과 클라이언트 기능
 
 - 대표 적재율, Light Detection and Ranging (LiDAR) profile, 장비 상태와 활성 알림 현황
 - 적재율 및 운영 이벤트 이력 조회
 - 녹화 영상 조회, 재생과 다운로드
 - 로그인, 개인 알림함과 관리자 접근 제어
 - 수거 임계율, 알림 정책과 알림 대상 관리
-- OpenAPI 기반 HTTP adapter, SSE 갱신과 WebRTC-HTTP Egress Protocol (WHEP) 형태의 영상 연결
+- 제안 OpenAPI 기반 HTTP adapter, SSE 갱신과 WebRTC-HTTP Egress Protocol (WHEP) 형태의 영상 연결
 
 ## 빠른 시작
 
@@ -33,6 +52,19 @@ pnpm run dev
 
 브라우저에서 `http://localhost:5173`에 접속한다. 개발 서버는 기본적으로 합성 데이터
 소스를 사용하므로 FastAPI와 미디어 서비스 없이 화면과 상호작용을 확인할 수 있다.
+
+| 경로 | 화면 |
+| --- | --- |
+| `/` | 현재 모니터링 |
+| `/history` | 적재율 및 이벤트 이력 |
+| `/recordings` | 녹화 영상 |
+| `/login` | 로그인 |
+| `/admin` | 관리자 설정 |
+
+합성 로그인은 비어 있지 않은 아이디와 비밀번호를 사용한다. 데이터 상태는 URL의
+`scenario` query로 선택하며 지원하는 이름은 `normal`, `collection-required`,
+`measurement-error`, `disconnected`, `no-data`, `empty-lists`, `live-update`,
+`operation-cycle`, `loading`과 `request-error`다.
 
 ## 설정
 
@@ -90,11 +122,12 @@ Root CA 인증서는 컨테이너가 아니라 운영 브라우저의 신뢰 저
 pnpm run check
 ```
 
-이 명령은 OpenAPI와 생성 타입 일치, 정적 검사, 단위 테스트, 프로덕션 빌드와 Chromium
+이 명령은 비밀 파일의 Repository 추적 여부와 Docker build context 제외, OpenAPI와 생성
+타입 일치, 정적 검사, 컴포넌트 테스트, 프로덕션 빌드, 정적 자산 크기 예산과 Chromium
 브라우저 테스트를 검사한다.
 
 Docker가 설치된 환경에서는 릴리스와 같은 `linux/amd64` 이미지를 빌드하고 Nginx 및
-reverse proxy 통합 동작을 확인할 수 있다.
+reverse proxy와 임시 인증서를 사용하는 HTTPS 통합 동작을 확인할 수 있다.
 
 ```bash
 test -f .env || cp .env.example .env
@@ -102,7 +135,7 @@ set -a
 . ./.env
 set +a
 docker build \
-  --platform linux/amd64 \
+  --platform "$DASHBOARD_PLATFORM" \
   --build-arg APP_VERSION="$VITE_APP_VERSION" \
   --tag scrap-monitoring-dashboard:dev \
   .
@@ -110,13 +143,18 @@ docker build \
   scrap-monitoring-dashboard:dev \
   scrap-monitoring-dashboard-readme \
   "$VITE_APP_VERSION"
+./test/tls/integration.sh scrap-monitoring-dashboard:dev
 node test/proxy/integration.mjs scrap-monitoring-dashboard:dev
 ```
+
+TLS 통합 검사는 임시 Root CA, Intermediate CA, 서버 인증서와 개인 키를 생성하고 종료 시
+삭제한다. 실제 운영 인증서를 사용하지 않는다.
 
 로컬 TLS 파일은 `.env`의 경로를 읽어 인증서 체인, 유효 기간, 서버 인증 용도와 개인 키
 일치 여부를 검사한다.
 
 ```bash
+test -f .env || cp .env.example .env
 set -a
 . ./.env
 set +a
@@ -129,6 +167,10 @@ pnpm run tls:check
 게시한다. Release workflow는 `MAJOR.MINOR.PATCH`와 `sha-<full-git-sha>` tag를 만들며
 `latest` tag는 만들지 않는다. 배포 Repository는 Release workflow summary 또는 GHCR
 Package에서 확인한 digest로 이미지를 고정한다.
+
+현재 운영 배포는 외부 계약과 환경별 upstream 설정의 확정을 기다리는 상태다. 아래 단독
+실행은 게시된 이미지의 정적 파일, Nginx와 health endpoint만 확인하며 실제 API나 영상을
+연결하지 않는다.
 
 `.env.example`을 복사한 뒤 변수들을 현재 shell에 내보내면 기본 이미지로 정적 웹
 컨테이너와 health endpoint를 확인할 수 있다. 다른 릴리스를 배포할 때는 `.env`의
@@ -150,8 +192,8 @@ docker run --detach \
 curl --fail "http://$DASHBOARD_BIND_ADDRESS:$DASHBOARD_HOST_PORT/healthz"
 ```
 
-이 단독 실행은 이미지, 정적 파일 제공과 컨테이너 상태를 확인하는 범위다. 실제 데이터를
-표시하려면 FastAPI와 다음 Nginx 설정을 함께 배포해야 한다.
+실제 데이터를 표시하려면 FastAPI 및 미디어 서비스와 합의한 계약을 클라이언트에 반영하고
+다음 Nginx 설정을 함께 배포해야 한다.
 
 전체 시스템 배포에서는 배포 Repository가 같은 이미지에 다음 실행 시점 설정을 제공한다.
 
@@ -172,6 +214,19 @@ Docker Secret 구성, 파일 권한, 인증서 발급, 교체, Nginx 반영과 �
 Repository에서 관리한다. 상세한 이미지 책임과 주입 경계는
 [`docs/implementation.md`](docs/implementation.md)의 `제품 배포 경계`와
 `Nginx reverse proxy 배포 경계`를 따른다.
+
+## 다음 연동 조건
+
+실제 서비스 연동은 다음 조건을 확정한 뒤 시작한다.
+
+1. OpenAPI 정본, 경로, schema, 오류와 인증 및 권한 규칙 승인
+2. SSE 상태 갱신과 WHEP signaling 및 재연결 규칙 승인
+3. Nginx upstream, Docker DNS, readiness, timeout, 요청 제한과 CSP 값 확정
+4. 실제 API, 실시간 영상, 녹화 영상과 운영 브라우저를 사용할 수 있는 통합 환경 준비
+
+확정할 전체 항목과 반영 순서는
+[`docs/contracts/README.md`](docs/contracts/README.md)를 따른다. 계약 확정 시 OpenAPI,
+생성 타입, adapter, Nginx 배포 설정과 통합 테스트를 같은 변경 단위로 갱신한다.
 
 ## 문서
 

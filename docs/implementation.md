@@ -8,15 +8,20 @@
 
 ## 현재 구현 범위
 
-현재 Node.js와 pnpm 도구 기준선, React와 TypeScript 애플리케이션 진입점,
-Vite 개발 및 빌드 기준선, Continuous Integration (CI) 검증, 제품 배포 경계,
-코드 기반 UI (User Interface) 구현과 브라우저 검토 방식이 채택된 상태다. 최종 Open
-Container Initiative (OCI) 이미지의 책임 경계도 채택되어 있다. ESLint 정적 검사,
-Vitest 컴포넌트 테스트와 Playwright 브라우저 검증이 구현되어 있다. 현재 모니터링,
-이력, 녹화 영상, 로그인과 관리자 설정의 UI MVP가 구현되어 있다. 다단계 Dockerfile,
-Nginx 런타임 설정, reverse proxy 배포 경계, 이미지 검증과 Git tag 기반 Release 구성이
-구현되어 있다. 외부 연동 제안의 OpenAPI 생성 타입, HTTP adapter, Server-Sent Events
-(SSE) 상태 갱신과 WebRTC-HTTP Egress Protocol (WHEP) 형태의 영상 연결도 구현되어 있다.
+현재 구현 상태는 5개 영역으로 구분한다.
+
+| 영역 | 구현 상태 |
+| --- | --- |
+| 도구와 품질 기준선 | Node.js, pnpm, React, TypeScript, Vite, ESLint, Vitest와 Playwright 구성 완료 |
+| UI (User Interface) | 현재 모니터링, 이력, 녹화 영상, 로그인과 관리자 설정의 MVP 및 합성 상태 구현 완료 |
+| 외부 연동 경계 | 제안 OpenAPI 생성 타입, HTTP adapter, Server-Sent Events (SSE) 갱신과 WebRTC-HTTP Egress Protocol (WHEP) client 구현 및 대역 서버 검증 완료 |
+| 배포 산출물 | Nginx 기반 Open Container Initiative (OCI) 이미지, reverse proxy 공통 설정, TLS 주입 경계, CI와 Git tag 기반 Release 구성 완료 |
+| 실제 시스템 통합 | 백엔드와 미디어 계약, 환경별 Nginx 입력 및 통합 환경 확정 후 진행 |
+
+외부 연동 구현은 `docs/contracts/proposal/`의 제안과 공개 가능한 예제를 기준으로 검증한
+클라이언트 기준선이다. 실제 FastAPI, 미디어 서비스와 운영 환경을 사용한 연동 검증은
+완료되지 않았으며 제안 경로, schema, 인증, 실시간 전송과 signaling 방식은 외부 승인
+전까지 확정 계약으로 취급하지 않는다.
 
 ## 제품 배포 경계
 
