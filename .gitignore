@@ -5,5 +5,8 @@ playwright-report/
 test-results/
 /temp/
 /local-assets/design-reference/
+.env
+.env.*
+!.env.example
 .DS_Store
 *.local

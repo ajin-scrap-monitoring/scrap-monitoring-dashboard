@@ -42,6 +42,15 @@ Hypertext Transfer Protocol (HTTP)과 signaling 진입점은 Nginx만 사용하�
 최종 이미지에는 Node.js, pnpm, 소스 코드, 자격 증명, 환경별 주소와 실제 proxy 경로를
 포함하지 않는다.
 
+릴리스 이미지는 컨테이너 실행 시 환경변수를 읽지 않는다. Vite 환경변수는 정적 파일을
+생성하는 빌드 시점 입력이며 실행 중인 Nginx가 브라우저 번들을 다시 만들지 않는다. 운영
+프론트엔드는 same-origin 경로를 사용하므로 API upstream 주소를 브라우저 설정으로
+주입하지 않는다. Repository 루트의 `.env.example`은 검증된 이미지 digest, 컨테이너 이름,
+플랫폼, 단독 실행 bind 주소와 port 및 `/tmp` 크기의 공개 기본값을 제공한다. 사용자가
+복사한 `.env`는 Docker 명령을 실행하는 shell이나 배포 Repository의 Docker Compose가
+보간하며 컨테이너 내부에는 전달하지 않는다. Nginx 설정은 파일 mount로 제공하고 자격
+증명, TLS 개인 키와 인증서는 secret 또는 읽기 전용 파일 mount로 제공한다.
+
 배포 Repository는 이 Repository가 게시한 이미지의 digest를 선택하고 환경별 Nginx
 설정, FastAPI upstream, Transport Layer Security (TLS), 인증서, 컨테이너 네트워크,
 Docker Compose, 이미지 버전 결합과 롤백을 관리한다. CA 개인 키와 서버 개인 키는 Git
