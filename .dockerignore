@@ -9,6 +9,8 @@ playwright-report
 test-results
 temp
 local-assets
+.env
+.env.*
 docs/**
 !docs/mockups/
 !docs/mockups/assets/
