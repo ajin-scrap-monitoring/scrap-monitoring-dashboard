@@ -46,10 +46,11 @@ Hypertext Transfer Protocol (HTTP)과 signaling 진입점은 Nginx만 사용하�
 생성하는 빌드 시점 입력이며 실행 중인 Nginx가 브라우저 번들을 다시 만들지 않는다. 운영
 프론트엔드는 same-origin 경로를 사용하므로 API upstream 주소를 브라우저 설정으로
 주입하지 않는다. Repository 루트의 `.env.example`은 검증된 이미지 digest, 컨테이너 이름,
-플랫폼, 단독 실행 bind 주소와 port 및 `/tmp` 크기의 공개 기본값을 제공한다. 사용자가
-복사한 `.env`는 Docker 명령을 실행하는 shell이나 배포 Repository의 Docker Compose가
-보간하며 컨테이너 내부에는 전달하지 않는다. Nginx 설정은 파일 mount로 제공하고 자격
-증명, TLS 개인 키와 인증서는 secret 또는 읽기 전용 파일 mount로 제공한다.
+플랫폼, 단독 실행 bind 주소와 port, `/tmp` 크기 및 TLS 파일 host 경로의 공개 기본값을
+제공한다. 사용자가 복사한 `.env`는 Docker 명령을 실행하는 shell이나 배포 Repository의
+Docker Compose가 보간하며 컨테이너 내부에는 전달하지 않는다. TLS 관련 환경변수는
+인증서 파일의 host 경로만 나타내며 인증서 내용을 포함하지 않는다. Nginx 설정은 파일
+mount로 제공하며 인증서와 개인 키의 주입 및 검증은 `TLS 인증서 운영`을 따른다.
 
 배포 Repository는 이 Repository가 게시한 이미지의 digest를 선택하고 환경별 Nginx
 설정, FastAPI upstream, Transport Layer Security (TLS), 인증서, 컨테이너 네트워크,
@@ -74,10 +75,11 @@ Repository와 컨테이너 이미지에 포함하지 않는다.
 Repository는 tag가 아닌 digest로 이미지를 선택한다. 화면의 버전은 Release tag의
 `X.Y.Z` 값으로 빌드한다.
 
-운영 브라우저는 고정 사설 Internet Protocol (IP) 주소로 Nginx에 접속한다. 인터넷에서
-모니터링 서버로 들어오는 연결, 공개 도메인, 공개 Domain Name System (DNS)과 public
-Certificate Authority (CA)를 사용하지 않는다. 내부 브라우저에서 Nginx의
-Transmission Control Protocol (TCP) 443 포트로 연결할 수 있어야 한다.
+운영 브라우저는 사설 Domain Name System (DNS) 이름으로 고정 사설 Internet Protocol
+(IP) 주소의 Nginx에 접속한다. 인터넷에서 모니터링 서버로 들어오는 연결, 공개 도메인,
+공개 DNS와 public Certificate Authority (CA)를 사용하지 않는다. 내부 브라우저에서
+Nginx의 Transmission Control Protocol (TCP) 443 포트로 연결할 수 있어야 한다. 서버
+인증서의 Subject Alternative Name (SAN)은 브라우저가 사용하는 사설 DNS 이름을 포함한다.
 
 TLS는 프로젝트 전용 사설 Public Key Infrastructure (PKI)를 사용한다. CA 구성, 서버
 인증서 주입, Nginx TLS 설정과 갱신 절차는 배포 Repository의 책임이다.
@@ -131,6 +133,89 @@ timeout, rate limit, request body 최대 크기, FastAPI readiness endpoint와 C
 `docs/contracts/README.md`를 따른다. 실제 환경별 값은 배포 Repository에서 주입하는 Nginx
 설정과 FastAPI 구현에 기록한다. 이 Repository에는 환경 독립적인 공통 설정과 검증만
 유지한다.
+
+## TLS 인증서 운영
+
+TLS 배포 산출물은 4개로 구분한다.
+
+| 산출물 | 사용 위치 | 보안 경계 |
+| --- | --- | --- |
+| Root CA 인증서 | 운영 브라우저 신뢰 저장소 | 승인된 단말에만 배포하는 공개 인증서 |
+| Intermediate CA 인증서 | 서버 fullchain | 서버 인증서 뒤에 연결하는 공개 인증서 |
+| 서버 인증서 | Nginx | 사설 DNS SAN과 서버 인증 용도를 포함하는 공개 인증서 |
+| 서버 개인 키 | Nginx Docker Secret | Repository, 이미지, 환경변수와 로그에서 제외하는 비밀키 |
+
+Root CA와 Intermediate CA의 개인 키는 PKI 발급 환경에만 보관하며 배포 host와 대시보드
+컨테이너에 제공하지 않는다. 서버 인증서는 Intermediate CA가 서명하고 Extended Key Usage
+(EKU)에 TLS server authentication을 포함한다. `dashboard-fullchain.pem`은 서버 인증서,
+Intermediate CA 인증서 순서로 구성하며 Root CA 인증서를 포함하지 않는다.
+
+### 최초 발급과 배포
+
+1. 배포 담당자는 배포 host의 보호 디렉토리 또는 전용 키 관리 환경에서 서버 개인 키와 Certificate Signing Request (CSR)를 생성하고 브라우저가 사용하는 사설 DNS 이름을 SAN에 기록한다.
+2. Intermediate CA는 서버 인증 용도의 인증서를 발급한다.
+3. 배포 담당자는 서버 인증서 뒤에 Intermediate CA 인증서를 연결해 `dashboard-fullchain.pem`을 만든다.
+4. 배포 담당자는 Secret source의 상위 디렉토리를 `0700`으로 제한하고 서버 개인 키를 소유자와 Nginx GID `101`만 읽는 `0640`으로 제공한다. fullchain은 Nginx가 읽을 수 있는 `0644`로 제공한다.
+5. 배포 담당자는 `.env.example`을 복사한 `.env`에 인증서 경로만 기록하고 인증서 또는 개인 키 내용은 기록하지 않는다.
+6. `pnpm run tls:check`로 인증서 체인, 30일 이상 남은 유효 기간, SAN, 서버 인증 용도와 개인 키 일치를 확인한다.
+7. 배포 Repository의 Docker Compose는 서버 개인 키를 `dashboard_tls_private_key` Secret으로 부여하고 fullchain을 읽기 전용으로 mount한다.
+8. 배포 담당자는 Root CA 인증서를 운영 브라우저의 신뢰 저장소에 설치한 뒤 HTTPS 연결을 확인한다.
+
+배포 Repository의 Docker Compose는 다음 경계를 사용한다.
+
+```yaml
+services:
+  dashboard:
+    secrets:
+      - dashboard_tls_private_key
+    volumes:
+      - "${DASHBOARD_TLS_CERTIFICATE_FILE}:/run/certs/dashboard-fullchain.pem:ro"
+
+secrets:
+  dashboard_tls_private_key:
+    file: "${DASHBOARD_TLS_PRIVATE_KEY_FILE}"
+```
+
+배포 Repository가 주입하는 Nginx server 설정은 다음 경로를 참조한다.
+
+```nginx
+ssl_certificate /run/certs/dashboard-fullchain.pem;
+ssl_certificate_key /run/secrets/dashboard_tls_private_key;
+```
+
+일반 Docker Compose는 file 기반 Secret source를 bind mount하며 host의 소유권과 접근
+mode를 유지한다. 배포 담당자는 `docker compose config --quiet`로 보간 결과를 확인하고,
+컨테이너 안에서 `/run/secrets/dashboard_tls_private_key`를 Nginx UID와 GID `101`이 읽고
+쓸 수는 없는지 검사한다.
+
+### 인증서 갱신과 교체
+
+1. 배포 담당자는 활성 파일과 다른 보호 디렉토리에 새 서버 개인 키, 서버 인증서와 fullchain을 준비한다.
+2. 배포 담당자는 새 파일 경로로 `pnpm run tls:check`를 실행한다.
+3. 배포 담당자는 `.env`의 `DASHBOARD_TLS_CERTIFICATE_FILE`과 `DASHBOARD_TLS_PRIVATE_KEY_FILE`을 새 파일 경로로 함께 변경한다.
+4. 배포 담당자는 `docker compose config --quiet`로 Secret source와 fullchain mount를 확인한다.
+5. 배포 담당자는 `docker compose up --detach --force-recreate dashboard`로 컨테이너를 다시 생성한다.
+6. 배포 담당자는 `/healthz`, 인증서 체인, SAN과 만료 시각을 확인한다.
+7. 배포 담당자는 롤백 확인 기간이 끝난 뒤 이전 서버 개인 키와 인증서를 폐기한다.
+
+file 기반 Docker Secret은 컨테이너 생성 시 source에 연결되므로 인증서와 개인 키 교체는
+Nginx reload만 실행하지 않고 컨테이너를 다시 생성한다. 인증서가 아닌 Nginx 설정만
+변경하면 다음 순서로 문법을 검사하고 worker를 교체한다.
+
+```bash
+docker compose exec --no-TTY dashboard nginx -t
+docker compose exec --no-TTY dashboard nginx -s reload
+```
+
+### 만료 확인과 롤백
+
+`pnpm run tls:check`는 서버 인증서의 남은 유효 기간이 30일 미만이면 실패한다. 배포
+환경은 이 검사를 정기 실행하고 실패 전에 갱신 작업을 시작한다.
+
+롤백은 `.env`의 두 TLS 파일 경로를 함께 이전 버전으로 되돌리고
+`docker compose up --detach --force-recreate dashboard`를 실행한다. Root CA 또는
+Intermediate CA를 교체할 때는 새 Root CA를 운영 브라우저에 먼저 배포하고 새 체인의
+HTTPS 연결을 검증한 뒤 서버 인증서를 전환한다.
 
 ## 제품 구현 기준선
 
@@ -340,7 +425,7 @@ UI와 합성 데이터를 변경할 때는 `pnpm run dev`로 실행하고 필요
 
 ## 정적 검사와 테스트 기준선
 
-검증 계층은 4개다.
+검증 계층은 5개다.
 
 | 계층 | 도구 | 범위 |
 | --- | --- | --- |
@@ -348,6 +433,7 @@ UI와 합성 데이터를 변경할 때는 `pnpm run dev`로 실행하고 필요
 | 정적 검사 | ESLint와 typescript-eslint | TypeScript 타입 기반 규칙, React Hooks와 Fast Refresh 경계 |
 | 컴포넌트 테스트 | Vitest, jsdom과 Testing Library | `src/`의 렌더링, 상태와 사용자 상호작용 |
 | 브라우저 테스트 | Playwright Chromium | 합성 데이터와 제안 API의 사용자 흐름 및 대상 뷰포트 렌더링 |
+| 컨테이너 통합 테스트 | Docker, Nginx와 OpenSSL | OCI 이미지, reverse proxy, 임시 PKI와 TLS Secret 주입 |
 
 `eslint.config.js`는 ESLint flat config, 권장 TypeScript 타입 검사, React Hooks와 Vite
 Fast Refresh 규칙을 적용한다. `pnpm run lint`는 경고를 허용하지 않는다.
@@ -386,8 +472,12 @@ Node.js와 pnpm은 컨테이너 안에서도 각각 `.node-version`과 `package.
 `packageManager`에 기록된 버전을 사용한다. CI가 사용하는 외부 GitHub Action은 upstream
 Repository의 전체 commit SHA로 고정한다.
 
-`pnpm run check`는 계약 검사, 정적 검사, 컴포넌트 테스트, 타입 검사, 프로덕션 빌드와
-브라우저 테스트를 순서대로 실행하는 전체 로컬 검증 명령이다.
+`pnpm run check`는 비밀 파일 추적 및 Docker build context 제외, 계약 검사, 정적 검사,
+컴포넌트 테스트, 타입 검사, 프로덕션 빌드와 브라우저 테스트를 순서대로 실행하는 전체
+로컬 검증 명령이다. Container job은 임시 Root CA, Intermediate CA와 서버 인증서를
+생성하고 fullchain, 개인 키, Docker Secret, Nginx HTTPS, 신뢰 체인과 SAN 불일치를
+검증한다. 임시 CA 개인 키와 서버 개인 키는 job의 임시 디렉토리에서만 사용하고 종료 시
+삭제한다.
 
 ## UI 구현과 검토 기준선
 
@@ -440,6 +530,8 @@ pnpm run typecheck
 pnpm run test
 pnpm run build
 pnpm run verify:build-output
+pnpm run security:check
+pnpm run tls:check
 pnpm run preview
 pnpm exec playwright install chromium
 pnpm run test:e2e

@@ -36,8 +36,8 @@ pnpm run dev
 
 ## 설정
 
-Repository의 [`.env.example`](.env.example)은 컨테이너 실행에 사용하는 공개 기본값을
-제공한다.
+Repository의 [`.env.example`](.env.example)은 개발, 검증과 배포 명령에 사용하는 공개
+기본값을 제공한다.
 
 | 환경변수 | 기본값의 의미 |
 | --- | --- |
@@ -47,12 +47,19 @@ Repository의 [`.env.example`](.env.example)은 컨테이너 실행에 사용하
 | `DASHBOARD_BIND_ADDRESS` | 단독 실행의 host bind 주소 `127.0.0.1` |
 | `DASHBOARD_HOST_PORT` | 단독 실행의 host port `8080` |
 | `DASHBOARD_TMPFS_SIZE` | 읽기 전용 컨테이너의 `/tmp` 크기 `16m` |
+| `DASHBOARD_TLS_CERTIFICATE_FILE` | Nginx에 읽기 전용으로 mount할 서버 인증서와 Intermediate CA 체인의 host 경로 |
+| `DASHBOARD_TLS_PRIVATE_KEY_FILE` | Docker Secret으로 제공할 서버 개인 키의 host 경로 |
+| `DASHBOARD_ROOT_CA_FILE` | 운영 브라우저의 신뢰 저장소에 설치할 Root CA 인증서의 host 경로 |
 
 로컬에서 값을 바꿀 때는 추적되지 않는 `.env`를 만든다.
 
 ```bash
 cp .env.example .env
 ```
+
+`.secrets/`는 Git 추적과 Docker build context에서 제외되는 로컬 주입 경로이며 인증서의
+정본이나 백업 위치가 아니다. 인증서 갱신과 복구에 필요한 원본은 별도의 PKI 보관소에서
+관리한다.
 
 Vite 개발 및 빌드 입력은 다음과 같다.
 
@@ -68,11 +75,12 @@ Vite 개발 및 빌드 입력은 다음과 같다.
 same-origin API 경로를 사용하고, 배포 Repository가 Nginx 설정 파일을 실행 시점에
 마운트한다.
 
-이 Repository의 `.env`는 아래 Docker 명령을 실행하는 shell에 이미지 digest와 실행
-옵션을 전달하며 브라우저 JavaScript나 컨테이너 내부에 주입되지 않는다. 배포 Repository는
-같은 변수 이름을 Docker Compose 보간 입력으로 사용할 수 있다. 자격 증명, Transport Layer
-Security (TLS) 개인 키와 인증서는 `.env`에 넣지 않고 배포 환경의 secret 또는 읽기 전용
-파일 mount로 제공한다.
+이 Repository의 `.env`는 아래 Docker 명령을 실행하는 shell에 이미지 digest, 실행 옵션과
+TLS 파일의 host 경로를 전달하며 브라우저 JavaScript나 컨테이너 내부에 주입되지 않는다.
+배포 Repository는 같은 변수 이름을 Docker Compose 보간 입력으로 사용할 수 있다. 자격
+증명과 Transport Layer Security (TLS) 파일의 내용은 `.env`에 넣지 않는다. 서버 개인 키는
+Docker Secret, 서버 인증서와 Intermediate CA 체인은 읽기 전용 파일 mount로 제공한다.
+Root CA 인증서는 컨테이너가 아니라 운영 브라우저의 신뢰 저장소에 설치한다.
 
 ## 개발 및 검증
 
@@ -89,6 +97,7 @@ Docker가 설치된 환경에서는 릴리스와 같은 `linux/amd64` 이미지�
 reverse proxy 통합 동작을 확인할 수 있다.
 
 ```bash
+test -f .env || cp .env.example .env
 set -a
 . ./.env
 set +a
@@ -102,6 +111,16 @@ docker build \
   scrap-monitoring-dashboard-readme \
   "$VITE_APP_VERSION"
 node test/proxy/integration.mjs scrap-monitoring-dashboard:dev
+```
+
+로컬 TLS 파일은 `.env`의 경로를 읽어 인증서 체인, 유효 기간, 서버 인증 용도와 개인 키
+일치 여부를 검사한다.
+
+```bash
+set -a
+. ./.env
+set +a
+pnpm run tls:check
 ```
 
 ## 배포
@@ -142,6 +161,9 @@ curl --fail "http://$DASHBOARD_BIND_ADDRESS:$DASHBOARD_HOST_PORT/healthz"
 | `/etc/nginx/runtime/*.conf` | API, SSE와 signaling location, body 제한과 timeout |
 | `/etc/nginx/security-headers.conf` | 환경별 Content Security Policy (CSP) 허용 출처 |
 | `/etc/nginx/conf.d/default.conf` | TLS listener와 인증서 경로가 필요한 환경의 server 설정 |
+
+Docker Secret 구성, 파일 권한, 인증서 발급, 교체, Nginx 반영과 롤백 절차는
+[`docs/implementation.md`](docs/implementation.md)의 `TLS 인증서 운영`을 따른다.
 
 배포 Repository는 FastAPI와 연결되는 Docker network, 설정 및 인증서의 읽기 전용 mount,
 `/tmp`의 임시 file system, host Transmission Control Protocol (TCP) 443 연결과

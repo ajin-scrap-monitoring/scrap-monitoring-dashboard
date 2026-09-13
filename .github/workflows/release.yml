@@ -66,6 +66,11 @@ jobs:
           VERSION: ${{ steps.image.outputs.version }}
         run: ./scripts/verify-container-image.sh "$IMAGE" scrap-monitoring-dashboard-release "$VERSION"
 
+      - name: Verify TLS secret integration
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}:${{ steps.image.outputs.version }}
+        run: ./test/tls/integration.sh "$IMAGE"
+
       - name: Verify reverse proxy integration
         env:
           IMAGE: ${{ steps.image.outputs.name }}:${{ steps.image.outputs.version }}

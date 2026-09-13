@@ -81,5 +81,8 @@ jobs:
       - name: Verify container runtime
         run: ./scripts/verify-container-image.sh scrap-monitoring-dashboard:test scrap-monitoring-dashboard-test 0.1.0
 
+      - name: Verify TLS secret integration
+        run: ./test/tls/integration.sh scrap-monitoring-dashboard:test
+
       - name: Verify reverse proxy integration
         run: node test/proxy/integration.mjs scrap-monitoring-dashboard:test
