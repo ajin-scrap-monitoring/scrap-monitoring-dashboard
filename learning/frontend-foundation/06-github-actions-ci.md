@@ -51,7 +51,7 @@ GitHub Actions는 Repository에 기록된 파일만 받은 새 runner에서 설�
 | 항목 | 로컬 검증 | CI 검증 |
 | --- | --- | --- |
 | 실행 위치 | 개발 컴퓨터 | GitHub runner |
-| 운영체제 | macOS | Ubuntu Linux |
+| 운영체제 | 원격 개발 Ubuntu 서버 | Ubuntu Linux |
 | 시작 상태 | 기존 파일이 남아 있을 수 있음 | Repository checkout부터 시작 |
 | Node.js 버전 입력 | `.node-version` | `.node-version` |
 | pnpm 버전 입력 | `packageManager` | `packageManager` |
@@ -146,13 +146,14 @@ action은 현재 프로젝트의 npm package가 아니다. `package.json`이나
 
 ## 현재 step 실행 순서
 
-현재 `ci` job의 step은 7개고 `container` job의 step은 6개다.
+현재 `ci` job의 step은 8개고 `container` job의 step은 7개다.
 
 ```text
 Checkout Repository
   -> Setup Node.js
   -> Setup pnpm
   -> Frozen Install
+  -> Contract Check
   -> Lint
   -> Component Test
   -> Build and Browser Test
@@ -166,9 +167,10 @@ Checkout Repository
 | 2 | Set up Node.js | `.node-version` | Node.js 24.19.0 준비 |
 | 3 | Set up pnpm | `packageManager` | pnpm 11.23.0 준비 |
 | 4 | Verify dependency installation | `package.json`, `pnpm-lock.yaml` | `node_modules/` 설치 |
-| 5 | Lint | ESLint 설정과 소스 | 경고 없는 정적 검사 |
-| 6 | Run component tests | Vitest 설정과 소스 | 컴포넌트와 데이터 소스 검증 |
-| 7 | Build and run browser tests | 소스와 Playwright 설정 | 타입 검사, `dist/` 생성과 Chromium 검증 |
+| 5 | Verify API contract | OpenAPI 제안과 생성 타입 | 문법, 참조와 생성 타입 일치 검사 |
+| 6 | Lint | ESLint 설정과 소스 | 경고 없는 정적 검사 |
+| 7 | Run component tests | Vitest 설정과 소스 | 컴포넌트와 데이터 소스 검증 |
+| 8 | Build and run browser tests | 소스와 Playwright 설정 | 타입 검사, `dist/` 생성과 Chromium 검증 |
 
 ## checkout
 
@@ -265,20 +267,22 @@ pnpm run test:e2e
 4. Vite 빌드와 Chromium 테스트가 모두 성공하면 마지막 step이 성공한다.
 5. 모든 `ci` step이 성공하면 `CI` check가 성공한다.
 
-현재 CI가 검증하는 대상은 7개다.
+현재 CI가 검증하는 대상은 9개다.
 
 | 검증 대상 | 명령 |
 | --- | --- |
+| 제안 OpenAPI와 생성 타입 | `pnpm run contract:check` |
 | 정적 검사 | `pnpm run lint` |
 | 컴포넌트와 데이터 소스 | `pnpm run test` |
 | TypeScript 타입 | `tsc -b` |
-| 프로덕션 정적 빌드 | `vite build` |
+| 프로덕션 정적 빌드와 크기 예산 | `vite build`, `verify-build-output.mjs` |
 | Chromium 브라우저 흐름 | `playwright test` |
 | OCI 이미지 런타임 | `verify-container-image.sh` |
+| TLS와 Docker Secret | `test/tls/integration.sh` |
 | reverse proxy 통합 | `test/proxy/integration.mjs` |
 
 `container` job은 `linux/amd64` OCI 이미지를 별도로 빌드하고 Nginx 런타임과 reverse
-proxy 통합을 검증한다.
+proxy 및 임시 Public Key Infrastructure (PKI)를 사용하는 TLS 통합을 검증한다.
 
 ## CI가 현재 하지 않는 일
 

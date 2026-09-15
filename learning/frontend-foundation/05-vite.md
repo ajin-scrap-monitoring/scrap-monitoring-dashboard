@@ -240,13 +240,15 @@ Vite는 JavaScript 문법을 대상 브라우저에 맞게 변환할 수 있다.
 ## 웹 서버와의 경계
 
 Vite가 이 Repository에서 만드는 배포 결과는 `dist/`다. 운영 환경에서는 배포
-Repository의 Nginx가 이 정적 파일을 제공한다.
+이미지가 이 `dist/`와 Nginx를 함께 포함하고, 배포 Repository는 해당 이미지를 실행하며
+환경별 Nginx 설정을 주입한다.
 
 현재 Vite의 기본 base path는 웹 서버 root를 기준으로 asset 경로를 만든다. 실제
 배포 기본 경로는 배포 계약을 정할 때 확정한다.
 
-Nginx 설정, TLS, FastAPI reverse proxy와 컨테이너 구성은 `vite.config.ts`에 넣지
-않는다. 해당 항목은 배포 Repository에서 관리한다.
+환경 독립적인 Nginx 공통 설정과 image 구성은 이 Repository에서 관리한다. TLS 인증서,
+FastAPI upstream, 실제 proxy 경로와 Docker Compose는 배포 Repository에서 관리한다.
+상세한 실행 경계는 [`07-nginx-runtime.md`](07-nginx-runtime.md)를 따른다.
 
 ## 생성되는 결과
 
