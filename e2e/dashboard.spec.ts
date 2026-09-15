@@ -195,6 +195,23 @@ test("빈 부가 목록은 각 화면의 빈 상태를 유지한다", async ({ p
   await expect(page.getByText("등록된 알림 대상이 없습니다.")).toBeVisible();
 });
 
+test("녹화 영상 카드의 제목과 영상 영역을 분리한다", async ({ page }) => {
+  await page.goto("/recordings");
+  const titleBox = await page.locator(".recording-player .section-title").boundingBox();
+  const frameBox = await page.locator(".recording-frame").boundingBox();
+  expect(titleBox).not.toBeNull();
+  expect(frameBox).not.toBeNull();
+  expect(frameBox!.y).toBeGreaterThanOrEqual(titleBox!.y + titleBox!.height + 4);
+
+  await page.goto("/recordings?scenario=empty-lists");
+  const panelBox = await page.locator(".recordings-empty-panel").boundingBox();
+  const emptyTitleBox = await page.locator(".recordings-empty-panel .section-title").boundingBox();
+  expect(panelBox).not.toBeNull();
+  expect(emptyTitleBox).not.toBeNull();
+  expect(emptyTitleBox!.x - panelBox!.x).toBeGreaterThanOrEqual(16);
+  expect(emptyTitleBox!.y - panelBox!.y).toBeGreaterThanOrEqual(14);
+});
+
 test("이력과 녹화 목록의 필터 및 페이지 이동을 제공한다", async ({ page }) => {
   await page.goto("/history");
   await page.getByRole("button", { name: "다음 이벤트 페이지" }).click();

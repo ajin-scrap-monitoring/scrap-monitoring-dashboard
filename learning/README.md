@@ -12,7 +12,7 @@
 
 ## 학습 범위
 
-학습 범위는 6개 묶음이다.
+학습 범위는 7개 묶음이다.
 
 | 순서 | 묶음 | 핵심 질문 | 문서 |
 | --- | --- | --- | --- |
@@ -22,12 +22,13 @@
 | 4 | React | Hypertext Markup Language (HTML) 진입점에 컴포넌트가 어떻게 연결되는가 | [`04-react.md`](frontend-foundation/04-react.md) |
 | 5 | Vite | 소스가 개발 서버와 정적 산출물로 어떻게 변환되는가 | [`05-vite.md`](frontend-foundation/05-vite.md) |
 | 6 | GitHub Actions 기반 Continuous Integration (CI) | 로컬 검증이 원격의 새 환경에서 어떻게 반복되는가 | [`06-github-actions-ci.md`](frontend-foundation/06-github-actions-ci.md) |
+| 7 | Nginx 런타임과 reverse proxy | 정적 산출물과 외부 요청이 운영 컨테이너에서 어떻게 처리되는가 | [`07-nginx-runtime.md`](frontend-foundation/07-nginx-runtime.md) |
 
 앞 묶음이 뒤 묶음의 실행 기반이 되므로 표의 순서대로 읽는다.
 
 ## 전체 실행 구조
 
-현재 기준선의 주요 실행 주체는 10개다.
+현재 기준선의 주요 실행 주체는 12개다.
 
 | 실행 주체 | 역할 |
 | --- | --- |
@@ -41,31 +42,34 @@
 | GitHub Actions runner | 새 Linux 환경에서 설치와 빌드 반복 |
 | Docker Buildx | `linux/amd64` OCI 이미지 빌드 |
 | Playwright 실행 컨테이너 | CI 브라우저 테스트에 필요한 Chromium과 Linux 라이브러리 제공 |
+| Docker Engine | OCI 이미지의 Nginx 컨테이너 실행 |
+| Nginx | 정적 파일, health endpoint와 reverse proxy 제공 |
 
 로컬 개발 흐름은 다음과 같다.
 
 ```text
-.node-version -> fnm -> Node.js
-
-package.json + pnpm-lock.yaml -> pnpm -> node_modules
-
-tsconfig files + source files -> TypeScript -> type result
-
-index.html + source files + vite.config.ts -> Vite -> Browser
-                                            -> dist
+Node Runtime: .node-version -> fnm -> Node.js
+Dependencies: package.json + pnpm-lock.yaml -> pnpm -> node_modules
+Type Check: tsconfig files + source files -> TypeScript -> type result
+Development: index.html + source files + vite.config.ts -> Vite -> Browser
+Frontend Build: index.html + source files + vite.config.ts -> Vite -> dist
+Container Build: dist + Nginx config + Dockerfile -> Docker Buildx -> OCI Image
+Container Runtime: OCI Image -> Docker Engine -> Nginx -> Browser
 ```
 
 Continuous Integration (CI) 흐름은 다음과 같다.
 
 ```text
-GitHub event -> Runner -> Checkout -> Node.js + pnpm -> Frozen install
-                                  -> Lint -> Component test -> Build -> Browser test
-                                  -> Docker Buildx -> linux/amd64 image -> Runtime and proxy test
+CI Entry: GitHub Event -> Runner -> Checkout
+Frontend Setup: Checkout -> Node.js + pnpm -> Frozen Install
+Frontend Checks: Frozen Install -> Lint -> Component Test -> Build -> Browser Test
+Container Setup: Checkout -> Docker Buildx -> linux/amd64 Image
+Container Checks: linux/amd64 Image -> Runtime Test -> Proxy Test -> TLS Test
 ```
 
 ## 파일과 부산물 구분
 
-현재 학습 대상은 7개 종류로 구분한다.
+현재 학습 대상은 9개 종류로 구분한다.
 
 | 종류 | 예시 | Git 추적 | 생성 주체 |
 | --- | --- | --- | --- |
@@ -74,8 +78,10 @@ GitHub event -> Runner -> Checkout -> Node.js + pnpm -> Frozen install
 | 타입 검사 입력 | `tsconfig*.json` | 대상 | 사람 |
 | 애플리케이션 소스 | `index.html`, `src/*.tsx` | 대상 | 사람 |
 | 빌드 설정 | `vite.config.ts` | 대상 | 사람 |
+| 컨테이너와 웹 서버 입력 | `Dockerfile`, `nginx/` | 대상 | 사람 |
 | 로컬 설치 및 검사 부산물 | `node_modules/`, `*.tsbuildinfo` | 제외 | pnpm과 TypeScript |
 | 프로덕션 빌드 부산물 | `dist/` | 제외 | Vite |
+| 컨테이너 이미지 | OCI image | 제외 | Docker Buildx |
 
 pnpm store는 Repository 바깥의 사용자별 저장 공간이며 Git 추적 대상이 아니다.
 GitHub Actions runner의 작업 디렉터리와 캐시도 GitHub가 관리하는 실행 환경이며
