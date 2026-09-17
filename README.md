@@ -10,9 +10,7 @@ React 기반 대시보드다. 브라우저는 Backend의 same-origin Application
 - 기간과 유형을 사용하는 이력 및 녹화 영상 조회
 - 로그인, 알림 읽음 처리와 관리자 설정 사용자 흐름
 
-## 빠른 시작
-
-Dockerfile은 Vite로 synthetic data가 포함된 테스트용 정적 파일을 빌드한다.
+## 사전 조건
 
 | 의존성 | 최소 버전 | 용도 | 설치 대상 |
 | --- | --- | --- | --- |
@@ -32,7 +30,23 @@ Ubuntu 22.04, 24.04, 26.04 amd64 host에서 Docker를 설치하려면 다음 명
 newgrp docker
 ```
 
-새 셸에서 Repository 루트의 다음 명령을 실행한다.
+## 설정
+
+`.env.example`은 공개 이미지 단독 확인과 배포 Docker Compose가 사용하는 공개 기본값을
+제공한다. 설정을 적용하려면 다음 명령으로 `.env`를 만든다.
+
+```bash
+cp .env.example .env
+```
+
+`VITE_*` 값은 Vite가 정적 파일을 생성할 때 적용한다. 실행 중인 컨테이너의 환경변수로
+이미 생성된 브라우저용 정적 파일을 변경할 수 없다. 전체 설정 경계는
+[`docs/implementation.md`](docs/implementation.md)를 따른다.
+
+## 빠른 시작
+
+Dockerfile은 Vite로 synthetic data가 포함된 테스트용 정적 파일을 빌드한다. `newgrp docker`로
+연 새 셸의 Repository 루트에서 다음 명령을 실행한다.
 
 ```bash
 docker build \
@@ -48,19 +62,6 @@ docker run --detach --rm \
 ```
 
 브라우저에서 `http://127.0.0.1:8080`을 연다.
-
-## 설정
-
-`.env.example`은 공개 이미지 단독 확인과 배포 Docker Compose가 사용하는 공개 기본값을
-제공한다. 설정을 적용하려면 다음 명령으로 `.env`를 만든다.
-
-```bash
-cp .env.example .env
-```
-
-`VITE_*` 값은 Vite가 정적 파일을 생성할 때 적용한다. 실행 중인 컨테이너의 환경변수로
-이미 생성된 브라우저용 정적 파일을 변경할 수 없다. 전체 설정 경계는
-[`docs/implementation.md`](docs/implementation.md)를 따른다.
 
 ## 개발 및 검증
 

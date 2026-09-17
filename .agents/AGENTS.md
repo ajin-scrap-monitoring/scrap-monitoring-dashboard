@@ -33,8 +33,8 @@
 `docs/design-reference.md`만 근거로 요구사항이나 구현 결정을 확정하지 않는다.
 
 같은 상세 사실은 하나의 정본에만 기록한다. `README.md`는 처음 방문한 사용자를 위한
-Repository 진입 문서이며, Organization의 [루트 README 규칙](https://github.com/ajin-scrap-monitoring/.github/blob/main/GOVERNANCE.md#repository-%EB%A3%A8%ED%8A%B8-readme)에 따라
-제목과 개요, 빠른 시작, 문서, 이용 조건과 현재 내용이 있는 선택 절을 정해진 순서로
+Repository 진입 문서이며, Organization의 루트 README 규칙에 따라 제목과 개요, 주요 기능,
+사전 조건, 설정, 빠른 시작, 개발 및 검증, 배포, 문서, 이용 조건을 현재 내용에 맞는 순서로
 제공한다. README에는 상세 설계, 전체 설정값과 운영 절차를 복제하지 않고 정본 문서로 연결한다.
 
 ## 작업 시작
