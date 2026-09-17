@@ -57,7 +57,7 @@ Repository를 등록하고 두 의존성을 설치한 뒤 최소 버전을 검�
 `scripts/quick-start.sh`은 `VITE_ENABLE_MOCK_DATA=true` 이미지 빌드와 읽기 전용 대시보드
 컨테이너 시작을 실행한다. `start` 인수는 host의 `127.0.0.1:8080`을 사용한다. `stop` 인수는
 빠른 시작 컨테이너를 중지하고 제거하며, `clean` 인수는 컨테이너와 빠른 시작 이미지를 함께
-제거한다.
+제거한다. `start`는 컨테이너 health check가 `healthy`가 된 뒤 대시보드 주소를 출력한다.
 
 이 Repository의 최종 배포 산출물은 Nginx와 Vite 정적 산출물을 포함한 OCI 이미지다.
 다단계 빌드는 Node.js와 pnpm으로 정적 파일을 생성하고 Nginx 런타임 단계에는 정적 파일,

@@ -39,6 +39,23 @@ newgrp docker
 cp .env.example .env
 ```
 
+빠른 시작 스크립트는 `.env`를 사용하지 않는다. `.env`를 사용하는 개발 서버와 배포 Docker
+Compose에서 값을 변경할 때는 다음 표를 따른다.
+
+| 값 | 변경하는 경우 | 입력 값 |
+| --- | --- | --- |
+| `VITE_APP_VERSION` | 개발 화면 또는 별도 정적 이미지의 표시 버전 변경 | 표시할 버전 문자열 |
+| `VITE_ENABLE_MOCK_DATA` | Backend 없이 동작하는 별도 정적 이미지 빌드 | `true` 또는 `false` |
+| `DASHBOARD_IMAGE` | 배포할 대시보드 release 선택 | GHCR image digest 참조 |
+| `DASHBOARD_CONTAINER_NAME` | 배포 host의 컨테이너 이름 충돌 방지 | Docker container name |
+| `DASHBOARD_PLATFORM` | 배포 host의 CPU architecture 선택 | OCI platform 값 |
+| `DASHBOARD_BIND_ADDRESS` | host가 수신할 네트워크 주소 변경 | bind address |
+| `DASHBOARD_HOST_PORT` | host의 TCP port 변경 | 사용하지 않는 TCP port 번호 |
+| `DASHBOARD_TMPFS_SIZE` | 읽기 전용 컨테이너의 임시 file system 크기 변경 | Docker tmpfs size |
+| `DASHBOARD_TLS_CERTIFICATE_FILE` | TLS 인증서 체인 교체 | fullchain file host 경로 |
+| `DASHBOARD_TLS_PRIVATE_KEY_FILE` | TLS 서버 개인 키 교체 | private key file host 경로 |
+| `DASHBOARD_ROOT_CA_FILE` | TLS 검증에 사용하는 Root CA 교체 | Root CA certificate file host 경로 |
+
 `VITE_*` 값은 Vite가 정적 파일을 생성할 때 적용한다. 실행 중인 컨테이너의 환경변수로
 이미 생성된 브라우저용 정적 파일을 변경할 수 없다. 전체 설정 경계는
 [`docs/implementation.md`](docs/implementation.md)를 따른다.

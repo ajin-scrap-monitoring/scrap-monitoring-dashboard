@@ -15,16 +15,22 @@ fail() {
 repository_root=$(cd -- "$(dirname -- "$0")/.." && pwd)
 
 wait_for_dashboard() {
-  local attempt
+  local attempt health_status
 
   for attempt in {1..30}; do
-    if (exec 3<>"/dev/tcp/$host_address/$host_port") 2>/dev/null; then
+    health_status=$(docker container inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$container_name")
+    if [[ $health_status == healthy ]]; then
       return
     fi
 
     if [[ $(docker container inspect --format '{{.State.Running}}' "$container_name") != true ]]; then
       docker logs "$container_name" >&2
       fail "Container $container_name stopped before the dashboard became available."
+    fi
+
+    if [[ $health_status == unhealthy ]]; then
+      docker logs "$container_name" >&2
+      fail "Container $container_name is unhealthy."
     fi
 
     sleep 1
