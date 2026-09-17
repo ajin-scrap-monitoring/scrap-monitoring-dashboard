@@ -17,7 +17,6 @@ version_at_least() {
   [[ $(printf '%s\n%s\n' "$required_version" "$actual_version" | sort --version-sort | head --lines 1) == "$required_version" ]]
 }
 
-[[ $(id --user) -ne 0 ]] || fail 'Run this script as the user who will run Docker commands, not as root.'
 [[ -r /etc/os-release ]] || fail 'This script requires a supported Ubuntu host.'
 
 . /etc/os-release
@@ -51,7 +50,6 @@ sudo apt-get install --yes \
   docker-buildx-plugin \
   docker-compose-plugin
 sudo systemctl enable --now docker.service containerd.service
-sudo usermod --append --groups docker "$USER"
 
 docker_version=$(sudo docker version --format '{{.Server.Version}}')
 compose_version=$(sudo docker compose version --short)
@@ -64,5 +62,4 @@ version_at_least "$docker_version" "$minimum_docker_version" || fail "Docker Eng
 version_at_least "$compose_version" "$minimum_compose_version" || fail "Docker Compose plugin $compose_version is below $minimum_compose_version."
 
 printf 'Installed Docker Engine %s and Docker Compose plugin %s.\n' "$docker_version" "$compose_version"
-printf 'Run newgrp docker in the current terminal before running Docker without sudo.\n'
-printf 'Sign out and sign in again before running Docker without sudo in future terminals.\n'
+printf 'Run Docker commands with sudo.\n'

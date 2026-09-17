@@ -49,10 +49,8 @@ Hypertext Transfer Protocol (HTTP)과 signaling 진입점은 Nginx만 사용하�
 | Docker Compose plugin | 5.5.1 | 개발과 전체 검증 service 실행 | [Docker Compose plugin](https://docs.docker.com/compose/install/linux/) |
 
 `scripts/install-docker.sh`은 Ubuntu 22.04, 24.04, 26.04 amd64 host에 Docker 공식 APT
-Repository를 등록하고 두 의존성을 설치한 뒤 최소 버전을 검사한다. 스크립트는 실행 사용자를
-`docker` group에 추가한다. 현재 터미널에서 권한을 적용하려면 `newgrp docker`로 새 셸을 열고,
-이후 로그인 세션에서 계속 사용하려면 로그아웃한 뒤 다시 로그인한다. `docker` group은 root 수준
-권한을 부여하므로 신뢰하는 사용자에게만 추가한다.
+Repository를 등록하고 두 의존성을 설치한 뒤 최소 버전을 검사한다. Docker daemon 접근이 필요한
+명령은 `sudo docker`로 실행한다. Docker group은 사용하지 않는다.
 
 `scripts/quick-start.sh`은 `.env`의 `VITE_APP_VERSION`과 `VITE_ENABLE_MOCK_DATA`를 Docker build
 argument로 전달해 읽기 전용 대시보드 컨테이너를 시작한다. `start` 인수는 host의
@@ -210,7 +208,7 @@ ssl_certificate_key /run/secrets/dashboard_tls_private_key;
 ```
 
 일반 Docker Compose는 file 기반 Secret source를 bind mount하며 host의 소유권과 접근
-mode를 유지한다. 배포 담당자는 `docker compose config --quiet`로 보간 결과를 확인하고,
+mode를 유지한다. 배포 담당자는 `sudo docker compose config --quiet`로 보간 결과를 확인하고,
 컨테이너 안에서 `/run/secrets/dashboard_tls_private_key`를 Nginx UID와 GID `101`이 읽고
 쓸 수는 없는지 검사한다.
 
@@ -219,8 +217,8 @@ mode를 유지한다. 배포 담당자는 `docker compose config --quiet`로 보
 1. 배포 담당자는 활성 파일과 다른 보호 디렉토리에 새 서버 개인 키, 서버 인증서와 fullchain을 준비한다.
 2. 배포 담당자는 새 파일 경로로 `pnpm run tls:check`를 실행한다.
 3. 배포 담당자는 `.env`의 `DASHBOARD_TLS_CERTIFICATE_FILE`과 `DASHBOARD_TLS_PRIVATE_KEY_FILE`을 새 파일 경로로 함께 변경한다.
-4. 배포 담당자는 `docker compose config --quiet`로 Secret source와 fullchain mount를 확인한다.
-5. 배포 담당자는 `docker compose up --detach --force-recreate dashboard`로 컨테이너를 다시 생성한다.
+4. 배포 담당자는 `sudo docker compose config --quiet`로 Secret source와 fullchain mount를 확인한다.
+5. 배포 담당자는 `sudo docker compose up --detach --force-recreate dashboard`로 컨테이너를 다시 생성한다.
 6. 배포 담당자는 `/healthz`, 인증서 체인, SAN과 만료 시각을 확인한다.
 7. 배포 담당자는 롤백 확인 기간이 끝난 뒤 이전 서버 개인 키와 인증서를 폐기한다.
 
@@ -229,8 +227,8 @@ Nginx reload만 실행하지 않고 컨테이너를 다시 생성한다. 인증�
 변경하면 다음 순서로 문법을 검사하고 worker를 교체한다.
 
 ```bash
-docker compose exec --no-TTY dashboard nginx -t
-docker compose exec --no-TTY dashboard nginx -s reload
+sudo docker compose exec --no-TTY dashboard nginx -t
+sudo docker compose exec --no-TTY dashboard nginx -s reload
 ```
 
 ### 만료 확인과 롤백
@@ -239,7 +237,7 @@ docker compose exec --no-TTY dashboard nginx -s reload
 환경은 이 검사를 정기 실행하고 실패 전에 갱신 작업을 시작한다.
 
 롤백은 `.env`의 두 TLS 파일 경로를 함께 이전 버전으로 되돌리고
-`docker compose up --detach --force-recreate dashboard`를 실행한다. Root CA 또는
+`sudo docker compose up --detach --force-recreate dashboard`를 실행한다. Root CA 또는
 Intermediate CA를 교체할 때는 새 Root CA를 운영 브라우저에 먼저 배포하고 새 체인의
 HTTPS 연결을 검증한 뒤 서버 인증서를 전환한다.
 
@@ -444,10 +442,10 @@ SSE 구독은 최근 event ID 1024개로 중복을 제거하고 개인 알림 �
 없이 먼저 전송한다. 서버의 `Retry-After`가 있으면 재연결 지연에 사용한다. 영상 확대 전환과
 화면 종료는 기존 WHEP session을 닫으며 동시에 활성화되는 재생 session은 하나다.
 
-UI와 synthetic data를 변경할 때는 `docker compose up --build development`로 Vite 개발 서버를
+UI와 synthetic data를 변경할 때는 `sudo docker compose up --build development`로 Vite 개발 서버를
 실행하고 필요한 상태를 `scenario` query로 확인한다. 제안 API 동작은 `source=api`와 계약
-테스트 서버로 확인한다. 변경 완료 전에는 `docker compose build verification`과
-`docker compose run --rm verification`을 실행한다. 제안 계약은 외부 담당자의 승인 전까지
+테스트 서버로 확인한다. 변경 완료 전에는 `sudo docker compose build verification`과
+`sudo docker compose run --rm verification`을 실행한다. 제안 계약은 외부 담당자의 승인 전까지
 확정 계약으로 취급하지 않는다.
 
 ## 정적 검사와 테스트 기준선
@@ -531,14 +529,16 @@ pnpm과 Vite를 포함하고 Repository를 `/app`에 bind mount하며, 의존성
 접속하며 파일 변경을 감시한다. `verification` service는 같은 Node.js와 pnpm에 Git, OpenSSL,
 Playwright Chromium을 추가하고 Repository를 bind mount하며, 의존성은
 `verification_node_modules` Docker volume에 설치한다. `.git`을 포함한 작업 트리를 mount하므로
-비밀 파일 추적 검사가 Git 추적 상태를 확인한다.
+비밀 파일 추적 검사가 Git 추적 상태를 확인한다. `verification` service는
+`VITE_ENABLE_MOCK_DATA=false`를 설정해 빠른 시작 `.env`의 mock 설정과 무관하게 release 번들을
+검증한다.
 
 ```sh
-docker compose up --build development
-docker compose build verification
-docker compose run --rm verification
-docker build --platform linux/amd64 --tag scrap-monitoring-dashboard:local .
-docker run --read-only --tmpfs /tmp --publish 8080:8080 scrap-monitoring-dashboard:local
+sudo docker compose up --build development
+sudo docker compose build verification
+sudo docker compose run --rm verification
+sudo docker build --platform linux/amd64 --tag scrap-monitoring-dashboard:local .
+sudo docker run --read-only --tmpfs /tmp --publish 8080:8080 scrap-monitoring-dashboard:local
 ```
 
 현재 CI는 공식 Playwright 컨테이너에서 frozen 설치, 정적 검사, 컴포넌트 테스트,

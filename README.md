@@ -20,14 +20,7 @@ React 기반 대시보드다. 브라우저는 Backend의 same-origin Application
 Ubuntu 22.04, 24.04, 26.04 amd64 host에서 Docker를 설치하려면 다음 명령을 실행한다.
 
 ```bash
-./scripts/install-docker.sh
-```
-
-스크립트는 실행 사용자를 `docker` group에 추가한다. 로그아웃 없이 현재 터미널에서 권한을
-적용하려면 다음 명령을 실행한다.
-
-```bash
-newgrp docker
+sudo ./scripts/install-docker.sh
 ```
 
 ## 설정
@@ -38,10 +31,6 @@ newgrp docker
 ```bash
 cp .env.example .env
 ```
-
-빠른 시작 스크립트는 `.env`의 `VITE_APP_VERSION`과 `VITE_ENABLE_MOCK_DATA`를 Docker build
-argument로 전달한다. 나머지 `DASHBOARD_*` 값은 배포 Repository Docker Compose와 TLS 검증이
-사용한다.
 
 | 값 | 적용 대상 | 입력 값 |
 | --- | --- | --- |
@@ -63,12 +52,12 @@ argument로 전달한다. 나머지 `DASHBOARD_*` 값은 배포 Repository Docke
 
 ## 빠른 시작
 
-Dockerfile은 Vite로 synthetic data가 포함된 테스트용 정적 파일을 빌드한다. `newgrp docker`로
-연 새 셸의 Repository 루트에서 다음 명령을 실행한다.
+Dockerfile은 Vite로 synthetic data가 포함된 테스트용 정적 파일을 빌드한다. Repository 루트에서
+다음 명령을 실행한다.
 
 ```bash
 # synthetic data를 포함한 이미지를 빌드하고 대시보드 컨테이너를 시작한다.
-./scripts/quick-start.sh start
+sudo ./scripts/quick-start.sh start
 ```
 
 브라우저에서 `http://127.0.0.1:8080`을 연다. 빠른 시작을 끝낼 때는 다음 두 방법 중 하나를
@@ -78,14 +67,14 @@ Dockerfile은 Vite로 synthetic data가 포함된 테스트용 정적 파일을 
 
 ```bash
 # 빠른 시작 컨테이너를 중지하고 제거한다.
-./scripts/quick-start.sh stop
+sudo ./scripts/quick-start.sh stop
 ```
 
 ### 전체 정리
 
 ```bash
 # 컨테이너와 빠른 시작 이미지를 함께 제거해 Docker 저장 공간을 회수한다.
-./scripts/quick-start.sh clean
+sudo ./scripts/quick-start.sh clean
 ```
 
 ## 개발 및 검증
@@ -98,7 +87,7 @@ Dockerfile은 Vite로 synthetic data가 포함된 테스트용 정적 파일을 
 
 ```bash
 # 소스 변경을 감시하고 host의 127.0.0.1:5173에 Vite 개발 서버를 시작한다.
-docker compose up --build development
+sudo docker compose up --build development
 ```
 
 ### 전체 검증
@@ -107,10 +96,10 @@ docker compose up --build development
 
 ```bash
 # Git, OpenSSL, Playwright Chromium을 포함한 전체 검증 이미지를 빌드한다.
-docker compose build verification
+sudo docker compose build verification
 
 # 보안 경계, 계약, 정적 검사, 테스트와 브라우저 테스트를 실행한 뒤 검증 컨테이너를 제거한다.
-docker compose run --rm verification
+sudo docker compose run --rm verification
 ```
 
 개발 컨테이너와 검증 범위의 전체 내용은
