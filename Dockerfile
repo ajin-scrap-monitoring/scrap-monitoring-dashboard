@@ -27,7 +27,7 @@ FROM build AS development
 
 EXPOSE 5173
 
-CMD ["sh", "-c", "pnpm install --frozen-lockfile && pnpm run dev -- --host 0.0.0.0"]
+CMD ["sh", "-c", "pnpm install --frozen-lockfile && pnpm exec vite --host 0.0.0.0"]
 
 FROM build AS verification
 

@@ -14,6 +14,8 @@ services:
     build:
       context: .
       target: verification
+    environment:
+      VITE_ENABLE_MOCK_DATA: "false"
     init: true
     volumes:
       - .:/app

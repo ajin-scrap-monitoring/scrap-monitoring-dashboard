@@ -16,17 +16,25 @@ fail() {
   exit 1
 }
 
-image_platform=$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image")
+run_docker() {
+  if [[ $(id --user) -eq 0 ]]; then
+    docker "$@"
+  else
+    sudo docker "$@"
+  fi
+}
+
+image_platform=$(run_docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image")
 [[ "$image_platform" == "linux/amd64" ]] || fail "Runtime image platform is $image_platform, expected linux/amd64."
 
 cleanup() {
-  docker rm --force "$container_name" >/dev/null 2>&1 || true
+  run_docker rm --force "$container_name" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
-docker run --rm "$image" nginx -t >/dev/null
+run_docker run --rm "$image" nginx -t >/dev/null
 
-docker run \
+run_docker run \
   --detach \
   --read-only \
   --tmpfs /tmp \
@@ -39,7 +47,7 @@ for attempt in {1..10}; do
     break
   fi
   if [[ "$attempt" == 10 ]]; then
-    docker logs "$container_name"
+    run_docker logs "$container_name"
     exit 1
   fi
   sleep 1
@@ -59,7 +67,7 @@ curl --fail --silent --show-error --head http://127.0.0.1:18080/index.html | gre
 curl --fail --silent --show-error --head http://127.0.0.1:18080/history | grep --ignore-case --quiet 'cache-control: no-store' || fail "SPA fallback cache policy is missing."
 curl --fail --silent --show-error --compressed --dump-header - http://127.0.0.1:18080/index.html --output /dev/null | grep --ignore-case --quiet 'content-encoding: gzip' || fail "Gzip compression is missing."
 
-asset_path=$(docker exec "$container_name" sh -c "find /usr/share/nginx/html/assets -type f -name '*.js' | head -n 1")
+asset_path=$(run_docker exec "$container_name" sh -c "find /usr/share/nginx/html/assets -type f -name '*.js' | head -n 1")
 if [[ -z "$asset_path" ]]; then
   echo "Runtime image does not contain a JavaScript asset." >&2
   exit 1
@@ -67,16 +75,16 @@ fi
 asset_name=${asset_path##*/}
 curl --fail --silent --show-error --head "http://127.0.0.1:18080/assets/$asset_name" | grep --ignore-case --quiet 'cache-control: public, max-age=31536000, immutable' || fail "Static asset cache policy is missing."
 
-[[ $(docker exec "$container_name" id -u) == 101 ]] || fail "Runtime process does not use UID 101."
-docker exec "$container_name" test -f /usr/share/licenses/scrap-monitoring-dashboard/NotoSansKR-OFL.txt || fail "Noto Sans KR license is missing."
-docker exec "$container_name" test -f /usr/share/licenses/scrap-monitoring-dashboard/React-MIT.txt || fail "React license is missing."
-docker exec "$container_name" test -f /usr/share/licenses/scrap-monitoring-dashboard/Vite-MIT.txt || fail "Vite license is missing."
-docker exec "$container_name" grep -rFq "$expected_version" /usr/share/nginx/html/assets || fail "Application version does not match $expected_version."
-docker exec "$container_name" test ! -e /app/src || fail "Runtime image contains application source files."
-source_map=$(docker exec "$container_name" sh -c "find /usr/share/nginx/html -type f -name '*.map' -print -quit")
+[[ $(run_docker exec "$container_name" id -u) == 101 ]] || fail "Runtime process does not use UID 101."
+run_docker exec "$container_name" test -f /usr/share/licenses/scrap-monitoring-dashboard/NotoSansKR-OFL.txt || fail "Noto Sans KR license is missing."
+run_docker exec "$container_name" test -f /usr/share/licenses/scrap-monitoring-dashboard/React-MIT.txt || fail "React license is missing."
+run_docker exec "$container_name" test -f /usr/share/licenses/scrap-monitoring-dashboard/Vite-MIT.txt || fail "Vite license is missing."
+run_docker exec "$container_name" grep -rFq "$expected_version" /usr/share/nginx/html/assets || fail "Application version does not match $expected_version."
+run_docker exec "$container_name" test ! -e /app/src || fail "Runtime image contains application source files."
+source_map=$(run_docker exec "$container_name" sh -c "find /usr/share/nginx/html -type f -name '*.map' -print -quit")
 [[ -z "$source_map" ]] || fail "Runtime image contains a source map."
 
-if docker exec "$container_name" sh -c 'command -v node || command -v npm || command -v pnpm'; then
+if run_docker exec "$container_name" sh -c 'command -v node || command -v npm || command -v pnpm'; then
   echo "Runtime image contains a build tool." >&2
   exit 1
 fi
