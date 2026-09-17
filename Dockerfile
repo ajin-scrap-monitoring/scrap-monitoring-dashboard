@@ -17,10 +17,26 @@ COPY docs/mockups/assets/OFL.txt /app/licenses/NotoSansKR-OFL.txt
 
 # ARG 값은 ENV와 달리 이 선언만으로 최종 컨테이너의 환경 변수에 남지 않는다.
 ARG APP_VERSION=0.1.0
+ARG VITE_ENABLE_MOCK_DATA=false
 # 정적 산출물을 /app/dist에 생성한다.
-RUN VITE_APP_VERSION="$APP_VERSION" pnpm run build && \
+RUN VITE_APP_VERSION="$APP_VERSION" VITE_ENABLE_MOCK_DATA="$VITE_ENABLE_MOCK_DATA" pnpm run build && \
     cp node_modules/react/LICENSE /app/licenses/React-MIT.txt && \
     cp node_modules/vite/LICENSE.md /app/licenses/Vite-MIT.txt
+
+FROM build AS development
+
+EXPOSE 5173
+
+CMD ["sh", "-c", "pnpm install --frozen-lockfile && pnpm run dev -- --host 0.0.0.0"]
+
+FROM build AS verification
+
+RUN apt-get update && \
+    apt-get install --yes --no-install-recommends git openssl && \
+    pnpm exec playwright install --with-deps chromium && \
+    rm -rf /var/lib/apt/lists/*
+
+CMD ["sh", "-c", "git config --global --add safe.directory /app && pnpm install --frozen-lockfile && pnpm run check"]
 
 FROM nginxinc/nginx-unprivileged:1.30.4-alpine3.24-slim@sha256:3a4485bf084957d56674ee22db07d77d5a281418815c5852827419d6d629d440 AS runtime
 
