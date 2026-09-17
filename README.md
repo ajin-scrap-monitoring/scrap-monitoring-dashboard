@@ -65,13 +65,22 @@ Dockerfile은 Vite로 synthetic data가 포함된 테스트용 정적 파일을 
 
 ## 개발 및 검증
 
-빠른 시작의 의존성으로 개발과 전체 검증을 실행한다. 개발 서버는 현재 터미널에서 실행되며
-`Ctrl+C`로 중지한다. 전체 검증은 개발 서버를 중지한 뒤 또는 다른 터미널에서 실행한다.
+빠른 시작의 의존성으로 개발과 전체 검증을 실행한다.
+
+### 개발
+
+개발 서버는 현재 터미널에서 실행되며 `Ctrl+C`로 중지한다.
 
 ```bash
 # 소스 변경을 감시하고 host의 127.0.0.1:5173에 Vite 개발 서버를 시작한다.
 docker compose up --build development
+```
 
+### 전체 검증
+
+전체 검증은 개발 서버를 중지한 뒤 또는 다른 터미널에서 실행한다.
+
+```bash
 # Git, OpenSSL, Playwright Chromium을 포함한 전체 검증 이미지를 빌드한다.
 docker compose build verification
 
