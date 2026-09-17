@@ -60,8 +60,19 @@ stop() {
   fi
 }
 
-case ${1:-start} in
+clean() {
+  stop
+
+  if docker image inspect "$image_name" >/dev/null 2>&1; then
+    docker image rm "$image_name"
+  else
+    printf 'Image %s does not exist.\n' "$image_name"
+  fi
+}
+
+case ${1:-} in
   start) start ;;
   stop) stop ;;
-  *) fail "Usage: $0 [start|stop]" ;;
+  clean) clean ;;
+  *) fail "Usage: $0 {start|stop|clean}" ;;
 esac

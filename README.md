@@ -50,7 +50,7 @@ Dockerfile은 Vite로 synthetic data가 포함된 테스트용 정적 파일을 
 
 ```bash
 # synthetic data를 포함한 이미지를 빌드하고 대시보드 컨테이너를 시작한다.
-./scripts/quick-start.sh
+./scripts/quick-start.sh start
 ```
 
 브라우저에서 `http://127.0.0.1:8080`을 연다.
@@ -58,6 +58,9 @@ Dockerfile은 Vite로 synthetic data가 포함된 테스트용 정적 파일을 
 ```bash
 # 빠른 시작 컨테이너를 중지하고 제거한다.
 ./scripts/quick-start.sh stop
+
+# 컨테이너와 빠른 시작 이미지를 함께 제거해 Docker 저장 공간을 회수한다.
+./scripts/quick-start.sh clean
 ```
 
 ## 개발 및 검증
