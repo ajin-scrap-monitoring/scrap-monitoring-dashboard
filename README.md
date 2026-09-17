@@ -2,80 +2,84 @@
 
 스크랩 적재 상태, LiDAR profile, 이력, 녹화 영상과 관리자 설정을 브라우저에서 제공하는
 React 기반 대시보드다. 브라우저는 Backend의 same-origin Application Programming Interface
-(API)와 Camera Media Service의 영상
-연결을 사용하며, 센서 입력 처리와 미디어 송출은 이 Repository의 책임이 아니다.
+(API)와 Camera Media Service의 영상 연결을 사용한다.
 
 ## 주요 기능
 
 - 현재 적재 상태, LiDAR profile, 장비 상태와 활성 알림 표시
 - 기간과 유형을 사용하는 이력 및 녹화 영상 조회
 - 로그인, 알림 읽음 처리와 관리자 설정 사용자 흐름
-- 합성 상태와 제안 API 계약을 사용하는 브라우저 검증
 
 ## 빠른 시작
 
-Node.js 24.19.0과 Corepack이 필요하다. Repository 루트에서 다음 명령을 실행한다.
+Dockerfile은 Vite로 synthetic data가 포함된 테스트용 정적 파일을 빌드한다.
+
+| 의존성 | 최소 버전 | 용도 | 설치 대상 |
+| --- | --- | --- | --- |
+| Docker Engine | 29.8.0 | 이미지 빌드와 컨테이너 실행 | Ubuntu amd64 host |
+| Docker Compose plugin | 5.5.1 | 개발 및 전체 검증 컨테이너 | Ubuntu amd64 host |
+
+Ubuntu 22.04, 24.04, 26.04 amd64 host에서 Docker를 설치하려면 다음 명령을 실행한다.
 
 ```bash
-corepack enable
-corepack install --global pnpm@11.23.0
-pnpm install --frozen-lockfile
-pnpm run dev
+./scripts/install-docker.sh
 ```
 
-브라우저에서 `http://localhost:5173`을 연다. 개발 서버는 합성 데이터를 기본으로 사용한다.
-`?scenario=measurement-error`처럼 상태를 지정하거나 `?source=api`로 제안 API 데이터
-소스를 선택할 수 있다.
+스크립트는 실행 사용자를 `docker` group에 추가한다. 로그아웃 없이 현재 터미널에서 권한을
+적용하려면 다음 명령을 실행한다.
+
+```bash
+newgrp docker
+```
+
+새 셸에서 Repository 루트의 다음 명령을 실행한다.
+
+```bash
+docker build \
+  --build-arg VITE_ENABLE_MOCK_DATA=true \
+  --tag scrap-monitoring-dashboard:demo \
+  .
+docker run --detach --rm \
+  --name scrap-monitoring-dashboard-demo \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+  --publish 127.0.0.1:8080:8080 \
+  scrap-monitoring-dashboard:demo
+```
+
+브라우저에서 `http://127.0.0.1:8080`을 연다.
 
 ## 설정
 
-`.env.example`은 개발, 컨테이너 검증과 단독 실행에 사용하는 공개 기본값을 제공한다.
-로컬 값을 바꿀 때만 다음 명령으로 Git 추적 대상이 아닌 `.env`를 만든다.
+`.env.example`은 공개 이미지 단독 확인과 배포 Docker Compose가 사용하는 공개 기본값을
+제공한다. 설정을 적용하려면 다음 명령으로 `.env`를 만든다.
 
 ```bash
 cp .env.example .env
 ```
 
-`VITE_*` 값은 정적 번들 생성 시에만 적용한다. 실행 중인 컨테이너의 환경변수로 브라우저
-번들을 변경할 수 없다. 환경변수, Transport Layer Security (TLS)와 Nginx 설정의 책임은
+`VITE_*` 값은 Vite가 정적 파일을 생성할 때 적용한다. 실행 중인 컨테이너의 환경변수로
+이미 생성된 브라우저용 정적 파일을 변경할 수 없다. 전체 설정 경계는
 [`docs/implementation.md`](docs/implementation.md)를 따른다.
 
 ## 개발 및 검증
 
-전체 검증은 다음 명령으로 실행한다.
+빠른 시작의 의존성으로 개발과 전체 검증을 실행한다. Repository 루트에서 다음 명령을 실행한다.
 
 ```bash
-pnpm run check
+docker compose up --build development
+docker compose build verification
+docker compose run --rm verification
 ```
 
-이 명령은 Repository 보안 경계, OpenAPI 검사, 정적 검사, 단위 테스트, 프로덕션 빌드와
-Playwright 브라우저 테스트를 실행한다.
+개발 컨테이너와 검증 범위의 전체 내용은
+[`docs/implementation.md`](docs/implementation.md)를 따른다.
 
 ## 배포
 
 `vMAJOR.MINOR.PATCH` Git tag는 Public GitHub Container Registry (GHCR) 이미지 게시를
-시작한다. 배포는 version tag가 아니라 image digest를 사용한다.
-
-정적 파일과 Nginx health endpoint만 단독으로 확인하려면 다음 명령을 실행한다.
-
-```bash
-test -f .env || cp .env.example .env
-set -a
-. ./.env
-set +a
-docker pull "$DASHBOARD_IMAGE"
-docker run --detach \
-  --name "$DASHBOARD_CONTAINER_NAME" \
-  --platform "$DASHBOARD_PLATFORM" \
-  --read-only \
-  --tmpfs "/tmp:rw,noexec,nosuid,size=$DASHBOARD_TMPFS_SIZE" \
-  --publish "$DASHBOARD_BIND_ADDRESS:$DASHBOARD_HOST_PORT:8080" \
-  "$DASHBOARD_IMAGE"
-curl --fail "http://$DASHBOARD_BIND_ADDRESS:$DASHBOARD_HOST_PORT/healthz"
-```
-
-실제 Backend, Camera Media Service, TLS, Nginx upstream과 컨테이너 네트워크의 배포 조합은
-Deployment Repository가 관리한다.
+시작한다. 배포 환경은 image digest를 사용한다. 배포 경계와 운영 절차는
+[`docs/implementation.md`](docs/implementation.md)를 따른다.
 
 ## 문서
 

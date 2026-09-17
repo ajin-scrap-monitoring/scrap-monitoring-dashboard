@@ -270,7 +270,6 @@ GitHub Actions는 PR과 `main` push에서 이미지를 게시하지 않고 빌�
 ## 근거 문서
 
 - [Node.js 릴리스 주기](https://nodejs.org/en/about/previous-releases)
-- [fnm 문서](https://github.com/Schniz/fnm)
 - [pnpm 설치](https://pnpm.io/installation)
 - [pnpm CI 구성](https://pnpm.io/continuous-integration)
 - [React 버전](https://react.dev/versions)

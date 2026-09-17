@@ -41,6 +41,19 @@ Hypertext Transfer Protocol (HTTP)과 signaling 진입점은 Nginx만 사용하�
 컨테이너 엔진은 Docker Engine, 다중 컨테이너 구성 도구는 Docker Compose를
 사용한다. 서비스별 이미지는 Open Container Initiative (OCI) 호환 형식을 유지한다.
 
+개발 host 의존성은 2개다.
+
+| 의존성 | 최소 버전 | 용도 | 출처 |
+| --- | --- | --- | --- |
+| Docker Engine | 29.8.0 | 이미지 빌드와 컨테이너 실행 | [Docker 공식 APT Repository](https://docs.docker.com/engine/install/ubuntu/) |
+| Docker Compose plugin | 5.5.1 | 개발과 전체 검증 service 실행 | [Docker Compose plugin](https://docs.docker.com/compose/install/linux/) |
+
+`scripts/install-docker.sh`은 Ubuntu 22.04, 24.04, 26.04 amd64 host에 Docker 공식 APT
+Repository를 등록하고 두 의존성을 설치한 뒤 최소 버전을 검사한다. 스크립트는 실행 사용자를
+`docker` group에 추가한다. 현재 터미널에서 권한을 적용하려면 `newgrp docker`로 새 셸을 열고,
+이후 로그인 세션에서 계속 사용하려면 로그아웃한 뒤 다시 로그인한다. `docker` group은 root 수준
+권한을 부여하므로 신뢰하는 사용자에게만 추가한다.
+
 이 Repository의 최종 배포 산출물은 Nginx와 Vite 정적 산출물을 포함한 OCI 이미지다.
 다단계 빌드는 Node.js와 pnpm으로 정적 파일을 생성하고 Nginx 런타임 단계에는 정적 파일,
 환경 독립적인 Single Page Application (SPA) 기본 설정과 reverse proxy 공통 설정만 복사한다.
@@ -48,7 +61,9 @@ Hypertext Transfer Protocol (HTTP)과 signaling 진입점은 Nginx만 사용하�
 포함하지 않는다.
 
 릴리스 이미지는 컨테이너 실행 시 환경변수를 읽지 않는다. Vite 환경변수는 정적 파일을
-생성하는 빌드 시점 입력이며 실행 중인 Nginx가 브라우저 번들을 다시 만들지 않는다. 운영
+생성하는 빌드 시점 입력이며 실행 중인 Nginx가 브라우저용 정적 파일을 다시 만들지 않는다.
+Dockerfile의 `VITE_ENABLE_MOCK_DATA` build argument는 기본값 `false`를 사용하며, `true`로
+빌드한 이미지는 synthetic data를 포함해 Backend 없이 대시보드 기능을 체험한다. 운영
 프론트엔드는 same-origin 경로를 사용하므로 API upstream 주소를 브라우저 설정으로
 주입하지 않는다. Repository 루트의 `.env.example`은 검증된 이미지 digest, 컨테이너 이름,
 플랫폼, 단독 실행 bind 주소와 port, `/tmp` 크기 및 TLS 파일 host 경로의 공개 기본값을
@@ -225,11 +240,11 @@ HTTPS 연결을 검증한 뒤 서버 인증서를 전환한다.
 ## 제품 구현 기준선
 
 프론트엔드 빌드 런타임은 Node.js 24.19.0 Long-Term Support (LTS)를 사용한다.
-`.node-version`은 개발 컴퓨터와 CI가 사용하는 정확한 Node.js 버전의 정본이다.
+`.node-version`은 개발 및 검증 컨테이너와 CI가 사용하는 정확한 Node.js 버전의 정본이다.
 `package.json`의 `engines.node`는 허용하는 24 주 버전을 선언한다. 개발 컴퓨터는
-Fast Node Manager (fnm)로 Node.js를 설치하고 Repository 진입 시 버전을 전환한다.
-Node.js는 개발 도구, 검사, 테스트와 정적 산출물 빌드에만 사용하며 운영 Linux
-서버에 설치하지 않는다.
+Docker Engine과 Docker Compose로 개발 및 검증 컨테이너를 실행하며 호스트에 Node.js를
+설치하지 않는다. Node.js는 개발 도구, 검사, 테스트와 정적 산출물 빌드에만 사용하며 운영
+Linux 서버에 설치하지 않는다.
 
 패키지 관리자는 pnpm 11.23.0을 사용한다. `package.json`의 `packageManager`는
 정확한 pnpm 버전의 정본이며 `pnpm-lock.yaml`만 lock file로 사용한다. 의존성
@@ -423,10 +438,11 @@ SSE 구독은 최근 event ID 1024개로 중복을 제거하고 개인 알림 �
 없이 먼저 전송한다. 서버의 `Retry-After`가 있으면 재연결 지연에 사용한다. 영상 확대 전환과
 화면 종료는 기존 WHEP session을 닫으며 동시에 활성화되는 재생 session은 하나다.
 
-UI와 합성 데이터를 변경할 때는 `pnpm run dev`로 실행하고 필요한 상태를 `scenario` query로
-확인한다. 제안 API 동작은 `source=api`와 계약 테스트 서버로 확인한다. 변경 완료 전에는
-`pnpm run check`를 실행한다. 제안 계약은 외부 담당자의 승인 전까지 확정 계약으로 취급하지
-않는다.
+UI와 synthetic data를 변경할 때는 `docker compose up --build development`로 Vite 개발 서버를
+실행하고 필요한 상태를 `scenario` query로 확인한다. 제안 API 동작은 `source=api`와 계약
+테스트 서버로 확인한다. 변경 완료 전에는 `docker compose build verification`과
+`docker compose run --rm verification`을 실행한다. 제안 계약은 외부 담당자의 승인 전까지
+확정 계약으로 취급하지 않는다.
 
 ## 정적 검사와 테스트 기준선
 
@@ -477,9 +493,9 @@ Node.js와 pnpm은 컨테이너 안에서도 각각 `.node-version`과 `package.
 `packageManager`에 기록된 버전을 사용한다. CI가 사용하는 외부 GitHub Action은 upstream
 Repository의 전체 commit SHA로 고정한다.
 
-`pnpm run check`는 비밀 파일 추적 및 Docker build context 제외, 계약 검사, 정적 검사,
-컴포넌트 테스트, 타입 검사, 프로덕션 빌드와 브라우저 테스트를 순서대로 실행하는 전체
-로컬 검증 명령이다. Container job은 임시 Root CA, Intermediate CA와 서버 인증서를
+검증 컨테이너의 `pnpm run check`는 비밀 파일 추적 및 Docker build context 제외, 계약 검사,
+정적 검사, 컴포넌트 테스트, 타입 검사, 프로덕션 빌드와 브라우저 테스트를 순서대로 실행하는
+전체 검증 명령이다. Container job은 임시 Root CA, Intermediate CA와 서버 인증서를
 생성하고 fullchain, 개인 키, Docker Secret, Nginx HTTPS, 신뢰 체인과 SAN 불일치를
 검증한다. 임시 CA 개인 키와 서버 개인 키는 job의 임시 디렉토리에서만 사용하고 종료 시
 삭제한다.
@@ -501,36 +517,24 @@ Repository의 전체 commit SHA로 고정한다.
 각 항목은 `docs/development-workflow.md`의 구현 기준선 단계에서 조사하고,
 채택한 결과와 근거만 이 문서에 반영한다.
 
-## 로컬 도구 설정
+## 개발과 검증 컨테이너
 
-fnm을 운영체제에 설치하고 셸 연동을 활성화한 뒤 다음 명령으로 Repository의
-도구 버전과 패키지 설치 상태를 재현한다.
+개발과 검증은 Docker Engine과 Docker Compose에서 실행한다. `development` service는 Node.js,
+pnpm과 Vite를 포함하고 Repository를 `/app`에 bind mount하며, 의존성은
+`development_node_modules` Docker volume에 설치한다. Vite는 host의 `127.0.0.1:5173`에서
+접속하며 파일 변경을 감시한다. `verification` service는 같은 Node.js와 pnpm에 Git, OpenSSL,
+Playwright Chromium을 추가하고 Repository를 bind mount하며, 의존성은
+`verification_node_modules` Docker volume에 설치한다. `.git`을 포함한 작업 트리를 mount하므로
+비밀 파일 추적 검사가 Git 추적 상태를 확인한다.
 
 ```sh
-fnm install
-fnm use
-npx get-pnpm "$(node -p 'require("./package.json").packageManager.split("@").at(-1)')"
-pnpm install --frozen-lockfile
-pnpm run dev
-pnpm run contract:generate
-pnpm run contract:check
-pnpm run lint
-pnpm run typecheck
-pnpm run test
-pnpm run build
-pnpm run verify:build-output
-pnpm run security:check
-pnpm run tls:check
-pnpm run preview
-pnpm exec playwright install chromium
-pnpm run test:e2e
-pnpm run check
+docker compose up --build development
+docker compose build verification
+docker compose run --rm verification
 docker build --platform linux/amd64 --tag scrap-monitoring-dashboard:local .
 docker run --read-only --tmpfs /tmp --publish 8080:8080 scrap-monitoring-dashboard:local
 ```
 
-`pnpm run preview`는 로컬에서 프로덕션 빌드 결과를 확인하는 명령이며 운영 웹
-서버로 사용하지 않는다. Chromium 설치는 Playwright 버전을 변경한 뒤 다시 실행한다.
 현재 CI는 공식 Playwright 컨테이너에서 frozen 설치, 정적 검사, 컴포넌트 테스트,
 타입 검사, 프로덕션 빌드와 두 뷰포트의 브라우저 테스트를 실행한다. 별도 container
 job은 `linux/amd64` 이미지를 빌드한 뒤 Nginx 설정 문법, 읽기 전용 root file system에서
