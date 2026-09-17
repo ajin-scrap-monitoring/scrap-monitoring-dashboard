@@ -49,27 +49,30 @@ Dockerfile은 Vite로 synthetic data가 포함된 테스트용 정적 파일을 
 연 새 셸의 Repository 루트에서 다음 명령을 실행한다.
 
 ```bash
-docker build \
-  --build-arg VITE_ENABLE_MOCK_DATA=true \
-  --tag scrap-monitoring-dashboard:demo \
-  .
-docker run --detach --rm \
-  --name scrap-monitoring-dashboard-demo \
-  --read-only \
-  --tmpfs /tmp:rw,noexec,nosuid,size=16m \
-  --publish 127.0.0.1:8080:8080 \
-  scrap-monitoring-dashboard:demo
+# synthetic data를 포함한 이미지를 빌드하고 대시보드 컨테이너를 시작한다.
+./scripts/quick-start.sh
 ```
 
 브라우저에서 `http://127.0.0.1:8080`을 연다.
 
+```bash
+# 빠른 시작 컨테이너를 중지하고 제거한다.
+./scripts/quick-start.sh stop
+```
+
 ## 개발 및 검증
 
-빠른 시작의 의존성으로 개발과 전체 검증을 실행한다. Repository 루트에서 다음 명령을 실행한다.
+빠른 시작의 의존성으로 개발과 전체 검증을 실행한다. 개발 서버는 현재 터미널에서 실행되며
+`Ctrl+C`로 중지한다. 전체 검증은 개발 서버를 중지한 뒤 또는 다른 터미널에서 실행한다.
 
 ```bash
+# 소스 변경을 감시하고 host의 127.0.0.1:5173에 Vite 개발 서버를 시작한다.
 docker compose up --build development
+
+# Git, OpenSSL, Playwright Chromium을 포함한 전체 검증 이미지를 빌드한다.
 docker compose build verification
+
+# 보안 경계, 계약, 정적 검사, 테스트와 브라우저 테스트를 실행한 뒤 검증 컨테이너를 제거한다.
 docker compose run --rm verification
 ```
 

@@ -54,6 +54,10 @@ Repository를 등록하고 두 의존성을 설치한 뒤 최소 버전을 검�
 이후 로그인 세션에서 계속 사용하려면 로그아웃한 뒤 다시 로그인한다. `docker` group은 root 수준
 권한을 부여하므로 신뢰하는 사용자에게만 추가한다.
 
+`scripts/quick-start.sh`은 `VITE_ENABLE_MOCK_DATA=true` 이미지 빌드와 읽기 전용 대시보드
+컨테이너 시작을 실행한다. 기본 `start` 동작은 host의 `127.0.0.1:8080`을 사용하고, `stop` 인수는
+빠른 시작 컨테이너를 중지하고 제거한다.
+
 이 Repository의 최종 배포 산출물은 Nginx와 Vite 정적 산출물을 포함한 OCI 이미지다.
 다단계 빌드는 Node.js와 pnpm으로 정적 파일을 생성하고 Nginx 런타임 단계에는 정적 파일,
 환경 독립적인 Single Page Application (SPA) 기본 설정과 reverse proxy 공통 설정만 복사한다.
