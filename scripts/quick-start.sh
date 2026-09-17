@@ -13,6 +13,24 @@ fail() {
 }
 
 repository_root=$(cd -- "$(dirname -- "$0")/.." && pwd)
+environment_file=$repository_root/.env
+
+read_environment_value() {
+  local key=$1
+
+  awk -F= -v key="$key" '
+    $0 ~ "^" key "=" {
+      value = substr($0, length(key) + 2)
+      found = 1
+    }
+    END {
+      if (!found) {
+        exit 1
+      }
+      print value
+    }
+  ' "$environment_file"
+}
 
 wait_for_dashboard() {
   local attempt health_status
@@ -40,11 +58,20 @@ wait_for_dashboard() {
 }
 
 start() {
+  [[ -r $environment_file ]] || fail 'Create .env with cp .env.example .env before running the quick start.'
+
+  local app_version mock_data_enabled
+  app_version=$(read_environment_value VITE_APP_VERSION) || fail 'Set VITE_APP_VERSION in .env.'
+  mock_data_enabled=$(read_environment_value VITE_ENABLE_MOCK_DATA) || fail 'Set VITE_ENABLE_MOCK_DATA in .env.'
+  [[ -n $app_version ]] || fail 'Set VITE_APP_VERSION in .env.'
+  [[ $mock_data_enabled == true || $mock_data_enabled == false ]] || fail 'Set VITE_ENABLE_MOCK_DATA to true or false in .env.'
+
   docker version --format '{{.Server.Version}}' >/dev/null || fail 'Docker Engine is unavailable. Run newgrp docker after installation.'
   docker container inspect "$container_name" >/dev/null 2>&1 && fail "Container $container_name already exists. Run $0 stop first."
 
   docker build \
-    --build-arg VITE_ENABLE_MOCK_DATA=true \
+    --build-arg APP_VERSION="$app_version" \
+    --build-arg VITE_ENABLE_MOCK_DATA="$mock_data_enabled" \
     --tag "$image_name" \
     "$repository_root"
   docker run --detach --rm \

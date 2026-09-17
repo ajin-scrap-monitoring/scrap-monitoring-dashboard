@@ -64,4 +64,5 @@ version_at_least "$docker_version" "$minimum_docker_version" || fail "Docker Eng
 version_at_least "$compose_version" "$minimum_compose_version" || fail "Docker Compose plugin $compose_version is below $minimum_compose_version."
 
 printf 'Installed Docker Engine %s and Docker Compose plugin %s.\n' "$docker_version" "$compose_version"
-printf 'Sign out and sign in again before running Docker without sudo.\n'
+printf 'Run newgrp docker in the current terminal before running Docker without sudo.\n'
+printf 'Sign out and sign in again before running Docker without sudo in future terminals.\n'

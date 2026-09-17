@@ -39,22 +39,23 @@ newgrp docker
 cp .env.example .env
 ```
 
-빠른 시작 스크립트는 `.env`를 사용하지 않는다. `.env`를 사용하는 개발 서버와 배포 Docker
-Compose에서 값을 변경할 때는 다음 표를 따른다.
+빠른 시작 스크립트는 `.env`의 `VITE_APP_VERSION`과 `VITE_ENABLE_MOCK_DATA`를 Docker build
+argument로 전달한다. 나머지 `DASHBOARD_*` 값은 배포 Repository Docker Compose와 TLS 검증이
+사용한다.
 
-| 값 | 변경하는 경우 | 입력 값 |
+| 값 | 적용 대상 | 입력 값 |
 | --- | --- | --- |
-| `VITE_APP_VERSION` | 개발 화면 또는 별도 정적 이미지의 표시 버전 변경 | 표시할 버전 문자열 |
-| `VITE_ENABLE_MOCK_DATA` | Backend 없이 동작하는 별도 정적 이미지 빌드 | `true` 또는 `false` |
-| `DASHBOARD_IMAGE` | 배포할 대시보드 release 선택 | GHCR image digest 참조 |
-| `DASHBOARD_CONTAINER_NAME` | 배포 host의 컨테이너 이름 충돌 방지 | Docker container name |
-| `DASHBOARD_PLATFORM` | 배포 host의 CPU architecture 선택 | OCI platform 값 |
-| `DASHBOARD_BIND_ADDRESS` | host가 수신할 네트워크 주소 변경 | bind address |
-| `DASHBOARD_HOST_PORT` | host의 TCP port 변경 | 사용하지 않는 TCP port 번호 |
-| `DASHBOARD_TMPFS_SIZE` | 읽기 전용 컨테이너의 임시 file system 크기 변경 | Docker tmpfs size |
-| `DASHBOARD_TLS_CERTIFICATE_FILE` | TLS 인증서 체인 교체 | fullchain file host 경로 |
-| `DASHBOARD_TLS_PRIVATE_KEY_FILE` | TLS 서버 개인 키 교체 | private key file host 경로 |
-| `DASHBOARD_ROOT_CA_FILE` | TLS 검증에 사용하는 Root CA 교체 | Root CA certificate file host 경로 |
+| `VITE_APP_VERSION` | 개발 서버와 빠른 시작 정적 이미지 | 표시할 버전 문자열 |
+| `VITE_ENABLE_MOCK_DATA` | 빠른 시작 정적 이미지 | `true` 또는 `false` |
+| `DASHBOARD_IMAGE` | 배포 Repository Docker Compose | GHCR image digest 참조 |
+| `DASHBOARD_CONTAINER_NAME` | 배포 Repository Docker Compose | Docker container name |
+| `DASHBOARD_PLATFORM` | 배포 Repository Docker Compose | OCI platform 값 |
+| `DASHBOARD_BIND_ADDRESS` | 배포 Repository Docker Compose | bind address |
+| `DASHBOARD_HOST_PORT` | 배포 Repository Docker Compose | 사용하지 않는 TCP port 번호 |
+| `DASHBOARD_TMPFS_SIZE` | 배포 Repository Docker Compose | Docker tmpfs size |
+| `DASHBOARD_TLS_CERTIFICATE_FILE` | 배포 Repository TLS certificate mount | fullchain file host 경로 |
+| `DASHBOARD_TLS_PRIVATE_KEY_FILE` | 배포 Repository Docker Secret | private key file host 경로 |
+| `DASHBOARD_ROOT_CA_FILE` | TLS material 검증 | Root CA certificate file host 경로 |
 
 `VITE_*` 값은 Vite가 정적 파일을 생성할 때 적용한다. 실행 중인 컨테이너의 환경변수로
 이미 생성된 브라우저용 정적 파일을 변경할 수 없다. 전체 설정 경계는
@@ -70,19 +71,26 @@ Dockerfile은 Vite로 synthetic data가 포함된 테스트용 정적 파일을 
 ./scripts/quick-start.sh start
 ```
 
-브라우저에서 `http://127.0.0.1:8080`을 연다.
+브라우저에서 `http://127.0.0.1:8080`을 연다. 빠른 시작을 끝낼 때는 다음 두 방법 중 하나를
+실행한다.
+
+### 컨테이너 종료
 
 ```bash
 # 빠른 시작 컨테이너를 중지하고 제거한다.
 ./scripts/quick-start.sh stop
+```
 
+### 전체 정리
+
+```bash
 # 컨테이너와 빠른 시작 이미지를 함께 제거해 Docker 저장 공간을 회수한다.
 ./scripts/quick-start.sh clean
 ```
 
 ## 개발 및 검증
 
-빠른 시작의 의존성으로 개발과 전체 검증을 실행한다.
+사전 조건의 의존성으로 개발과 전체 검증을 실행한다.
 
 ### 개발
 
