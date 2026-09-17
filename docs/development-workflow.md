@@ -252,18 +252,6 @@ GitHub Actions는 PR과 `main` push에서 이미지를 게시하지 않고 빌�
 `docs/implementation.md`에 기록한다. 작업 진행 상태와 검토 피드백은 Issue와 PR에
 기록한다.
 
-## 현재 출발점
-
-현재 4단계부터 6단계까지의 UI 구현, 브라우저 보정과 합성 상태 전이 검증이 완료되어 있다.
-Node.js, pnpm, React, TypeScript, Vite, ESLint, Vitest와 Playwright 기준선이 채택되어 있다.
-제안 OpenAPI의 HTTP adapter, SSE 상태 갱신과 WHEP 형태의 signaling client는 계약 대역
-서버를 사용해 검증되어 있다.
-
-8단계의 Repository 산출물 범위인 `linux/amd64` OCI 이미지, Nginx 런타임, reverse proxy와
-TLS 주입 경계, CI 검증 및 Git tag 기반 GHCR 게시 절차가 구현되어 있다. 7단계의 실제 외부
-서비스 사용자 흐름과 8단계의 환경별 배포 검증은 외부 계약 승인, 배포 입력값과 통합 환경
-확정 뒤 진행한다.
-
 ## 기술 기준 재검토 순서
 
 기술 조사는 다음 10개 순서를 따른다.
