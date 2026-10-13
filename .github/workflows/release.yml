@@ -7,17 +7,27 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   image:
     name: Build, verify and publish image
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: write
+      packages: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify release tag against main history
+        run: |
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          bash scripts/verify-release-tag.sh "$GITHUB_REF_NAME" "$GITHUB_SHA"
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -84,6 +94,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish release image
+        id: publish
         env:
           IMAGE_NAME: ${{ steps.image.outputs.name }}
           VERSION: ${{ steps.image.outputs.version }}
@@ -93,4 +104,21 @@ jobs:
           docker push "$IMAGE_NAME:$VERSION"
           docker push "$IMAGE_NAME:sha-$GITHUB_SHA"
           digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE_NAME:$VERSION")
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
           echo "Published $digest" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Attach deployment assets and publish immutable release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          IMAGE_REFERENCE: ${{ steps.publish.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_directory=$(mktemp -d "$RUNNER_TEMP/dashboard-release.XXXXXXXX")
+          bash scripts/prepare-release-assets.sh "$release_directory" "$IMAGE_REFERENCE"
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "$GITHUB_REF_NAME" \
+            --notes "Source: $GITHUB_SHA. Image: $IMAGE_REFERENCE. Runtime 설정 예시와 schema 및 Nginx 공개 설정을 함께 제공한다." \
+            "$release_directory/runtime-config.example.json" "$release_directory/runtime-config.schema.json" \
+            "$release_directory/nginx-config.tar.gz" "$release_directory/image-reference.txt" "$release_directory/SHA256SUMS"
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest

@@ -99,9 +99,15 @@ Repository와 컨테이너 이미지에 포함하지 않는다.
 `linux/amd64`다. Pull Request (PR)와 `main` push의 CI는 이미지를 빌드하고 런타임을
 검증하지만 게시하지 않는다. `vX.Y.Z` 형식의 Git tag가 Release workflow를 시작하며,
 동일한 이미지를 `X.Y.Z`와 `sha-<full-git-sha>` tag로 게시한다. `latest` tag는 게시하지
-않는다. Release workflow는 게시된 image digest를 workflow summary에 기록하고, 배포
+않는다. Release workflow는 tag의 커밋이 원격 `main` 이력에 포함되는지 먼저 검사한다.
+게시된 image digest는 workflow summary와 `image-reference.txt`에 기록한다. 배포
 Repository는 tag가 아닌 digest로 이미지를 선택한다. 화면의 버전은 Release tag의
 `X.Y.Z` 값으로 빌드한다.
+
+Release workflow는 공개 runtime 설정 예시, JSON schema, Git 추적 Nginx 설정 archive,
+image 참조와 `SHA256SUMS`를 draft Release에 첨부한 뒤 게시한다. Release의 tag와 asset은
+게시 후 변경하지 않는다. job에 부여한 `contents: write`는 Release 게시에,
+`packages: write`는 image 게시에 사용한다.
 
 운영 브라우저는 사설 Domain Name System (DNS) 이름으로 고정 사설 Internet Protocol
 (IP) 주소의 Nginx에 접속한다. 인터넷에서 모니터링 서버로 들어오는 연결, 공개 도메인,
