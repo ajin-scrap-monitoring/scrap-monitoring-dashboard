@@ -1,0 +1,124 @@
+services:
+  backend:
+    build:
+      context: ${SYNC_SOURCE_ROOT:?}/backend
+    environment:
+      APP_ENV: development
+      DATABASE_URL: sqlite+aiosqlite:////app/data/backend.db
+      ADMIN_PASSWORD: ${SYNC_ADMIN_PASSWORD:?}
+      OPERATOR_PASSWORD: ${SYNC_VIEWER_PASSWORD:?}
+      EDGE_API_KEY: ${SYNC_EDGE_TOKEN:?}
+      EDGE_V2_DEVICES: '[{"site_id":"site-demo","edge_id":"edge-demo","sensor_ids":["lidar-a","lidar-b"],"token":"${SYNC_EDGE_TOKEN:?}"}]'
+      EDGE_V2_MONITORING_SOURCES: '[{"pit_id":"pit-01","site_id":"site-demo","edge_id":"edge-demo"}]'
+      EDGE_V2_ASSESSMENT_TTL_SECONDS: "180"
+      MEDIA_SERVICE_URL: http://media:8889/api/v1
+      MEDIA_API_TOKEN: ${SYNC_MEDIA_TOKEN:?}
+      MEDIA_POLL_INTERVAL_SECONDS: "1"
+      WHEP_MOCK_FALLBACK: "false"
+    volumes:
+      - backend_data:/app/data
+    depends_on:
+      media:
+        condition: service_healthy
+
+  media:
+    build:
+      context: ${SYNC_SOURCE_ROOT:?}/media
+    environment:
+      EDGE_AUTH_SECRET: '{"camera-main":"${SYNC_CAMERA_TOKEN:?}"}'
+      MEDIA_API_HOST: 0.0.0.0
+      MEDIA_API_PORT: "8889"
+      MEDIA_INGEST_PORT: "8443"
+      MAX_BUFFER_BYTES: "16777216"
+    volumes:
+      - media_data:/var/lib/camera-media
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8889/api/v1/cameras/camera-main/recording-policy')"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  dashboard:
+    image: ${COMPOSE_PROJECT_NAME:?}-dashboard:latest
+    build:
+      context: ..
+      args:
+        VITE_ENABLE_MOCK_DATA: "false"
+        VITE_MONITORING_API_VERSION: v2
+        VITE_LIVE_VIDEO_MODE: mjpeg
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    volumes:
+      - ./runtime-config.json:/usr/share/nginx/html/runtime-config.json:ro
+      - ./nginx/upstream.conf:/etc/nginx/upstreams/integration.conf:ro
+      - ./nginx/runtime.conf:/etc/nginx/runtime/integration.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  dashboard-alt:
+    image: ${COMPOSE_PROJECT_NAME:?}-dashboard:latest
+    pull_policy: never
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    volumes:
+      - ./runtime-config-alt.json:/usr/share/nginx/html/runtime-config.json:ro
+
+  camera-input:
+    build:
+      context: ${SYNC_SOURCE_ROOT:?}/media
+    entrypoint: ["python", "/integration/camera_input.py"]
+    environment:
+      SYNC_CAMERA_TOKEN: ${SYNC_CAMERA_TOKEN:?}
+      SYNC_ADMIN_PASSWORD: ${SYNC_ADMIN_PASSWORD:?}
+    volumes:
+      - .:/integration:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from pathlib import Path; assert Path('/tmp/input-ready').exists()"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  edge-input:
+    build:
+      context: ${SYNC_SOURCE_ROOT:?}/edge
+      dockerfile: services/edge-orchestrator/Dockerfile
+    entrypoint: ["python", "/integration/edge_input.py"]
+    environment:
+      SYNC_EDGE_TOKEN: ${SYNC_EDGE_TOKEN:?}
+    volumes:
+      - .:/integration:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  browser:
+    build:
+      context: ..
+      target: verification
+    entrypoint: ["sh", "-c", "pnpm install --frozen-lockfile && pnpm exec playwright test --config playwright.integration.config.ts"]
+    environment:
+      SYNC_BASE_URL: http://dashboard:8080
+      SYNC_RUN_DIRECTORY: /app/${SYNC_RUN_DIRECTORY:?}
+      CI: "true"
+      SYNC_ADMIN_PASSWORD: ${SYNC_ADMIN_PASSWORD:?}
+      SYNC_VIEWER_PASSWORD: ${SYNC_VIEWER_PASSWORD:?}
+      SYNC_EDGE_TOKEN: ${SYNC_EDGE_TOKEN:?}
+    volumes:
+      - ..:/app
+      - browser_node_modules:/app/node_modules
+    depends_on:
+      dashboard:
+        condition: service_healthy
+      camera-input:
+        condition: service_healthy
+
+volumes:
+  backend_data:
+  media_data:
+  browser_node_modules:

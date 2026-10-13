@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "directory": "backend",
+      "repository": "ajin-scrap-monitoring/scrap-monitoring-backend",
+      "revision": "bf89cd334398ba558af21a2ad8009cf1c7040f14"
+    },
+    {
+      "directory": "media",
+      "repository": "ajin-scrap-monitoring/ajin-camera-media-service",
+      "revision": "d84e659e016bc765ff3605f2ff26cc95fa164553"
+    },
+    {
+      "directory": "edge",
+      "repository": "ajin-scrap-monitoring/ajin-edge-platform",
+      "revision": "69a667b57325432d3511a4597b7d3552ad09b42b"
+    }
+  ],
+  "paths": [
+    "/api/v1/events",
+    "/api/v1/history/load",
+    "/api/v1/monitoring/events",
+    "/api/v1/monitoring/snapshot",
+    "/api/v1/notification-recipients",
+    "/api/v1/notification-recipients/{recipientId}",
+    "/api/v1/notifications",
+    "/api/v1/notifications/read-all",
+    "/api/v1/notifications/test",
+    "/api/v1/notifications/{notificationId}",
+    "/api/v1/recordings",
+    "/api/v1/recordings/{recordingId}",
+    "/api/v1/session",
+    "/api/v1/settings/alerts",
+    "/api/v2/monitoring/events",
+    "/api/v2/monitoring/snapshot"
+  ]
+}

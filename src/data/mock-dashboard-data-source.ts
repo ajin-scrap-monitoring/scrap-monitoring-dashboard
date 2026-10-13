@@ -317,6 +317,7 @@ export function createMockDashboardDataSource(scenario: MockScenario = "normal")
       return Promise.resolve();
     },
     getDashboardData: async (options: DashboardDataRequestOptions = {}) => {
+      if (options.signal?.aborted) throw new DOMException("Synthetic request aborted.", "AbortError");
       if (scenario === "request-error") throw new Error("합성 데이터 요청 오류");
       if (scenario === "loading") await waitForMockLoading(options.signal);
       return withSession();
@@ -334,19 +335,24 @@ export function createMockDashboardDataSource(scenario: MockScenario = "normal")
       }
       return Promise.resolve();
     },
-    queryHistory: (query) => {
+    queryHistory: async (query, signal) => {
+      await Promise.resolve();
+      if (signal?.aborted) throw new DOMException("Synthetic request aborted.", "AbortError");
       const history = structuredClone(currentData.history);
       history.events = history.events.filter((event) => inRange(event.time, query) && eventMatches(event.type, query.eventCategory));
       history.chartEvents = history.chartEvents.filter((event) => {
         const type = event.label === "수거 완료" ? "수거" : event.label === "수거 필요" ? "알림" : "오류";
         return inRange(event.time, query) && eventMatches(type, query.eventCategory);
       });
-      return Promise.resolve(history);
+      return history;
     },
-    queryRecordings: (query) => Promise.resolve(currentData.recordings.filter((recording) =>
-      eventMatches(recording.type, query.eventCategory)
-      && dateTimeValue(recording.start) <= dateTimeValue(query.to)
-      && dateTimeValue(recording.end) >= dateTimeValue(query.from))),
+    queryRecordings: async (query, signal) => {
+      await Promise.resolve();
+      if (signal?.aborted) throw new DOMException("Synthetic request aborted.", "AbortError");
+      return structuredClone(currentData.recordings.filter((recording) => eventMatches(recording.type, query.eventCategory)
+        && dateTimeValue(recording.start) <= dateTimeValue(query.to)
+        && dateTimeValue(recording.end) >= dateTimeValue(query.from)));
+    },
     replaceAlertSettings: (settings) => {
       currentData.admin.alertSettings = { ...structuredClone(settings), version: `"settings-v${Number(settings.version.replace(/\D/g, "") || "1") + 1}"` };
       currentData.admin.preCollectionAlert = structuredClone(currentData.admin.alertSettings.preCollectionAlert);

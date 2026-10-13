@@ -43,8 +43,8 @@ if ! openssl x509 -in "$root_ca_file" -noout -ext basicConstraints 2>/dev/null |
   exit 1
 fi
 
-if ! openssl x509 -in "$certificate_file" -noout -ext subjectAltName >/dev/null 2>&1; then
-  printf 'TLS server certificate does not contain a subjectAltName extension.\n' >&2
+if ! openssl x509 -in "$certificate_file" -noout -ext subjectAltName 2>/dev/null | grep -Eq 'DNS:[^[:space:],]+'; then
+  printf 'TLS server certificate does not contain a DNS subjectAltName.\n' >&2
   exit 1
 fi
 
@@ -59,6 +59,7 @@ if ! openssl x509 -in "$certificate_file" -checkend 2592000 -noout >/dev/null; t
 fi
 
 openssl verify \
+  -purpose sslserver \
   -CAfile "$root_ca_file" \
   -untrusted "$certificate_file" \
   "$certificate_file"

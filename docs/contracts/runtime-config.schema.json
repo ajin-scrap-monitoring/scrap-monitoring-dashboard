@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dashboard runtime configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "pitId", "cameraId"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "pitId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 50
+    },
+    "cameraId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "allOf": [{ "pattern": "^[A-Za-z0-9]" }, { "not": { "pattern": "[^A-Za-z0-9._~-]" } }]
+    }
+  }
+}

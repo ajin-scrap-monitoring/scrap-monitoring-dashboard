@@ -1,0 +1,4045 @@
+{
+  "components": {
+    "schemas": {
+      "Alert": {
+        "description": "Active alert item displayed on dashboard.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "occurredAt": {
+            "format": "date-time",
+            "title": "Occurredat",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "pre_collection_alert",
+              "collection_required",
+              "collection_started",
+              "collection_completed",
+              "measurement_error",
+              "device_error",
+              "video_delay"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "severity",
+          "title",
+          "detail",
+          "occurredAt"
+        ],
+        "title": "Alert",
+        "type": "object"
+      },
+      "AlertSettings": {
+        "description": "Current alert policy and threshold settings.",
+        "properties": {
+          "collectionThresholdPercent": {
+            "maximum": 100,
+            "minimum": 0,
+            "title": "Collectionthresholdpercent",
+            "type": "number"
+          },
+          "eventTypes": {
+            "default": [
+              "collection_required",
+              "measurement_error",
+              "device_error"
+            ],
+            "items": {
+              "enum": [
+                "collection_required",
+                "measurement_error",
+                "device_error"
+              ],
+              "type": "string"
+            },
+            "title": "Eventtypes",
+            "type": "array"
+          },
+          "maximumRepeatCount": {
+            "default": 3,
+            "minimum": 1,
+            "title": "Maximumrepeatcount",
+            "type": "integer"
+          },
+          "preCollectionAlert": {
+            "$ref": "#/components/schemas/PreCollectionAlert"
+          },
+          "recoveryNotificationEnabled": {
+            "default": true,
+            "title": "Recoverynotificationenabled",
+            "type": "boolean"
+          },
+          "repeatIntervalMinutes": {
+            "default": 30,
+            "minimum": 0,
+            "title": "Repeatintervalminutes",
+            "type": "integer"
+          },
+          "sendDelayMinutes": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Senddelayminutes",
+            "type": "integer"
+          },
+          "version": {
+            "pattern": "^\"[^\"]+\"$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "collectionThresholdPercent",
+          "preCollectionAlert"
+        ],
+        "title": "AlertSettings",
+        "type": "object"
+      },
+      "AlertSettingsUpdate": {
+        "description": "Payload for updating alert policy and threshold settings.",
+        "properties": {
+          "collectionThresholdPercent": {
+            "maximum": 100,
+            "minimum": 0,
+            "title": "Collectionthresholdpercent",
+            "type": "number"
+          },
+          "eventTypes": {
+            "items": {
+              "enum": [
+                "collection_required",
+                "measurement_error",
+                "device_error"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Eventtypes",
+            "type": "array"
+          },
+          "maximumRepeatCount": {
+            "default": 3,
+            "minimum": 1,
+            "title": "Maximumrepeatcount",
+            "type": "integer"
+          },
+          "preCollectionAlert": {
+            "$ref": "#/components/schemas/PreCollectionAlert"
+          },
+          "recoveryNotificationEnabled": {
+            "default": true,
+            "title": "Recoverynotificationenabled",
+            "type": "boolean"
+          },
+          "repeatIntervalMinutes": {
+            "default": 30,
+            "minimum": 0,
+            "title": "Repeatintervalminutes",
+            "type": "integer"
+          },
+          "sendDelayMinutes": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Senddelayminutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "collectionThresholdPercent",
+          "preCollectionAlert",
+          "eventTypes"
+        ],
+        "title": "AlertSettingsUpdate",
+        "type": "object"
+      },
+      "Assessment-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "assessment_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Assessment Id",
+            "type": "string"
+          },
+          "assessment_type": {
+            "enum": [
+              "STATE",
+              "EVENT"
+            ],
+            "title": "Assessment Type",
+            "type": "string"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/Capabilities"
+          },
+          "config_revision": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Config Revision",
+            "type": "string"
+          },
+          "decision_state": {
+            "enum": [
+              "AVAILABLE",
+              "LIMITED",
+              "UNAVAILABLE"
+            ],
+            "title": "Decision State",
+            "type": "string"
+          },
+          "edge_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Edge Id",
+            "type": "string"
+          },
+          "event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/src__app__schemas__edge_v2__Event"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/Evidence"
+          },
+          "fill_estimate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FillEstimate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fill_state": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Fill State",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "message_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Message Id",
+            "type": "string"
+          },
+          "message_type": {
+            "const": "edge_assessment",
+            "title": "Message Type",
+            "type": "string"
+          },
+          "observed_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed From"
+          },
+          "observed_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed To"
+          },
+          "reason_codes": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "rule_version": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Version"
+          },
+          "schema_version": {
+            "const": "2.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "site_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Site Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "message_id",
+          "site_id",
+          "edge_id",
+          "generated_at",
+          "config_revision",
+          "message_type",
+          "assessment_type",
+          "assessment_id",
+          "revision",
+          "observed_from",
+          "observed_to",
+          "rule_version",
+          "decision_state",
+          "reason_codes",
+          "fill_state",
+          "fill_estimate",
+          "event",
+          "capabilities",
+          "evidence"
+        ],
+        "title": "Assessment",
+        "type": "object"
+      },
+      "Capabilities": {
+        "additionalProperties": false,
+        "properties": {
+          "collection": {
+            "enum": [
+              "NOT_IMPLEMENTED",
+              "NOT_VALIDATED",
+              "ENABLED"
+            ],
+            "title": "Collection",
+            "type": "string"
+          },
+          "fill": {
+            "enum": [
+              "NOT_IMPLEMENTED",
+              "NOT_VALIDATED",
+              "ENABLED"
+            ],
+            "title": "Fill",
+            "type": "string"
+          },
+          "occlusion": {
+            "enum": [
+              "NOT_IMPLEMENTED",
+              "NOT_VALIDATED",
+              "ENABLED"
+            ],
+            "title": "Occlusion",
+            "type": "string"
+          },
+          "vision": {
+            "enum": [
+              "NOT_IMPLEMENTED",
+              "NOT_VALIDATED",
+              "ENABLED"
+            ],
+            "title": "Vision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fill",
+          "occlusion",
+          "collection",
+          "vision"
+        ],
+        "title": "Capabilities",
+        "type": "object"
+      },
+      "Clock": {
+        "additionalProperties": false,
+        "properties": {
+          "offset_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offset Ms"
+          },
+          "state": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "offset_ms"
+        ],
+        "title": "Clock",
+        "type": "object"
+      },
+      "CollectionThresholdSample": {
+        "description": "Historical collection threshold valid at a given time.",
+        "properties": {
+          "effectiveAt": {
+            "format": "date-time",
+            "title": "Effectiveat",
+            "type": "string"
+          },
+          "valuePercent": {
+            "maximum": 100,
+            "minimum": 0,
+            "title": "Valuepercent",
+            "type": "number"
+          }
+        },
+        "required": [
+          "effectiveAt",
+          "valuePercent"
+        ],
+        "title": "CollectionThresholdSample",
+        "type": "object"
+      },
+      "DeliveryStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "last_backend_ack_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Backend Ack At"
+          },
+          "pending_bytes": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Pending Bytes",
+            "type": "integer"
+          },
+          "pending_messages": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Pending Messages",
+            "type": "integer"
+          },
+          "quarantined_messages": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Quarantined Messages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pending_messages",
+          "pending_bytes",
+          "quarantined_messages",
+          "last_backend_ack_at"
+        ],
+        "title": "DeliveryStatus",
+        "type": "object"
+      },
+      "EventPage": {
+        "description": "Paginated events list response.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/src__app__schemas__history__Event"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageMetadata"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "EventPage",
+        "type": "object"
+      },
+      "Evidence": {
+        "additionalProperties": false,
+        "properties": {
+          "scans": {
+            "items": {
+              "$ref": "#/components/schemas/ScanReference"
+            },
+            "title": "Scans",
+            "type": "array"
+          },
+          "vision_observations": {
+            "items": {
+              "$ref": "#/components/schemas/VisionReference"
+            },
+            "title": "Vision Observations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scans",
+          "vision_observations"
+        ],
+        "title": "Evidence",
+        "type": "object"
+      },
+      "FillEstimate": {
+        "additionalProperties": false,
+        "properties": {
+          "method_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Method Version",
+            "type": "string"
+          },
+          "ratio": {
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Ratio",
+            "type": "number"
+          }
+        },
+        "required": [
+          "ratio",
+          "method_version"
+        ],
+        "title": "FillEstimate",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HistoryEventMarker": {
+        "description": "Chart event marker displayed along the load timeline.",
+        "properties": {
+          "category": {
+            "enum": [
+              "collection",
+              "alert",
+              "error"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "occurredAt": {
+            "format": "date-time",
+            "title": "Occurredat",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "collection_required",
+              "collection_completed",
+              "measurement_error",
+              "device_error",
+              "video_delay"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "valuePercent": {
+            "maximum": 100,
+            "minimum": 0,
+            "title": "Valuepercent",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "category",
+          "severity",
+          "title",
+          "detail",
+          "occurredAt",
+          "valuePercent"
+        ],
+        "title": "HistoryEventMarker",
+        "type": "object"
+      },
+      "LidarProfile": {
+        "description": "LiDAR surface cross-section profile.",
+        "properties": {
+          "average": {
+            "minimum": 0,
+            "title": "Average",
+            "type": "number"
+          },
+          "lidarId": {
+            "enum": [
+              "lidar-1",
+              "lidar-2"
+            ],
+            "title": "Lidarid",
+            "type": "string"
+          },
+          "maximum": {
+            "minimum": 0,
+            "title": "Maximum",
+            "type": "number"
+          },
+          "measuredAt": {
+            "format": "date-time",
+            "title": "Measuredat",
+            "type": "string"
+          },
+          "minimum": {
+            "minimum": 0,
+            "title": "Minimum",
+            "type": "number"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/LidarProfileSample"
+            },
+            "title": "Samples",
+            "type": "array"
+          },
+          "unit": {
+            "const": "m",
+            "default": "m",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lidarId",
+          "measuredAt",
+          "average",
+          "minimum",
+          "maximum",
+          "samples"
+        ],
+        "title": "LidarProfile",
+        "type": "object"
+      },
+      "LidarProfileSample": {
+        "description": "Single surface measurement point along the LiDAR scan line.",
+        "properties": {
+          "height": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "positionRatio": {
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Positionratio",
+            "type": "number"
+          },
+          "valid": {
+            "default": true,
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "positionRatio"
+        ],
+        "title": "LidarProfileSample",
+        "type": "object"
+      },
+      "LiveVideo": {
+        "description": "Live video camera status metadata.",
+        "properties": {
+          "capturedAt": {
+            "format": "date-time",
+            "title": "Capturedat",
+            "type": "string"
+          },
+          "status": {
+            "default": "available",
+            "enum": [
+              "available",
+              "delayed",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "streamId": {
+            "default": "camera-main",
+            "title": "Streamid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "capturedAt"
+        ],
+        "title": "LiveVideo",
+        "type": "object"
+      },
+      "LoadHistory": {
+        "description": "Representative load percentage history response.",
+        "properties": {
+          "bucketSeconds": {
+            "minimum": 60,
+            "title": "Bucketseconds",
+            "type": "integer"
+          },
+          "collectionThresholds": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionThresholdSample"
+            },
+            "title": "Collectionthresholds",
+            "type": "array"
+          },
+          "eventMarkers": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryEventMarker"
+            },
+            "title": "Eventmarkers",
+            "type": "array"
+          },
+          "from": {
+            "format": "date-time",
+            "title": "From",
+            "type": "string"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/LoadSample"
+            },
+            "title": "Samples",
+            "type": "array"
+          },
+          "to": {
+            "format": "date-time",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "bucketSeconds",
+          "samples",
+          "collectionThresholds",
+          "eventMarkers"
+        ],
+        "title": "LoadHistory",
+        "type": "object"
+      },
+      "LoadSample": {
+        "description": "Time-series load sample for the trend sparkline/chart.",
+        "properties": {
+          "measuredAt": {
+            "format": "date-time",
+            "title": "Measuredat",
+            "type": "string"
+          },
+          "valid": {
+            "default": true,
+            "title": "Valid",
+            "type": "boolean"
+          },
+          "valuePercent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuepercent"
+          }
+        },
+        "required": [
+          "measuredAt"
+        ],
+        "title": "LoadSample",
+        "type": "object"
+      },
+      "LoginRequest": {
+        "description": "User credentials for session authentication.",
+        "properties": {
+          "password": {
+            "description": "Password",
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "persistent": {
+            "default": false,
+            "description": "Requests a persistent session within the server-defined maximum lifetime",
+            "title": "Persistent",
+            "type": "boolean"
+          },
+          "username": {
+            "description": "Username/ID",
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "MonitoringSnapshot": {
+        "description": "Complete dashboard state snapshot conforming to proposal/openapi.yaml.",
+        "properties": {
+          "activeAlerts": {
+            "items": {
+              "$ref": "#/components/schemas/Alert"
+            },
+            "title": "Activealerts",
+            "type": "array"
+          },
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/src__app__schemas__monitoring__DeviceStatus"
+            },
+            "title": "Devices",
+            "type": "array"
+          },
+          "lidarProfiles": {
+            "items": {
+              "$ref": "#/components/schemas/LidarProfile"
+            },
+            "title": "Lidarprofiles",
+            "type": "array"
+          },
+          "measuredAt": {
+            "format": "date-time",
+            "title": "Measuredat",
+            "type": "string"
+          },
+          "operationState": {
+            "enum": [
+              "idle",
+              "accumulating",
+              "collecting"
+            ],
+            "title": "Operationstate",
+            "type": "string"
+          },
+          "recentLoad": {
+            "items": {
+              "$ref": "#/components/schemas/LoadSample"
+            },
+            "title": "Recentload",
+            "type": "array"
+          },
+          "schemaVersion": {
+            "default": "1",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "serverTime": {
+            "format": "date-time",
+            "title": "Servertime",
+            "type": "string"
+          },
+          "snapshotId": {
+            "title": "Snapshotid",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/MonitoringSummary"
+          },
+          "systemStatus": {
+            "enum": [
+              "normal",
+              "collection_required",
+              "measurement_error",
+              "disconnected",
+              "no_data"
+            ],
+            "title": "Systemstatus",
+            "type": "string"
+          },
+          "video": {
+            "$ref": "#/components/schemas/LiveVideo"
+          }
+        },
+        "required": [
+          "snapshotId",
+          "serverTime",
+          "measuredAt",
+          "systemStatus",
+          "operationState",
+          "summary",
+          "devices",
+          "activeAlerts",
+          "recentLoad",
+          "lidarProfiles",
+          "video"
+        ],
+        "title": "MonitoringSnapshot",
+        "type": "object"
+      },
+      "MonitoringSnapshotV2": {
+        "properties": {
+          "assessment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Assessment-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assessmentReceivedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assessmentreceivedat"
+          },
+          "dataState": {
+            "enum": [
+              "FRESH",
+              "STALE",
+              "UNAVAILABLE",
+              "UNKNOWN",
+              "NO_DATA"
+            ],
+            "title": "Datastate",
+            "type": "string"
+          },
+          "deviceStatus": {
+            "$ref": "#/components/schemas/src__app__schemas__edge_v2__DeviceStatus"
+          },
+          "measuredAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measuredat"
+          },
+          "pitId": {
+            "title": "Pitid",
+            "type": "string"
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoncodes",
+            "type": "array"
+          },
+          "schemaVersion": {
+            "const": "2",
+            "default": "2",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "serverTime": {
+            "format": "date-time",
+            "title": "Servertime",
+            "type": "string"
+          },
+          "snapshotId": {
+            "title": "Snapshotid",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/MonitoringSource"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/MonitoringSummaryV2"
+          }
+        },
+        "required": [
+          "snapshotId",
+          "serverTime",
+          "pitId",
+          "source",
+          "measuredAt",
+          "assessmentReceivedAt",
+          "dataState",
+          "reasonCodes",
+          "summary",
+          "assessment",
+          "deviceStatus"
+        ],
+        "title": "MonitoringSnapshotV2",
+        "type": "object"
+      },
+      "MonitoringSource": {
+        "additionalProperties": false,
+        "description": "Explicit one-to-one pit/device assignment; never infer a pit from wire IDs.",
+        "properties": {
+          "edge_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Edge Id",
+            "type": "string"
+          },
+          "pit_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Pit Id",
+            "type": "string"
+          },
+          "site_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Site Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pit_id",
+          "site_id",
+          "edge_id"
+        ],
+        "title": "MonitoringSource",
+        "type": "object"
+      },
+      "MonitoringSummary": {
+        "description": "High-level summary for the dashboard header.",
+        "properties": {
+          "averageCollectionCycleSeconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Averagecollectioncycleseconds"
+          },
+          "collectionThresholdPercent": {
+            "maximum": 100,
+            "minimum": 0,
+            "title": "Collectionthresholdpercent",
+            "type": "number"
+          },
+          "expectedThresholdAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedthresholdat"
+          },
+          "lastCollectionAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastcollectionat"
+          },
+          "loadChangeLastHourPercentagePoints": {
+            "default": 0,
+            "maximum": 100,
+            "minimum": -100,
+            "title": "Loadchangelasthourpercentagepoints",
+            "type": "number"
+          },
+          "loadPercent": {
+            "maximum": 100,
+            "minimum": 0,
+            "title": "Loadpercent",
+            "type": "number"
+          },
+          "preCollectionAlert": {
+            "$ref": "#/components/schemas/PreCollectionAlert"
+          }
+        },
+        "required": [
+          "loadPercent",
+          "collectionThresholdPercent",
+          "preCollectionAlert"
+        ],
+        "title": "MonitoringSummary",
+        "type": "object"
+      },
+      "MonitoringSummaryV2": {
+        "properties": {
+          "collectionThresholdPercent": {
+            "title": "Collectionthresholdpercent",
+            "type": "number"
+          },
+          "loadPercent": {
+            "anyOf": [
+              {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loadpercent"
+          },
+          "warningThresholdPercent": {
+            "title": "Warningthresholdpercent",
+            "type": "number"
+          }
+        },
+        "required": [
+          "warningThresholdPercent",
+          "collectionThresholdPercent"
+        ],
+        "title": "MonitoringSummaryV2",
+        "type": "object"
+      },
+      "Notification": {
+        "description": "User notification item for top header notification center.",
+        "properties": {
+          "detail": {
+            "description": "Detailed message or context",
+            "title": "Detail",
+            "type": "string"
+          },
+          "id": {
+            "description": "Unique notification identifier",
+            "examples": [
+              "notif-001"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "occurredAt": {
+            "description": "Timestamp when the notification occurred",
+            "format": "date-time",
+            "title": "Occurredat",
+            "type": "string"
+          },
+          "readAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Timestamp when marked as read",
+            "title": "Readat"
+          },
+          "severity": {
+            "description": "Alert severity level",
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "description": "Short summary title",
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "description": "Operational event type",
+            "enum": [
+              "pre_collection_alert",
+              "collection_required",
+              "collection_started",
+              "collection_completed",
+              "measurement_error",
+              "device_error",
+              "video_delay"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "severity",
+          "title",
+          "detail",
+          "occurredAt"
+        ],
+        "title": "Notification",
+        "type": "object"
+      },
+      "NotificationPage": {
+        "description": "Paginated list of notifications with unread count.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Notification"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageMetadata"
+          },
+          "unreadCount": {
+            "description": "Total unread notifications count",
+            "minimum": 0,
+            "title": "Unreadcount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "unreadCount"
+        ],
+        "title": "NotificationPage",
+        "type": "object"
+      },
+      "NotificationRecipient": {
+        "description": "Registered notification recipient detail.",
+        "properties": {
+          "channels": {
+            "items": {
+              "enum": [
+                "email",
+                "sms"
+              ],
+              "type": "string"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "email": {
+            "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+            "title": "Email",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "eventTypes": {
+            "items": {
+              "enum": [
+                "collection_required",
+                "measurement_error",
+                "device_error"
+              ],
+              "type": "string"
+            },
+            "title": "Eventtypes",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "subscriptionMode": {
+            "default": "global",
+            "enum": [
+              "global",
+              "custom"
+            ],
+            "title": "Subscriptionmode",
+            "type": "string"
+          },
+          "team": {
+            "title": "Team",
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^\"[^\"]+\"$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "name",
+          "team",
+          "email",
+          "channels",
+          "eventTypes"
+        ],
+        "title": "NotificationRecipient",
+        "type": "object"
+      },
+      "NotificationRecipientCreate": {
+        "description": "Payload for creating a new notification recipient.",
+        "properties": {
+          "channels": {
+            "items": {
+              "enum": [
+                "email",
+                "sms"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Channels",
+            "type": "array"
+          },
+          "email": {
+            "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+            "title": "Email",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "eventTypes": {
+            "items": {
+              "enum": [
+                "collection_required",
+                "measurement_error",
+                "device_error"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Eventtypes",
+            "type": "array"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "subscriptionMode": {
+            "default": "global",
+            "enum": [
+              "global",
+              "custom"
+            ],
+            "title": "Subscriptionmode",
+            "type": "string"
+          },
+          "team": {
+            "minLength": 1,
+            "title": "Team",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "team",
+          "email",
+          "channels",
+          "eventTypes"
+        ],
+        "title": "NotificationRecipientCreate",
+        "type": "object"
+      },
+      "NotificationRecipientPage": {
+        "description": "Paginated list of notification recipients.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationRecipient"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageMetadata"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "NotificationRecipientPage",
+        "type": "object"
+      },
+      "NotificationRecipientPatch": {
+        "description": "Payload for partially updating a notification recipient.",
+        "properties": {
+          "channels": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "email",
+                    "sms"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channels"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "eventTypes": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "collection_required",
+                    "measurement_error",
+                    "device_error"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eventtypes"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "subscriptionMode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "global",
+                  "custom"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscriptionmode"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team"
+          }
+        },
+        "title": "NotificationRecipientPatch",
+        "type": "object"
+      },
+      "NotificationUpdate": {
+        "description": "Payload to mark a notification as read.",
+        "properties": {
+          "read": {
+            "const": true,
+            "description": "Mark notification as read",
+            "title": "Read",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "read"
+        ],
+        "title": "NotificationUpdate",
+        "type": "object"
+      },
+      "PageMetadata": {
+        "description": "Pagination metadata conforming to proposal/openapi.yaml.",
+        "properties": {
+          "page": {
+            "minimum": 1,
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "minimum": 1,
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "totalItems": {
+            "minimum": 0,
+            "title": "Totalitems",
+            "type": "integer"
+          },
+          "totalPages": {
+            "minimum": 0,
+            "title": "Totalpages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page",
+          "pageSize",
+          "totalItems",
+          "totalPages"
+        ],
+        "title": "PageMetadata",
+        "type": "object"
+      },
+      "PreCollectionAlert": {
+        "description": "Pre-collection alert threshold config.",
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "thresholdPercent": {
+            "maximum": 100,
+            "minimum": 0,
+            "title": "Thresholdpercent",
+            "type": "number"
+          }
+        },
+        "required": [
+          "thresholdPercent"
+        ],
+        "title": "PreCollectionAlert",
+        "type": "object"
+      },
+      "Recording": {
+        "description": "Metadata for a single recorded video segment.",
+        "properties": {
+          "containerFormat": {
+            "default": "mp4",
+            "title": "Containerformat",
+            "type": "string"
+          },
+          "contentPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contentpath"
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "downloadPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Downloadpath"
+          },
+          "durationSeconds": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Durationseconds"
+          },
+          "endedAt": {
+            "format": "date-time",
+            "title": "Endedat",
+            "type": "string"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "eventCategory": {
+            "enum": [
+              "collection",
+              "alert",
+              "error"
+            ],
+            "title": "Eventcategory",
+            "type": "string"
+          },
+          "frameRate": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 30,
+            "title": "Framerate"
+          },
+          "gaps": {
+            "items": {
+              "additionalProperties": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "heightPixels": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 480,
+            "title": "Heightpixels"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mediaStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mediastatus"
+          },
+          "retainedFrom": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retainedfrom"
+          },
+          "retainedUntil": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retaineduntil"
+          },
+          "sizeBytes": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizebytes"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "title": "Startedat",
+            "type": "string"
+          },
+          "status": {
+            "default": "available",
+            "enum": [
+              "available",
+              "processing",
+              "expired",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "thumbnailPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnailpath"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "videoCodec": {
+            "default": "h264",
+            "title": "Videocodec",
+            "type": "string"
+          },
+          "widthPixels": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 640,
+            "title": "Widthpixels"
+          }
+        },
+        "required": [
+          "id",
+          "startedAt",
+          "endedAt",
+          "durationSeconds",
+          "eventCategory",
+          "title",
+          "detail",
+          "sizeBytes",
+          "retainedFrom",
+          "retainedUntil"
+        ],
+        "title": "Recording",
+        "type": "object"
+      },
+      "RecordingPage": {
+        "description": "Paginated list of recorded video segments.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Recording"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageMetadata"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "RecordingPage",
+        "type": "object"
+      },
+      "ScanReference": {
+        "additionalProperties": false,
+        "properties": {
+          "calibration_version": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calibration Version"
+          },
+          "config_revision": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Config Revision",
+            "type": "string"
+          },
+          "coordinate_frame_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Coordinate Frame Id",
+            "type": "string"
+          },
+          "scan_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Scan Id",
+            "type": "string"
+          },
+          "sensor_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Sensor Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scan_id",
+          "sensor_id",
+          "config_revision",
+          "calibration_version",
+          "coordinate_frame_id"
+        ],
+        "title": "ScanReference",
+        "type": "object"
+      },
+      "SensorStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "data_state": {
+            "enum": [
+              "FRESH",
+              "STALE",
+              "RECOVERING",
+              "UNAVAILABLE",
+              "UNKNOWN"
+            ],
+            "title": "Data State",
+            "type": "string"
+          },
+          "last_scan_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Scan At"
+          },
+          "reason_codes": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "sensor_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Sensor Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sensor_id",
+          "data_state",
+          "last_scan_at",
+          "reason_codes"
+        ],
+        "title": "SensorStatus",
+        "type": "object"
+      },
+      "ServiceStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "last_progress_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Progress At"
+          },
+          "reason_codes": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "service": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Service",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "STARTING",
+              "HEALTHY",
+              "DEGRADED",
+              "RETRYING",
+              "FATAL",
+              "UNKNOWN"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "state",
+          "last_progress_at",
+          "reason_codes"
+        ],
+        "title": "ServiceStatus",
+        "type": "object"
+      },
+      "Session": {
+        "description": "Authenticated browser session details.",
+        "properties": {
+          "csrfToken": {
+            "description": "Cross-Site Request Forgery (CSRF) token",
+            "minLength": 1,
+            "title": "Csrftoken",
+            "type": "string"
+          },
+          "expiresAt": {
+            "description": "ISO 8601 UTC timestamp of session expiration",
+            "format": "date-time",
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        },
+        "required": [
+          "user",
+          "expiresAt",
+          "csrfToken"
+        ],
+        "title": "Session",
+        "type": "object"
+      },
+      "StatusReport": {
+        "additionalProperties": false,
+        "properties": {
+          "clock": {
+            "$ref": "#/components/schemas/Clock"
+          },
+          "config_revision": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Config Revision",
+            "type": "string"
+          },
+          "delivery": {
+            "$ref": "#/components/schemas/DeliveryStatus"
+          },
+          "edge_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Edge Id",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "message_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Message Id",
+            "type": "string"
+          },
+          "message_type": {
+            "const": "edge_status",
+            "title": "Message Type",
+            "type": "string"
+          },
+          "orchestrator_instance_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Orchestrator Instance Id",
+            "type": "string"
+          },
+          "overall_state": {
+            "enum": [
+              "HEALTHY",
+              "DEGRADED",
+              "MEASUREMENT_UNAVAILABLE",
+              "CONFIG_ERROR",
+              "UNKNOWN"
+            ],
+            "title": "Overall State",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "2.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "sensors": {
+            "items": {
+              "$ref": "#/components/schemas/SensorStatus"
+            },
+            "title": "Sensors",
+            "type": "array"
+          },
+          "sequence": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "services": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceStatus"
+            },
+            "title": "Services",
+            "type": "array"
+          },
+          "site_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Site Id",
+            "type": "string"
+          },
+          "storage": {
+            "$ref": "#/components/schemas/StorageStatus"
+          }
+        },
+        "required": [
+          "schema_version",
+          "message_id",
+          "site_id",
+          "edge_id",
+          "generated_at",
+          "config_revision",
+          "message_type",
+          "orchestrator_instance_id",
+          "sequence",
+          "overall_state",
+          "reason_codes",
+          "clock",
+          "sensors",
+          "services",
+          "delivery",
+          "storage"
+        ],
+        "title": "StatusReport",
+        "type": "object"
+      },
+      "StorageStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "last_loss_reason": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Loss Reason"
+          },
+          "limit_bytes": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Limit Bytes",
+            "type": "integer"
+          },
+          "loss_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss From"
+          },
+          "loss_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss To"
+          },
+          "lost_messages": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Lost Messages",
+            "type": "integer"
+          },
+          "unavailable_evidence_scan_ids": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Unavailable Evidence Scan Ids",
+            "type": "array"
+          },
+          "used_bytes": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Used Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "limit_bytes",
+          "used_bytes",
+          "lost_messages",
+          "loss_from",
+          "loss_to",
+          "last_loss_reason",
+          "unavailable_evidence_scan_ids"
+        ],
+        "title": "StorageStatus",
+        "type": "object"
+      },
+      "TestNotificationRequest": {
+        "description": "Payload for requesting an immediate test notification.",
+        "properties": {
+          "channels": {
+            "items": {
+              "enum": [
+                "email",
+                "sms"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Channels",
+            "type": "array"
+          },
+          "recipientId": {
+            "minLength": 1,
+            "title": "Recipientid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recipientId",
+          "channels"
+        ],
+        "title": "TestNotificationRequest",
+        "type": "object"
+      },
+      "User": {
+        "description": "Authenticated user profile.",
+        "properties": {
+          "displayName": {
+            "description": "Display name of the user",
+            "examples": [
+              "시스템 관리자"
+            ],
+            "title": "Displayname",
+            "type": "string"
+          },
+          "id": {
+            "description": "Unique user identifier",
+            "examples": [
+              "admin",
+              "operator"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "description": "User access control role",
+            "enum": [
+              "viewer",
+              "administrator"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "displayName",
+          "role"
+        ],
+        "title": "User",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VisionReference": {
+        "additionalProperties": false,
+        "properties": {
+          "camera_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Camera Id",
+            "type": "string"
+          },
+          "frame_acquired_at": {
+            "format": "date-time",
+            "title": "Frame Acquired At",
+            "type": "string"
+          },
+          "frame_sequence": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Frame Sequence",
+            "type": "integer"
+          },
+          "model_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Model Version",
+            "type": "string"
+          },
+          "observation_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Observation Id",
+            "type": "string"
+          },
+          "stream_instance_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Stream Instance Id",
+            "type": "string"
+          },
+          "timestamp_source": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Timestamp Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "camera_id",
+          "stream_instance_id",
+          "frame_sequence",
+          "frame_acquired_at",
+          "timestamp_source",
+          "observation_id",
+          "model_version"
+        ],
+        "title": "VisionReference",
+        "type": "object"
+      },
+      "src__app__schemas__edge_v2__DeviceStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "connection_state": {
+            "enum": [
+              "REPORTING",
+              "UNKNOWN"
+            ],
+            "title": "Connection State",
+            "type": "string"
+          },
+          "edge_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Edge Id",
+            "type": "string"
+          },
+          "effective_state": {
+            "title": "Effective State",
+            "type": "string"
+          },
+          "last_received_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Received At"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "site_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Site Id",
+            "type": "string"
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StatusReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "site_id",
+          "edge_id",
+          "connection_state",
+          "last_received_at",
+          "effective_state",
+          "reason_codes",
+          "snapshot"
+        ],
+        "title": "DeviceStatus",
+        "type": "object"
+      },
+      "src__app__schemas__edge_v2__Event": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "FILL_INCREASE",
+              "FILL_DECREASE",
+              "OCCLUSION",
+              "COLLECTION",
+              "GRAPPLE_PRESENT"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "stage": {
+            "enum": [
+              "SUSPECTED",
+              "CONFIRMED",
+              "RESOLVED",
+              "RETRACTED"
+            ],
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "stage"
+        ],
+        "title": "Event",
+        "type": "object"
+      },
+      "src__app__schemas__history__Event": {
+        "description": "Single operational event record.",
+        "properties": {
+          "category": {
+            "enum": [
+              "collection",
+              "alert",
+              "error"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "occurredAt": {
+            "format": "date-time",
+            "title": "Occurredat",
+            "type": "string"
+          },
+          "recordingId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recordingid"
+          },
+          "resolvedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolvedat"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "resolved",
+              "completed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "pre_collection_alert",
+              "collection_required",
+              "collection_started",
+              "collection_completed",
+              "measurement_error",
+              "device_error",
+              "video_delay"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "category",
+          "severity",
+          "status",
+          "title",
+          "detail",
+          "occurredAt"
+        ],
+        "title": "Event",
+        "type": "object"
+      },
+      "src__app__schemas__monitoring__DeviceStatus": {
+        "description": "Individual hardware/edge device status item.",
+        "properties": {
+          "displayName": {
+            "title": "Displayname",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lastReceivedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastreceivedat"
+          },
+          "latencyMilliseconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latencymilliseconds"
+          },
+          "status": {
+            "enum": [
+              "normal",
+              "delayed",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "lidar",
+              "camera",
+              "edge"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "displayName",
+          "status"
+        ],
+        "title": "DeviceStatus",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Monitoring API, Persistence, Real-time Hub, and Alert Engine",
+    "title": "Ajin Scrap Monitoring Backend API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/events": {
+      "get": {
+        "description": "Query paginated operational events (collection, alert, error) ordered by time descending.",
+        "operationId": "list_operational_events_api_v1_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "collection",
+                "alert",
+                "error"
+              ],
+              "title": "Category",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page number",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "description": "Page number",
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Page size",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Page size",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pit identifier",
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "default": "pit-01",
+              "description": "Pit identifier",
+              "title": "Pit Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List operational events",
+        "tags": [
+          "History"
+        ]
+      }
+    },
+    "/api/v1/history/load": {
+      "get": {
+        "description": "Query time-series representative load samples and event markers.",
+        "operationId": "get_load_history_api_v1_history_load_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "collection",
+                "alert",
+                "error"
+              ],
+              "title": "Category",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Pit identifier",
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "default": "pit-01",
+              "description": "Pit identifier",
+              "title": "Pit Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoadHistory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get representative load percentage history",
+        "tags": [
+          "History"
+        ]
+      }
+    },
+    "/api/v1/monitoring/events": {
+      "get": {
+        "description": "Stream real-time monitoring snapshot events to dashboard via SSE.",
+        "operationId": "stream_monitoring_events_api_v1_monitoring_events_get",
+        "parameters": [
+          {
+            "description": "Pit identifier",
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "default": "pit-01",
+              "description": "Pit identifier",
+              "title": "Pit Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stream monitoring updates with Server-Sent Events",
+        "tags": [
+          "Monitoring",
+          "Realtime"
+        ]
+      }
+    },
+    "/api/v1/monitoring/snapshot": {
+      "get": {
+        "description": "Retrieve full dashboard snapshot conforming to proposal/openapi.yaml.",
+        "operationId": "get_monitoring_snapshot_api_v1_monitoring_snapshot_get",
+        "parameters": [
+          {
+            "description": "Pit identifier",
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "default": "pit-01",
+              "description": "Pit identifier",
+              "title": "Pit Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get current monitoring dashboard snapshot",
+        "tags": [
+          "Monitoring"
+        ]
+      }
+    },
+    "/api/v1/notification-recipients": {
+      "get": {
+        "description": "List paginated alert notification recipients.",
+        "operationId": "list_notification_recipients_api_v1_notification_recipients_get",
+        "parameters": [
+          {
+            "description": "Page number",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "description": "Page number",
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Page size",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Page size",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationRecipientPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List notification recipients",
+        "tags": [
+          "Administration"
+        ]
+      },
+      "post": {
+        "description": "Create a new alert notification recipient.",
+        "operationId": "create_notification_recipient_api_v1_notification_recipients_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationRecipientCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationRecipient"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a notification recipient",
+        "tags": [
+          "Administration"
+        ]
+      }
+    },
+    "/api/v1/notification-recipients/{recipientId}": {
+      "patch": {
+        "description": "Partially update an existing notification recipient.",
+        "operationId": "update_notification_recipient_api_v1_notification_recipients__recipientId__patch",
+        "parameters": [
+          {
+            "description": "Recipient identifier",
+            "in": "path",
+            "name": "recipientId",
+            "required": true,
+            "schema": {
+              "description": "Recipient identifier",
+              "title": "Recipientid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationRecipientPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationRecipient"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update a notification recipient",
+        "tags": [
+          "Administration"
+        ]
+      }
+    },
+    "/api/v1/notifications": {
+      "get": {
+        "description": "List paginated notifications ordered by occurredAt descending.",
+        "operationId": "list_notifications_api_v1_notifications_get",
+        "parameters": [
+          {
+            "description": "Filter unread only",
+            "in": "query",
+            "name": "unreadOnly",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Filter unread only",
+              "title": "Unreadonly",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Page number",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "description": "Page number",
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Page size",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Page size",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List notifications for the current user",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/read-all": {
+      "post": {
+        "description": "Mark all unread notifications as read.",
+        "operationId": "mark_all_notifications_read_api_v1_notifications_read_all_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark all current notifications as read",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/test": {
+      "post": {
+        "description": "Queue an immediate test notification to a recipient.",
+        "operationId": "send_test_notification_api_v1_notifications_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestNotificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Send Test Notification Api V1 Notifications Test Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Queue a test notification",
+        "tags": [
+          "Administration"
+        ]
+      }
+    },
+    "/api/v1/notifications/{notificationId}": {
+      "patch": {
+        "description": "Mark a single notification as read.",
+        "operationId": "update_notification_api_v1_notifications__notificationId__patch",
+        "parameters": [
+          {
+            "description": "Notification identifier",
+            "in": "path",
+            "name": "notificationId",
+            "required": true,
+            "schema": {
+              "description": "Notification identifier",
+              "title": "Notificationid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Notification"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update the current user's notification state",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/v1/recordings": {
+      "get": {
+        "description": "List paginated recordings with filter criteria.",
+        "operationId": "list_recordings_api_v1_recordings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "collection",
+                "alert",
+                "error"
+              ],
+              "title": "Category",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page number",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "description": "Page number",
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Page size",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Page size",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pit identifier",
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "default": "pit-01",
+              "description": "Pit identifier",
+              "title": "Pit Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordingPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List recordings overlapping the requested interval",
+        "tags": [
+          "Recordings"
+        ]
+      }
+    },
+    "/api/v1/recordings/{recordingId}": {
+      "get": {
+        "description": "Get single recording metadata by identifier.",
+        "operationId": "get_recording_api_v1_recordings__recordingId__get",
+        "parameters": [
+          {
+            "description": "Recording segment identifier",
+            "in": "path",
+            "name": "recordingId",
+            "required": true,
+            "schema": {
+              "description": "Recording segment identifier",
+              "title": "Recordingid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Recording"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get recording metadata by identifier",
+        "tags": [
+          "Recordings"
+        ]
+      }
+    },
+    "/api/v1/session": {
+      "delete": {
+        "description": "Delete the active browser session and clear session cookie.",
+        "operationId": "delete_session_api_v1_session_delete",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete the current browser session",
+        "tags": [
+          "Session"
+        ]
+      },
+      "get": {
+        "description": "Get the current authenticated browser session.",
+        "operationId": "get_session_api_v1_session_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get the current browser session",
+        "tags": [
+          "Session"
+        ]
+      },
+      "post": {
+        "description": "Authenticate user credentials and create a session with HttpOnly cookie.",
+        "operationId": "create_session_api_v1_session_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a browser session",
+        "tags": [
+          "Session"
+        ]
+      }
+    },
+    "/api/v1/settings/alerts": {
+      "get": {
+        "description": "Get current threshold and alert policy settings.",
+        "operationId": "get_alert_settings_api_v1_settings_alerts_get",
+        "parameters": [
+          {
+            "description": "Pit identifier",
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "default": "pit-01",
+              "description": "Pit identifier",
+              "title": "Pit Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get alert settings",
+        "tags": [
+          "Administration"
+        ]
+      },
+      "put": {
+        "description": "Replace threshold and alert policy settings.",
+        "operationId": "replace_alert_settings_api_v1_settings_alerts_put",
+        "parameters": [
+          {
+            "description": "Pit identifier",
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "default": "pit-01",
+              "description": "Pit identifier",
+              "title": "Pit Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace alert settings",
+        "tags": [
+          "Administration"
+        ]
+      }
+    },
+    "/api/v2/monitoring/events": {
+      "get": {
+        "operationId": "events_api_v2_monitoring_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "default": "pit-01",
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Pit Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Events",
+        "tags": [
+          "Monitoring v2"
+        ]
+      }
+    },
+    "/api/v2/monitoring/snapshot": {
+      "get": {
+        "operationId": "snapshot_api_v2_monitoring_snapshot_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "default": "pit-01",
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Pit Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringSnapshotV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Snapshot",
+        "tags": [
+          "Monitoring v2"
+        ]
+      }
+    }
+  },
+  "x-source-repository": "https://github.com/ajin-scrap-monitoring/scrap-monitoring-backend",
+  "x-source-revision": "bf89cd334398ba558af21a2ad8009cf1c7040f14"
+}

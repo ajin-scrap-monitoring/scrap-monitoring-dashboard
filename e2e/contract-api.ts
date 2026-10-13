@@ -20,17 +20,26 @@ export type ContractRequest = {
   url: URL;
 };
 
+export { syntheticMp4 };
+
 const transparentPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+X8nqWQAAAABJRU5ErkJggg==",
   "base64",
 );
 
-export async function installContractApi(page: Page, { initiallyAuthenticated = false, whepFailures = 0 } = {}) {
+const syntheticMp4 = Buffer.from("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", "base64");
+
+export async function installContractApi(page: Page, { initiallyAuthenticated = false, whepFailures = 0, backendContract = false } = {}) {
+  await page.route("**/runtime-config.json", (route) => route.fulfill({ json: { schemaVersion: 1, pitId: "pit-01", cameraId: "camera-main" } }));
   let authenticated = initiallyAuthenticated;
   let remainingWhepFailures = whepFailures;
   let settings: components["schemas"]["AlertSettings"] = structuredClone(alertSettingsFixture);
   let recipients: components["schemas"]["NotificationRecipient"][] = [structuredClone(recipientFixture)];
   const requests: ContractRequest[] = [];
+  await page.addInitScript((backend) => {
+    const browser = globalThis as unknown as { sessionStorage: { setItem: (key: string, value: string) => void } };
+    browser.sessionStorage.setItem("scrap-monitoring-api-contract", backend ? "backend" : "proposal");
+  }, backendContract);
 
   await page.addInitScript(() => {
     type SessionDescription = { sdp?: string; type: string };
@@ -147,16 +156,16 @@ export async function installContractApi(page: Page, { initiallyAuthenticated = 
     }
     if (url.pathname === `/api/v1/recordings/${recordingFixture.id}/content`) {
       await route.fulfill({
-        body: Buffer.from([0]),
+        body: syntheticMp4,
         contentType: "video/mp4",
-        headers: { "Accept-Ranges": "bytes", "Content-Length": "1" },
+        headers: { "Accept-Ranges": "bytes", "Content-Length": String(syntheticMp4.length) },
         status: 200,
       });
       return;
     }
     if (url.pathname === `/api/v1/recordings/${recordingFixture.id}/download`) {
       await route.fulfill({
-        body: Buffer.from([0]),
+        body: syntheticMp4,
         contentType: "video/mp4",
         headers: { "Content-Disposition": `attachment; filename="${recordingFixture.id}.mp4"` },
         status: 200,

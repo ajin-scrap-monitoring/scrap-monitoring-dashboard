@@ -12,7 +12,7 @@ export function LoginPage({ dataSource }: { dataSource?: DashboardDataSource }) 
   const [submitting, setSubmitting] = useState(false);
 
   return (
-    <main className="login-page" aria-label="관리자 로그인">
+    <main className="login-page" aria-label="사용자 로그인">
       <section className="login-intro">
         <div className="login-brand" aria-label="AJIN SCRAP MONITORING"><span className="brand-mark" aria-hidden="true" /><span>AJIN SCRAP MONITORING</span></div>
         <div className="login-intro-copy">
@@ -27,9 +27,9 @@ export function LoginPage({ dataSource }: { dataSource?: DashboardDataSource }) 
       <section className="login-form-area">
         <div className="login-form-wrap">
           <div className="login-form-heading">
-            <span className="login-form-kicker">ADMINISTRATOR</span>
+            <span className="login-form-kicker">USER LOGIN</span>
             <h2>로그인</h2>
-            <p>관리자 계정 정보를 입력하세요.</p>
+            <p>사용자 계정 정보를 입력하세요.</p>
           </div>
           <form className="login-form" onSubmit={(event) => {
             event.preventDefault();
@@ -54,7 +54,7 @@ export function LoginPage({ dataSource }: { dataSource?: DashboardDataSource }) 
             <label htmlFor="login-id">아이디</label>
             <div className="login-field">
               <UserIcon />
-              <input id="login-id" name="username" autoComplete="username" placeholder="관리자 아이디" required />
+              <input id="login-id" name="username" autoComplete="username" placeholder="사용자 아이디" required />
             </div>
             <label htmlFor="login-password">비밀번호</label>
             <div className="login-field">

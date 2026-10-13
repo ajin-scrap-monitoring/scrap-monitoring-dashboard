@@ -6,11 +6,19 @@
 조건의 정본이다. 실제 작업 진행 상태와 검토 요청은 GitHub Issue와 Pull Request (PR)에서
 관리한다.
 
+Dashboard의 runtime 설정은 `runtime-config.schema.json`을 따른다. 제공 경로와 mount 및
+오류 처리 절차는 `../implementation.md`의 `Runtime 설정`에 기록한다.
+이 계약은 내부 service 간 공유 token 제거를 정의하지 않는다.
+
 제품 범위와 외부 경계는 `docs/project-spec.md`, 현재 구현과 채택한 기술은
 `docs/implementation.md`, 개발 단계는 `docs/development-workflow.md`를 따른다. 확정한 계약
 산출물은 이 디렉토리에 추가한다.
 
-프론트엔드 관점의 초기 계약 제안은 `proposal/README.md`, 화면별 매핑은
+현재 실행한 Backend, Camera Media Service와 Edge Platform의 계약 snapshot 및 검증 경계는
+`backend/README.md`를 따른다. 운영 정책과 전체 시스템 계약의 승인은 이 snapshot과 별도로
+관리한다.
+
+프론트엔드 관점의 v1 계약 제안은 `proposal/README.md`, 화면별 매핑은
 `proposal/frontend-mapping.md`에서 확인한다. 제안에 포함된 경로, 인증 방식, 필드와 상태
 코드는 백엔드 및 관련 담당자의 승인 전까지 확정값이 아니다.
 
@@ -27,7 +35,7 @@
 | 이력과 이벤트 | 조회 기간, 집계 간격, 정렬, 필터, 적재율 변화와 운영 이벤트 | 프론트엔드, 측정과 FastAPI 담당자 |
 | 녹화 영상 | 녹화 목록, 메타데이터, 보관 기간, 재생과 다운로드 | 프론트엔드, FastAPI와 미디어 담당자 |
 | 관리자 설정과 알림 | 임계율, 알림 정책, 수신 대상, 테스트 발송과 변경 충돌 | 프론트엔드, FastAPI와 운영 담당자 |
-| WebRTC signaling | 세션 수명, offer, answer, ICE candidate, 연결 종료와 재연결 | 프론트엔드, FastAPI와 미디어 담당자 |
+| 실시간 영상 | MJPEG frame, 접근 제어, timeout과 재연결 및 선택적 WebRTC signaling | 프론트엔드, FastAPI와 미디어 담당자 |
 | 배포와 reverse proxy | 경로, upstream, DNS, readiness, timeout, 제한, TLS와 신뢰 경계 | FastAPI, 미디어, 배포와 보안 담당자 |
 
 ## 결정 순서
@@ -89,7 +97,7 @@ payload schema를 기계적으로 검사할 수 있는 형식을 우선 검토�
 관리자 설정 변경에는 버전 번호, Entity Tag (ETag) 또는 이에 준하는 비교 조건을 사용하여
 다른 관리자의 변경을 덮어쓰지 않는 방식을 결정한다.
 
-### 4. 실시간 갱신과 WebRTC signaling 확정
+### 4. 실시간 갱신과 영상 연결 확정
 
 실시간 상태 갱신은 다음 항목을 결정한다.
 
@@ -103,7 +111,9 @@ payload schema를 기계적으로 검사할 수 있는 형식을 우선 검토�
 - 재연결 뒤 누락 구간 복구 또는 전체 snapshot 재조회 규칙
 - 세션 만료와 권한 변경 시 연결 종료 규칙
 
-Web Real-Time Communication (WebRTC) signaling은 다음 항목을 결정한다.
+MJPEG의 경로, multipart frame 형식, 접근 제어, frame 제한과 timeout은 실제 서비스 계약을
+따른다. 선택적 Web Real-Time Communication (WebRTC) signaling을 채택할 때는 다음 항목을
+결정한다.
 
 - signaling 세션 생성과 종료
 - 추측하기 어려운 signaling session 식별자
@@ -114,8 +124,8 @@ Web Real-Time Communication (WebRTC) signaling은 다음 항목을 결정한다.
 - 브라우저 재연결과 미디어 서비스 오류 처리
 - signaling 인증과 접근 권한
 
-Nginx는 signaling 요청만 FastAPI로 전달한다. WebRTC 미디어 패킷은 Nginx와 FastAPI를
-통과하지 않는다.
+MJPEG와 MP4는 Nginx가 인증 검사 뒤 Media Service에서 전달한다. 선택적 WebRTC 모드에서는
+signaling 요청만 FastAPI로 전달하며 WebRTC 미디어 패킷은 Nginx와 FastAPI를 통과하지 않는다.
 
 ### 5. 배포 계약 확정
 
@@ -123,10 +133,10 @@ Nginx는 signaling 요청만 FastAPI로 전달한다. WebRTC 미디어 패킷은
 
 | 항목 | 결정 내용 | 결정 주체 |
 | --- | --- | --- |
-| API와 signaling 경로 | 외부 경로, HTTP method, upstream별 경로 보존 또는 변경 규칙 | 프론트엔드와 FastAPI 담당자 |
+| API와 영상 경로 | 외부 경로, HTTP method, upstream별 경로 보존 또는 변경 규칙 | 프론트엔드와 FastAPI 담당자 |
 | upstream과 Docker DNS | Docker Compose service 이름, port, resolver 주소, DNS cache 유효 시간과 resolver timeout | 배포 담당자 |
 | readiness | FastAPI readiness endpoint, 응답 조건, healthcheck와 배포 순서 | FastAPI와 배포 담당자 |
-| proxy timeout | API, SSE와 signaling별 connect, send, read timeout과 SSE keep-alive 주기 | FastAPI와 미디어 담당자 |
+| proxy timeout | API, SSE와 영상별 connect, send, read timeout과 SSE keep-alive 주기 | FastAPI와 미디어 담당자 |
 | 요청 제한 | API 종류별 request body 최대 크기, IP 또는 사용자 기준 rate limit, 초과 응답 상태 | FastAPI와 운영 담당자 |
 | 인증과 오류 | 인증 전달 방식, Cookie 사용 시 Cross-Site Request Forgery (CSRF) 방어, Cross-Origin Resource Sharing (CORS), upstream 오류 응답 형식과 재시도 규칙 | FastAPI와 프론트엔드 담당자 |
 | ingress 신뢰 경계 | Nginx 앞단 proxy 유무, `real_ip_header`, 신뢰 proxy IP 대역과 client IP 기록 기준 | 배포 담당자 |
@@ -137,7 +147,8 @@ Nginx는 signaling 요청만 FastAPI로 전달한다. WebRTC 미디어 패킷은
 
 ### 6. 프론트엔드 연동과 검증
 
-프론트엔드는 제안 계약으로 생성한 타입과 HTTP 데이터 source adapter를 사용한다. 화면
+프론트엔드는 실제 Backend 계약 snapshot에서 생성한 타입과 HTTP 데이터 source adapter를
+사용한다. v1 제안과 WHEP 대역 검증은 별도 제안 타입을 사용한다. 화면
 컴포넌트는 도메인 모델을 사용하고 adapter가 외부 응답을 도메인 모델로 변환한다. 외부
 계약을 확정할 때 OpenAPI, 생성 타입, adapter와 계약 예제를 함께 변경한다.
 
@@ -145,11 +156,11 @@ Nginx는 signaling 요청만 FastAPI로 전달한다. WebRTC 미디어 패킷은
 
 - 계약 schema와 예제 응답 검사
 - 실제 API adapter 단위 테스트
-- 합성 데이터와 실제 API adapter의 동작 일치 검사
+- synthetic data와 실제 API adapter의 동작 일치 검사
 - 정상, 로딩, 빈 결과, 부분 결측과 오류 응답 검사
 - 인증 만료, 권한 부족과 설정 변경 충돌 검사
 - 채택한 실시간 전송의 연결, 끊김, 재연결과 재동기화 검사
-- WebRTC signaling 연결과 재연결 검사
+- MJPEG 수신, 종료와 재연결 및 선택적 WebRTC signaling 검사
 - 녹화 영상 재생, range 요청과 다운로드 검사
 - Nginx proxy, 보안 header, cache와 timeout 검사
 - 통합 환경에서 브라우저 사용자 흐름 검사

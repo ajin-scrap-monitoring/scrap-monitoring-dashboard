@@ -1,0 +1,23 @@
+extends:
+  - recommended
+
+rules:
+  no-empty-servers: off
+  security-defined: off
+  info-license: off
+
+apis:
+  proposal:
+    root: ./docs/contracts/proposal/openapi.yaml
+    x-openapi-ts:
+      output: ./src/generated/api-contract.ts
+    rules:
+      no-empty-servers: error
+      security-defined: error
+      info-license: warn
+  backend:
+    root: ./docs/contracts/backend/openapi.json
+    x-openapi-ts:
+      output: ./src/generated/backend-contract.ts
+      defaultNonNullable: false
+      emptyObjectsUnknown: true

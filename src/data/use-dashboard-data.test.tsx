@@ -88,3 +88,39 @@ test("초기 스냅샷 요청이 실패하면 실시간 구독을 시작하지 �
   expect(screen.getByText("stale failure")).toBeVisible();
   expect(subscribe).not.toHaveBeenCalled();
 });
+
+test("reload 뒤 늦은 초기 응답은 새 요청과 구독을 덮어쓰지 않는다", async () => {
+  const data = await createMockDashboardDataSource().getDashboardData();
+  const latest = structuredClone(data);
+  latest.monitoring.summary.loadPercent = 90;
+  const pending: ((value: typeof data) => void)[] = [];
+  const signals: (AbortSignal | undefined)[] = [];
+  const subscribe = vi.fn(() => () => undefined);
+  const source: DashboardDataSource = {
+    getDashboardData: (options) => new Promise((resolve) => { pending.push(resolve); signals.push(options?.signal); }), subscribe,
+  };
+  render(<DashboardDataHarness dataSource={source} />);
+  fireEvent.click(screen.getByRole("button", { name: "retry" }));
+  expect(signals[0]?.aborted).toBe(true);
+  await act(() => { pending[1](latest); return Promise.resolve(); });
+  await act(() => { pending[0](data); return Promise.resolve(); });
+  expect(screen.getByText("90%")).toBeVisible();
+  expect(subscribe).toHaveBeenCalledOnce();
+});
+
+test("화면 종료는 구독과 초기 요청을 취소하고 늦은 event를 무시한다", async () => {
+  const data = await createMockDashboardDataSource().getDashboardData();
+  const unsubscribe = vi.fn();
+  let publish: (value: typeof data) => void = () => undefined;
+  let signal: AbortSignal | undefined;
+  const source: DashboardDataSource = {
+    getDashboardData: (options) => { signal = options?.signal; return Promise.resolve(data); },
+    subscribe: (listener) => { publish = listener; return unsubscribe; },
+  };
+  const view = render(<DashboardDataHarness dataSource={source} />);
+  await screen.findByText("72%");
+  view.unmount();
+  expect(signal?.aborted).toBe(true);
+  expect(unsubscribe).toHaveBeenCalledOnce();
+  expect(() => publish(data)).not.toThrow();
+});

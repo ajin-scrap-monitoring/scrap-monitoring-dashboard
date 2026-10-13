@@ -11,8 +11,12 @@ export function DashboardStatusLabel({ status }: { status: DashboardData["monito
     "measurement-error": "측정 오류",
     disconnected: "연결 끊김",
     "no-data": "데이터 없음",
+    fresh: "표시 가능",
+    stale: "관측 기한 초과",
+    unavailable: "판단 불가",
+    unknown: "상태 확인 불가",
   };
-  const tone = status === "normal" ? "ok" : status === "collection-required" ? "warning" : "error";
+  const tone = status === "normal" || status === "fresh" ? "ok" : status === "collection-required" || status === "stale" ? "warning" : "error";
   return <span className={`status-text ${tone}`}>{labels[status]}</span>;
 }
 

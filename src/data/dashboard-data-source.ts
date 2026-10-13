@@ -36,14 +36,16 @@ export type NotificationRecipientResult = {
 };
 
 export interface DashboardDataSource {
+  monitoringVersion?: "v1" | "v2";
   createNotificationRecipient?(input: NotificationRecipientInput): Promise<NotificationRecipientResult>;
   createSession?(credentials: SessionCredentials): Promise<UserSession>;
   deleteSession?(): Promise<void>;
   getDashboardData(options?: DashboardDataRequestOptions): Promise<DashboardData>;
+  getRecording?(recordingId: string, signal?: AbortSignal): Promise<DashboardData["recordings"][number] | null>;
   markAllNotificationsRead?(): Promise<void>;
   markNotificationRead?(notificationId: string): Promise<void>;
-  queryHistory?(query: DateRangeQuery): Promise<DashboardData["history"]>;
-  queryRecordings?(query: DateRangeQuery): Promise<DashboardData["recordings"]>;
+  queryHistory?(query: DateRangeQuery, signal?: AbortSignal): Promise<DashboardData["history"]>;
+  queryRecordings?(query: DateRangeQuery, signal?: AbortSignal): Promise<DashboardData["recordings"]>;
   replaceAlertSettings?(settings: AlertSettings): Promise<AlertSettings>;
   sendTestNotification?(recipientId: string, channels: Array<"email" | "sms">): Promise<void>;
   subscribe?(listener: DashboardDataUpdateListener): () => void;

@@ -1,5 +1,5 @@
 services:
-  dashboard:
+  dashboard: &tls_dashboard
     image: "${TLS_TEST_IMAGE:?TLS_TEST_IMAGE is required}"
     read_only: true
     tmpfs:
@@ -11,6 +11,22 @@ services:
       - no-new-privileges:true
     secrets:
       - dashboard_tls_private_key
+    volumes:
+      - type: bind
+        source: "${TLS_TEST_CERTIFICATE_FILE:?TLS_TEST_CERTIFICATE_FILE is required}"
+        target: /run/certs/dashboard-fullchain.pem
+        read_only: true
+      - type: bind
+        source: "${TLS_TEST_NGINX_CONFIG:?TLS_TEST_NGINX_CONFIG is required}"
+        target: /etc/nginx/conf.d/tls-validation.conf
+        read_only: true
+      - type: bind
+        source: "${TLS_TEST_RUNTIME_CONFIG_FILE:?TLS_TEST_RUNTIME_CONFIG_FILE is required}"
+        target: /usr/share/nginx/html/runtime-config.json
+        read_only: true
+
+  dashboard-unconfigured:
+    <<: *tls_dashboard
     volumes:
       - type: bind
         source: "${TLS_TEST_CERTIFICATE_FILE:?TLS_TEST_CERTIFICATE_FILE is required}"

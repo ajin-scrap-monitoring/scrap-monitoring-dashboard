@@ -4,6 +4,7 @@ set -euo pipefail
 
 minimum_docker_version=29.8.0
 minimum_compose_version=5.5.1
+minimum_buildx_version=0.37.1
 
 fail() {
   printf '%s\n' "$1" >&2
@@ -53,13 +54,17 @@ sudo systemctl enable --now docker.service containerd.service
 
 docker_version=$(sudo docker version --format '{{.Server.Version}}')
 compose_version=$(sudo docker compose version --short)
+buildx_version=$(sudo docker buildx version | awk '{print $2}')
 docker_version=${docker_version#v}
 docker_version=${docker_version%%+*}
 compose_version=${compose_version#v}
 compose_version=${compose_version%%+*}
+buildx_version=${buildx_version#v}
+buildx_version=${buildx_version%%+*}
 
 version_at_least "$docker_version" "$minimum_docker_version" || fail "Docker Engine $docker_version is below $minimum_docker_version."
 version_at_least "$compose_version" "$minimum_compose_version" || fail "Docker Compose plugin $compose_version is below $minimum_compose_version."
+version_at_least "$buildx_version" "$minimum_buildx_version" || fail "Docker Buildx plugin $buildx_version is below $minimum_buildx_version."
 
-printf 'Installed Docker Engine %s and Docker Compose plugin %s.\n' "$docker_version" "$compose_version"
+printf 'Installed Docker Engine %s, Docker Compose plugin %s and Docker Buildx %s.\n' "$docker_version" "$compose_version" "$buildx_version"
 printf 'Run Docker commands with sudo.\n'

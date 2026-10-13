@@ -47,6 +47,9 @@ jobs:
       - name: Run component tests
         run: pnpm run test
 
+      - name: Run tooling tests
+        run: pnpm run test:tooling
+
       - name: Build and run browser tests
         run: pnpm run test:e2e
 
@@ -86,3 +89,35 @@ jobs:
 
       - name: Verify reverse proxy integration
         run: node test/proxy/integration.mjs scrap-monitoring-dashboard:test
+
+  services:
+    name: Service integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    concurrency:
+      group: service-integration-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Ensure Docker prerequisites
+        run: |
+          if ! sudo bash -c 'source scripts/verification-common.sh; check_docker'; then
+            sudo ./scripts/install-docker.sh
+          fi
+
+      - name: Verify real service integration
+        run: sudo ./scripts/verify-service-integration.sh
+
+      - name: Retain safe integration diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: service-integration-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/service-integration/run.*/artifacts/
+          retention-days: 7
+          if-no-files-found: ignore

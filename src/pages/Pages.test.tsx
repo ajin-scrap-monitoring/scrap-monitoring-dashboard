@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import { AUTHENTICATION_SESSION_KEY } from "../app-routing";
 import { createMockDashboardDataSource } from "../data/mock-dashboard-data-source";
+import type { Recording } from "../domain/dashboard";
 import { AdminPage } from "./AdminPage";
 import { HistoryPage } from "./HistoryPage";
 import { LoginPage } from "./LoginPage";
@@ -134,6 +135,37 @@ test("재생 또는 다운로드 경로가 없는 녹화 상태를 명시한다"
   expect(screen.getByRole("button", { name: "다운로드 불가" })).toBeDisabled();
   expect(screen.getByText("이 녹화 영상은 다운로드할 수 없습니다.")).toBeVisible();
   expect(screen.queryByRole("button", { name: "녹화 영상 크게 보기" })).not.toBeInTheDocument();
+});
+
+test("분 안에서 끝나는 관련 녹화도 초기 조회 구간에 포함한다", async () => {
+  const data = await createMockDashboardDataSource().getDashboardData();
+  const recording = { ...data.recordings[0], start: "2026-10-13 10:05:52", end: "2026-10-13 10:05:54" };
+  window.history.replaceState(null, "", `/recordings?recordingId=${recording.id}`);
+  render(<RecordingsPage recordings={[recording]} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="normal" />);
+  expect(screen.getByText("1건")).toBeVisible();
+  expect(screen.getByLabelText("시작 시각")).toHaveValue("2026-10-13 10:05");
+  expect(screen.getByLabelText("종료 시각")).toHaveValue("2026-10-13 10:06");
+});
+
+test("녹화 A를 다시 선택하면 새 단건 확인 전에는 이전 영상 경로를 노출하지 않는다", async () => {
+  const data = await createMockDashboardDataSource().getDashboardData();
+  const recordings = data.recordings.slice(0, 2).map((recording) => ({ ...recording, sample: false, contentUrl: `/media/${recording.id}.mp4` }));
+  const pending: Array<(recording: Recording) => void> = [];
+  const getRecording = vi.fn(() => new Promise<Recording>((resolve) => pending.push(resolve)));
+  const dataSource = { getDashboardData: vi.fn(), getRecording };
+  const { container } = render(<RecordingsPage dataSource={dataSource} recordings={recordings} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="normal" />);
+  await act(() => { pending[0](recordings[0]); return Promise.resolve(); });
+  expect(container.querySelector("video")).toHaveAttribute("src", recordings[0].contentUrl);
+  const buttons = container.querySelectorAll<HTMLButtonElement>(".recording-item");
+  fireEvent.click(buttons[1]);
+  fireEvent.click(buttons[0]);
+  expect(getRecording).toHaveBeenCalledTimes(3);
+  expect(container.querySelector("video")).not.toBeInTheDocument();
+  await act(() => { pending[1](recordings[1]); return Promise.resolve(); });
+  expect(container.querySelector("video")).not.toBeInTheDocument();
+  await act(() => { pending[2]({ ...recordings[0], status: "unavailable", mediaStatus: "deleted", contentUrl: undefined, downloadUrl: undefined }); return Promise.resolve(); });
+  expect(container.querySelector("video")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "다운로드 불가" })).toBeDisabled();
 });
 
 test("빈 이력, 녹화 목록과 알림 대상에 명시적인 상태를 표시한다", async () => {

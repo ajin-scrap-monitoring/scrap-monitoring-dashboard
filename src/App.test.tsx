@@ -43,7 +43,7 @@ test("로그인 화면에서는 대시보드 데이터를 요청하지 않는다
 
   render(<App dataSource={{ getDashboardData }} />);
 
-  expect(screen.getByRole("main", { name: "관리자 로그인" })).toBeVisible();
+  expect(screen.getByRole("main", { name: "사용자 로그인" })).toBeVisible();
   expect(getDashboardData).not.toHaveBeenCalled();
 });
 

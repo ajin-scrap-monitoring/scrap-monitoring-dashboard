@@ -7,8 +7,9 @@ import { DashboardStatePage } from "./components/DashboardStatePage";
 import { DashboardStatusLabel, ExpandIcon, SectionTitle } from "./components/DashboardPrimitives";
 import { LoadChart, MeasurementDiagram, ProfileChart } from "./components/MonitoringVisuals";
 import { Pagination } from "./components/Pagination";
-import { WhepVideo } from "./components/WhepVideo";
+import { LiveVideo } from "./components/LiveVideo";
 import type { DashboardDataSource } from "./data/dashboard-data-source";
+import { ApiError } from "./data/http-dashboard-data-source";
 import { useDashboardData } from "./data/use-dashboard-data";
 import { LoginPage } from "./pages/LoginPage";
 import { useModalFocus } from "./use-modal-focus";
@@ -18,6 +19,7 @@ const alertsPerPage = 4;
 const AdminPage = lazy(() => import("./pages/AdminPage"));
 const HistoryPage = lazy(() => import("./pages/HistoryPage"));
 const RecordingsPage = lazy(() => import("./pages/RecordingsPage"));
+const MonitoringV2Page = lazy(() => import("./pages/MonitoringV2Page"));
 
 export function App({ dataSource }: { dataSource: DashboardDataSource }) {
   if (window.location.pathname === ROUTES.login) return <LoginPage dataSource={dataSource} />;
@@ -41,7 +43,7 @@ function DashboardApplication({ dataSource }: { dataSource: DashboardDataSource 
 
   const statePageFooter = <ApplicationFooter />;
   const statePageHeader = <DashboardHeader activePage={activePage} initialNotifications={[]} />;
-  if (dashboardError) return <DashboardStatePage title="데이터를 불러올 수 없습니다." description="데이터 연결 상태를 확인한 뒤 다시 시도하세요." onRetry={reload} header={statePageHeader} footer={statePageFooter} />;
+  if (dashboardError) return <DashboardStatePage title="데이터를 불러올 수 없습니다." description={dashboardError instanceof ApiError && dashboardError.code === "MONITORING_SOURCE_NOT_CONFIGURED" ? "Backend의 pit 연결 설정을 확인하세요." : "데이터 연결 상태를 확인한 뒤 다시 시도하세요."} onRetry={reload} header={statePageHeader} footer={statePageFooter} />;
   if (dashboardData === null) return <DashboardStatePage title="데이터를 불러오는 중입니다." description="최신 모니터링 데이터를 준비하고 있습니다." header={statePageHeader} footer={statePageFooter} />;
 
   const { admin, history, lastMeasuredAt, monitoring, recordings } = dashboardData;
@@ -62,6 +64,7 @@ function DashboardApplication({ dataSource }: { dataSource: DashboardDataSource 
   if (window.location.pathname === ROUTES.recordings) return <Suspense fallback={routeFallback}><RecordingsPage dataSource={dataSource} recordings={recordings} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} lastMeasuredAt={lastMeasuredAt} queryEndsAt={history.endsAt} session={dashboardData.session} status={monitoring.status} /></Suspense>;
   if (window.location.pathname === ROUTES.history) return <Suspense fallback={routeFallback}><HistoryPage dataSource={dataSource} history={history} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} lastMeasuredAt={lastMeasuredAt} session={dashboardData.session} status={monitoring.status} /></Suspense>;
   if (window.location.pathname === ROUTES.admin) return <Suspense fallback={routeFallback}><AdminPage admin={admin} dataSource={dataSource} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} session={dashboardData.session} /></Suspense>;
+  if (monitoring.v2) return <Suspense fallback={routeFallback}><MonitoringV2Page data={dashboardData} dataSource={dataSource} /></Suspense>;
   if (monitoring.status === "no-data") return <DashboardStatePage title="표시할 모니터링 데이터가 없습니다." description="조회 조건 또는 장비 데이터 수신 상태를 확인하세요." header={loadedHeader} footer={statePageFooter} />;
 
   return (
@@ -110,10 +113,10 @@ function DashboardApplication({ dataSource }: { dataSource: DashboardDataSource 
             </section>
             <section className="card top-card span-4 video-card">
               <div className="live-frame">
-                {videoOpen && monitoring.videoMode === "webrtc"
+                {videoOpen && monitoring.videoMode !== "sample"
                   ? <img src={cameraFrame} alt="" />
-                  : <WhepVideo alt="스크랩 적재 공간 실시간 영상" fallbackImage={cameraFrame} mode={monitoring.videoMode} status={monitoring.videoStatus} streamId={monitoring.videoStreamId} />}
-                <span className="live-indicator">LIVE</span>
+                  : <LiveVideo alt="스크랩 적재 공간 실시간 영상" fallbackImage={cameraFrame} monitoring={monitoring} />}
+                {monitoring.videoMode !== "mjpeg" && <span className="live-indicator">LIVE</span>}
                 <span className="live-time">{monitoring.videoTimestamp}</span>
                 <button className="fullscreen" type="button" aria-label="실시간 영상 크게 보기" onClick={() => setVideoOpen(true)}><ExpandIcon /></button>
               </div>
@@ -165,8 +168,8 @@ function DashboardApplication({ dataSource }: { dataSource: DashboardDataSource 
           <div className="video-modal-panel" onClick={(event) => event.stopPropagation()}>
             <button className="video-modal-close" type="button" aria-label="영상 닫기" onClick={closeVideo}>닫기</button>
             <div className="video-modal-frame">
-              <WhepVideo alt="스크랩 적재 공간 실시간 영상 확대" fallbackImage={cameraFrame} mode={monitoring.videoMode} status={monitoring.videoStatus} streamId={monitoring.videoStreamId} />
-              <span className="live-indicator">LIVE</span>
+              <LiveVideo alt="스크랩 적재 공간 실시간 영상 확대" fallbackImage={cameraFrame} monitoring={monitoring} />
+              {monitoring.videoMode !== "mjpeg" && <span className="live-indicator">LIVE</span>}
               <span className="live-time">{monitoring.videoTimestamp}</span>
             </div>
           </div>

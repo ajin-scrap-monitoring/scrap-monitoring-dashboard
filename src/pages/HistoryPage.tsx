@@ -8,6 +8,7 @@ import { DateTimeField } from "../components/DateTimeField";
 import { dateTimeValue, isValidDateTime, recentPeriods, recentRange } from "../date-range";
 import type { DashboardDataSource } from "../data/dashboard-data-source";
 import type { DashboardData, EventCategory, HeaderNotification, UserSession } from "../domain/dashboard";
+import { useLatestRequest } from "../use-latest-request";
 
 const historyEventsPerPage = 8;
 
@@ -45,7 +46,7 @@ function HistoryLoadChart({ chartEvents, loadSamples: samples, startsAt, endsAt,
     const labelX = x + direction * 38;
     return { ...event, direction, elbowY, labelX, labelY, sample, x };
   }).filter((event): event is NonNullable<typeof event> => event !== null);
-  const selectedEvent = activeEvent === null ? null : eventAnnotations[activeEvent];
+  const selectedEvent = activeEvent === null ? null : eventAnnotations[activeEvent] ?? null;
   const selectedSample = selectedEvent?.sample ?? null;
   const tooltipX = selectedSample === null ? 0 : Math.max(left + 8, Math.min(toX(selectedSample.hour) - 96, right - 200));
   const tooltipY = selectedSample === null ? 0 : 132;
@@ -109,7 +110,10 @@ export function HistoryPage({ dataSource, history, headerNotifications, headerUn
   const [preset, setPreset] = useState<number | null>(168);
   const [applied, setApplied] = useState(() => ({ ...recentRange(168, history.endsAt), eventType: "전체" }));
   const [queryError, setQueryError] = useState("");
-  const [querying, setQuerying] = useState(false);
+  const [queryState, setQueryState] = useState({ source: dataSource, busy: false });
+  const querying = queryState.source === dataSource && queryState.busy;
+  const setQuerying = (busy: boolean) => setQueryState({ source: dataSource, busy });
+  const startQuery = useLatestRequest(dataSource);
   const startTime = dateTimeValue(applied.start);
   const endTime = dateTimeValue(applied.end);
   const originTime = dateTimeValue(displayedHistory.startsAt);
@@ -143,6 +147,7 @@ export function HistoryPage({ dataSource, history, headerNotifications, headerUn
       <main className="history-page" aria-label="스크랩 모니터링 이력">
         <div className="page-heading"><h1>이력</h1><div className="page-meta"><DashboardStatusLabel status={status} /><span className="meta-divider" aria-hidden="true" /><span>마지막 측정 {lastMeasuredAt}</span></div></div>
         <div className="history-content">
+          {dataSource?.monitoringVersion === "v2" && <p>이 이력은 v1 데이터입니다. v2 관측과 판단 이력은 제공되지 않습니다.</p>}
           <section className="card history-query">
             <SectionTitle>조회 조건</SectionTitle>
             <form className="query-controls" onSubmit={(event) => {
@@ -162,11 +167,12 @@ export function HistoryPage({ dataSource, history, headerNotifications, headerUn
                 return;
               }
               const category = ({ "수거": "collection", "알림": "alert", "오류": "error" } as const)[eventType as "수거" | "알림" | "오류"] as EventCategory | undefined;
+              const signal = startQuery();
               setQuerying(true);
-              void dataSource.queryHistory({ eventCategory: category, from: range.start, to: range.end })
-                .then(applyResult)
-                .catch(() => setQueryError("이력 데이터를 조회하지 못했습니다. 기존 조회 결과를 유지합니다."))
-                .finally(() => setQuerying(false));
+              void dataSource.queryHistory({ eventCategory: category, from: range.start, to: range.end }, signal)
+                .then((value) => { if (!signal.aborted) applyResult(value); })
+                .catch(() => { if (!signal.aborted) setQueryError("이력 데이터를 조회하지 못했습니다. 기존 조회 결과를 유지합니다."); })
+                .finally(() => { if (!signal.aborted) setQuerying(false); });
             }}>
               <div className="query-type" role="group" aria-label="빠른 기간 선택">
                 <span>빠른 선택</span>

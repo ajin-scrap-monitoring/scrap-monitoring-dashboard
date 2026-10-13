@@ -3,6 +3,7 @@
 .agents
 .claude
 node_modules
+.pnpm-store
 dist
 coverage
 playwright-report
@@ -11,6 +12,8 @@ temp
 local-assets
 .env
 .env.*
+/runtime-config.json
+/DEPLOYMENT_RUNTIME_CONFIGURATION_REQUEST.md
 .secrets
 *.key
 *.pem
@@ -28,3 +31,5 @@ docs/**
 *.md
 .DS_Store
 *.local
+*.log
+*.tsbuildinfo

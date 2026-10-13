@@ -80,7 +80,7 @@ afterEach(() => {
 
 test("operation-cycle 시나리오는 수거와 장애 상태 전이를 순서대로 전달한다", () => {
   vi.useFakeTimers();
-  const statuses: Array<{ status: string; loadPercent: number }> = [];
+  const statuses: Array<{ status: string; loadPercent: number | null }> = [];
   const source = createMockDashboardDataSource("operation-cycle");
   const unsubscribe = source.subscribe?.((data) => {
     statuses.push({ status: data.monitoring.status, loadPercent: data.monitoring.summary.loadPercent });

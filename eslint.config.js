@@ -28,7 +28,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["*.config.ts", "e2e/**/*.ts"],
+    files: ["*.config.ts", "e2e/**/*.ts", "integration/**/*.ts", "scripts/**/*.ts"],
     extends: [typeCheckedRules],
     languageOptions: {
       globals: globals.node,

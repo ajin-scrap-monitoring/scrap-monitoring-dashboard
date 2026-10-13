@@ -11,7 +11,7 @@
 
 - 프론트엔드는 서버가 제공하는 측정, 상태, 이력과 예측 결과를 표현하는 책임
 - 위치별 높이 2개와 통합 대표 적재율 1개를 사용하는 화면 설계 참고안이 준비된 상태
-- 상태 데이터, 실시간 갱신, 실시간 영상, 녹화 영상과 인증의 세부 외부 계약이 필요한 상태
+- 현재 서비스의 확인된 계약은 `docs/contracts/backend/README.md`, 미확정 계약의 절차는 `docs/contracts/README.md`를 사용하는 상태
 - 로딩, 데이터 없음, 오류, 연결 끊김과 측정 불가를 구분해야 하는 관리자용 화면
 - 실제 장비와 네트워크 흐름 확인이 우선이며 측정 로직 시뮬레이션은 프론트엔드 범위에서 제외된 상태
 
@@ -229,9 +229,10 @@ Style Sheets (CSS), Web API 사용 범위와 브라우저 검증으로 별도 �
 - 버전 식별, 무결성 확인과 오류 진단 정보
 
 배포 Repository는 게시된 image digest와 환경별 Nginx 설정을 사용해 Transport Layer
-Security (TLS), API와 signaling proxy, 실시간 갱신, 미디어 서비스, 건강 확인과 롤백을
-검증한다. Web Real-Time Communication (WebRTC) 미디어는 Nginx를 경유하지 않고
-브라우저와 미디어 서비스 사이에서 검증한다.
+Security (TLS), API와 미디어 proxy, 실시간 갱신, 미디어 서비스, 건강 확인과 롤백을
+검증한다. MJPEG와 MP4는 Nginx의 session 검사와 Media Service proxy를 검증한다.
+선택적 Web Real-Time Communication (WebRTC) 미디어는 Nginx를 경유하지 않고 브라우저와
+미디어 서비스 사이에서 검증한다.
 
 GitHub Actions는 PR과 `main` push에서 이미지를 게시하지 않고 빌드와 런타임을 검증한다.
 `vX.Y.Z` Git tag는 검증한 `linux/amd64` 이미지를 GHCR에 게시하고 digest를 기록한다.
