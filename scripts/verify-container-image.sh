@@ -65,6 +65,9 @@ curl --fail --silent --show-error --head http://127.0.0.1:18080/index.html | gre
 curl --fail --silent --show-error --head http://127.0.0.1:18080/index.html | grep --ignore-case --quiet 'permissions-policy: camera=(), microphone=()' || fail "Permissions Policy header is missing."
 curl --fail --silent --show-error --head http://127.0.0.1:18080/index.html | grep --ignore-case --quiet 'x-request-id:' || fail "Request ID response header is missing."
 curl --fail --silent --show-error --head http://127.0.0.1:18080/history | grep --ignore-case --quiet 'cache-control: no-store' || fail "SPA fallback cache policy is missing."
+[[ $(curl --silent --show-error --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18080/runtime-config.json) == 404 ]] || fail "Missing runtime configuration used the SPA fallback."
+curl --silent --show-error --head http://127.0.0.1:18080/runtime-config.json | grep --ignore-case --quiet 'cache-control: no-store' || fail "Runtime configuration error cache policy is missing."
+run_docker exec "$container_name" test ! -e /usr/share/nginx/html/runtime-config.json || fail "Runtime configuration must be provided by a mount."
 curl --fail --silent --show-error --compressed --dump-header - http://127.0.0.1:18080/index.html --output /dev/null | grep --ignore-case --quiet 'content-encoding: gzip' || fail "Gzip compression is missing."
 
 asset_path=$(run_docker exec "$container_name" sh -c "find /usr/share/nginx/html/assets -type f -name '*.js' | head -n 1")

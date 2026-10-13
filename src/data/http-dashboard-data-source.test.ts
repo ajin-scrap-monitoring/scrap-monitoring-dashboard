@@ -82,6 +82,38 @@ class FakeEventSource {
 
 afterEach(() => vi.restoreAllMocks());
 
+test("Backend 녹화 metadata 생략은 정보 없음과 접근 불가로 표시한다", async () => {
+  const recording = { ...recordingPageFixture.items[0], videoCodec: undefined, containerFormat: undefined,
+    status: undefined, frameRate: undefined, heightPixels: undefined, widthPixels: undefined };
+  const source = createHttpDashboardDataSource({ apiContract: "backend", fetchImplementation: () => jsonResponse(recording) });
+  const result = await source.getRecording?.(recording.id);
+  expect(result).toMatchObject({ codec: "정보 없음", format: "MP4", status: "unavailable", frameRate: null, height: null, width: null });
+  expect(result?.contentUrl).toBeUndefined();
+  expect(result?.downloadUrl).toBeUndefined();
+});
+
+test("Backend optional 알림 설정은 계약의 default를 적용한다", async () => {
+  const fetchFixture = createContractFetch();
+  const settings = { version: alertSettingsFixture.version, collectionThresholdPercent: alertSettingsFixture.collectionThresholdPercent,
+    preCollectionAlert: { thresholdPercent: alertSettingsFixture.preCollectionAlert.thresholdPercent } };
+  const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v1", route: () => "/admin", fetchImplementation: (input, init) =>
+    inputUrl(input).pathname === "/api/v1/settings/alerts" ? jsonResponse(settings) : fetchFixture.implementation(input, init),
+  });
+  const data = await source.getDashboardData();
+  expect(data.admin.alertSettings).toMatchObject({ enabledEventTypes: ["collection_required", "measurement_error", "device_error"],
+    maximumRepeatCount: 3, preCollectionAlert: { enabled: true }, recoveryNotificationEnabled: true, repeatIntervalMinutes: 30, sendDelayMinutes: 0 });
+});
+
+test("읽음 시각이 생략된 Backend 알림은 읽지 않은 상태를 유지한다", async () => {
+  const fetchFixture = createContractFetch();
+  const notifications = { ...notificationPageFixture, items: [{ ...notificationPageFixture.items[0], readAt: undefined }] };
+  const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v1", fetchImplementation: (input, init) =>
+    inputUrl(input).pathname === "/api/v1/notifications" ? jsonResponse(notifications) : fetchFixture.implementation(input, init),
+  });
+  const data = await source.getDashboardData();
+  expect(data.monitoring.headerNotifications[0].read).toBe(false);
+});
+
 describe("HTTP 대시보드 데이터 소스", () => {
   test("계약 예제의 최근 24시간 적재율은 오름차순 1시간 간격을 유지한다", () => {
     const timestamps = monitoringFixture.recentLoad.map((sample) => new Date(sample.measuredAt).getTime());
@@ -334,6 +366,28 @@ describe("HTTP 대시보드 데이터 소스", () => {
     expect(listener.mock.calls[0][0].monitoring.headerNotifications[0].id).toBe("notification-contract-resynced");
     expect(listener.mock.calls[0][0].monitoring.unreadNotificationCount).toBe(2);
     expect(notificationRequestCount).toBe(2);
+  });
+
+  test("잘못된 SSE snapshot은 진행 중인 정상 재동기화 응답을 폐기하지 않는다", async () => {
+    const base = createContractFetch();
+    const stream = new FakeEventSource();
+    let snapshotRequests = 0;
+    let complete: (response: Response) => void = () => undefined;
+    const fetchImplementation = vi.fn((input: RequestInfo | URL, options?: RequestInit) => {
+      if (inputUrl(input).pathname === "/api/v1/monitoring/snapshot" && ++snapshotRequests > 1) {
+        return new Promise<Response>((resolve) => { complete = resolve; });
+      }
+      return base.implementation(input, options);
+    });
+    const source = createHttpDashboardDataSource({ fetchImplementation, eventSourceFactory: () => stream as unknown as EventSource });
+    await source.getDashboardData();
+    const listener = vi.fn<(value: DashboardData) => void>();
+    const unsubscribe = source.subscribe?.(listener);
+    stream.emit("stream.resync-required", { reason: "event_not_retained" });
+    stream.emit("monitoring.snapshot", {});
+    complete(new Response(JSON.stringify({ ...monitoringFixture, summary: { ...monitoringFixture.summary, loadPercent: 90 } })));
+    await vi.waitFor(() => expect(listener.mock.calls.at(-1)?.[0].monitoring.summary.loadPercent).toBe(90));
+    unsubscribe?.();
   });
 
   test("부분 결측, 누락 LiDAR profile과 지연 장비를 손실 없이 변환한다", async () => {

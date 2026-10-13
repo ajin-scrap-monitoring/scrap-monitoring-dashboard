@@ -56,8 +56,8 @@ export type MonitoringSummary = {
   averageCollectionCycle: string;
   collectionThreshold: number;
   expectedArrivalAt: string;
-  loadPercent: number;
-  operationState: OperationState;
+  loadPercent: number | null;
+  operationState: OperationState | null;
   preCollectionAlert: { enabled: boolean; threshold: number };
   recentChange: string;
   remainingTime: string;
@@ -106,8 +106,8 @@ export type Recording = {
   duration: string;
   end: string;
   format: string;
-  frameRate: number;
-  height: number;
+  frameRate: number | null;
+  height: number | null;
   id: string;
   size: string;
   start: string;
@@ -116,7 +116,11 @@ export type Recording = {
   time: string;
   tone: EventTone;
   type: "수거" | "알림" | "오류";
-  width: number;
+  width: number | null;
+  mediaStatus?: string | null;
+  coverage?: string | null;
+  gaps?: Array<{ start: string; end: string }>;
+  errorCode?: string | null;
 };
 
 export type NotificationRecipient = {
@@ -151,7 +155,29 @@ export type AlertSettings = {
   version: string;
 };
 
-export type DashboardStatus = "normal" | "collection-required" | "measurement-error" | "disconnected" | "no-data";
+export type DashboardStatus = "normal" | "collection-required" | "measurement-error" | "disconnected" | "no-data" | "fresh" | "stale" | "unavailable" | "unknown";
+
+export type MonitoringV2 = {
+  dataState: "FRESH" | "STALE" | "UNAVAILABLE" | "UNKNOWN" | "NO_DATA";
+  snapshotId: string;
+  pitId: string;
+  siteId: string;
+  edgeId: string;
+  measuredAt: string | null;
+  assessmentReceivedAt: string | null;
+  reasonCodes: string[];
+  warningThreshold: number;
+  fillState: string | null;
+  decisionState: string | null;
+  configRevision: string | null;
+  capabilities: Record<"fill" | "occlusion" | "collection" | "vision", "NOT_IMPLEMENTED" | "NOT_VALIDATED" | "ENABLED"> | null;
+  connectionState: "REPORTING" | "UNKNOWN";
+  effectiveState: string;
+  deviceReceivedAt: string | null;
+  deviceReasons: string[];
+  sensors: Array<{ id: string; state: string; lastScanAt: string | null; reasonCodes: string[] }>;
+  streamState: "connecting" | "connected" | "reconnecting";
+};
 
 export type DashboardData = {
   lastMeasuredAt: string;
@@ -178,8 +204,10 @@ export type DashboardData = {
     lidarProfiles: LidarProfile[];
     loadHistory: LoadHistorySample[];
     status: DashboardStatus;
+    v2?: MonitoringV2;
     summary: MonitoringSummary;
-    videoMode: "sample" | "webrtc";
+    videoMode: "sample" | "webrtc" | "mjpeg";
+    videoUrl?: string;
     videoStatus: "available" | "delayed" | "unavailable";
     videoStreamId: string;
     videoTimestamp: string;

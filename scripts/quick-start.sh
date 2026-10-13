@@ -68,11 +68,23 @@ wait_for_dashboard() {
 start() {
   [[ -r $environment_file ]] || fail 'Create .env with cp .env.example .env before running the quick start.'
 
-  local app_version mock_data_enabled
+  local app_version mock_data_enabled monitoring_version video_mode runtime_config_file
+  local -a runtime_mount=()
   app_version=$(read_environment_value VITE_APP_VERSION) || fail 'Set VITE_APP_VERSION in .env.'
   mock_data_enabled=$(read_environment_value VITE_ENABLE_MOCK_DATA) || fail 'Set VITE_ENABLE_MOCK_DATA in .env.'
   [[ -n $app_version ]] || fail 'Set VITE_APP_VERSION in .env.'
   [[ $mock_data_enabled == true || $mock_data_enabled == false ]] || fail 'Set VITE_ENABLE_MOCK_DATA to true or false in .env.'
+  monitoring_version=$(read_environment_value VITE_MONITORING_API_VERSION) || monitoring_version=v2
+  video_mode=$(read_environment_value VITE_LIVE_VIDEO_MODE) || video_mode=mjpeg
+  [[ $monitoring_version == v1 || $monitoring_version == v2 ]] || fail 'Set VITE_MONITORING_API_VERSION to v1 or v2.'
+  [[ $video_mode == mjpeg || $video_mode == webrtc ]] || fail 'Set VITE_LIVE_VIDEO_MODE to mjpeg or webrtc.'
+  [[ $monitoring_version != v2 || $video_mode == mjpeg ]] || fail 'Monitoring v2 supports only MJPEG live video.'
+  if [[ $mock_data_enabled == false ]]; then
+    runtime_config_file=$(read_environment_value DASHBOARD_RUNTIME_CONFIG_FILE) || runtime_config_file=runtime-config.json
+    [[ $runtime_config_file == /* ]] || runtime_config_file=$repository_root/$runtime_config_file
+    [[ -f $runtime_config_file ]] || fail 'Provide runtime-config.json before starting the HTTP data source.'
+    runtime_mount=(--mount "type=bind,source=$runtime_config_file,target=/usr/share/nginx/html/runtime-config.json,readonly")
+  fi
 
   run_docker version --format '{{.Server.Version}}' >/dev/null || fail 'Docker Engine is unavailable or sudo access is missing.'
   run_docker container inspect "$container_name" >/dev/null 2>&1 && fail "Container $container_name already exists. Run $0 stop first."
@@ -80,6 +92,8 @@ start() {
   run_docker build \
     --build-arg APP_VERSION="$app_version" \
     --build-arg VITE_ENABLE_MOCK_DATA="$mock_data_enabled" \
+    --build-arg VITE_MONITORING_API_VERSION="$monitoring_version" \
+    --build-arg VITE_LIVE_VIDEO_MODE="$video_mode" \
     --tag "$image_name" \
     "$repository_root"
   run_docker run --detach --rm \
@@ -87,6 +101,7 @@ start() {
     --read-only \
     --tmpfs /tmp:rw,noexec,nosuid,size=16m \
     --publish "$host_address:$host_port:8080" \
+    "${runtime_mount[@]}" \
     "$image_name"
 
   wait_for_dashboard

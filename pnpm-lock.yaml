@@ -28,6 +28,9 @@ importers:
       '@redocly/cli':
         specifier: 2.52.1
         version: 2.52.1
+      '@redocly/openapi-core':
+        specifier: 1.34.20
+        version: 1.34.20(supports-color@10.2.2)
       '@testing-library/dom':
         specifier: 10.4.1
         version: 10.4.1

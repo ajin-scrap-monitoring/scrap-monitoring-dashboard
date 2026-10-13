@@ -170,7 +170,7 @@ button { cursor: pointer; }
 .expand-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 .live-time { position: absolute; top: 10px; right: 10px; display: inline-flex; height: 24px; align-items: center; padding: 0 8px; border-radius: 3px; background: rgba(15, 17, 20, 0.72); color: #ffffff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; font-weight: 600; letter-spacing: 0.02em; line-height: 1; white-space: nowrap; }
 .video-modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 32px; background: rgba(8, 14, 22, 0.78); }
-.video-modal-panel { position: relative; width: min(1200px, 94vw); padding: 18px; border: 1px solid #52657a; border-radius: 6px; background: #15181b; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35); }
+.video-modal-panel { position: relative; width: min(1200px, 94vw, calc((100vh - 160px) * 1.333333)); padding: 18px; border: 1px solid #52657a; border-radius: 6px; background: #15181b; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35); }
 .video-modal-frame { position: relative; }
 .video-modal-frame img, .video-modal-frame video { display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 3px; }
 .video-connection-state, .video-retry { position: absolute; left: 50%; top: 50%; z-index: 3; transform: translate(-50%, -50%); border: 0; border-radius: 4px; padding: 8px 12px; background: rgb(15 23 42 / 78%); color: #fff; font: inherit; }
@@ -284,7 +284,7 @@ button { cursor: pointer; }
 .recordings-page { min-height: 0; }
 .recordings-content { display: grid; gap: 12px; padding: 0 var(--monitor-page-gutter) var(--monitor-page-bottom-gap); }
 .recordings-query { padding: 14px 16px 16px; }
-.recordings-main { display: grid; height: max(771px, calc(100vh - 309px)); min-height: 0; grid-template-columns: 350px minmax(0, 1fr) 380px; gap: 12px; }
+.recordings-main { display: grid; min-height: max(771px, calc(100vh - 309px)); grid-template-columns: 350px minmax(0, 1fr) 380px; gap: 12px; }
 .recordings-list, .recording-player, .recording-info, .recording-download, .recordings-empty-panel { padding: 14px 16px 12px; }
 .recordings-list, .recording-player { min-height: 0; }
 .recordings-list { display: flex; flex-direction: column; }
@@ -318,15 +318,16 @@ button { cursor: pointer; }
 .recording-controls time { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; font-weight: 700; }
 .recording-timeline { flex: 1; height: 5px; overflow: hidden; border-radius: 4px; background: #8e969e; }
 .recording-timeline span { display: block; width: 38%; height: 100%; border-radius: inherit; background: #f58a07; }
-.recordings-side { display: grid; min-height: 0; grid-template-rows: minmax(0, 1fr) 188px; gap: 12px; }
+.recordings-side { display: grid; grid-template-rows: minmax(min-content, 1fr) auto; gap: 12px; }
 .recording-info { min-height: 0; }
+.recording-info > button { padding: 6px 10px; border: 1px solid #f58a07; border-radius: 4px; background: #fffaf3; color: #c46b00; font-size: 12px; }
 .recording-info dl { margin: 12px 0 0; }
 .recording-info dl > div { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid #e0e6ed; }
 .recording-info dt { color: #61708a; font-size: 13px; font-weight: 700; }
 .recording-info dd { margin: 0; color: #172238; font-size: 13px; font-weight: 600; text-align: right; }
 .recording-info dl > .recording-retention { min-height: 64px; }
 .recording-retention dd { display: grid; gap: 4px; }
-.recording-download { display: flex; flex-direction: column; }
+.recording-download { display: flex; min-height: 188px; flex-direction: column; }
 .recording-download p { margin: 16px 0 14px; color: #61708a; font-size: 13px; font-weight: 500; line-height: 1.5; }
 .recording-download button { height: 44px; margin-top: auto; border: 1px solid #f58a07; border-radius: 4px; background: #ffffff; color: #c46b00; font-size: 14px; font-weight: 800; }
 .recording-download button:hover { background: #fff4e6; }
@@ -499,3 +500,12 @@ button { cursor: pointer; }
   .profile-stat .average { font-size: 23px; }
   .profile-stat .range { font-size: 11px; }
 }
+/* v2 모니터링은 Backend가 제공하는 판단과 장비 상태를 표시한다. */
+.monitoring-v2 .card { padding: 20px; min-width: 0; overflow-wrap: anywhere; }
+.monitoring-v2 .live-frame { aspect-ratio: 16 / 9; position: relative; }
+.monitoring-v2 .kpi-value { font-size: 38px; }
+.v2-details { display: grid; gap: 10px; }
+.v2-details > div { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; }
+.v2-details dt { color: var(--text-secondary, #64748b); }
+.v2-details dd { margin: 0; }
+.monitoring-v2 ul { padding-left: 20px; }

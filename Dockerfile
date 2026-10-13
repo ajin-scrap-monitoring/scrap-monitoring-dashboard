@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:24.19.0-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df AS build
+FROM node:24.19.0-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df AS dependencies
 
 # 상대 경로를 사용하는 RUN과 COPY의 대상 경로는 /app을 기준으로 해석된다.
 WORKDIR /app
@@ -11,6 +11,8 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     corepack install --global pnpm@11.23.0 && \
     pnpm install --frozen-lockfile
 
+FROM dependencies AS build
+
 COPY index.html tsconfig.json tsconfig.app.json tsconfig.node.json vite.config.ts ./
 COPY src ./src
 COPY docs/mockups/assets/OFL.txt /app/licenses/NotoSansKR-OFL.txt
@@ -18,18 +20,22 @@ COPY docs/mockups/assets/OFL.txt /app/licenses/NotoSansKR-OFL.txt
 # ARG 값은 ENV와 달리 이 선언만으로 최종 컨테이너의 환경 변수에 남지 않는다.
 ARG APP_VERSION=0.1.0
 ARG VITE_ENABLE_MOCK_DATA=false
+ARG VITE_MONITORING_API_VERSION=v2
+ARG VITE_LIVE_VIDEO_MODE=mjpeg
 # 정적 산출물을 /app/dist에 생성한다.
-RUN VITE_APP_VERSION="$APP_VERSION" VITE_ENABLE_MOCK_DATA="$VITE_ENABLE_MOCK_DATA" pnpm run build && \
+RUN test "$VITE_MONITORING_API_VERSION" != v2 || test "$VITE_LIVE_VIDEO_MODE" = mjpeg
+RUN VITE_APP_VERSION="$APP_VERSION" VITE_ENABLE_MOCK_DATA="$VITE_ENABLE_MOCK_DATA" \
+    VITE_MONITORING_API_VERSION="$VITE_MONITORING_API_VERSION" VITE_LIVE_VIDEO_MODE="$VITE_LIVE_VIDEO_MODE" pnpm run build && \
     cp node_modules/react/LICENSE /app/licenses/React-MIT.txt && \
     cp node_modules/vite/LICENSE.md /app/licenses/Vite-MIT.txt
 
-FROM build AS development
+FROM dependencies AS development
 
 EXPOSE 5173
 
 CMD ["sh", "-c", "pnpm install --frozen-lockfile && pnpm exec vite --host 0.0.0.0"]
 
-FROM build AS verification
+FROM dependencies AS verification
 
 RUN apt-get update && \
     apt-get install --yes --no-install-recommends git openssl && \

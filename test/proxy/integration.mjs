@@ -12,9 +12,10 @@ if (!image) {
 
 const testDirectory = dirname(fileURLToPath(import.meta.url))
 const repositoryRoot = resolve(testDirectory, '../..')
-const suffix = `${process.pid}-${Date.now()}`
+const suffix = process.env.VERIFY_RUN_ID ?? `${process.pid}-${Date.now()}`
+assert.match(suffix, /^[a-z0-9-]+$/)
 const network = `proxy-integration-${suffix}`
-const upstreamName = 'proxy-integration-upstream'
+const upstreamName = `proxy-integration-upstream-${suffix}`
 const frontendName = `proxy-integration-frontend-${suffix}`
 const upstreamImage = `scrap-monitoring-dashboard-proxy-upstream:${suffix}`
 const hostPort = 18100 + (process.pid % 500)
@@ -145,13 +146,12 @@ async function waitForInstance(expectedInstance) {
 
 function startUpstream(instance) {
   run('docker', [
-    'run', '--detach', '--name', upstreamName, '--network', network,
+    'run', '--detach', '--name', upstreamName, '--network', network, '--network-alias', 'proxy-integration-upstream',
     '--env', `UPSTREAM_INSTANCE=${instance}`, upstreamImage,
   ])
 }
 
 try {
-  runQuietly('docker', ['rm', '--force', upstreamName])
   run('docker', ['build', '--quiet', '--tag', upstreamImage, testDirectory])
   run('docker', ['network', 'create', network])
   startUpstream('first')

@@ -18,14 +18,18 @@ docker compose version >/dev/null
 image=$1
 script_directory=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 repository_root=$(cd "$script_directory/../.." && pwd)
-work_directory=$(mktemp -d)
-project_name="scrap-tls-test-$$"
+work_directory=$(mktemp -d "${VERIFY_RUN_DIRECTORY:-/tmp}/tls.XXXXXXXX")
+project_name="scrap-tls-test-${VERIFY_RUN_ID:-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')}"
+[[ $project_name =~ ^scrap-tls-test-[a-z0-9-]+$ ]] || { printf 'Invalid verification identifier.\n' >&2; exit 1; }
 server_name=dashboard.test
 
 export TLS_TEST_IMAGE=$image
 export TLS_TEST_CERTIFICATE_FILE=$work_directory/dashboard-fullchain.pem
 export TLS_TEST_PRIVATE_KEY_FILE=$work_directory/dashboard-private-key.pem
 export TLS_TEST_NGINX_CONFIG=$script_directory/nginx.conf
+export TLS_TEST_RUNTIME_CONFIG_FILE=$work_directory/runtime-config.json
+cp "$repository_root/integration/runtime-config.json" "$TLS_TEST_RUNTIME_CONFIG_FILE"
+chmod 644 "$TLS_TEST_RUNTIME_CONFIG_FILE"
 
 compose() {
   docker compose --project-name "$project_name" --file "$script_directory/compose.yaml" "$@"
@@ -122,7 +126,7 @@ DASHBOARD_ROOT_CA_FILE=$work_directory/root-ca.crt \
   "$repository_root/scripts/verify-tls-material.sh" >/dev/null
 
 compose config --quiet
-compose up --detach --wait dashboard >/dev/null
+compose up --detach --wait dashboard dashboard-unconfigured >/dev/null
 compose exec --no-TTY dashboard sh -c "
   test \"\$(id -u)\" = 101 &&
   test \"\$(stat -c %g /run/secrets/dashboard_tls_private_key)\" = 101 &&
@@ -130,12 +134,40 @@ compose exec --no-TTY dashboard sh -c "
   test -r /run/secrets/dashboard_tls_private_key &&
   test ! -w /run/secrets/dashboard_tls_private_key &&
   test -r /run/certs/dashboard-fullchain.pem &&
-  test ! -w /run/certs/dashboard-fullchain.pem
+  test ! -w /run/certs/dashboard-fullchain.pem &&
+  test -r /usr/share/nginx/html/runtime-config.json &&
+  test ! -w /usr/share/nginx/html/runtime-config.json
 "
 compose exec --no-TTY dashboard nginx -t >/dev/null
 
 published_endpoint=$(compose port dashboard 8443)
 published_port=${published_endpoint##*:}
+
+verify_runtime_config() {
+  curl --fail --silent --show-error --cacert "$work_directory/root-ca.crt" \
+    --resolve "$server_name:$published_port:127.0.0.1" --dump-header "$work_directory/runtime-headers" \
+    "https://$server_name:$published_port/runtime-config.json" --output "$work_directory/runtime-response.json"
+  grep --ignore-case --quiet '^content-type: application/json' "$work_directory/runtime-headers"
+  grep --ignore-case --quiet '^cache-control: no-store' "$work_directory/runtime-headers"
+  cmp "$TLS_TEST_RUNTIME_CONFIG_FILE" "$work_directory/runtime-response.json"
+}
+verify_runtime_config
+first_image=$(docker inspect --format '{{.Image}}' "$(compose ps --quiet dashboard)")
+export TLS_TEST_RUNTIME_CONFIG_FILE=$work_directory/runtime-config-alt.json
+cp "$repository_root/integration/runtime-config-alt.json" "$TLS_TEST_RUNTIME_CONFIG_FILE"
+chmod 644 "$TLS_TEST_RUNTIME_CONFIG_FILE"
+compose up --detach --force-recreate --wait dashboard >/dev/null
+[[ $(docker inspect --format '{{.Image}}' "$(compose ps --quiet dashboard)") == "$first_image" ]] || { printf 'Runtime configuration changed the image.\n' >&2; exit 1; }
+published_endpoint=$(compose port dashboard 8443)
+published_port=${published_endpoint##*:}
+verify_runtime_config
+unconfigured_endpoint=$(compose port dashboard-unconfigured 8443)
+unconfigured_port=${unconfigured_endpoint##*:}
+unconfigured_status=$(curl --silent --show-error --cacert "$work_directory/root-ca.crt" \
+  --resolve "$server_name:$unconfigured_port:127.0.0.1" --dump-header "$work_directory/unconfigured-headers" \
+  --output /dev/null --write-out '%{http_code}' "https://$server_name:$unconfigured_port/runtime-config.json")
+[[ $unconfigured_status == 404 ]] || { printf 'Missing HTTPS runtime configuration used the SPA fallback.\n' >&2; exit 1; }
+grep --ignore-case --quiet '^cache-control: no-store' "$work_directory/unconfigured-headers"
 
 curl \
   --fail \

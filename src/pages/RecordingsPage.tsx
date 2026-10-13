@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import cameraFrame from "../assets/camera-frame.png";
 import { DashboardPageShell } from "../components/DashboardShell";
@@ -7,12 +7,25 @@ import { Pagination } from "../components/Pagination";
 import { DateTimeField } from "../components/DateTimeField";
 import { dateTimeValue, isValidDateTime, recentPeriods, recentRange } from "../date-range";
 import type { DashboardDataSource } from "../data/dashboard-data-source";
-import type { DashboardData, EventCategory, HeaderNotification, UserSession } from "../domain/dashboard";
+import type { DashboardData, EventCategory, HeaderNotification, Recording, UserSession } from "../domain/dashboard";
 import { useDelayedState } from "../use-delayed-state";
 import { useModalFocus } from "../use-modal-focus";
+import { useLatestRequest } from "../use-latest-request";
 
 const recordingsPerPage = 6;
 const recordingTypes = ["전체", "수거", "알림", "오류"];
+
+function recordingStatus(recording: Recording) {
+  const states: Record<string, string> = { collecting: "녹화 구간 수집 중", processing: "파일 생성 중", ready: "재생 가능", failed: "녹화 실패", deleted: "삭제됨", expired: "보관 만료" };
+  if (recording.mediaStatus) return states[recording.mediaStatus] ?? recording.mediaStatus;
+  return recording.status === "available" ? "정상" : recording.status === "processing" ? "처리 중" : recording.status === "expired" ? "보관 만료" : "사용 불가";
+}
+
+function aspectRatio(recording: Recording) {
+  const { width, height } = recording;
+  if (width === null || height === null) return "정보 없음";
+  return width * 3 === height * 4 ? "4:3" : width * 9 === height * 16 ? "16:9" : `${width}:${height}`;
+}
 
 function playbackTimestamp(start: string, elapsedSeconds: number) {
   const timestamp = dateTimeValue(start);
@@ -20,6 +33,12 @@ function playbackTimestamp(start: string, elapsedSeconds: number) {
   const value = new Date(timestamp + elapsedSeconds * 1000);
   const part = (number: number) => String(number).padStart(2, "0");
   return `${value.getUTCFullYear()}-${part(value.getUTCMonth() + 1)}-${part(value.getUTCDate())} ${part(value.getUTCHours())}:${part(value.getUTCMinutes())}:${part(value.getUTCSeconds())}`;
+}
+
+function recordingRange(recording: Recording) {
+  const start = Math.floor(dateTimeValue(recording.start) / 60_000) * 60_000;
+  const end = Math.max(start + 60_000, Math.ceil(dateTimeValue(recording.end) / 60_000) * 60_000);
+  return { start: new Date(start).toISOString().slice(0, 16), end: new Date(end).toISOString().slice(0, 16) };
 }
 
 type RecordingsPageProps = {
@@ -39,22 +58,42 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
   const [availableRecordings, setAvailableRecordings] = useState(recordings);
   const defaultRangeEnd = queryEndsAt ?? (recordings.reduce((latest, recording) => recording.end > latest ? recording.end : latest, "") || new Date().toISOString());
   const initialRange = requestedRecording
-    ? { start: requestedRecording.start.replace(" ", "T").slice(0, 16), end: requestedRecording.end.replace(" ", "T").slice(0, 16) }
+    ? recordingRange(requestedRecording)
     : recentRange(168, defaultRangeEnd);
   const [range, setRange] = useState(initialRange);
   const [preset, setPreset] = useState<number | null>(requestedRecording ? null : 168);
   const [applied, setApplied] = useState(() => ({ ...initialRange, type: "전체" }));
   const [queryError, setQueryError] = useState("");
-  const [querying, setQuerying] = useState(false);
+  const [queryState, setQueryState] = useState({ source: dataSource, busy: false });
+  const querying = queryState.source === dataSource && queryState.busy;
+  const setQuerying = (busy: boolean) => setQueryState({ source: dataSource, busy });
+  const startQuery = useLatestRequest(dataSource);
   const [recordType, setRecordType] = useState("전체");
   const [selectedIndex, setSelectedIndex] = useState(() => Math.max(0, recordings.findIndex((recording) => recording.id === requestedRecordingId)));
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSeconds, setPlaybackSeconds] = useState(0);
   const [recordingOpen, setRecordingOpen] = useState(false);
   const [recordingPage, setRecordingPage] = useState(0);
-  const [downloadState, setDownloadState, setDownloadStateAfter] =
-    useDelayedState<"idle" | "processing" | "complete">("idle");
-  const closeRecording = useCallback(() => setRecordingOpen(false), []);
+  const [detailState, setDetailState] = useState<{ id?: string; ready: boolean; error?: string }>({ ready: false });
+  const [detailRevision, setDetailRevision] = useState(0);
+  const playerRef = useRef<HTMLVideoElement>(null);
+  const expandedPlayerRef = useRef<HTMLVideoElement>(null);
+  const downloadController = useRef<AbortController | null>(null);
+  type DownloadState = "idle" | "processing" | "complete";
+  const [download, updateDownload, updateDownloadAfter] =
+    useDelayedState<{ source?: DashboardDataSource; value: DownloadState }>({ source: dataSource, value: "idle" });
+  const downloadState = download.source === dataSource ? download.value : "idle";
+  const setDownloadState = (value: DownloadState) => updateDownload({ source: dataSource, value });
+  const setDownloadStateAfter = (value: DownloadState, delay: number) => updateDownloadAfter({ source: dataSource, value }, delay);
+  const closeRecording = useCallback(() => {
+    const expanded = expandedPlayerRef.current;
+    if (expanded) {
+      expanded.pause();
+      if (playerRef.current) playerRef.current.currentTime = expanded.currentTime;
+      setPlaybackSeconds(expanded.currentTime);
+    }
+    setRecordingOpen(false);
+  }, []);
   const recordingModalRef = useModalFocus<HTMLDivElement>(recordingOpen, closeRecording);
 
   const visibleRecordings = availableRecordings.filter((recording) =>
@@ -65,22 +104,76 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
   const pageStart = recordingPage * recordingsPerPage;
   const pagedRecordings = visibleRecordings.slice(pageStart, pageStart + recordingsPerPage);
   const selectedRecording = visibleRecordings[selectedIndex] ?? visibleRecordings[0];
-  const selectedPlaybackAvailable = Boolean(selectedRecording && (selectedRecording.contentUrl || selectedRecording.sample));
-  const selectedDownloadAvailable = Boolean(selectedRecording && (selectedRecording.downloadUrl || selectedRecording.sample));
+  const selectedId = selectedRecording?.id;
+  const selectedSample = selectedRecording?.sample;
+  const detailRequired = Boolean(dataSource?.getRecording && !selectedSample);
+  const detailReady = !detailRequired || (detailState.id === selectedId && detailState.ready);
+  const selectedPlaybackAvailable = Boolean(detailReady && selectedRecording && (selectedRecording.contentUrl || selectedRecording.sample));
+  const selectedDownloadAvailable = Boolean(detailReady && selectedRecording && (selectedRecording.downloadUrl || selectedRecording.sample));
+
+  useEffect(() => {
+    if (!dataSource?.getRecording || !selectedId || selectedSample) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = async () => {
+      try {
+        const recording = await dataSource.getRecording?.(selectedId, controller.signal);
+        if (controller.signal.aborted) return;
+        setAvailableRecordings((items) => items.map((item) => item.id !== selectedId ? item : recording ?? { ...item, status: "unavailable", contentUrl: undefined, downloadUrl: undefined }));
+        setDetailState({ id: selectedId, ready: Boolean(recording), error: recording ? undefined : "녹화 정보가 없습니다." });
+        if (recording?.status === "processing" || recording?.mediaStatus === "collecting" || recording?.mediaStatus === "processing") {
+          timer = setTimeout(() => { void refresh(); }, 2000);
+        }
+      } catch {
+        if (!controller.signal.aborted) setDetailState({ id: selectedId, ready: false, error: "녹화 정보를 확인하지 못했습니다." });
+      }
+    };
+    void refresh();
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [dataSource, selectedId, selectedSample, detailRevision]);
+  useEffect(() => () => downloadController.current?.abort(), [dataSource]);
 
   const selectRecordingPage = (page: number) => {
+    downloadController.current?.abort();
+    setDownloadState("idle");
+    setDetailState({ ready: false });
+    setDetailRevision((value) => value + 1);
     setRecordingPage(page);
     setSelectedIndex(page * recordingsPerPage);
     setIsPlaying(false);
     setPlaybackSeconds(0);
   };
 
-  const requestDownload = () => {
+  const requestDownload = async () => {
+    if (!selectedRecording) return;
+    const controller = new AbortController();
+    downloadController.current?.abort();
+    downloadController.current = controller;
     setDownloadState("processing");
-    if (selectedRecording?.downloadUrl) {
+    let recording = selectedRecording;
+    try {
+      if (!recording.sample && dataSource?.getRecording) {
+        const refreshed = await dataSource.getRecording(recording.id, controller.signal);
+        if (controller.signal.aborted) return;
+        if (refreshed) setAvailableRecordings((items) => items.map((item) => item.id === refreshed.id ? refreshed : item));
+        if (!refreshed?.downloadUrl) {
+          setDetailState({ id: recording.id, ready: false, error: "이 녹화 영상은 다운로드할 수 없습니다." });
+          setDownloadState("idle");
+          return;
+        }
+        recording = refreshed;
+      }
+    } catch {
+      if (!controller.signal.aborted) {
+        setDetailState({ id: recording.id, ready: false, error: "다운로드 전에 녹화 정보를 확인하지 못했습니다." });
+        setDownloadState("idle");
+      }
+      return;
+    }
+    if (recording.downloadUrl) {
       const link = document.createElement("a");
-      link.href = selectedRecording.downloadUrl;
-      link.download = `${selectedRecording.id}.${selectedRecording.format.toLowerCase()}`;
+      link.href = recording.downloadUrl;
+      link.download = `${recording.id}.${recording.format.toLowerCase()}`;
       document.body.append(link);
       link.click();
       link.remove();
@@ -109,7 +202,10 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
                 return;
               }
               const applyResult = (nextRecordings?: DashboardData["recordings"]) => {
+                downloadController.current?.abort();
                 if (nextRecordings) setAvailableRecordings(nextRecordings);
+                setDetailState({ ready: false });
+                setDetailRevision((value) => value + 1);
                 setApplied({ ...range, type: recordType });
                 setSelectedIndex(0);
                 setRecordingPage(0);
@@ -124,11 +220,12 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
                 return;
               }
               const category = ({ "수거": "collection", "알림": "alert", "오류": "error" } as const)[recordType as "수거" | "알림" | "오류"] as EventCategory | undefined;
+              const signal = startQuery();
               setQuerying(true);
-              void dataSource.queryRecordings({ eventCategory: category, from: range.start, to: range.end })
-                .then(applyResult)
-                .catch(() => setQueryError("녹화 영상을 조회하지 못했습니다. 기존 조회 결과를 유지합니다."))
-                .finally(() => setQuerying(false));
+              void dataSource.queryRecordings({ eventCategory: category, from: range.start, to: range.end }, signal)
+                .then((value) => { if (!signal.aborted) applyResult(value); })
+                .catch(() => { if (!signal.aborted) setQueryError("녹화 영상을 조회하지 못했습니다. 기존 조회 결과를 유지합니다."); })
+                .finally(() => { if (!signal.aborted) setQuerying(false); });
             }}>
               <div className="query-type" role="group" aria-label="빠른 기간 선택">
                 <span>빠른 선택</span>
@@ -168,6 +265,10 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
                     className={`recording-item ${selectedRecording?.id === recording.id ? "selected" : ""}`}
                     type="button"
                     onClick={() => {
+                      downloadController.current?.abort();
+                      setDownloadState("idle");
+                      setDetailState({ id: recording.id, ready: false });
+                      setDetailRevision((value) => value + 1);
                       setSelectedIndex(pageStart + index);
                       setIsPlaying(false);
                       setPlaybackSeconds(0);
@@ -179,7 +280,7 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
                     <span className="recording-item-main">
                       <strong>{recording.date}</strong>
                       <span>{recording.time}</span>
-                      <span className={`status-text ${recording.status === "available" ? "ok" : "error"}`}>{recording.status === "available" ? "정상" : recording.status === "processing" ? "처리 중" : recording.status === "expired" ? "보관 만료" : "사용 불가"}</span>
+                      <span className={`status-text ${recording.status === "available" ? "ok" : "error"}`}>{recordingStatus(recording)}{recording.coverage === "partial" ? " (부분 녹화)" : ""}</span>
                     </span>
                     <span className="recording-item-side">
                       <span className={`recording-type ${recording.tone}`}>{recording.type}</span>
@@ -203,8 +304,8 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
                   <div className="recording-player-center">
                     <div className="recording-stage">
                       <div className="recording-frame">
-                        {selectedRecording.contentUrl
-                          ? <video src={selectedRecording.contentUrl} poster={selectedRecording.thumbnailUrl} controls preload="metadata" aria-label={`${selectedRecording.date} 녹화 영상`} onTimeUpdate={(event) => setPlaybackSeconds(event.currentTarget.currentTime)} />
+                        {selectedPlaybackAvailable && selectedRecording.contentUrl
+                          ? <video ref={playerRef} src={selectedRecording.contentUrl} poster={selectedRecording.thumbnailUrl} controls preload="metadata" aria-label={`${selectedRecording.date} 녹화 영상`} onError={() => setDetailState({ id: selectedRecording.id, ready: false, error: "영상 접근 상태를 확인하세요." })} onTimeUpdate={(event) => { if (!recordingOpen) setPlaybackSeconds(event.currentTarget.currentTime); }} />
                           : selectedRecording.sample
                             ? <img src={cameraFrame} alt={`${selectedRecording.date} 녹화 영상`} />
                             : <div className="recording-media-unavailable" role="status">재생 가능한 영상이 없습니다.</div>}
@@ -213,7 +314,7 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
                           className="recording-expand"
                           type="button"
                           aria-label="녹화 영상 크게 보기"
-                          onClick={() => setRecordingOpen(true)}
+                          onClick={() => { playerRef.current?.pause(); setRecordingOpen(true); }}
                         >
                           <ExpandIcon />
                         </button>}
@@ -235,6 +336,14 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
                 <aside className="recordings-side">
                   <section className="card recording-info">
                     <SectionTitle>녹화 정보</SectionTitle>
+                    {detailState.id === selectedId && detailState.error && <p role="alert">{detailState.error}</p>}
+                    {detailRequired && !detailReady && !(detailState.id === selectedId && detailState.error) && <p role="status">녹화 정보 확인 중</p>}
+                    {detailRequired && <button type="button" onClick={() => {
+                      downloadController.current?.abort();
+                      setDownloadState("idle");
+                      setDetailState({ id: selectedId, ready: false });
+                      setDetailRevision((value) => value + 1);
+                    }}>녹화 정보 새로고침</button>}
                     <dl>
                       <div><dt>시작 시각</dt><dd>{selectedRecording.start}</dd></div>
                       <div><dt>종료 시각</dt><dd>{selectedRecording.end}</dd></div>
@@ -242,21 +351,25 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
                       <div><dt>발생 유형</dt><dd><span className={`recording-type ${selectedRecording.tone}`}>{selectedRecording.type}</span></dd></div>
                       <div><dt>파일 형식</dt><dd>{selectedRecording.format}</dd></div>
                       <div><dt>비디오 코덱</dt><dd>{selectedRecording.codec}</dd></div>
-                      <div><dt>해상도</dt><dd>{selectedRecording.width} x {selectedRecording.height}</dd></div>
-                      <div><dt>화면 비율</dt><dd>{selectedRecording.width * 3 === selectedRecording.height * 4 ? "4:3" : selectedRecording.width * 9 === selectedRecording.height * 16 ? "16:9" : `${selectedRecording.width}:${selectedRecording.height}`}</dd></div>
-                      <div><dt>프레임 속도</dt><dd>{selectedRecording.frameRate} fps</dd></div>
+                      <div><dt>해상도</dt><dd>{selectedRecording.width === null || selectedRecording.height === null ? "정보 없음" : `${selectedRecording.width} x ${selectedRecording.height}`}</dd></div>
+                      <div><dt>화면 비율</dt><dd>{aspectRatio(selectedRecording)}</dd></div>
+                      <div><dt>프레임 속도</dt><dd>{selectedRecording.frameRate === null ? "정보 없음" : `${selectedRecording.frameRate} fps`}</dd></div>
                       <div><dt>파일 용량</dt><dd>{selectedRecording.size}</dd></div>
                       <div className="recording-retention"><dt>보관 기간</dt><dd><span>{selectedRecording.retentionStartsAt}</span><span>~ {selectedRecording.retentionEndsAt}</span></dd></div>
                     </dl>
+                    {selectedRecording.mediaStatus && <p>미디어 상태 {recordingStatus(selectedRecording)}</p>}
+                    {selectedRecording.coverage && <p>녹화 범위 {selectedRecording.coverage === "partial" ? "부분 저장" : selectedRecording.coverage === "complete" ? "전체 구간" : "영상 없음"}</p>}
+                    {selectedRecording.gaps && selectedRecording.gaps.length > 0 && <ul aria-label="녹화 누락 구간">{selectedRecording.gaps.map((gap) => <li key={`${gap.start}-${gap.end}`}>{gap.start} ~ {gap.end}</li>)}</ul>}
+                    {selectedRecording.errorCode && <p role="alert">{selectedRecording.errorCode}</p>}
                   </section>
                   <section className="card recording-download">
                     <SectionTitle>녹화 파일</SectionTitle>
                     <p>선택한 녹화 영상의 다운로드 요청을 확인합니다.</p>
-                    <button type="button" disabled={downloadState === "processing" || !selectedDownloadAvailable} onClick={requestDownload}>
+                    <button type="button" disabled={downloadState === "processing" || !selectedDownloadAvailable} onClick={() => { void requestDownload(); }}>
                       {!selectedDownloadAvailable ? "다운로드 불가" : downloadState === "processing" ? "다운로드 요청 확인 중" : "녹화 영상 다운로드"}
                     </button>
                     {!selectedDownloadAvailable && <p role="status">이 녹화 영상은 다운로드할 수 없습니다.</p>}
-                    {downloadState === "complete" && <p role="status">{selectedRecording.downloadUrl ? "다운로드를 시작했습니다." : "예시 데이터에서는 파일을 다운로드하지 않습니다."}</p>}
+                    {downloadState === "complete" && <p role="status">{selectedRecording.sample ? "예시 데이터에서는 파일을 다운로드하지 않습니다." : "다운로드를 시작했습니다."}</p>}
                   </section>
                 </aside>
               </>
@@ -281,8 +394,8 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
           <div className="video-modal-panel" onClick={(event) => event.stopPropagation()}>
             <button className="video-modal-close" type="button" aria-label="녹화 영상 닫기" onClick={closeRecording}>닫기</button>
             <div className="video-modal-frame">
-              {selectedRecording.contentUrl
-                ? <video src={selectedRecording.contentUrl} poster={selectedRecording.thumbnailUrl} controls autoPlay aria-label={`${selectedRecording.date} 녹화 영상 확대`} onTimeUpdate={(event) => setPlaybackSeconds(event.currentTarget.currentTime)} />
+              {selectedPlaybackAvailable && selectedRecording.contentUrl
+                ? <video ref={expandedPlayerRef} src={selectedRecording.contentUrl} poster={selectedRecording.thumbnailUrl} controls autoPlay aria-label={`${selectedRecording.date} 녹화 영상 확대`} onLoadedMetadata={(event) => { event.currentTarget.currentTime = playbackSeconds; }} onError={() => setDetailState({ id: selectedRecording.id, ready: false, error: "영상 접근 상태를 확인하세요." })} onTimeUpdate={(event) => setPlaybackSeconds(event.currentTarget.currentTime)} />
                 : selectedRecording.sample
                   ? <img src={cameraFrame} alt={`${selectedRecording.date} 녹화 영상 확대`} />
                   : <div className="recording-media-unavailable" role="status">재생 가능한 영상이 없습니다.</div>}

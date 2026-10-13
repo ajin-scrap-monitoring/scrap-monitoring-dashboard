@@ -54,13 +54,27 @@ test("제안 계약의 이력 조회와 관련 녹화 재생 및 다운로드를
   await expect(page).toHaveURL(/\/recordings\?recordingId=recording-contract-1$/);
   await expect(page.getByRole("heading", { name: "녹화 영상", exact: true, level: 1 })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "시작 시각", exact: true })).toHaveValue("2026-09-09 00:00");
-  await expect(page.getByRole("textbox", { name: "종료 시각", exact: true })).toHaveValue("2026-09-09 23:59");
+  await expect(page.getByRole("textbox", { name: "종료 시각", exact: true })).toHaveValue("2026-09-10 00:00");
   await expect(page.getByText("640 x 480")).toBeVisible();
   await expect(page.getByText("30 fps")).toBeVisible();
   await expect(page.locator('video[aria-label="2026-09-09 녹화 영상"]')).toHaveAttribute("src", "/api/v1/recordings/recording-contract-1/content");
   await expect.poll(() => requests.some(({ method, url }) => method === "GET" && url.pathname === "/api/v1/recordings/recording-contract-1")).toBe(true);
   await expect.poll(() => requests.some(({ method, url }) => method === "GET" && url.pathname === "/api/v1/recordings/recording-contract-1/thumbnail")).toBe(true);
   await expect.poll(() => requests.some(({ method, url }) => method === "GET" && url.pathname === "/api/v1/recordings/recording-contract-1/content")).toBe(true);
+
+  const player = page.locator(".recording-frame video");
+  await expect.poll(() => player.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(2);
+  await player.evaluate((element: HTMLVideoElement) => { element.currentTime = 0.2; return element.play(); });
+  await expect.poll(() => player.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false);
+  await page.getByRole("button", { name: "녹화 영상 크게 보기" }).click();
+  await expect.poll(() => player.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true);
+  const expanded = page.locator(".video-modal video");
+  await expect.poll(() => expanded.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(2);
+  await expanded.evaluate((element: HTMLVideoElement) => { element.pause(); element.currentTime = 0.4; });
+  await expect.poll(() => expanded.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeCloseTo(0.4, 2);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "녹화 영상 크게 보기" })).toHaveCount(0);
+  await expect.poll(() => player.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeCloseTo(0.4, 2);
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "녹화 영상 다운로드" }).click();
