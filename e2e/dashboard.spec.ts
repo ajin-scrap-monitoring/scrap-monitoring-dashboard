@@ -111,7 +111,9 @@ test("상단 알림함과 관리자 메뉴를 제공한다", async ({ page }) =>
   await page.getByLabel("아이디").fill("admin");
   await page.getByLabel("비밀번호").fill("test");
   await page.getByRole("button", { name: "로그인", exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
   await page.goto("/admin");
+  await expect(page.getByRole("heading", { name: "관리자 설정", exact: true, level: 1 })).toBeVisible();
 
   await page.getByRole("button", { name: "알림 3건" }).click();
   await expect(page.getByLabel("최근 알림")).toBeVisible();
@@ -135,6 +137,26 @@ test("상단 알림함과 관리자 메뉴를 제공한다", async ({ page }) =>
   await page.getByLabel("비밀번호").fill("test");
   await page.getByRole("button", { name: "로그인", exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
+});
+
+test("관리자 page chunk 지연 후 알림함은 준비된 화면에서 열린 상태를 유지한다", async ({ page }) => {
+  await page.addInitScript("window.sessionStorage.setItem('scrap-monitoring-authenticated', 'true')");
+  let releaseAdmin = () => {};
+  const adminReady = new Promise<void>((resolve) => { releaseAdmin = resolve; });
+  await page.route("**/assets/AdminPage-*.js", async (route) => {
+    await adminReady;
+    await route.continue();
+  });
+  try {
+    await page.goto("/admin", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("main", { name: "화면을 불러오는 중입니다." })).toBeVisible();
+  } finally {
+    releaseAdmin();
+  }
+  await expect(page.getByRole("heading", { name: "관리자 설정", exact: true, level: 1 })).toBeVisible();
+  await page.getByRole("button", { name: "알림 3건" }).click();
+  await expect(page.getByLabel("최근 알림")).toBeVisible();
+  await expect(page.getByLabel("최근 알림").getByText("수거 필요", { exact: true })).toBeVisible();
 });
 
 test("상단 브랜드는 현황 화면으로 이동한다", async ({ page }) => {
