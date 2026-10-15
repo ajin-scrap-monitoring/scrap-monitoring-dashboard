@@ -297,8 +297,9 @@ test("실제 날짜 녹화의 session 보호, 공개 HLS 경로와 오늘 녹화
   await expect(page.locator(".recording-item .recording-type")).toContainText(["날짜 녹화"]);
   const video = page.locator(".recording-frame video");
   await expect.poll(() => video.evaluate(element => (element as unknown as { videoWidth: number }).videoWidth)).toBe(320);
-  await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(3);
+  // metadata preload does not require the browser to buffer playback before play().
   await video.evaluate(element => { const player = element as HTMLVideoElement; player.muted = true; return player.play(); });
+  await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(3);
   await expect.poll(() => video.evaluate(element => (element as unknown as { currentTime: number }).currentTime)).toBeGreaterThan(0.1);
   await video.evaluate(element => (element as unknown as { pause: () => void }).pause());
   await expect(page.getByRole("button", { name: "다운로드 불가", exact: true })).toBeDisabled();

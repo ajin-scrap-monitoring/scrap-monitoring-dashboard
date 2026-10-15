@@ -19,7 +19,7 @@ export function redact(value: string, secrets: string[] = []): string {
 }
 
 export function summarizeReport(input: unknown, secrets: string[] = []) {
-  const tests: { file: string; title: string; status: string; duration: number }[] = [];
+  const tests: { file: string; title: string; status: string; duration: number; failureLine?: number }[] = [];
   const visit = (suite: unknown) => {
     const value = object(suite);
     for (const spec of array(value.specs)) {
@@ -27,11 +27,14 @@ export function summarizeReport(input: unknown, secrets: string[] = []) {
       for (const test of array(definition.tests)) {
         for (const result of array(object(test).results)) {
           const run = object(result);
+          const failureLine = object(object(array(run.errors)[0]).location).line;
           tests.push({
             file: redact(typeof definition.file === "string" ? definition.file : "", secrets),
             title: redact(typeof definition.title === "string" ? definition.title : "", secrets),
             status: typeof run.status === "string" && ["passed", "failed", "timedOut", "skipped", "interrupted"].includes(run.status) ? run.status : "unknown",
             duration: typeof run.duration === "number" && Number.isFinite(run.duration) ? run.duration : 0,
+            ...(run.status !== "passed" && typeof failureLine === "number" && Number.isSafeInteger(failureLine) && failureLine > 0
+              ? { failureLine } : {}),
           });
         }
       }

@@ -1043,6 +1043,7 @@ cleanup 실패도 비정상 종료로 처리한다. SIGKILL과 daemon 중단 등
 
 실제 서비스 실행의 정보는 `test-results/service-integration/run.<id>/`에 저장한다.
 `artifacts/`에는 정제한 `summary.json`과 synthetic screenshot만 공개한다.
+실패한 검사의 공개 요약은 양의 정수 행 번호만 추가하며 오류 경로와 원문은 포함하지 않는다.
 원본 Playwright trace, request 및 response, Cookie, 비밀번호, token과 오류 원문은 공개
 artifact에 넣지 않는다. `private/`는 mode 700이며 원본 report와 로그를 저장한다.
 `private/service-logs.txt`는 자원 회수 전 수집한 격리 환경의 Backend, Media와 synthetic 입력 로그다.
