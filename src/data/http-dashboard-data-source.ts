@@ -3,7 +3,6 @@ import type { components as BackendComponents, paths as BackendPaths } from "../
 import type {
   AlertLevel,
   AlertSettings,
-  AlertEvidencePage,
   DashboardData,
   DashboardStatus,
   DataAreaState,
@@ -25,8 +24,9 @@ import type {
   SessionCredentials,
 } from "./dashboard-data-source";
 import { monitoringV2Data, type ApiMonitoringSnapshotV2 } from "./monitoring-v2";
+import { updateLoadOneHourAgo } from "./load-one-hour-ago";
 import { parseLoadHistoryV2, type LoadHistoryScope } from "./load-history-v2";
-import { clipIdentifier, parseClipCoverage } from "./recording-coverage";
+import type { DailyRecordingApi } from "./daily-recording-api";
 import { configuredLiveVideoMode, configuredMonitoringVersion, mjpegPlaybackEnabled, runtimeFeatureSelection, v1MonitoringEnabled, v2MonitoringEnabled, whepPlaybackEnabled } from "../build-features";
 import { timestamp } from "./contract-values";
 
@@ -97,6 +97,10 @@ function wallClock(value: string | null, includeSeconds = false) {
 function timeOnly(value: string | null, includeSeconds = false) {
   if (value === null) return missingValue;
   return wallClock(value, includeSeconds).split(" ")[1] ?? value;
+}
+
+function receivedSnapshot() {
+  return { status: "connected" as const, lastReceivedAt: new Date().toISOString() };
 }
 
 function expectedTime(value: string | null | undefined) {
@@ -293,48 +297,54 @@ function mapLidarProfile(snapshot: ApiMonitoringSnapshot, lidarId: "lidar-1" | "
   };
 }
 
-function mapEvent(event: ApiEvent): HistoryEvent {
+function mapEvent(event: ApiEvent, backendRecords = false): HistoryEvent {
   return {
     content: event.detail || event.title,
+    title: event.title,
+    detail: event.detail,
     id: event.id,
     recordingId: event.recordingId ?? null,
-    status: eventStatus(event.status),
+    status: backendRecords ? event.type === "collection_completed" && event.status === "completed" ? "완료" : null : eventStatus(event.status),
     time: wallClock(event.occurredAt),
-    tone: eventTone(event.category, event.status),
+    tone: backendRecords && event.category !== "collection" ? event.severity === "error" ? "error" : "warning" : eventTone(event.category, event.status),
     type: eventCategoryLabel(event.category),
   };
 }
 
-function mapRecording(recording: ApiRecording): Recording {
-  const date = wallClock(recording.startedAt, true).split(" ")[0];
+function mapRecording(recording: ApiRecording, offset?: string): Recording {
+  const atOffset = (value: string | null) => value === null || offset === undefined ? value : rfc3339AtOffset(Date.parse(value), offset, true);
+  const startedAt = atOffset(recording.startedAt);
+  const endedAt = atOffset(recording.endedAt);
+  const date = wallClock(startedAt, true).split(" ")[0];
   const status = recording.status ?? "unavailable";
   const available = status === "available" && (recording.mediaStatus == null || recording.mediaStatus === "ready");
   return {
-    codec: recording.videoCodec?.toUpperCase() ?? missingValue,
+    source: "event",
+    codec: recording.videoCodec?.toUpperCase() || missingValue,
     contentUrl: available ? sameOriginResourcePath(recording.contentPath) : undefined,
     date,
     detail: recording.detail || recording.title,
     downloadUrl: available ? sameOriginResourcePath(recording.downloadPath) : undefined,
     duration: clockDuration(recording.durationSeconds),
-    end: wallClock(recording.endedAt, true),
-    format: recording.containerFormat?.toUpperCase() ?? "MP4",
+    end: wallClock(endedAt, true),
+    format: recording.containerFormat?.toUpperCase() || missingValue,
     frameRate: recording.frameRate ?? null,
     height: recording.heightPixels ?? null,
     id: recording.id,
-    retentionEndsAt: wallClock(recording.retainedUntil, true),
-    retentionStartsAt: wallClock(recording.retainedFrom, true),
+    retentionEndsAt: wallClock(atOffset(recording.retainedUntil), true),
+    retentionStartsAt: wallClock(atOffset(recording.retainedFrom), true),
     sample: false,
     size: byteSize(recording.sizeBytes),
-    start: wallClock(recording.startedAt, true),
+    start: wallClock(startedAt, true),
     status: status === "available" && !available ? "unavailable" : status,
     thumbnailUrl: sameOriginResourcePath(recording.thumbnailPath),
-    time: `${timeOnly(recording.startedAt)} - ${timeOnly(recording.endedAt)}`,
+    time: `${timeOnly(startedAt)} - ${timeOnly(endedAt)}`,
     tone: eventTone(recording.eventCategory),
     type: eventCategoryLabel(recording.eventCategory),
     width: recording.widthPixels ?? null,
     mediaStatus: recording.mediaStatus,
     coverage: recording.coverage,
-    gaps: recording.gaps?.map((gap) => ({ start: wallClock(gap.start_at, true), end: wallClock(gap.end_at, true) })),
+    gaps: recording.gaps?.map((gap) => ({ start: wallClock(atOffset(gap.start_at), true), end: wallClock(atOffset(gap.end_at), true) })),
     errorCode: recording.errorCode,
   };
 }
@@ -352,14 +362,7 @@ function historyData(load: ApiLoadHistory, events: readonly ApiEvent[], backendR
       value: event.valuePercent,
     })),
     endsAt: toDateTimeInput(load.to),
-    events: events.map((event) => {
-      const mapped = mapEvent(event);
-      if (backendRecords && (event.category === "alert" || event.category === "error")) {
-        mapped.status = "기록";
-        mapped.tone = event.severity === "error" ? "error" : "warning";
-      }
-      return mapped;
-    }),
+    events: events.map(event => mapEvent(event, backendRecords)),
     loadSamples: load.samples.map((sample) => ({ hour: hour(sample.measuredAt),
       value: sample.valid && typeof sample.valuePercent === "number" && Number.isFinite(sample.valuePercent) ? sample.valuePercent : null })),
     startsAt: toDateTimeInput(load.from),
@@ -446,8 +449,7 @@ function monitoringData(snapshot: ApiMonitoringSnapshot, notifications: ApiNotif
         enabled: snapshot.summary.preCollectionAlert.enabled ?? true,
         threshold: snapshot.summary.preCollectionAlert.thresholdPercent,
       },
-      recentChange: typeof snapshot.summary.loadChangeLastHourPercentagePoints === "number"
-        ? `${snapshot.summary.loadChangeLastHourPercentagePoints >= 0 ? "+" : ""}${snapshot.summary.loadChangeLastHourPercentagePoints}%` : missingValue,
+      loadOneHourAgo: null,
       remainingTime: durationText(remainingSeconds),
       timeSinceCollection: snapshot.summary.lastCollectionAt
         ? durationText(Math.max(0, (new Date(snapshot.serverTime).getTime() - new Date(snapshot.summary.lastCollectionAt).getTime()) / 1000))
@@ -456,7 +458,7 @@ function monitoringData(snapshot: ApiMonitoringSnapshot, notifications: ApiNotif
     videoMode: "webrtc",
     videoStatus: snapshot.video.status ?? "unavailable",
     videoStreamId: snapshot.video.streamId ?? "",
-    videoTimestamp: wallClock(snapshot.video.capturedAt, true),
+    videoCapturedAt: snapshot.video.capturedAt ?? null,
   };
 }
 
@@ -506,6 +508,7 @@ export function createHttpDashboardDataSource({
   if (!runtimeFeatureSelection && apiContract !== "backend") throw new Error("Production requires the Backend contract.");
   const useV2Monitoring = v2MonitoringEnabled && (!v1MonitoringEnabled || monitoringVersion === "v2");
   const backendContract = !runtimeFeatureSelection || apiContract === "backend";
+  const supportsDailyRecordings = backendContract && useV2Monitoring;
   const selectedLiveVideoMode = liveVideoMode ?? (useV2Monitoring ? "mjpeg" : "webrtc");
   if ((!mjpegPlaybackEnabled && selectedLiveVideoMode === "mjpeg") || (!whepPlaybackEnabled && selectedLiveVideoMode === "webrtc")) throw new Error("Live video mode is not enabled in this build.");
   if (useV2Monitoring && selectedLiveVideoMode !== "mjpeg") throw new Error("Monitoring v2 supports only MJPEG live video.");
@@ -519,6 +522,7 @@ export function createHttpDashboardDataSource({
   let completedCollectionAt: string | null = null;
   let monitoringScope: LoadHistoryScope | null = null;
   let serverClock: { timestamp: number; receivedAt: number } | null = null;
+  let dailyApiPromise: Promise<DailyRecordingApi> | null = null;
   let notificationActionsController = new AbortController();
   const listeners = new Set<DashboardDataUpdateListener>();
   const resetNotificationActions = () => {
@@ -537,6 +541,7 @@ export function createHttpDashboardDataSource({
     const monitoring = useV2Monitoring
       ? { ...monitoringV2Data(snapshot, pitId), ...notificationData(notifications) }
       : monitoringData(snapshot as ApiMonitoringSnapshot, notifications);
+    if (backendContract && !useV2Monitoring) monitoring.videoCapturedAt = null;
     if (mjpegPlaybackEnabled && (!whepPlaybackEnabled || selectedLiveVideoMode === "mjpeg")) {
       monitoring.videoMode = "mjpeg";
       monitoring.videoUrl = `/media/cameras/${encodeURIComponent(cameraId)}/live`;
@@ -626,28 +631,6 @@ export function createHttpDashboardDataSource({
     publishNotifications();
   };
 
-  const refreshNotifications = async (signal?: AbortSignal) => {
-    const session = currentData?.session;
-    if (!currentData || !session) return;
-    const expectedRevision = notificationRevision;
-    const actionSignal = signal ?? notificationActionsController.signal;
-    try {
-      const notifications = await getNotifications(session, actionSignal);
-      if (!notifications || actionSignal.aborted || !currentData || currentData.session !== session) return;
-      if (expectedRevision !== notificationRevision) return;
-      currentData.monitoring = { ...currentData.monitoring, ...notificationData(notifications), notificationState: { status: "ready" } };
-      notificationRevision += 1;
-      notificationRefreshRequired = false;
-      publishNotifications();
-    } catch (error) {
-      if (actionSignal.aborted || !currentData || currentData.session !== session) throw error;
-      if (isAuthorizationError(error)) { publishAuthorizationError(error); throw error; }
-      applyNotificationFailure(error);
-      publishNotifications();
-      throw error;
-    }
-  };
-
   const getCompletedCollectionAt = async (signal?: AbortSignal) => {
     const result = await request<unknown>(pitPath(`${API_PATHS.events}?category=collection&page=1&pageSize=1`), { signal });
     if (!result || typeof result !== "object" || !("items" in result) || !Array.isArray(result.items) || result.items.length > 1) throw new Error("Unexpected collection history contract.");
@@ -723,14 +706,7 @@ export function createHttpDashboardDataSource({
       ...history,
       startsAt: toDateTimeInput(from), endsAt: toDateTimeInput(to),
       loadSamples: load?.historySamples ?? [],
-      events: eventsResult.value.map((event) => {
-        const mapped = mapEvent(event);
-        if (backendContract && event.category !== "collection") {
-          mapped.status = "기록";
-          mapped.tone = event.severity === "error" ? "error" : "warning";
-        }
-        return mapped;
-      }),
+      events: eventsResult.value.map((event) => mapEvent(event, backendContract)),
       thresholds: currentData ? [{ hour: 0, value: currentData.monitoring.summary.collectionThreshold }] : [],
       loadState: { ...loadResult.state, from, to, thresholdKind: "current" as const },
       eventsState: eventsResult.state,
@@ -738,14 +714,34 @@ export function createHttpDashboardDataSource({
   };
 
   const queryRecordings = async (query: DateRangeQuery, signal?: AbortSignal) => {
+    if (query.recordingSource === "daily") {
+      return (await getDailyApi()).queryRecordings(query, signal);
+    }
     const recordings = await listEveryPage<ApiRecordingPage, ApiRecording>(`${API_PATHS.recordings}?${queryParameters(query)}`, signal);
-    return recordings.map(mapRecording);
+    return recordings.map(recording => mapRecording(recording, displayTimeOffset));
   };
 
-  const getRecording = async (recordingId: string, signal?: AbortSignal) => {
+  const getDailyApi = () => {
+    if (!supportsDailyRecordings) throw new ApiError(404, "현재 연결은 날짜 녹화를 지원하지 않습니다.", "UNSUPPORTED_ENDPOINT");
+    dailyApiPromise ??= import("./daily-recording-api").then(({ createDailyRecordingApi }) => createDailyRecordingApi({
+      ApiError, cameraId, request,
+      isAuthenticated: () => hasAuthenticatedSession && Boolean(csrfToken),
+      serverNow: () => {
+        if (!serverClock) throw new Error("A valid server time is required for daily recordings.");
+        return serverClock.timestamp + Math.max(0, performance.now() - serverClock.receivedAt);
+      },
+    })).catch((error: unknown) => { dailyApiPromise = null; throw error; });
+    return dailyApiPromise;
+  };
+
+  const getRecording = async (recordingId: string, signal?: AbortSignal, recordingSource: "daily" | "event" = "event") => {
+    if (recordingSource === "daily") {
+      try { return await (await getDailyApi()).getRecording(recordingId, signal); }
+      catch (error) { if (error instanceof ApiError && error.status === 404) return null; throw error; }
+    }
     try {
       const path = pathWithId(API_PATHS.recording, "recordingId", recordingId);
-      return mapRecording(await request<ApiRecording>(path, { signal }));
+      return mapRecording(await request<ApiRecording>(path, { signal }), displayTimeOffset);
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) return null;
       throw error;
@@ -765,7 +761,7 @@ export function createHttpDashboardDataSource({
     ? mapAlertSettings(await request<ApiAlertSettings>(pitPath(API_PATHS.alertSettings), { signal }))
     : emptyAlertSettings();
 
-  const finishNotificationsRead = async (ids: Set<string>, session: UserSession | null | undefined, signal: AbortSignal, readAllRevision?: number) => {
+  const finishNotificationAction = async (ids: Set<string>, session: UserSession | null | undefined, signal: AbortSignal, readAllRevision?: number) => {
     const isCurrentSession = () => currentData?.session === session && hasAuthenticatedSession && !signal.aborted;
     if (!currentData || !session || !isCurrentSession()) return;
     for (const notification of currentData.monitoring.headerNotifications) {
@@ -803,6 +799,7 @@ export function createHttpDashboardDataSource({
 
   const source: DashboardDataSource = {
     monitoringVersion,
+    supportsDailyRecordings,
     createNotificationRecipient: async (input: NotificationRecipientInput) => {
       const body = {
         ...recipientPreferences(input.settings),
@@ -837,6 +834,7 @@ export function createHttpDashboardDataSource({
       }
       const snapshot = await request<ApiMonitoringSnapshot | ApiMonitoringSnapshotV2>(snapshotPath, { signal: options.signal });
       const monitoring = mapMonitoring(snapshot, null);
+      const reception = receivedSnapshot();
       const previous = session?.user.id === currentData?.session?.user.id ? currentData : null;
       const previousLoad = previous?.monitoring.v2?.siteId === monitoring.v2?.siteId
         && previous?.monitoring.v2?.edgeId === monitoring.v2?.edgeId ? previous?.monitoring : undefined;
@@ -847,6 +845,12 @@ export function createHttpDashboardDataSource({
           ? Math.floor(Date.parse(snapshot.serverTime) / 60_000) * 60_000 : Date.parse(snapshot.serverTime), displayTimeOffset) : snapshot.serverTime;
       const start = rfc3339AtOffset(new Date(end).getTime() - 7 * 24 * 3_600_000, displayTimeOffset);
       const requestedRecordingId = path === "/recordings" ? new URLSearchParams(locationSearch()).get("recordingId") : null;
+      const recordingsSource = supportsDailyRecordings && !requestedRecordingId
+        && new URLSearchParams(locationSearch()).get("recordingSource") !== "event" ? "daily" : "event";
+      const recordingQueryEnd = recordingsSource === "daily" ? snapshot.serverTime : end;
+      const recordingQueryStart = recordingsSource === "daily"
+        ? rfc3339AtOffset(Date.parse(snapshot.serverTime) - 7 * 86_400_000, displayTimeOffset) : start;
+      const previousRecordings = previous?.recordingsSource === recordingsSource ? previous.recordings : [];
       const [notificationResult, historyResult, recordingsResult, settings, recipients, completionResult, recentHistoryResult] = await Promise.all([
         optionalArea(getNotifications(session, options.signal), null, notificationFailureMessage, options.signal, previous?.monitoring.unreadNotificationCount != null),
         optionalArea(path === "/history" ? queryHistory({ from: start, to: end }, options.signal) : Promise.resolve(emptyHistory(end)),
@@ -854,8 +858,8 @@ export function createHttpDashboardDataSource({
         optionalArea(path === "/recordings"
           ? requestedRecordingId
             ? getRecording(requestedRecordingId, options.signal).then((recording) => recording ? [recording] : [])
-            : queryRecordings({ from: start, to: end }, options.signal)
-          : Promise.resolve([]), previous?.recordings ?? [], "녹화 목록을 불러오지 못했습니다.", options.signal, previous !== null),
+            : queryRecordings({ from: recordingQueryStart, to: recordingQueryEnd, recordingSource: recordingsSource }, options.signal)
+          : Promise.resolve([]), previousRecordings, "녹화 목록을 불러오지 못했습니다.", options.signal, previousRecordings.length > 0),
         path === "/admin" ? getAlertSettings(session, options.signal) : emptyAlertSettings(),
         path === "/admin" ? getRecipients(session, options.signal) : { recipients: [], settings: {} },
         optionalArea(useV2Monitoring && backendContract ? getCompletedCollectionAt(options.signal) : Promise.resolve(null),
@@ -876,7 +880,9 @@ export function createHttpDashboardDataSource({
       completedCollectionAt = completionResult.value;
       notificationRefreshRequired = notificationResult.state.status === "error";
       if (monitoring.v2) monitoring.summary.timeSinceCollection = sinceCollection(completedCollectionAt, snapshot.serverTime);
+      updateLoadOneHourAgo(monitoring);
       currentData = {
+        reception,
         admin: {
           alertSettings: settings,
           preCollectionAlert: settings.preCollectionAlert,
@@ -889,51 +895,37 @@ export function createHttpDashboardDataSource({
         lastMeasuredAt: timeOnly(snapshot.measuredAt, true),
         monitoring,
         recordings: recordingsResult.value,
+        recordingsSource,
         recordingsState: recordingsResult.state,
         session,
       };
       return structuredClone(currentData);
     },
     getRecording,
+    ...(supportsDailyRecordings ? { prepareDailyRecordingExport: async (recordingId: string, signal?: AbortSignal) => {
+      return (await getDailyApi()).prepareExport(recordingId, signal);
+    } } : {}),
     getRecordingCoverage: async (recordingId, signal) => {
+      const { clipIdentifier, parseClipCoverage } = await import("./recording-coverage");
       if (!clipIdentifier.test(recordingId)) throw new Error("Recording coverage requires a media clip identifier.");
       return parseClipCoverage(await request<unknown>(`/api/v1/media/clips/${encodeURIComponent(recordingId)}`, { signal }), recordingId, cameraId);
     },
-    ...(v2MonitoringEnabled ? { getPitName: async (signal?: AbortSignal) => {
-      const config = await request<BackendComponents["schemas"]["PitConfigResponse"]>(`/api/v1/config/pits/${encodeURIComponent(pitId)}`, { signal });
-      if (!config || config.id !== pitId || typeof config.name !== "string" || config.name.trim() === "") throw new Error("Unexpected pit configuration contract.");
-      return config.name;
-    },
-    getAlertEvidencePage: async (offset: number, signal?: AbortSignal): Promise<AlertEvidencePage> => {
-      if (!Number.isInteger(offset) || offset < 0 || offset > 10000) throw new Error("Alert history offset is not supported.");
-      const parameters = new URLSearchParams({ pit_id: pitId, limit: "20", offset: String(offset) });
-      const page = await request<BackendComponents["schemas"]["V2AlertPage"]>(`/api/v2/monitoring/alerts?${parameters}`, { signal });
-      if (!page || page.offset !== offset || page.limit !== 20 || !Number.isSafeInteger(page.totalItems) || page.totalItems < 0
-        || !Array.isArray(page.items) || page.items.length > 20 || page.items.length > Math.max(0, page.totalItems - offset)
-        || page.items.some((item: BackendComponents["schemas"]["V2Alert"]) => !item || typeof item.eventId !== "string" || !/^evt-alt-[1-9]\d*$/.test(item.eventId)
-          || item.notificationId !== `notif-${item.eventId.slice(8)}` || typeof item.assessmentId !== "string" || item.assessmentId.length === 0
-          || typeof item.loadPercent !== "number" || !Number.isFinite(item.loadPercent) || item.loadPercent < 0 || item.loadPercent > 100
-          || !timestamp(item.observedAt) || !timestamp(item.triggeredAt) || !(item.readAt === null || timestamp(item.readAt)))
-        || new Set(page.items.map((item: BackendComponents["schemas"]["V2Alert"]) => item.eventId)).size !== page.items.length) throw new Error("Unexpected alert history contract.");
-      return { ...page, items: page.items.map((item: BackendComponents["schemas"]["V2Alert"]) => ({ ...item })) };
-    } } : {}),
     markAllNotificationsRead: async () => {
       const session = currentData?.session;
       const { signal } = notificationActionsController;
       const ids = new Set(currentData?.monitoring.headerNotifications.map((notification) => notification.id));
       const revision = notificationRevision;
       await request<void>(API_PATHS.notificationsReadAll, { method: "POST", signal });
-      await finishNotificationsRead(ids, session, signal, revision);
+      await finishNotificationAction(ids, session, signal, revision);
     },
     markNotificationRead: async (notificationId) => {
       const session = currentData?.session;
       const { signal } = notificationActionsController;
       await request(pathWithId(API_PATHS.notification, "notificationId", notificationId), { method: "PATCH", body: JSON.stringify({ read: true }), signal });
-      await finishNotificationsRead(new Set([notificationId]), session, signal);
+      await finishNotificationAction(new Set([notificationId]), session, signal);
     },
     queryHistory,
     queryRecordings,
-    refreshNotifications,
     replaceAlertSettings: async (settings) => {
       const body = {
         collectionThresholdPercent: settings.collectionThreshold,
@@ -952,7 +944,11 @@ export function createHttpDashboardDataSource({
     },
     sendTestNotification: async (recipientId, channels) => {
       const body = { channels, recipientId } satisfies BackendComponents["schemas"]["TestNotificationRequest"] & components["schemas"]["TestNotificationRequest"];
-      await request<void>(API_PATHS.testNotification, { body: JSON.stringify(body), method: "POST" });
+      const session = currentData?.session;
+      const { signal } = notificationActionsController;
+      await request<void>(API_PATHS.testNotification, { body: JSON.stringify(body), method: "POST", signal });
+      try { await finishNotificationAction(new Set(), session, signal); }
+      catch { /* The accepted request is independent of notification refresh or cancellation. */ }
     },
     subscribe: (listener) => {
       const eventSource = eventSourceFactory(eventsPath);
@@ -999,6 +995,7 @@ export function createHttpDashboardDataSource({
           if (!active || !currentData) return;
           currentData.monitoring.loadHistory = load.monitoringSamples;
           currentData.monitoring.loadHistoryState = { status: "ready", from: load.from, to: load.to };
+          updateLoadOneHourAgo(currentData.monitoring);
           listener(structuredClone(currentData));
         } catch (error) {
           if (isAuthorizationError(error)) { failAuthorization(error); return; }
@@ -1007,6 +1004,7 @@ export function createHttpDashboardDataSource({
             ...areaError(error, loadHistoryFailureMessage, currentData.monitoring.loadHistory.length > 0),
             from: currentData.monitoring.loadHistoryState?.from, to: currentData.monitoring.loadHistoryState?.to,
           };
+          updateLoadOneHourAgo(currentData.monitoring);
           listener(structuredClone(currentData));
         } finally { refreshingLoadHistory = false; }
       };
@@ -1110,6 +1108,7 @@ export function createHttpDashboardDataSource({
           && (monitoring.v2.siteId !== currentData.monitoring.v2.siteId || monitoring.v2.edgeId !== currentData.monitoring.v2.edgeId);
         currentData = {
           ...currentData,
+          reception: receivedSnapshot(),
           lastMeasuredAt: measuredAt,
           monitoring: { ...monitoring, headerNotifications, unreadNotificationCount,
             notificationState: currentData.monitoring.notificationState,
@@ -1118,6 +1117,7 @@ export function createHttpDashboardDataSource({
               loadHistoryState: sourceChanged ? { status: "loading" } : currentData.monitoring.loadHistoryState } : {}),
           },
         };
+        updateLoadOneHourAgo(currentData.monitoring);
         listener(structuredClone(currentData));
         const notificationId = monitoring.v2?.operations?.notificationId;
         if (notificationRefreshRequired || (notificationId && notificationId !== synchronizedNotificationId)) refreshV2Notifications();
@@ -1126,13 +1126,18 @@ export function createHttpDashboardDataSource({
       });
       eventSource.addEventListener("error", () => {
         if (!active) return;
+        if (currentData) currentData.reception = { ...currentData.reception, status: "error" };
         if (currentData?.monitoring.v2) {
           currentData.monitoring.status = "disconnected";
           if (currentData.monitoring.alarmState) currentData.monitoring.alarmState = "UNKNOWN";
           currentData.monitoring.summary.loadPercent = null;
           currentData.monitoring.v2.streamState = "reconnecting";
-          listener(structuredClone(currentData));
+          currentData.monitoring.devices = currentData.monitoring.devices.map((device) => ({
+            ...device, status: "unknown", statusLabel: "UNKNOWN",
+          }));
+          updateLoadOneHourAgo(currentData.monitoring);
         }
+        if (currentData) listener(structuredClone(currentData));
         if (!backendContract || !hasAuthenticatedSession || checkingSession) return;
         checkingSession = true;
         void getSession(sessionController.signal)
@@ -1184,6 +1189,7 @@ export function createHttpDashboardDataSource({
               displayTimeOffset = timeOffset(snapshot.serverTime);
               currentData = {
                 ...currentData,
+                reception: receivedSnapshot(),
                 lastMeasuredAt: timeOnly(snapshot.measuredAt, true),
                 monitoring: {
                   ...mapMonitoring(snapshot, null),
@@ -1195,6 +1201,7 @@ export function createHttpDashboardDataSource({
                 },
               };
               monitoringRevision += 1;
+              updateLoadOneHourAgo(currentData.monitoring);
               changed = true;
             }
             if (expectedNotificationRevision === notificationRevision) {

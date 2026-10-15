@@ -40,7 +40,14 @@ test("제안 계약의 이력 조회와 관련 녹화 재생 및 다운로드를
 
   await page.goto("/history?source=api");
   await expect(page.getByText("총 1건")).toBeVisible();
-  await expect(page.getByText("대표 적재율 85% 도달")).toBeVisible();
+  const eventDetail = page.locator(".history-table-wrap .detail-trigger");
+  await expect(eventDetail).toHaveText("수거 필요");
+  await eventDetail.click();
+  const dialog = page.getByRole("dialog", { name: "이벤트 상세", exact: true });
+  await expect(dialog.getByRole("heading", { name: "수거 필요", exact: true })).toBeVisible();
+  await expect(dialog.getByText("대표 적재율 85% 도달", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
   await expect(page.getByLabel("2026-09-09 12:17 수거 필요 대표 적재율 85% 도달")).toBeAttached();
 
   await page.locator(".history-query").getByRole("button", { name: "알림", exact: true }).click();
@@ -80,7 +87,7 @@ test("제안 계약의 이력 조회와 관련 녹화 재생 및 다운로드를
   await page.getByRole("button", { name: "녹화 영상 다운로드" }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("recording-contract-1.mp4");
-  await expect(page.getByRole("status")).toHaveText("다운로드를 시작했습니다.");
+  await expect(page.locator(".recording-download").getByRole("status")).toHaveText("다운로드를 시작했습니다.");
 });
 
 test("제안 계약의 로그인, 알림 읽음과 관리자 변경 요청을 연결한다", async ({ page }) => {
@@ -137,7 +144,7 @@ test("제안 계약의 로그인, 알림 읽음과 관리자 변경 요청을 �
   expect(requests.some(({ method, url }) => method === "POST" && url.pathname === "/api/v1/notifications/read-all")).toBe(true);
   expect(requests.some(({ method, url }) => method === "POST" && url.pathname === "/api/v1/notification-recipients")).toBe(true);
 
-  await page.getByRole("button", { name: "관리자 메뉴" }).click();
+  await page.getByRole("button", { name: "사용자 메뉴" }).click();
   await page.getByRole("button", { name: "로그아웃" }).click();
   await expect(page).toHaveURL(/\/login$/);
   expect(requests.some(({ method, url }) => method === "DELETE" && url.pathname === "/api/v1/session")).toBe(true);

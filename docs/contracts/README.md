@@ -7,7 +7,10 @@
 관리한다.
 
 실제 제공 정보와 기존 화면 항목의 변환, 사용 불가 정보 및 추가 계약의 평가는
-`backend/frontend-mapping.md`를 따른다.
+`backend/frontend-mapping.md`를 따른다. Backend와 Camera Media Service에 일괄 협의할
+두 조회 화면의 요청 후보와 확인 조건은 해당 문서의
+[이력 및 녹화 영상의 일괄 협의 항목](backend/frontend-mapping.md#이력-및-녹화-영상의-일괄-협의-항목)을
+따른다.
 
 Dashboard의 runtime 설정은 `runtime-config.schema.json`을 따른다. 제공 경로와 mount 및
 오류 처리 절차는 `../implementation.md`의 `Runtime 설정`에 기록한다.
@@ -127,7 +130,9 @@ MJPEG의 경로, multipart frame 형식, 접근 제어, frame 제한과 timeout�
 - 브라우저 재연결과 미디어 서비스 오류 처리
 - signaling 인증과 접근 권한
 
-MJPEG와 MP4는 Nginx가 인증 검사 뒤 Media Service에서 전달한다. 선택적 WebRTC 모드에서는
+MJPEG, HTTP Live Streaming (HLS)과 MP4는 Nginx가 인증 검사 뒤 Media Service에서 전달한다.
+날짜 녹화의 목록 및 단건 조회와 export 및 영상 경로는
+[실제 서비스 계약](backend/README.md#실시간-영상과-녹화-파일)을 따른다. 선택적 WebRTC 모드에서는
 signaling 요청만 FastAPI로 전달하며 WebRTC 미디어 패킷은 Nginx와 FastAPI를 통과하지 않는다.
 
 ### 5. 배포 계약 확정
@@ -172,8 +177,8 @@ signaling 요청만 FastAPI로 전달하며 WebRTC 미디어 패킷은 Nginx와 
 
 ### 현황
 
-- 대표 적재율과 측정 시각
-- 운영 상태와 최근 변화량
+- 추정 적재율과 측정 시각
+- 적재율 경보와 1시간 전 적재율
 - 수거 임계율과 사전 알림 기준
 - LiDAR 1과 LiDAR 2의 평균, 최솟값과 최댓값
 - 측정값 유효성 또는 결측 상태

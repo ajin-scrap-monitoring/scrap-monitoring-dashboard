@@ -1,35 +1,41 @@
 import { useEffect, useRef } from "react";
 
-const focusableSelector = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+const focusableSelector = ":is(a[href],button,input,select,textarea,[tabindex]):not(:disabled,[tabindex^='-'],[type='hidden'])";
 
 export function useModalFocus<T extends HTMLElement>(isOpen: boolean, onClose: () => void, selector?: string) {
   const modalRef = useRef<T>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
     returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const modal = () => modalRef.current ?? (selector ? document.querySelector<T>(selector) : null);
-    const focusFirstElement = () => modal()?.querySelector<HTMLElement>(focusableSelector)?.focus();
-    const focusTimer = window.setTimeout(focusFirstElement, 0);
+    const focusableElements = () => Array.from(modal()?.querySelectorAll<HTMLElement>(focusableSelector) ?? []);
+    const focus = (target?: HTMLElement) => {
+      const element = target ?? modal();
+      if (element) {
+        if (!target) element.tabIndex = -1;
+        element.focus();
+      }
+    };
+    const focusTimer = window.setTimeout(() => focus(focusableElements()[0]), 0);
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        closeRef.current();
         return;
       }
       if (event.key !== "Tab") return;
-      const elements = Array.from(modal()?.querySelectorAll<HTMLElement>(focusableSelector) ?? []);
-      if (elements.length === 0) return;
+      const elements = focusableElements();
       const first = elements[0];
       const last = elements[elements.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      const active = document.activeElement as HTMLElement;
+      if (!elements.includes(active) || active === (event.shiftKey ? first : last)) {
         event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
+        focus(event.shiftKey ? last : first);
       }
     };
 
@@ -39,7 +45,7 @@ export function useModalFocus<T extends HTMLElement>(isOpen: boolean, onClose: (
       window.removeEventListener("keydown", handleKeyDown);
       returnFocusRef.current?.focus();
     };
-  }, [isOpen, onClose, selector]);
+  }, [isOpen, selector]);
 
   return modalRef;
 }

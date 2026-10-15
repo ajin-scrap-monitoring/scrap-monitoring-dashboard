@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import { createConnection } from 'node:net'
+import { request as httpRequest } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -53,6 +54,154 @@ async function waitForHealthy(containerName) {
 
 async function request(path, options) {
   return fetch(`http://127.0.0.1:${hostPort}${path}`, options)
+}
+
+function rawRequest(path, options = {}) {
+  return new Promise((resolvePromise, reject) => {
+    const client = httpRequest({ host: '127.0.0.1', port: hostPort, path, ...options }, (response) => {
+      response.resume()
+      response.on('end', () => resolvePromise(response.statusCode))
+    })
+    client.on('error', reject)
+    client.end()
+  })
+}
+
+async function verifyDailyGateway(metricsPath, mediaHost, authHost) {
+  const recordingId = '550e8400-e29b-41d4-a716-446655440000'
+  const segmentId = '550e8400-e29b-41d4-a716-446655440001'
+  const base = `/media/daily-recordings/${recordingId}`
+  const playlistPath = `${base}/hls/index.m3u8`
+  const segmentPath = `${base}/media/${segmentId}.ts`
+  const contentPath = `${base}/content`
+  const metrics = async () => (await request(metricsPath)).json()
+  const credentials = {
+    cookie: 'scrap_session=proxy-viewer',
+    authorization: 'Bearer synthetic-authorization',
+    'proxy-authorization': 'Basic synthetic-proxy-authorization',
+    'x-api-key': 'synthetic-api-key',
+    'x-auth-token': 'synthetic-auth-token',
+    'x-csrf-token': 'synthetic-csrf-token',
+    'x-original-uri': '/media/private?token=synthetic-original-token',
+    origin: 'https://dashboard.example.invalid',
+    referer: 'https://dashboard.example.invalid/?token=synthetic-referer-token',
+    range: 'bytes=100-199',
+    'if-range': '"proxy-media-etag"',
+  }
+  function mediaHeaders(response) {
+    assert.equal(response.headers.get('cache-control'), 'no-store')
+    assert.equal(response.headers.get('x-accel-buffering'), 'no')
+    assert.equal(response.headers.get('set-cookie'), null)
+    assert.equal(response.headers.get('x-powered-by'), null)
+    assert.equal(response.headers.get('content-location'), null)
+    assert.equal(response.headers.get('x-content-type-options'), 'nosniff')
+    assert.equal(response.headers.get('x-frame-options'), 'DENY')
+    assert.match(response.headers.get('x-request-id') ?? '', /.+/)
+  }
+  async function upstreamRequest(path, method = 'GET') {
+    const observed = await metrics()
+    assert.deepEqual(observed.lastDailyRequest, {
+      url: path,
+      method,
+      headers: { host: mediaHost, range: credentials.range, 'if-range': credentials['if-range'] },
+    })
+    assert.deepEqual(observed.lastAuthRequest, {
+      url: '/api/v1/media/access',
+      headers: { host: authHost, cookie: credentials.cookie },
+    })
+  }
+
+  const before = await metrics()
+  const playlist = await request(`${playlistPath}?download=true&token=must-not-leak`, { headers: credentials })
+  assert.equal(playlist.status, 200)
+  mediaHeaders(playlist)
+  assert.match(playlist.headers.get('content-type'), /^application\/vnd\.apple\.mpegurl/)
+  const manifest = await playlist.text()
+  assert.match(manifest, /^#EXTM3U\n/)
+  assert.doesNotMatch(manifest, /\/api\/v2\/|must-not-leak|https?:\/\//)
+  const segments = manifest.split('\n').filter((line) => line && !line.startsWith('#'))
+  assert.deepEqual(segments, [segmentPath, `${base}/media/segment-02.ts`])
+  assert.match(manifest, /#EXT-X-DISCONTINUITY/)
+  await upstreamRequest(`/api/v2/daily-recordings/${recordingId}/hls/index.m3u8`)
+
+  const head = await request(playlistPath, { headers: credentials, method: 'HEAD' })
+  assert.equal(head.status, 200)
+  assert.equal((await head.arrayBuffer()).byteLength, 0)
+  mediaHeaders(head)
+  await upstreamRequest(`/api/v2/daily-recordings/${recordingId}/hls/index.m3u8`, 'HEAD')
+
+  let requestsSent = 2
+  for (const [path, expectedPath] of [
+    [`${segmentPath}?download=true&token=must-not-leak`, `/api/v2/daily-recordings/${recordingId}/media/${segmentId}.ts`],
+    [`${base}/media/segment-02.ts`, `/api/v2/daily-recordings/${recordingId}/media/segment-02.ts`],
+    [`${contentPath}?download=true&token=must-not-leak`, `/api/v2/daily-recordings/${recordingId}/content?download=true`],
+    [`${contentPath}?download=false&token=must-not-leak`, `/api/v2/daily-recordings/${recordingId}/content`],
+    [`${contentPath}?token=must-not-leak`, `/api/v2/daily-recordings/${recordingId}/content`],
+  ]) {
+    for (const method of ['GET', 'HEAD']) {
+      const response = await request(path, { method, headers: credentials })
+      requestsSent += 1
+      assert.equal(response.status, 206)
+      mediaHeaders(response)
+      assert.equal(response.headers.get('content-range'), 'bytes 100-199/1024')
+      assert.equal(response.headers.get('content-length'), '100')
+      assert.equal(response.headers.get('accept-ranges'), 'bytes')
+      assert.equal(response.headers.get('etag'), credentials['if-range'])
+      assert.equal(response.headers.get('last-modified'), 'Wed, 14 Oct 2026 12:00:00 GMT')
+      assert.match(response.headers.get('content-type'), path.includes('/media/') && path.includes('.ts') ? /^video\/mp2t/ : /^video\/mp4/)
+      assert.match(response.headers.get('content-disposition'), expectedPath.endsWith('?download=true') ? /^attachment;/ : /^inline;/)
+      const bytes = Buffer.from(await response.arrayBuffer())
+      assert.equal(bytes.byteLength, method === 'HEAD' ? 0 : 100)
+      if (method === 'GET') assert.deepEqual(bytes, Buffer.from(Array.from({ length: 100 }, (_, index) => (index + 100) % 251)))
+      await upstreamRequest(expectedPath, method)
+    }
+  }
+  const afterValid = await metrics()
+  assert.equal(afterValid.mediaRequests, before.mediaRequests + requestsSent)
+  assert.equal(afterValid.authRequests, before.authRequests + requestsSent)
+
+  const changed = await request(contentPath, { headers: { ...credentials, 'if-range': '"old-version"' } })
+  assert.equal(changed.status, 200)
+  assert.equal((await changed.arrayBuffer()).byteLength, 1024)
+  const invalidRange = await request(contentPath, { headers: { ...credentials, range: 'bytes=2048-2050' } })
+  assert.equal(invalidRange.status, 416)
+  assert.equal(invalidRange.headers.get('content-range'), 'bytes */1024')
+  mediaHeaders(invalidRange)
+
+  const unknown = await request('/media/daily-recordings/00000000-0000-0000-0000-000000000000/content', { headers: credentials })
+  assert.equal(unknown.status, 404)
+  mediaHeaders(unknown)
+  const beforeRejections = await metrics()
+  for (const path of [playlistPath, segmentPath, contentPath]) {
+    for (const [cookie, status] of [[undefined, 401], ['scrap_session=expired', 401], ['scrap_session=forbidden', 403], ['scrap_session=unavailable', 500]]) {
+      const headers = { ...credentials }
+      if (cookie === undefined) delete headers.cookie
+      else headers.cookie = cookie
+      const response = await request(`${path}?token=synthetic-bypass-token`, { headers })
+      assert.equal(response.status, status)
+      mediaHeaders(response)
+    }
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']) {
+      assert.equal((await request(path, { method, headers: credentials })).status, 405, `${method} ${path}`)
+    }
+  }
+  for (const path of [
+    '/media/daily-recordings/not-a-uuid/content',
+    '/media/daily-recordings/------------------------------------/content',
+    `${base}/exports`, `${base}/hls/private.m3u8`, `${base}/media/private.mp4`,
+    `${base}/media/.hidden.ts`, `${base}/media/${'a'.repeat(129)}.ts`,
+    `${base}/media/segment-02.ts/extra`,
+    `${base}/media/../hls/index.m3u8`,
+    `${base}/media/%2e%2e/hls/index.m3u8`,
+    `${base}/media/%2f..%2fhls%2findex.m3u8`,
+    `${base}/media/segment%2d02.ts`,
+    `${base}/%68ls/index.m3u8`,
+  ]) {
+    assert.equal(await rawRequest(path, { headers: credentials }), 404, path)
+  }
+  const afterRejections = await metrics()
+  assert.equal(afterRejections.mediaRequests, beforeRejections.mediaRequests)
+  assert.equal(afterRejections.authRequests, beforeRejections.authRequests + 12)
 }
 
 async function waitForFrontend() {
@@ -284,6 +433,8 @@ try {
   assert.match(parsedLog.uri, /^\//)
   assert.match(parsedLog.request_id, /.+/)
 
+  await verifyDailyGateway('/contract-proxy-metrics', 'proxy_test_api', 'proxy_test_api')
+
   run('docker', ['rm', '--force', frontendName])
   run('docker', [
     'run', '--detach', '--read-only', '--tmpfs', '/tmp',
@@ -372,6 +523,21 @@ try {
   const mediaAfterRejection = await (await request('/api/v1/proxy-test/metrics')).json()
   assert.equal(mediaAfterRejection.mediaRequests, mediaBeforeRejection.mediaRequests)
   assert.equal(mediaAfterRejection.authRequests, mediaBeforeRejection.authRequests + 4)
+
+  await verifyDailyGateway('/api/v1/proxy-test/metrics', 'development_media', 'development_backend')
+
+  run('docker', ['rm', '--force', frontendName])
+  run('docker', [
+    'run', '--detach', '--read-only', '--tmpfs', '/tmp',
+    '--name', frontendName, '--network', network,
+    '--publish', `127.0.0.1:${hostPort}:8080`,
+    '--mount', `type=bind,src=${upstreamDirectory},dst=/etc/nginx/upstreams,readonly`,
+    '--mount', `type=bind,src=${resolve(repositoryRoot, 'integration/nginx/runtime.conf')},dst=/etc/nginx/runtime/integration.conf,readonly`,
+    image,
+  ])
+  await waitForFrontend()
+  run('docker', ['exec', frontendName, 'nginx', '-t'])
+  await verifyDailyGateway('/api/v1/proxy-test/metrics', 'integration_media', 'integration_backend')
 
   console.log(`Verified reverse proxy integration for ${image}.`)
 } finally {

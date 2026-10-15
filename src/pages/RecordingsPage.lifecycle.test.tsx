@@ -15,6 +15,58 @@ async function fixture() {
   return { data, ready, second };
 }
 
+test("실패한 녹화 목록에는 길이의 결측 문구를 숨기고 정보 카드에는 서버 값을 유지한다", async () => {
+  const { data, ready } = await fixture();
+  const failed: Recording = { ...ready, mediaStatus: "failed", status: "unavailable", duration: "정보 없음", contentUrl: undefined, downloadUrl: undefined };
+  const view = render(<RecordingsPage recordings={[failed]} headerNotifications={[]} reception={data.reception} />);
+  expect(view.container.querySelector(".recording-item")).toHaveTextContent("녹화 실패");
+  expect(view.container.querySelector(".recording-item")).not.toHaveTextContent("정보 없음");
+  expect(view.container.querySelector(".recording-info")).toHaveTextContent("정보 없음");
+  expect(view.container.querySelector(".recording-info")).toHaveTextContent("MP4");
+  expect(view.container.querySelector(".recording-info")).toHaveTextContent("H.264");
+});
+
+test.each([undefined, { status: "error" as const, message: "목록 조회 실패" }])("빈 녹화 목록에도 조회, 목록, 영상, 정보와 다운로드 카드가 유지된다 (%j)", async (recordingsState) => {
+  const { data } = await fixture();
+  const view = render(<RecordingsPage recordings={[]} recordingsState={recordingsState} headerNotifications={[]} reception={data.reception} />);
+  expect(view.container.querySelectorAll(".recordings-content .card")).toHaveLength(5);
+  expect(view.container.querySelector(".recording-frame")).toHaveTextContent("선택할 수 있는 녹화 영상이 없습니다.");
+  expect(view.container.querySelector(".recording-info dl")?.children).toHaveLength(11);
+  expect(view.container.querySelector(".recording-info")).not.toHaveTextContent("undefined");
+  expect(screen.getByRole("button", { name: "다운로드 불가" })).toBeDisabled();
+  expect(view.container.querySelector("video")).toBeNull();
+});
+
+test("녹화 조회 실패는 안내를 추가하지 않고 기존 결과와 카드 구조를 유지한다", async () => {
+  const { data, ready } = await fixture();
+  const queryRecordings = vi.fn().mockRejectedValue(new Error("Synthetic query failure"));
+  const source = { getDashboardData: () => Promise.resolve(data), queryRecordings };
+  const view = render(<RecordingsPage dataSource={source} recordings={[ready]} headerNotifications={[]} reception={data.reception} />);
+  const cards = Array.from(view.container.querySelectorAll(".recordings-content .card"));
+  fireEvent.click(screen.getByRole("button", { name: /^조회$/ }));
+  await act(async () => { await Promise.resolve(); });
+  expect(queryRecordings).toHaveBeenCalledTimes(1);
+  expect(Array.from(view.container.querySelectorAll(".recordings-content .card"))).toEqual(cards);
+  expect(view.container.querySelectorAll(".recording-item")).toHaveLength(1);
+  expect(view.container.querySelector("video")).toHaveAttribute("src", ready.contentUrl);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.queryByText("녹화 영상을 조회하지 못했습니다. 기존 조회 결과를 유지합니다.")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^조회$/ })).toBeEnabled();
+});
+
+test("파일 형식이 없으면 다운로드 파일명에 확장자를 임의로 추가하지 않는다", async () => {
+  const { data, ready } = await fixture();
+  const recording = { ...ready, format: "정보 없음" };
+  let filename: string | undefined;
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { filename = this.download; });
+  const source = { getDashboardData: () => Promise.resolve(data), getRecording: () => Promise.resolve(recording) };
+  render(<RecordingsPage dataSource={source} recordings={[recording]} headerNotifications={[]} reception={data.reception} />);
+  await act(async () => { await Promise.resolve(); });
+  fireEvent.click(screen.getByRole("button", { name: "녹화 영상 다운로드" }));
+  await act(async () => { await Promise.resolve(); });
+  expect(filename).toBe(recording.id);
+});
+
 test.each(["ready", "failed"] as const)("collecting과 processing 이후 %s에서 polling을 중단한다", async (terminal) => {
   vi.useFakeTimers();
   const { data, ready } = await fixture();
@@ -24,7 +76,7 @@ test.each(["ready", "failed"] as const)("collecting과 processing 이후 %s에�
   const getRecording = vi.fn<(id: string, signal?: AbortSignal) => Promise<Recording | null>>()
     .mockResolvedValueOnce(collecting).mockResolvedValueOnce(processing).mockResolvedValue(completed);
   const source = { getDashboardData: () => Promise.resolve(data), getRecording };
-  const view = render(<RecordingsPage dataSource={source} recordings={[collecting]} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="fresh" />);
+  const view = render(<RecordingsPage dataSource={source} recordings={[collecting]} headerNotifications={[]} reception={data.reception} />);
   await act(async () => { await Promise.resolve(); });
   expect(view.container.querySelector("video")).toBeNull();
   expect(screen.getByRole("button", { name: "다운로드 불가" })).toBeDisabled();
@@ -38,14 +90,15 @@ test.each(["ready", "failed"] as const)("collecting과 processing 이후 %s에�
   expect(getRecording).toHaveBeenCalledTimes(3);
 });
 
-test("새로고침과 종료는 단건 요청을 취소하고 늦은 응답을 무시한다", async () => {
-  const { data, ready } = await fixture();
+test("목록 선택과 종료는 단건 요청을 취소하고 늦은 응답을 무시한다", async () => {
+  const { data, ready, second } = await fixture();
   const pending: ((value: Recording) => void)[] = [];
   const getRecording = vi.fn<(id: string, signal?: AbortSignal) => Promise<Recording | null>>()
     .mockImplementation(() => new Promise((resolve) => pending.push(resolve)));
   const source = { getDashboardData: () => Promise.resolve(data), getRecording };
-  const view = render(<RecordingsPage dataSource={source} recordings={[ready]} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="fresh" />);
-  fireEvent.click(screen.getByRole("button", { name: "녹화 정보 새로고침" }));
+  const view = render(<RecordingsPage dataSource={source} recordings={[ready, second]} headerNotifications={[]} reception={data.reception} />);
+  expect(screen.queryByRole("button", { name: "녹화 정보 새로고침" })).not.toBeInTheDocument();
+  fireEvent.click(view.container.querySelectorAll<HTMLButtonElement>(".recording-item")[1]);
   expect(getRecording.mock.calls[0][1]?.aborted).toBe(true);
   await act(() => { pending[0](ready); return Promise.resolve(); });
   expect(view.container.querySelector("video")).toBeNull();
@@ -54,13 +107,25 @@ test("새로고침과 종료는 단건 요청을 취소하고 늦은 응답을 �
   await act(() => { pending[1](ready); return Promise.resolve(); });
 });
 
+test("알 수 없는 미디어 상태는 긴 서버 원문 대신 확인 불가로 표시한다", async () => {
+  const { data, ready } = await fixture();
+  const mediaStatus = "UNRECOGNIZED_".repeat(100);
+  const unknown: Recording = { ...ready, status: "unavailable", mediaStatus, contentUrl: undefined, downloadUrl: undefined };
+  const source = { getDashboardData: () => Promise.resolve(data), getRecording: () => Promise.resolve(unknown) };
+  const view = render(<RecordingsPage dataSource={source} recordings={[unknown]} headerNotifications={[]} reception={data.reception} />);
+  await act(async () => { await Promise.resolve(); });
+  expect(view.container.querySelector(".recording-item .status-text")).toHaveTextContent("상태 확인 불가");
+  expect(view.container).not.toHaveTextContent(mediaStatus);
+  expect(screen.queryByRole("button", { name: "녹화 정보 새로고침" })).not.toBeInTheDocument();
+});
+
 test.each(["deleted", "expired"])("다운로드 직전 %s 상태는 새 메타데이터를 표시하고 anchor click을 차단한다", async (mediaStatus) => {
   const { data, ready } = await fixture();
   const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
   const unavailable: Recording = { ...ready, status: "unavailable", mediaStatus, contentUrl: undefined, downloadUrl: undefined };
   const getRecording = vi.fn<(id: string, signal?: AbortSignal) => Promise<Recording | null>>().mockResolvedValueOnce(ready).mockResolvedValue(unavailable);
   const source = { getDashboardData: () => Promise.resolve(data), getRecording };
-  const view = render(<RecordingsPage dataSource={source} recordings={[ready]} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="fresh" />);
+  const view = render(<RecordingsPage dataSource={source} recordings={[ready]} headerNotifications={[]} reception={data.reception} />);
   await act(async () => { await Promise.resolve(); });
   fireEvent.click(screen.getByRole("button", { name: "녹화 영상 다운로드" }));
   await act(async () => { await Promise.resolve(); });
@@ -76,12 +141,13 @@ test.each([404, 410])("다운로드 재조회 HTTP %s는 파일 접근을 시작
   const getRecording = vi.fn<(id: string, signal?: AbortSignal) => Promise<Recording | null>>().mockResolvedValueOnce(ready)
     .mockRejectedValue(Object.assign(new Error("Unavailable"), { status }));
   const source = { getDashboardData: () => Promise.resolve(data), getRecording };
-  render(<RecordingsPage dataSource={source} recordings={[ready]} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="fresh" />);
+  const view = render(<RecordingsPage dataSource={source} recordings={[ready]} headerNotifications={[]} reception={data.reception} />);
   await act(async () => { await Promise.resolve(); });
   fireEvent.click(screen.getByRole("button", { name: "녹화 영상 다운로드" }));
   await act(async () => { await Promise.resolve(); });
   expect(click).not.toHaveBeenCalled();
-  expect(screen.getByRole("alert")).toHaveTextContent("확인하지 못했습니다");
+  expect(screen.getByRole("alert")).toHaveTextContent("다운로드 전에 녹화 정보를 확인하지 못했습니다.");
+  expect(view.container.querySelector("video")).toHaveAttribute("src", ready.contentUrl);
 });
 
 test("다운로드 재조회 중 선택 변경은 이전 다운로드를 취소한다", async () => {
@@ -91,7 +157,7 @@ test("다운로드 재조회 중 선택 변경은 이전 다운로드를 취소�
   const getRecording = vi.fn<(id: string, signal?: AbortSignal) => Promise<Recording | null>>().mockResolvedValueOnce(ready)
     .mockImplementationOnce(() => new Promise((resolve) => { resolveDownload = resolve; })).mockResolvedValue(second);
   const source = { getDashboardData: () => Promise.resolve(data), getRecording };
-  const view = render(<RecordingsPage dataSource={source} recordings={[ready, second]} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="fresh" />);
+  const view = render(<RecordingsPage dataSource={source} recordings={[ready, second]} headerNotifications={[]} reception={data.reception} />);
   await act(async () => { await Promise.resolve(); });
   fireEvent.click(screen.getByRole("button", { name: "녹화 영상 다운로드" }));
   fireEvent.click(view.container.querySelectorAll<HTMLButtonElement>(".recording-item")[1]);
@@ -107,7 +173,7 @@ test("녹화 목록의 후속 조회와 종료는 이전 조회를 취소한다"
   const queryRecordings = vi.fn<(query: unknown, signal?: AbortSignal) => Promise<Recording[]>>()
     .mockImplementation(() => new Promise((resolve) => pending.push(resolve)));
   const source = { getDashboardData: () => Promise.resolve(data), queryRecordings };
-  const view = render(<RecordingsPage dataSource={source} recordings={[ready]} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="fresh" />);
+  const view = render(<RecordingsPage dataSource={source} recordings={[ready]} headerNotifications={[]} reception={data.reception} />);
   const form = view.container.querySelector("form");
   if (!form) throw new Error("Query form missing.");
   fireEvent.submit(form);
@@ -128,7 +194,7 @@ test.each(["collecting", "processing"])("접근 불가 상태의 mediaStatus=%s�
   const pending: Recording = { ...ready, status: "unavailable", mediaStatus, contentUrl: undefined, downloadUrl: undefined };
   const getRecording = vi.fn().mockResolvedValueOnce(pending).mockResolvedValue(ready);
   const source = { getDashboardData: () => Promise.resolve(data), getRecording };
-  const view = render(<RecordingsPage dataSource={source} recordings={[pending]} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="fresh" />);
+  const view = render(<RecordingsPage dataSource={source} recordings={[pending]} headerNotifications={[]} reception={data.reception} />);
   await act(async () => { await Promise.resolve(); });
   expect(view.container.querySelector("video")).toBeNull();
   await act(() => vi.advanceTimersByTimeAsync(2000));
@@ -144,7 +210,7 @@ test("data source 변경은 진행 중 다운로드와 늦은 응답을 취소�
   const getRecording = vi.fn<(id: string, signal?: AbortSignal) => Promise<Recording | null>>()
     .mockResolvedValueOnce(ready).mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
   const source = { getDashboardData: () => Promise.resolve(data), getRecording };
-  const props = { recordings: [ready], headerNotifications: [], lastMeasuredAt: data.lastMeasuredAt, status: "fresh" as const };
+  const props = { recordings: [ready], headerNotifications: [], reception: data.reception };
   const view = render(<RecordingsPage {...props} dataSource={source} />);
   await act(async () => { await Promise.resolve(); });
   fireEvent.click(screen.getByRole("button", { name: "녹화 영상 다운로드" }));
@@ -159,7 +225,7 @@ test("MP4 확대는 기본 video를 pause하고 재생 위치 및 촬영 시각�
   const { data, ready } = await fixture();
   const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
   const source = { getDashboardData: () => Promise.resolve(data), getRecording: () => Promise.resolve(ready) };
-  const view = render(<RecordingsPage dataSource={source} recordings={[ready]} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="fresh" />);
+  const view = render(<RecordingsPage dataSource={source} recordings={[ready]} headerNotifications={[]} reception={data.reception} />);
   await act(async () => { await Promise.resolve(); });
   const base = view.container.querySelector("video");
   if (!base) throw new Error("Base video missing.");

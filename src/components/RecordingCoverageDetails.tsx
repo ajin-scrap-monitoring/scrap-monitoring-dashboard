@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { DashboardDataSource } from "../data/dashboard-data-source";
 import type { RecordingCoverageDetail } from "../domain/dashboard";
 import { DetailFields } from "./DetailFields";
+import { recordingErrorCode } from "../recording-status";
 
 export default function RecordingCoverageDetails({ dataSource, recordingId }: { dataSource: DashboardDataSource; recordingId: string }) {
   const [attempt, setAttempt] = useState(0);
@@ -11,8 +12,8 @@ export default function RecordingCoverageDetails({ dataSource, recordingId }: { 
     const controller = new AbortController();
     void dataSource.getRecordingCoverage?.(recordingId, controller.signal).then(detail => {
       if (!controller.signal.aborted) setResult({ attempt, source: dataSource, recordingId, detail });
-    }).catch((error: unknown) => {
-      if (!controller.signal.aborted) setResult({ attempt, source: dataSource, recordingId, error: error instanceof Error ? error.message : "녹화 범위를 조회하지 못했습니다." });
+    }).catch(() => {
+      if (!controller.signal.aborted) setResult({ attempt, source: dataSource, recordingId, error: "녹화 범위를 조회하지 못했습니다." });
     });
     return () => controller.abort();
   }, [attempt, dataSource, recordingId]);
@@ -32,6 +33,6 @@ export default function RecordingCoverageDetails({ dataSource, recordingId }: { 
     <h3>누락 구간</h3>
     {detail.gaps.length ? <ul>{detail.gaps.map((gap, index) => <li key={`${index}-${gap.start}`}>{gap.start} ~ {gap.end}</li>)}</ul> : <p>서버 응답에 누락 구간 없음</p>}
     <p>구간별 누락 원인은 API에서 제공하지 않습니다.</p>
-    {detail.errorCode && <p>녹화 처리 오류 코드 {detail.errorCode}</p>}
+    {detail.errorCode && <p>녹화 처리 오류 코드 {recordingErrorCode(detail.errorCode) ?? "확인 불가"}</p>}
   </>;
 }

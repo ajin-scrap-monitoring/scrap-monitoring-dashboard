@@ -67,7 +67,6 @@ export function LoginPage({ dataSource }: { dataSource?: DashboardDataSource }) 
             <button className="login-submit" type="submit" disabled={submitting}>{submitting ? "로그인 중" : "로그인"}</button>
           </form>
           <p className="login-help">계정 또는 접근 권한 문의는 시스템 관리자에게 요청하세요.</p>
-          <a className="login-dashboard-link" href={ROUTES.monitoring}>현황 보기</a>
         </div>
       </section>
     </main>

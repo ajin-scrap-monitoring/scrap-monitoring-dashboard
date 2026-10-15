@@ -5,6 +5,7 @@ import { alertSettingsFixture, eventPageFixture, loadHistoryFixture, notificatio
 import { mediaRecordingFixture, monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
 
 import { syntheticMp4 } from "./contract-api.js";
+import { installDailyRecordingApi } from "./daily-recording-api.js";
 
 export type BackendSnapshot = components["schemas"]["MonitoringSnapshotV2"];
 export type MediaMode = "healthy" | "silent" | "invalid" | "unavailable" | "unauthorized";
@@ -18,7 +19,7 @@ declare global {
   interface Window { backendFixture: BrowserControl }
 }
 
-function historyV2(url: URL, snapshot: BackendSnapshot): components["schemas"]["LoadHistoryV2"] {
+export function historyV2(url: URL, snapshot: BackendSnapshot): components["schemas"]["LoadHistoryV2"] {
   const until = Date.parse(url.searchParams.get("to") ?? snapshot.serverTime);
   const since = Date.parse(url.searchParams.get("from") ?? new Date(until - 86_400_000).toISOString());
   const bucketSeconds = until - since <= 86_400_000 ? 60 : 900;
@@ -168,8 +169,10 @@ export async function installBackendApi(page: Page, { initial = monitoringV2Stat
     } else await json({ detail: "Unexpected fixture request" }, 501);
   });
   await page.route("**/media/clips/**", (route) => route.fulfill({ body: syntheticMp4, contentType: "video/mp4" }));
+  const daily = await installDailyRecordingApi(page, () => sessionActive, url => requests.push(url));
   return {
     requests,
+    daily,
     expire: () => { sessionActive = false; },
     setRecordings: (next: typeof recordings) => { recordings = next; },
     setNotifications: (next: typeof notifications) => { notifications = next; },

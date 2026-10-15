@@ -12,7 +12,7 @@ test("후속 조회와 data source 변경은 이전 이력 조회를 취소한�
   const queryHistory = vi.fn<(query: unknown, signal?: AbortSignal) => Promise<DashboardData["history"]>>()
     .mockImplementation(() => new Promise((resolve) => pending.push(resolve)));
   const source = { getDashboardData: () => Promise.resolve(data), queryHistory };
-  const props = { history: data.history, headerNotifications: [], lastMeasuredAt: data.lastMeasuredAt, status: "fresh" as const };
+  const props = { history: data.history, headerNotifications: [], reception: data.reception };
   const view = render(<HistoryPage {...props} dataSource={source} />);
   const form = view.container.querySelector("form");
   if (!form) throw new Error("Query form missing.");
@@ -36,7 +36,7 @@ test("조회 실패는 기존 이력을 유지하고 종료 뒤 실패는 적용
   const queryHistory = vi.fn<(query: unknown, signal?: AbortSignal) => Promise<DashboardData["history"]>>()
     .mockRejectedValueOnce(new Error("failure")).mockImplementation(() => new Promise((_resolve, fail) => { reject = fail; }));
   const source = { getDashboardData: () => Promise.resolve(data), queryHistory };
-  const view = render(<HistoryPage dataSource={source} history={data.history} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="fresh" />);
+  const view = render(<HistoryPage dataSource={source} history={data.history} headerNotifications={[]} reception={data.reception} />);
   fireEvent.click(screen.getByRole("button", { name: "조회" }));
   await act(async () => { await Promise.resolve(); });
   expect(screen.getByRole("alert")).toHaveTextContent("기존 조회 결과를 유지");
@@ -51,7 +51,7 @@ test("같은 조건 재조회에서 선택한 chart marker가 제거되면 toolt
   const data = await createMockDashboardDataSource().getDashboardData();
   const queryHistory = vi.fn().mockResolvedValue({ ...data.history, chartEvents: [] });
   const source = { getDashboardData: () => Promise.resolve(data), queryHistory };
-  const view = render(<HistoryPage dataSource={source} history={data.history} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="fresh" />);
+  const view = render(<HistoryPage dataSource={source} history={data.history} headerNotifications={[]} reception={data.reception} />);
   const markers = view.container.querySelectorAll(".history-event-target");
   expect(markers.length).toBeGreaterThan(0);
   fireEvent.focus(markers[markers.length - 1]);

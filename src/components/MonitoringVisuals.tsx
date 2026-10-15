@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
 
 import type { DashboardData, DataAreaState, LidarProfile } from "../domain/dashboard";
+import { timeAxisTicks } from "../chart-time-axis";
 import { SectionTitle } from "./DashboardPrimitives";
 
 export function UnsupportedChart({ label, reason }: { label: string; reason: string }) {
@@ -10,12 +11,16 @@ export function UnsupportedChart({ label, reason }: { label: string; reason: str
   </section>;
 }
 
-function clockAt(timestamp: number, reference: string) {
+function clockOffset(reference: string) {
   const match = reference.match(/(Z|([+-])(\d{2}):(\d{2}))$/i);
-  const offsetMinutes = match?.[1].toUpperCase() === "Z"
+  return match?.[1].toUpperCase() === "Z"
     ? 0
     : match ? (match[2] === "-" ? -1 : 1) * (Number(match[3]) * 60 + Number(match[4])) : 0;
-  const date = new Date(timestamp + offsetMinutes * 60_000);
+}
+
+function clockAt(timestamp: number, reference: string, local = false) {
+  if (local) return new Date(timestamp).toTimeString().slice(0, 5);
+  const date = new Date(timestamp + clockOffset(reference) * 60_000);
   return `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
 }
 
@@ -143,28 +148,28 @@ export function LoadChart({ samples, threshold, state, thresholdKind }: { sample
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const plottedSamples = orderedSamples.map((sample, index) => ({
     ...sample,
+    time: thresholdKind === "current" ? clockAt(Date.parse(sample.measuredAt), "", true) : sample.time,
     x: xValues[index],
     y: sample.value === null ? null : toY(sample.value),
   }));
   const previousResult = state?.status === "error" && state.stale === true && plottedSamples.some((sample) => sample.value !== null);
   const unavailable = (state?.status === "error" && !previousResult) || state?.status === "unsupported" || state?.status === "loading";
   const sampleSegments = contiguousSegments(unavailable ? [] : plottedSamples, (sample) => sample.y !== null);
-  const tickInterval = 3 * 3_600_000;
+  const reference = orderedSamples[0]?.measuredAt ?? state?.from ?? "";
+  const offset = thresholdKind === "current" ? -new Date(firstTimestamp).getTimezoneOffset() : clockOffset(reference);
+  const tickHours = lastTimestamp - firstTimestamp <= 6 * 3_600_000 ? 1 : 3;
   const xTicks = hasTimestampRange
-    ? Array.from({ length: Math.floor((lastTimestamp - firstTimestamp) / tickInterval) + 1 }, (_, index) => {
-      const timestamp = firstTimestamp + index * tickInterval;
-      return {
-        label: clockAt(timestamp, orderedSamples[0]?.measuredAt ?? state?.from ?? ""),
+    ? timeAxisTicks(firstTimestamp, lastTimestamp, tickHours, offset).map(timestamp => ({
+        label: clockAt(timestamp, reference, thresholdKind === "current"),
         x: 40 + ((timestamp - firstTimestamp) / (lastTimestamp - firstTimestamp)) * 370,
-      };
-    })
-    : orderedSamples.map((sample, index) => ({ label: sample.time, x: xValues[index] }));
+      }))
+    : [];
 
   const activeX = activeIndex === null ? 0 : xValues[activeIndex] ?? 0;
   const activeY = activeIndex === null ? 0 : plottedSamples[activeIndex]?.y ?? 0;
   const activeSample = activeIndex === null ? null : plottedSamples[activeIndex] ?? null;
   const limited = activeSample?.dataState === "LIMITED";
-  const tooltipWidth = limited ? 128 : 84;
+  const tooltipWidth = Math.max(limited ? 128 : 84, 82 + String(activeSample?.value ?? "").length * 6.5);
   const tooltipX = Math.max(24, Math.min(activeX - tooltipWidth / 2, 424 - tooltipWidth));
   const tooltipY = Math.max(4, activeY - (limited ? 56 : 42));
   const emptyMessage = state?.status === "loading" ? "적재율 추이를 불러오는 중입니다."
@@ -193,7 +198,7 @@ export function LoadChart({ samples, threshold, state, thresholdKind }: { sample
       </g>
       <path d={`M40 ${toY(threshold)}H410`} stroke="#607086" strokeDasharray="5 5" strokeOpacity="0.58" strokeWidth="1.5" />
       {previousResult && <text x="225" y="12" fill="#61708a" fontSize="9" textAnchor="middle">이전 조회 결과 / 갱신 실패</text>}
-      <text x="408" y="39" transform="translate(408 0) scale(0.69 1) translate(-408 0)" fill="#526278" fontSize="10" fontWeight="600" textAnchor="end">{thresholdKind === "current" ? "현재 임계율(참고)" : "수거 임계율"} {threshold}%</text>
+      <text x="408" y="12" fill="#526278" fontSize="10" fontWeight="600" textAnchor="end">{thresholdKind === "current" ? "현재 임계율" : "수거 임계율"} {threshold}%</text>
       {sampleSegments.length > 0 ? sampleSegments.map((segment, index) => {
         const linePath = segment.map((sample, sampleIndex) => `${sampleIndex === 0 ? "M" : "L"}${sample.x} ${sample.y}`).join(" ");
         return <g key={`load-segment-${index}`}>

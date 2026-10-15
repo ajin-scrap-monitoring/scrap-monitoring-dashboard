@@ -8,7 +8,7 @@
 | Repository | 확인 대상 |
 | --- | --- |
 | [scrap-monitoring-backend](https://github.com/ajin-scrap-monitoring/scrap-monitoring-backend) | v2 조회와 SSE, session, 선택적 v1 모니터링, 이력 및 관리, 미디어 제어와 녹화 조회 |
-| [ajin-camera-media-service](https://github.com/ajin-scrap-monitoring/ajin-camera-media-service) | MJPEG와 이벤트 MP4, 보관 상태와 Range 응답 |
+| [ajin-camera-media-service](https://github.com/ajin-scrap-monitoring/ajin-camera-media-service) | MJPEG, 이벤트 MP4, 날짜 녹화 HTTP Live Streaming (HLS) 및 MP4 export, 보관 상태와 Range 응답 |
 | [ajin-edge-platform](https://github.com/ajin-scrap-monitoring/ajin-edge-platform) | v2 configuration, status와 assessment 생성 및 schema 검사 |
 
 `openapi.json`은 해당 Backend의 `app.openapi()`에서 manifest에 지정한 경로와 참조하는
@@ -66,16 +66,16 @@ v2 경보 및 사건 조회는 같은 pit과 source를 사용하며 viewer 또�
 
 `/api/v1/session`의 `scrap_session` Cookie를 사용한다. v2 조회와 녹화 조회는 viewer 또는
 administrator session이 필요하다. 프론트엔드는 관리자 설정을 administrator에게만 표시하고
-변경 요청에 Cross-Site Request Forgery (CSRF) token을 전달한다. 현재 Backend의 v1 관리자
-API는 서버의 역할 및 CSRF 검사를 강제하지 않는다. 운영 배포 전에 Backend 또는 gateway에서
-이 경계를 확정해야 하며 프론트엔드의 화면 제한을 API 접근 제어로 간주하지 않는다.
+변경 요청에 Cross-Site Request Forgery (CSRF) token을 전달한다. Backend의 v1 관리자
+API는 조회에 administrator 역할, 변경에 해당 역할과 CSRF token을 검사한다.
+프론트엔드의 화면 제한을 API 접근 제어로 간주하지 않는다.
 미디어 제어 API는 Backend가 administrator 역할 및 CSRF token을 검사한다. 브라우저는
 service token을 사용하지 않는다. Backend의 개발용 in-memory session과 SQLite는 통합
 테스트 전용이다.
 
 ## 실시간 영상과 녹화 파일
 
-영상 경로는 2개다.
+영상 경로는 5개다.
 
 현재 v2 모니터링은 MJPEG 모드만 사용한다. 선택적 WHEP 모드는 v1 모니터링에서만 선택할 수
 있으며 현재 Camera Media Service에 WHEP 지원이 있다고 간주하지 않는다.
@@ -84,6 +84,9 @@ service token을 사용하지 않는다. Backend의 개발용 in-memory session�
 | --- | --- | --- |
 | `/media/cameras/{cameraId}/live` | `/api/v1/cameras/{cameraId}/live` | MJPEG 실시간 영상 |
 | `/media/clips/{clipId}/content` | `/api/v1/clips/{clipId}/content` | MP4 재생과 `download=true` 다운로드 |
+| `/media/daily-recordings/{id}/hls/index.m3u8` | `/api/v2/daily-recordings/{id}/hls/index.m3u8` | 날짜 녹화 HLS 목록 |
+| `/media/daily-recordings/{id}/media/{segment_id}.ts` | `/api/v2/daily-recordings/{id}/media/{segment_id}.ts` | 날짜 녹화 HLS segment |
+| `/media/daily-recordings/{id}/content` | `/api/v2/daily-recordings/{id}/content` | 준비된 MP4의 `download=true` 다운로드 |
 
 Nginx는 `/api/v1/media/access`의 `auth_request`로 브라우저 session을 확인한 뒤 영상 byte를
 Media Service에서 전달한다. Backend는 메타데이터와 제어 요청만 처리한다. Media Service의
@@ -99,7 +102,7 @@ MJPEG client는 `multipart/x-mixed-replace`, boundary와 `Content-Length`로 JPE
 제공한다. decode 실패도 연결 오류로 처리하며 화면 종료 시 stream reader, timer와 Blob URL을
 정리한다. Media Service는 프레임 촬영 시각을 제공하지 않는다.
 
-녹화 조회는 `/api/v1/recordings`와 단건 조회를 사용한다. 실제 필터는 `pit_id`, `from`,
+이벤트 녹화 조회는 `/api/v1/recordings`와 단건 조회를 사용한다. 실제 필터는 `pit_id`, `from`,
 `to`, `category`이며 Backend의 page pagination을 따른다. duration, width, height,
 frame rate, size와 보관 시각의 `null`은 정보 없음으로 표시한다. `mediaStatus`, `coverage`,
 `gaps`와 `errorCode`는 저장 상태 및 누락 구간을 표시한다. 부분 저장된 ready MP4는 재생할
@@ -108,12 +111,46 @@ processing, failed, deleted, expired 상태에는 재생 및 다운로드 경로
 collecting과 processing은 단건 조회를 반복하고 ready 또는 종료 상태에서 반복을 중단한다.
 다운로드 재조회가 접근 불가 상태나 HTTP 404 및 410을 반환하면 다운로드를 시작하지 않는다.
 
-부분 저장이나 누락 구간을 선택하면 `/api/v1/media/clips/{clip_id}`를 조회해 요청 구간과
+Backend의 이벤트 녹화 응답은 실제 확보 구간이 없으면 요청 구간을 `startedAt`과
+`endedAt`으로 제공한다. `containerFormat`과 `videoCodec`의 응답 모델 기본값은 각각
+`mp4`와 `h264`이며 실패한 녹화에도 포함된다. 이 값과 구간 정보는 파일 생성 성공이나
+실제 파일의 metadata 검사 결과를 증명하지 않는다.
+
+부분 저장 표시를 선택하면 `/api/v1/media/clips/{clip_id}`를 조회해 요청 구간과
 실제 확보 구간을 별도 상세창에 표시한다. 응답의 clip 및 camera 식별자를 검사하며 구간별
 누락 원인은 제공되지 않는다. 녹화 정책은 이 상세창에 표시하지 않는다.
 
-Media의 날짜별 녹화 계약은 순수 모델과 시간 매핑 테스트에서 사용한다. Backend의 날짜별
-브라우저 조회 및 export 계약은 제공되지 않으며 내부 Media 경로에 직접 연결하지 않는다.
+날짜 녹화는 Backend의 다음 3개 endpoint를 사용하며 이벤트 녹화와 별도로 조회한다.
+
+| Method | 경로 | 용도 |
+| --- | --- | --- |
+| `GET` | `/api/v2/recordings/daily` | 날짜 녹화 목록 |
+| `GET` | `/api/v2/recordings/daily/{recording_id}` | 상태, 확보 및 누락 구간과 재생 및 다운로드 경로 |
+| `POST` | `/api/v2/recordings/daily/{recording_id}/exports` | MP4 다운로드 준비 |
+
+목록은 Backend에 설정한 camera를 대상으로 `from_date` 이상, `to_date` 미만의 한국 날짜를
+조회한다. `limit`은 1부터 100까지이며 `next_cursor`는 해석하지 않고 다음 요청에 전달한다.
+Frontend는 화면의 종료 날짜 다음 날을 `to_date`로 전달하고 UUID 및 camera 식별자,
+`Asia/Seoul` 날짜 경계와 반환 범위를 검사한다. 날짜 녹화를 경보 또는 수거 사건으로 변환하지
+않으며 날짜 조회 실패를 이벤트 목록으로 대체하지 않는다.
+
+`status`, `playback_state`와 `export_state`는 각각 녹화, 재생과 다운로드 준비 상태다.
+`recorded_seconds`는 실제 확보한 재생 길이이며 하루 전체 길이로 보충하지 않는다.
+`available_intervals`의 실제 시각과 압축 재생 위치를 대응시키고 `gaps`를 별도 표시한다.
+실제 시각의 시작과 종료가 같은 확보 구간도 해당 시각의 기록으로 유지한다.
+
+재생 경로와 다운로드 경로는 Backend가 반환한 위 `/media/` 경로만 허용한다. Nginx는
+HLS 목록과 각 segment 및 MP4 요청마다 session을 검사하고 Media 내부 경로로 변환한다.
+HLS 목록 안의 Media 절대 경로도 브라우저 경로로 변환한다. Media에는 session Cookie와
+Authorization 및 임의의 query를 전달하지 않으며 MP4의 `download=true`와 Range만 보존한다.
+공통 Nginx snippet과 배포 주입 경계는
+[구현 정보](../../implementation.md#nginx-reverse-proxy-배포-경계)를 따른다.
+
+MP4 export는 viewer 또는 administrator session과 `X-CSRF-Token`이 필요하다. 준비 요청
+직전에 단건 상태를 재조회하며 `closed` 상태인 지난 날짜, 확보 영상 존재와
+`export_allowed`를 확인한다. HTTP 200 또는 202 응답 뒤 단건 상태를 조회하고 유효한
+`download_path`가 제공될 때 다운로드를 허용한다. 오늘의 녹화는 다운로드 대상이 아니며
+다운로드 불가를 녹화 실패로 표시하지 않는다. 원본 만료와 export cache 만료는 구분한다.
 
 MP4 재생은 HTTP Range 요청을 사용한다. 삭제된 파일은 gateway에서 `410`으로 거절한다.
 프론트엔드는 clip 생성, 삭제와 보관 정책 변경 화면을 제공하지 않는다.
@@ -128,7 +165,7 @@ MP4 재생은 HTTP Range 요청을 사용한다. 삭제된 파일은 gateway에�
 | `media` | 고정한 실제 Camera Media Service |
 | `dashboard` | synthetic data를 비활성화한 production 프론트엔드 |
 | `dashboard-alt` | 같은 production image와 다른 runtime 설정을 사용하는 독립 Browser 검증 |
-| `camera-input` | synthetic JPEG ingest와 부분 MP4 fixture 생성 |
+| `camera-input` | synthetic JPEG ingest와 부분 이벤트 MP4 및 날짜 HLS fixture 생성 |
 | `edge-input` | 실제 Edge Orchestrator의 v2 메시지 생성과 Backend 전달 |
 | `browser` | Chromium 사용자 흐름 및 계약 snapshot 검사 |
 
@@ -141,11 +178,20 @@ revision과 작업 트리가 일치하지 않으면 실패한다. 운영 데이�
 않는다.
 
 통합 검증은 OpenAPI 일치, 실제 session, Edge 판단 불가, MJPEG 수신과 확대 종료, v2 SSE의
-0% 및 STALE, session 종료, nullable 녹화 정보, 부분 MP4 재생, Range 206/416, 다운로드와
-삭제 후 410을 확인한다. 1280, 1440과 1920 너비에서 현재 상태 및 녹화 화면을 검사하고
-1280 너비에서 영상 확대의 키보드 종료와 focus 복원을 확인한다.
+0% 및 STALE과 session 종료를 확인한다. 과거 STATE의 0%, 25%, 68.5%, 100%와 결측 및
+LIMITED를 실제 Backend에 입력해 7일 및 24시간 이력의 그래프 좌표와 현재 임계율 선을
+검사한다. v2 경보의 실시간 알림 표시, 모두 읽음의 서버
+저장과 전체 페이지 reload 후의 읽음 상태 유지를 검사한다. 녹화는 기간과 전체, 수거,
+알림 및 오류 필터, 결과가 없는 구간, nullable 정보, 부분 MP4 재생, Range 206/416과
+삭제 후 410을 확인한다. 브라우저가 내려받은 MP4의 파일명, 파일 header와 전체 byte가
+Media Service의 응답과 일치하는지 검사한다. 1280, 1440과 1920 너비에서 현재 상태 및
+녹화 화면을 검사하고 1280 너비에서 영상 확대의 키보드 종료와 focus 복원을 확인한다.
 runtime 검증은 동일한 local image ID를 확인하고 두 Nginx의 실제 JSON mount를 읽은 Browser의
 pit query 및 camera 경로를 검사한다. 이 검사의 API 및 영상 응답은 별도 synthetic fixture이며
 두 번째 환경의 실제 서비스 배포 검증을 대신하지 않는다.
+관리자 검증은 격리된 Backend에서 설정과 수신 대상의 저장 및 재조회, 권한과 CSRF 거절,
+테스트 요청의 202 접수와 종 목록 갱신, 모두 읽음의 저장 및 사용자별 읽음 상태 분리를
+검사한다. 시험 수신 대상은 격리 환경에만 생성하며 실제 email 및 SMS 전달 성공을
+검증한 것으로 취급하지 않는다.
 실제 LiDAR, 카메라 hardware, 현장 calibration, 적재율 정확도,
 실제 알림 채널 수신과 운영 배포 환경은 이 검증에 포함하지 않는다.

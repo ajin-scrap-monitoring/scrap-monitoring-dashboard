@@ -1,7 +1,37 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
-import { DashboardPageShell } from "./DashboardShell";
+import { DashboardHeader, DashboardPageShell } from "./DashboardShell";
+
+test.each([false, true])("인증 확인 전에는 로컬 로그인 표시 %s와 무관하게 사용자 영역을 숨긴다", (stored) => {
+  if (stored) window.sessionStorage.setItem("scrap-monitoring-authenticated", "true");
+  else window.sessionStorage.removeItem("scrap-monitoring-authenticated");
+  const view = render(<DashboardHeader activePage="history" initialNotifications={[]} sessionPending />);
+  expect(view.container.querySelector(".user-tools")).toBeEmptyDOMElement();
+  expect(screen.queryByRole("link", { name: "로그인" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "사용자 메뉴" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "관리자" })).not.toBeInTheDocument();
+  window.sessionStorage.removeItem("scrap-monitoring-authenticated");
+});
+
+test("비로그인이 확인된 헤더에는 로그인 링크를 표시한다", () => {
+  render(<DashboardHeader activePage="history" initialNotifications={[]} session={null} />);
+  expect(screen.getByRole("link", { name: "로그인" })).toBeVisible();
+});
+
+test.each([
+  ["viewer", "현장 운영자", "조회 사용자"],
+  ["viewer", "품질 담당자", "품질 담당자"],
+  ["administrator", "관리자", "관리자"],
+  ["administrator", "현장 운영자", "현장 운영자"],
+] as const)("%s 계정 이름 %s를 %s로 표시한다", (role, displayName, expected) => {
+  const view = render(<DashboardHeader activePage="history" initialNotifications={[]}
+    session={{ expiresAt: "2026-10-16T00:00:00Z", user: { id: "synthetic-user", displayName, role } }} />);
+  expect(view.container.querySelector(".user-menu")).toHaveTextContent(expected);
+  fireEvent.click(screen.getByRole("button", { name: "사용자 메뉴" }));
+  expect(view.container.querySelector(".user-popover-profile strong")).toHaveTextContent(expected);
+  expect(Boolean(screen.queryByRole("link", { name: "관리자 설정" }))).toBe(role === "administrator");
+});
 
 test("공통 페이지 셸은 활성 메뉴와 푸터를 조립한다", () => {
   render(
@@ -57,25 +87,26 @@ test("조회 사용자의 헤더에는 관리자 진입점을 표시하지 않�
     </DashboardPageShell>,
   );
 
-  expect(screen.getByRole("button", { name: "관리자 메뉴" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "사용자 메뉴" })).toBeVisible();
   expect(screen.queryByRole("link", { name: /^관리자$/ })).not.toBeInTheDocument();
 });
 
-test("최초 알림 실패는 0건 대신 미확인 배지를 표시하고 기존 popover에서만 재시도한다", () => {
-  const refreshNotifications = vi.fn(() => Promise.resolve());
+test("최초 알림 실패는 미확인 배지와 실패 안내만 표시하고 수동 재조회 버튼을 제공하지 않는다", () => {
   render(<DashboardPageShell activePage="monitoring" headerNotifications={[]} headerUnreadCount={null}
-    notificationState={{ status: "error", message: "알림을 불러오지 못했습니다.", stale: false }}
-    dataSource={{ getDashboardData: vi.fn(), refreshNotifications }}
+    notificationState={{ status: "error", message: "PRIVATE_SERVER_ERROR_DETAILS", stale: false }}
+    dataSource={{ getDashboardData: vi.fn() }}
     session={{ expiresAt: "2026-10-15T18:00:00Z", user: { displayName: "조회자", id: "viewer-1", role: "viewer" } }}>
     <main>현황 본문</main>
   </DashboardPageShell>);
-  expect(screen.queryByText(/미읽음 수를 확인/)).not.toBeInTheDocument();
+  expect(screen.queryByText("알림을 확인할 수 없습니다")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "알림 0건" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "알림 조회 실패" }));
   expect(screen.getByRole("button", { name: "모두 읽음" })).toBeDisabled();
-  expect(screen.getByRole("alert")).toHaveTextContent("미읽음 수를 확인할 수 없습니다.");
-  fireEvent.click(screen.getByRole("button", { name: "알림 다시 조회" }));
-  expect(refreshNotifications).toHaveBeenCalledOnce();
+  expect(screen.getByRole("alert")).toHaveClass("notification-unavailable");
+  expect(screen.getByText("알림을 확인할 수 없습니다")).toBeVisible();
+  expect(screen.getByText("알림 정보를 받으면 자동으로 표시합니다.")).toBeVisible();
+  expect(screen.queryByText("PRIVATE_SERVER_ERROR_DETAILS")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "알림 다시 조회" })).not.toBeInTheDocument();
 });
 
 test("이전 알림을 유지한 조회 실패는 마지막 응답이라는 설명을 표시한다", () => {
@@ -85,5 +116,8 @@ test("이전 알림을 유지한 조회 실패는 마지막 응답이라는 설�
     <main>현황 본문</main>
   </DashboardPageShell>);
   fireEvent.click(screen.getByRole("button", { name: "알림 3건" }));
-  expect(screen.getByRole("alert")).toHaveTextContent("마지막으로 불러온 알림을 표시합니다.");
+  expect(screen.getByRole("alert")).toHaveClass("has-previous");
+  expect(screen.getByRole("alert")).toHaveTextContent("최신 알림을 확인할 수 없습니다");
+  expect(screen.getByRole("alert")).toHaveTextContent("마지막으로 받은 알림을 표시합니다.");
+  expect(screen.queryByRole("button", { name: "알림 다시 조회" })).not.toBeInTheDocument();
 });

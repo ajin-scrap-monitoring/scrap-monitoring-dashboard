@@ -694,6 +694,350 @@
         "title": "CollectionThresholdSample",
         "type": "object"
       },
+      "DailyAvailableInterval": {
+        "properties": {
+          "end_at": {
+            "format": "date-time",
+            "title": "End At",
+            "type": "string"
+          },
+          "playback_end_seconds": {
+            "maximum": 86400,
+            "minimum": 0,
+            "title": "Playback End Seconds",
+            "type": "number"
+          },
+          "playback_start_seconds": {
+            "maximum": 86400,
+            "minimum": 0,
+            "title": "Playback Start Seconds",
+            "type": "number"
+          },
+          "start_at": {
+            "format": "date-time",
+            "title": "Start At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_at",
+          "end_at",
+          "playback_start_seconds",
+          "playback_end_seconds"
+        ],
+        "title": "DailyAvailableInterval",
+        "type": "object"
+      },
+      "DailyError": {
+        "properties": {
+          "code": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[A-Z0-9_]+$",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "DailyError",
+        "type": "object"
+      },
+      "DailyGap": {
+        "properties": {
+          "end_at": {
+            "format": "date-time",
+            "title": "End At",
+            "type": "string"
+          },
+          "reason_code": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "start_at": {
+            "format": "date-time",
+            "title": "Start At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_at",
+          "end_at",
+          "reason_code"
+        ],
+        "title": "DailyGap",
+        "type": "object"
+      },
+      "DailyPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DailyRecording"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "DailyPage",
+        "type": "object"
+      },
+      "DailyRecording": {
+        "description": "Do not equate a calendar window, recorded duration and export readiness.",
+        "properties": {
+          "available_intervals": {
+            "items": {
+              "$ref": "#/components/schemas/DailyAvailableInterval"
+            },
+            "title": "Available Intervals",
+            "type": "array"
+          },
+          "camera_id": {
+            "title": "Camera Id",
+            "type": "string"
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "complete",
+                  "partial",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage"
+          },
+          "coverage_as_of_at": {
+            "format": "date-time",
+            "title": "Coverage As Of At",
+            "type": "string"
+          },
+          "download_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Path"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DailyError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "export_allowed": {
+            "title": "Export Allowed",
+            "type": "boolean"
+          },
+          "export_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Export Expires At"
+          },
+          "export_state": {
+            "enum": [
+              "not_requested",
+              "processing",
+              "ready",
+              "failed"
+            ],
+            "title": "Export State",
+            "type": "string"
+          },
+          "gaps": {
+            "items": {
+              "$ref": "#/components/schemas/DailyGap"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "has_gaps": {
+            "title": "Has Gaps",
+            "type": "boolean"
+          },
+          "playable_until_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playable Until At"
+          },
+          "playback_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playback Path"
+          },
+          "playback_protocol": {
+            "anyOf": [
+              {
+                "const": "hls",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playback Protocol"
+          },
+          "playback_state": {
+            "enum": [
+              "pending",
+              "ready",
+              "unavailable"
+            ],
+            "title": "Playback State",
+            "type": "string"
+          },
+          "recorded_seconds": {
+            "maximum": 86400,
+            "minimum": 0,
+            "title": "Recorded Seconds",
+            "type": "number"
+          },
+          "recording_date": {
+            "format": "date",
+            "title": "Recording Date",
+            "type": "string"
+          },
+          "recording_id": {
+            "format": "uuid",
+            "title": "Recording Id",
+            "type": "string"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "status": {
+            "enum": [
+              "recording",
+              "finalizing",
+              "closed",
+              "failed",
+              "deleted",
+              "expired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "timezone": {
+            "const": "Asia/Seoul",
+            "title": "Timezone",
+            "type": "string"
+          },
+          "window_end_at": {
+            "format": "date-time",
+            "title": "Window End At",
+            "type": "string"
+          },
+          "window_start_at": {
+            "format": "date-time",
+            "title": "Window Start At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recording_id",
+          "camera_id",
+          "recording_date",
+          "timezone",
+          "window_start_at",
+          "window_end_at",
+          "status",
+          "coverage",
+          "has_gaps",
+          "coverage_as_of_at",
+          "playable_until_at",
+          "recorded_seconds",
+          "gaps",
+          "available_intervals",
+          "playback_state",
+          "playback_protocol",
+          "playback_path",
+          "export_allowed",
+          "export_state",
+          "download_path",
+          "size_bytes",
+          "expires_at",
+          "export_expires_at",
+          "error"
+        ],
+        "title": "DailyRecording",
+        "type": "object"
+      },
       "DeliveryStatus": {
         "additionalProperties": false,
         "properties": {
@@ -1246,9 +1590,12 @@
         "properties": {
           "password": {
             "description": "Password",
+            "format": "password",
+            "maxLength": 1024,
             "minLength": 1,
             "title": "Password",
-            "type": "string"
+            "type": "string",
+            "writeOnly": true
           },
           "persistent": {
             "default": false,
@@ -1258,6 +1605,7 @@
           },
           "username": {
             "description": "Username/ID",
+            "maxLength": 64,
             "minLength": 1,
             "title": "Username",
             "type": "string"
@@ -3450,6 +3798,22 @@
               "title": "Pit Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
           }
         ],
         "responses": {
@@ -3490,6 +3854,38 @@
             "schema": {
               "title": "Pit Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
             }
           }
         ],
@@ -3997,6 +4393,22 @@
               "title": "Pagesize",
               "type": "integer"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
           }
         ],
         "responses": {
@@ -4029,6 +4441,40 @@
       "post": {
         "description": "Create a new alert notification recipient.",
         "operationId": "create_notification_recipient_api_v1_notification_recipients_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4097,6 +4543,38 @@
                 }
               ],
               "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
             }
           }
         ],
@@ -4181,6 +4659,22 @@
               "title": "Pagesize",
               "type": "integer"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
           }
         ],
         "responses": {
@@ -4231,6 +4725,22 @@
               ],
               "title": "X-Csrf-Token"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
           }
         ],
         "responses": {
@@ -4258,6 +4768,40 @@
       "post": {
         "description": "Queue an immediate test notification to a recipient.",
         "operationId": "send_test_notification_api_v1_notifications_test_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4330,6 +4874,22 @@
                 }
               ],
               "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
             }
           }
         ],
@@ -4731,8 +5291,26 @@
             "schema": {
               "default": "pit-01",
               "description": "Pit identifier",
+              "maxLength": 50,
+              "minLength": 1,
               "title": "Pit Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
             }
           }
         ],
@@ -4775,6 +5353,8 @@
             "schema": {
               "default": "pit-01",
               "description": "Pit identifier",
+              "maxLength": 50,
+              "minLength": 1,
               "title": "Pit Id",
               "type": "string"
             }
@@ -4793,6 +5373,38 @@
                 }
               ],
               "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
             }
           }
         ],
@@ -5334,8 +5946,355 @@
           "Monitoring v2"
         ]
       }
+    },
+    "/api/v2/recordings/daily": {
+      "get": {
+        "operationId": "list_daily_recordings_api_v2_recordings_daily_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "recording",
+                    "finalizing",
+                    "closed",
+                    "failed",
+                    "deleted",
+                    "expired"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Daily Recordings",
+        "tags": [
+          "Daily Recordings"
+        ]
+      }
+    },
+    "/api/v2/recordings/daily/{recording_id}": {
+      "delete": {
+        "operationId": "delete_daily_recording_api_v2_recordings_daily__recording_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recording_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Recording Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Daily Recording",
+        "tags": [
+          "Daily Recordings"
+        ]
+      },
+      "get": {
+        "operationId": "get_daily_recording_api_v2_recordings_daily__recording_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recording_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Recording Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyRecording"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Daily Recording",
+        "tags": [
+          "Daily Recordings"
+        ]
+      }
+    },
+    "/api/v2/recordings/daily/{recording_id}/exports": {
+      "post": {
+        "operationId": "prepare_daily_download_api_v2_recordings_daily__recording_id__exports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recording_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Recording Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyRecording"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyRecording"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Prepare Daily Download",
+        "tags": [
+          "Daily Recordings"
+        ]
+      }
     }
   },
   "x-source-repository": "https://github.com/ajin-scrap-monitoring/scrap-monitoring-backend",
-  "x-source-revision": "73b9e28b135e670d6c5d6a460da3b76af16250a8"
+  "x-source-revision": "41c24d58066190ce4a673ee39b8e0c8bb7ad2553"
 }

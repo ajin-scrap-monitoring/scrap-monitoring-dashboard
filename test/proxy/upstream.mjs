@@ -5,6 +5,9 @@ const instance = process.env.UPSTREAM_INSTANCE ?? 'first'
 let mediaRequests = 0
 let authRequests = 0
 let lastAuthRequest = null
+let lastDailyRequest = null
+const dailyId = '550e8400-e29b-41d4-a716-446655440000'
+const dailySegmentId = '550e8400-e29b-41d4-a716-446655440001'
 
 function encodeTextFrame(text) {
   const payload = Buffer.from(text)
@@ -83,7 +86,68 @@ const server = createServer((request, response) => {
 
   if (pathname === '/api/v1/proxy-test/metrics') {
     response.writeHead(200, { 'content-type': 'application/json' })
-    response.end(JSON.stringify({ mediaRequests, authRequests, lastAuthRequest }))
+    response.end(JSON.stringify({ mediaRequests, authRequests, lastAuthRequest, lastDailyRequest }))
+    return
+  }
+
+  if (pathname.startsWith('/api/v2/daily-recordings/')) {
+    mediaRequests += 1
+    lastDailyRequest = { url: request.url, method: request.method, headers: request.headers }
+    const headers = {
+      'cache-control': 'public, max-age=86400',
+      'set-cookie': 'media_cookie=must-not-reach-browser',
+      'x-powered-by': 'private-media',
+      'content-location': pathname,
+    }
+    if (pathname === `/api/v2/daily-recordings/${dailyId}/hls/index.m3u8`) {
+      const playlist = [
+        '#EXTM3U',
+        '#EXT-X-VERSION:3',
+        '#EXT-X-TARGETDURATION:10',
+        '#EXTINF:10.000,',
+        `/api/v2/daily-recordings/${dailyId}/media/${dailySegmentId}.ts`,
+        '#EXT-X-DISCONTINUITY',
+        '#EXTINF:10.000,',
+        `/api/v2/daily-recordings/${dailyId}/media/segment-02.ts`,
+        '#EXT-X-ENDLIST',
+        '',
+      ].join('\n')
+      response.writeHead(200, { ...headers, 'content-type': 'application/vnd.apple.mpegurl', 'content-length': Buffer.byteLength(playlist) })
+      response.end(request.method === 'HEAD' ? undefined : playlist)
+      return
+    }
+    const content = pathname === `/api/v2/daily-recordings/${dailyId}/content`
+    const segment = pathname === `/api/v2/daily-recordings/${dailyId}/media/${dailySegmentId}.ts`
+      || pathname === `/api/v2/daily-recordings/${dailyId}/media/segment-02.ts`
+    if (!content && !segment) {
+      response.writeHead(404, { ...headers, 'content-type': 'application/json' })
+      response.end(JSON.stringify({ code: 'RECORDING_NOT_FOUND' }))
+      return
+    }
+    const bytes = Buffer.from(Array.from({ length: 1024 }, (_, index) => index % 251))
+    const mediaHeaders = {
+      ...headers,
+      'content-type': content ? 'video/mp4' : 'video/mp2t',
+      'accept-ranges': 'bytes',
+      etag: '"proxy-media-etag"',
+      'last-modified': 'Wed, 14 Oct 2026 12:00:00 GMT',
+      'content-disposition': `${new URL(request.url, 'http://proxy-fixture').searchParams.get('download') === 'true' ? 'attachment' : 'inline'}; filename="daily-test.${content ? 'mp4' : 'ts'}"`,
+    }
+    const range = /^bytes=(\d+)-(\d+)$/.exec(request.headers.range ?? '')
+    if (range && (!request.headers['if-range'] || request.headers['if-range'] === mediaHeaders.etag)) {
+      const start = Number(range[1])
+      const end = Math.min(Number(range[2]), bytes.length - 1)
+      if (start > end || start >= bytes.length) {
+        response.writeHead(416, { ...mediaHeaders, 'content-range': `bytes */${bytes.length}` })
+        response.end()
+        return
+      }
+      response.writeHead(206, { ...mediaHeaders, 'content-range': `bytes ${start}-${end}/${bytes.length}`, 'content-length': end - start + 1 })
+      response.end(request.method === 'HEAD' ? undefined : bytes.subarray(start, end + 1))
+      return
+    }
+    response.writeHead(200, { ...mediaHeaders, 'content-length': bytes.length })
+    response.end(request.method === 'HEAD' ? undefined : bytes)
     return
   }
 

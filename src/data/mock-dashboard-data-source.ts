@@ -15,6 +15,7 @@ const loadHistoryTimes = [
 ];
 
 const baseDashboardData: DashboardData = {
+  reception: { status: "connected", lastReceivedAt: null },
   lastMeasuredAt: "10:24:18",
   session: null,
   monitoring: {
@@ -23,8 +24,8 @@ const baseDashboardData: DashboardData = {
     videoMode: "sample",
     videoStatus: "available",
     videoStreamId: "camera-main",
-    videoTimestamp: "2026-09-10 10:24:18",
-    summary: { loadPercent: 72, collectionThreshold: 80, expectedArrivalAt: "9월 10일 14:30", operationState: "accumulating", preCollectionAlert: { enabled: true, threshold: 70 }, recentChange: "+4%", remainingTime: "4시간 6분", timeSinceCollection: "2시간 0분", averageCollectionCycle: "23시간 10분" },
+    videoCapturedAt: "2026-09-10T10:24:18+09:00",
+    summary: { loadPercent: 72, collectionThreshold: 80, expectedArrivalAt: "9월 10일 14:30", operationState: "accumulating", preCollectionAlert: { enabled: true, threshold: 70 }, loadOneHourAgo: null, remainingTime: "4시간 6분", timeSinceCollection: "2시간 0분", averageCollectionCycle: "23시간 10분" },
     devices: [
       { label: "LiDAR 1", received: "10:24:18", latency: "120ms", status: "normal" },
       { label: "LiDAR 2", received: "10:24:18", latency: "135ms", status: "normal" },
@@ -208,9 +209,8 @@ function dashboardDataFor(scenario: MockScenario): DashboardData {
 function liveUpdateDashboardData() {
   const data = dashboardDataFor("normal");
   data.lastMeasuredAt = "10:24:21";
-  data.monitoring.videoTimestamp = "2026-09-10 10:24:21";
+  data.monitoring.videoCapturedAt = "2026-09-10T10:24:21+09:00";
   data.monitoring.summary.loadPercent = 75;
-  data.monitoring.summary.recentChange = "+5%";
   data.monitoring.loadHistory[data.monitoring.loadHistory.length - 1].value = 75;
   data.monitoring.alerts[0] = { detail: "대표 적재율 75%", id: "alert-1", level: "warning", time: "10:24", title: "수거 예정" };
   return data;
@@ -233,7 +233,6 @@ function operationCycleData(step: number) {
   if (step === 1) {
     data.monitoring.alarmState = "NORMAL";
     data.monitoring.summary.loadPercent = 4;
-    data.monitoring.summary.recentChange = "-76%";
     data.monitoring.alerts[0] = {
       detail: "수거 작업이 완료되었습니다.",
       id: "alert-1",
@@ -287,6 +286,7 @@ function waitForMockLoading(signal?: AbortSignal) {
 export function createMockDashboardDataSource(scenario: MockScenario = "normal"): DashboardDataSource {
   let currentData = dashboardDataFor(scenario);
   const withSession = () => {
+    currentData.reception = { status: "connected", lastReceivedAt: new Date().toISOString() };
     currentData.session = hasAuthenticationSession() ? {
       expiresAt: "2026-09-11T10:24:18+09:00",
       user: { displayName: "관리자", id: "user-admin", role: "administrator" },
@@ -359,7 +359,7 @@ export function createMockDashboardDataSource(scenario: MockScenario = "normal")
     queryRecordings: async (query, signal) => {
       await Promise.resolve();
       if (signal?.aborted) throw new DOMException("Synthetic request aborted.", "AbortError");
-      return structuredClone(currentData.recordings.filter((recording) => eventMatches(recording.type, query.eventCategory)
+      return structuredClone(currentData.recordings.filter((recording) => recording.type !== "날짜 녹화" && eventMatches(recording.type, query.eventCategory)
         && dateTimeValue(recording.start) <= dateTimeValue(query.to)
         && dateTimeValue(recording.end) >= dateTimeValue(query.from)));
     },

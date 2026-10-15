@@ -13,7 +13,7 @@
 | 영역 | 구현 상태 |
 | --- | --- |
 | 도구와 품질 기준선 | Node.js, pnpm, React, TypeScript, Vite, ESLint, Vitest와 Playwright 구성 완료 |
-| UI (User Interface) | 공통 현황의 v2 상태 및 추이, 장비 진단, 경보 근거와 녹화 범위 상세, 이력과 녹화 및 관리 기능과 synthetic 상태 구현 |
+| UI (User Interface) | 공통 현황의 v2 상태 및 추이, 이벤트 및 녹화 범위 상세, 이력과 날짜 및 이벤트 녹화와 관리 기능 및 synthetic 상태 구현 |
 | 외부 연동 경계 | 실제 Backend OpenAPI 생성 타입, HTTP adapter, v2 Server-Sent Events (SSE), MJPEG client와 v1 제안 및 WebRTC-HTTP Egress Protocol (WHEP) 대역 검증 |
 | 배포 산출물 | Nginx 기반 Open Container Initiative (OCI) 이미지, reverse proxy 공통 설정, TLS 주입 경계, CI와 Git tag 기반 Release 구성 완료 |
 | 실제 시스템 통합 | 고정한 Backend, Camera Media Service와 Edge Orchestrator의 synthetic 입력 통합 검증, 실제 hardware와 현장 측정 검증 제외 |
@@ -27,7 +27,7 @@
 
 브라우저의 진입점은 FastAPI와 분리된 Nginx 웹 서버다. Nginx는
 프론트엔드 정적 산출물을 제공하고 Application Programming Interface (API) 요청을 FastAPI로
-전달한다. MJPEG와 MP4는 Nginx가 FastAPI의 session 검사를 거쳐 Camera Media Service에서
+전달한다. MJPEG, HTTP Live Streaming (HLS)과 MP4는 Nginx가 FastAPI의 session 검사를 거쳐 Camera Media Service에서
 전달한다. FastAPI는 정적 산출물이나 영상 byte를 직접 제공하지 않는다. 선택적인 Web
 Real-Time Communication (WebRTC) 모드는 별도 WHEP 서비스를 요구하며 현재 Camera Media
 Service의 기본 영상 방식이 아니다.
@@ -105,7 +105,9 @@ Repository와 컨테이너 이미지에 포함하지 않는다.
 않는다. Release workflow는 tag의 커밋이 원격 `main` 이력에 포함되는지 먼저 검사한다.
 게시된 image digest는 workflow summary와 `image-reference.txt`에 기록한다. 배포
 Repository는 tag가 아닌 digest로 이미지를 선택한다. 화면의 버전은 Release tag의
-`X.Y.Z` 값으로 빌드한다.
+`X.Y.Z` 값으로 빌드한다. 개발 화면과 로컬 이미지의 기본 버전은
+`VITE_APP_VERSION`과 `APP_VERSION`으로 지정하며, 개발 화면에 값이 없으면
+`src/application-version.ts`의 기본값을 사용한다.
 
 Release workflow는 공개 runtime 설정 예시, JSON schema, Git 추적 Nginx 설정 archive,
 image 참조와 `SHA256SUMS`를 draft Release에 첨부한 뒤 게시한다. Release의 tag와 asset은
@@ -190,13 +192,25 @@ Browser 테스트의 HTTP data source는 synthetic build에서도 runtime 설정
 
 ## Nginx reverse proxy 배포 경계
 
+브라우저 gateway와 Edge ingress는 역할 2개로 구분한다.
+
+| 역할 | 요청과 인증 경계 |
+| --- | --- |
+| Dashboard gateway | Backend session과 CSRF를 사용하는 API, SSE, MJPEG 및 HLS와 MP4 조회, 미디어 요청별 Backend session 검사 |
+| Edge ingress | Edge token을 사용하는 측정 POST와 카메라 업로드 WebSocket, Dashboard 화면과 조회 API 제공 대상 아님 |
+
+Dashboard는 카메라 업로드의 `/api/v1/cameras/{id}/stream`이 아닌 인증된
+`/media/cameras/{id}/live`로 영상을 조회한다. Edge ingress의 업로드용 header, body 크기와
+timeout을 브라우저 조회 설정에 복제하지 않는다. 개발 gateway는 API를 Backend에, 영상
+byte를 Media Service에 전달하며 Edge token과 현장 upstream을 브라우저 설정에 포함하지 않는다.
+
 Nginx 설정은 3개 영역으로 분리한다.
 
 | 영역 | 이미지 제공 내용 | 배포 Repository 책임 |
 | --- | --- | --- |
 | 기본 서버 | SPA fallback, `/healthz`, gzip, HTML 캐시 방지, 정적 자산 장기 캐시, 보안 헤더, 구조화 access log와 runtime 설정 제공 경로 | Runtime 설정의 파일 주입 |
 | HTTP 컨텍스트 | WebSocket Upgrade map과 `/etc/nginx/upstreams/*.conf` include | Docker DNS resolver, FastAPI upstream, `limit_req_zone` |
-| server 컨텍스트 | `/etc/nginx/runtime/*.conf` include와 HTTP, SSE 및 WebSocket proxy snippet | API, 미디어와 선택적 signaling location, session 검사, upstream 선택, rate limit 적용, request body 크기와 timeout |
+| server 컨텍스트 | `/etc/nginx/runtime/*.conf` include와 HTTP, SSE, WebSocket 및 날짜 녹화 proxy snippet | API, 미디어와 선택적 signaling location, session 검사, upstream 선택, rate limit 적용, request body 크기와 timeout |
 
 배포 Repository는 `/etc/nginx/upstreams/`와 `/etc/nginx/runtime/`을 함께 주입한다.
 전자는 `resolver`, shared memory `upstream`과 `server <docker-service>:<port> resolve`를
@@ -214,16 +228,22 @@ upstream `zone`을 함께 선언해 컨테이너 IP 변경 뒤 Nginx가 이름�
 기록하며 시각, request ID, 원격 주소, method, query string을 제외한 URI, 상태, 전송량,
 처리 시간과 upstream 응답 정보를 포함한다.
 
-MJPEG와 MP4 location은 Backend의 session 검사와 Media Service proxy를 조합하며 인증 Cookie와
+MJPEG, HLS와 MP4 location은 Backend의 session 검사와 Media Service proxy를 조합하며 인증 Cookie와
 service token을 Media Service에 전달하지 않는다. MP4의 Range header와 응답은 보존하고
 MJPEG의 buffering을 비활성화한다. 기본 이미지에는 환경별 location을 포함하지 않는다.
+날짜 녹화 location은 `integration/nginx/runtime.conf`처럼 각 요청에 `auth_request`를 적용하고
+`/etc/nginx/includes/proxy-daily-recording.conf`와 Media upstream을 지정한다. 이 snippet은
+`GET`과 `HEAD` 및 허용한 경로만 전달하고 Media 경로와 HLS 목록 내부 경로를 변환한다.
+실제 브라우저와 Media의 경로 목록 및 인증 계약은
+[실제 서비스 계약](contracts/backend/README.md#실시간-영상과-녹화-파일)을 따른다.
 선택적 WebRTC 모드는 signaling만 FastAPI에 전달하고 미디어는 Nginx를 경유하지 않는다.
 FastAPI readiness endpoint는 upstream 컨테이너의 healthcheck와 배포 orchestration이 사용한다.
 Nginx `/healthz`는 정적 웹 컨테이너의 readiness만 나타내며 FastAPI readiness를 대체하지 않는다.
 
 기본 보안 응답 헤더는 `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`,
 Content Security Policy (CSP), `frame-ancestors`, Permissions-Policy와 request ID다. 기본 CSP는
-same-origin 정적 파일만 허용하고 framing을 금지한다. 실제 API, signaling 또는 미디어 origin이
+same-origin 정적 파일과 HLS 재생에 필요한 `media-src blob:`을 허용하고 framing을 금지한다.
+실제 API, signaling 또는 미디어 origin이
 확정되어 CSP 연결 출처가 필요하면 배포 Repository가 `/etc/nginx/security-headers.conf`를
 환경별 허용 출처로 주입한다.
 
@@ -367,6 +387,7 @@ TypeScript는 컴파일러 API를 사용하는 개발 도구와의 호환성을 
 | --- | --- | --- | --- | --- |
 | `react` | 19.2.8 | 컴포넌트와 상태 기반 사용자 인터페이스 | [npm](https://www.npmjs.com/package/react) | MIT |
 | `react-dom` | 19.2.8 | 브라우저 Document Object Model (DOM) 렌더링 | [npm](https://www.npmjs.com/package/react-dom) | MIT |
+| `hls.js` | 1.7.3 | 날짜 녹화 HLS 재생 | [npm](https://www.npmjs.com/package/hls.js) | Apache-2.0 |
 | `typescript` | 6.0.3 | 정적 타입 검사 | [npm](https://www.npmjs.com/package/typescript) | Apache-2.0 |
 | `vite` | 8.2.2 | 개발 서버와 프로덕션 정적 빌드 | [npm](https://www.npmjs.com/package/vite) | MIT |
 | `@vitejs/plugin-react` | 6.1.0 | Vite의 React 변환과 Fast Refresh | [npm](https://www.npmjs.com/package/@vitejs/plugin-react) | MIT |
@@ -401,7 +422,7 @@ Vite는 TypeScript 파일을 JavaScript로 변환하지만 타입 검사를 수�
 같은 타입 검사를 통과한 뒤 Vite가 `dist/`에 정적 산출물을 생성한다. 현재 Vite
 빌드 출력 대상은 별도로 재정의하지 않으며 고정된 Vite 버전의 기본값을 사용한다.
 현재 개발 및 브라우저 검증 기준은 데스크톱 Chrome, 최소 너비 1280 Cascading Style
-Sheets (CSS) 픽셀, 기본 1440 x 900 뷰포트와 확장 1920 x 1080 뷰포트다. 높이를 초과하는
+Sheets (CSS) 픽셀, 기본 Full HD (FHD) 1920 x 1080 뷰포트다. 높이를 초과하는
 콘텐츠는 페이지 세로 스크롤을 사용한다. 정확한 Chrome 최소 버전은 결정 대기 상태다. 실제
 접속 단말의 Chrome 버전을 확인한 뒤 Vite 빌드 출력과 브라우저 Web API (Application
 Programming Interface) 호환성을 검증한다.
@@ -430,7 +451,7 @@ AbortSignal을 전달한다.
 timer를 정리하고 화면 오류로 전달한다.
 
 `src/data/mock-dashboard-data-source.ts`는 현황, 이력, 녹화 목록, 알림과 관리자 설정의
-synthetic data를 제공한다. 현황의 대표 적재율, 수거 임계율, 수거 주기, 예상 도달 시각,
+synthetic data를 제공한다. 현황의 추정 적재율, 수거 임계율, 수거 주기, 예상 도달 시각,
 마지막 측정 시각과 영상 시각도 이 데이터 소스가 제공한다. 기본 시나리오는 `normal`이며 개발 환경에서 URL query의
 `scenario`로 `collection-required`, `measurement-error`, `disconnected`, `no-data`,
 `loading`, `request-error`, `live-update`, `operation-cycle` 상태를 선택할 수 있다. `/?scenario=measurement-error`은
@@ -440,6 +461,15 @@ LiDAR 2 측정 오류 데이터를 표시한다. `loading`은 1.2초 뒤 정상 
 수거 완료, LiDAR 측정 오류, 연결 끊김, 정상 복구 순서의 스냅샷을 0.5초 간격으로 전달한다.
 `empty-lists`는 현황 측정값을 유지하면서 활성 알림, 이력 이벤트, 녹화 목록과 알림 대상이
 없는 상태를 제공한다.
+
+현황, 이력과 녹화 화면의 우측 상단은 모니터링 데이터의 수신 상태를 표시한다. 페이지
+전환과 최초 조회 대기 중에는 수신 상태와 마지막 수신 시각을 숨긴다. 유효한 snapshot을
+받으면 연결 정상, 조회 또는 SSE 연결 오류에는 연결 문제로 표시한다.
+마지막 수신 시각은 브라우저가 유효한 모니터링 snapshot을 받은
+시각이며 브라우저 시간대의 `HH:mm:ss`로 표시한다. 날짜는 시각의 상세 정보로
+제공한다. 측정 시각, Backend의 판단 수신 시각과 구분하며 알림이나 보조 정보 조회로
+갱신하지 않는다. 연결 오류에는 마지막 수신 시각을 유지하며 동일한 snapshot의 재수신도
+수신 시각과 연결 상태를 갱신한다. 메시지가 없다는 이유만으로 연결 문제로 바꾸지 않는다.
 
 synthetic data source의 인스턴스는 화면에서 수행한 설정과 알림 변경을 유지하며 다른
 인스턴스와 상태를 공유하지 않는다. `src/data/http-dashboard-data-source.ts`의 HTTP adapter는
@@ -458,6 +488,20 @@ synthetic data source의 녹화 영상 다운로드와 테스트 알림은 요�
 어댑터는 계약이 제공한 다운로드 경로를 사용하고 테스트 알림 endpoint의 접수 여부만
 확인한다. 실제 채널 수신 여부는 사용자가 별도로 확인한다.
 
+runtime 설정과 최초 데이터 조회 중에는 헤더의 사용자 영역을 비워 두며 로그인 링크,
+알림과 사용자 메뉴를 표시하지 않는다. session을 확인한 뒤 로그인 여부와 역할에 맞는
+메뉴를 표시한다. 확인된 session이 있는 상태의 화면 모듈 로딩과 조회 오류에서는 해당
+사용자 정보를 유지한다.
+
+`viewer`의 기본 표시 이름인 현장 운영자는 조회 사용자로 표시하며 다른 계정 이름은
+Backend 응답을 유지한다. 계정 메뉴의 접근성 이름은 사용자 메뉴이며 실제 접근 권한은
+session의 역할을 따른다.
+
+알림함의 조회 실패는 기존 popover 안에서 아이콘, 제목과 설명으로 구성한 전용 안내
+영역에 표시하며 오류 메시지 원문과 수동 재조회 버튼은 제공하지 않는다. 마지막 유효
+목록이 있으면 간결한 안내와 함께 유지하며 최초 조회 실패의 미읽음 수는 미확인으로
+표시한다. 실시간 snapshot에 따른 자동 갱신과 읽음 처리 뒤의 목록 갱신은 유지한다.
+
 이력의 빠른 기간 선택은 최근 24시간, 최근 7일, 최근 30일과 최근 90일이며 기본값은 최근 7일이다.
 선택 시 데이터 소스가 제공한 이력 종료 시각을 기준으로 시작과 종료 시각을 채우고,
 직접 입력하면 빠른 선택을 해제한다. 기간과 이벤트 유형은 조회 버튼을 눌러 함께 적용한다.
@@ -465,13 +509,18 @@ synthetic data source의 녹화 영상 다운로드와 테스트 알림은 요�
 적용한다. 수거 필요의 유형은 알림, 수거 완료의 유형은 수거다. 적재율 추세선과 임계율
 기준선은 이벤트 유형으로 필터링하지 않는다. 역전된 기간은 오류로 표시하며 기존 결과를
 유지한다. 예시 데이터의 시간 기준은 `history.startsAt`과 `history.endsAt`이다.
+입력 오류와 조회 실패의 안내는 조회 조건 제목 행의 한 줄 영역을 사용하며 카드 높이와
+후속 카드 위치를 변경하지 않는다. 전체 안내는 title과 접근성 설명으로 제공한다.
 
 녹화 영상의 조회 조건은 이력과 같은 빠른 기간 선택, 입력칸 배치와 조회 버튼 적용 방식을
 사용한다. 빠른 기간은 데이터 소스가 제공한 서버 기준 조회 종료 시각으로 계산하며 기본값은
-최근 7일이다. 실제 Backend의 초기 조회 종료 시각은 다음 분 경계로 올려 현재 분에 생성된
+최근 7일이다. 이벤트 녹화의 초기 조회 종료 시각은 다음 분 경계로 올려 현재 분에 생성된
 녹화가 누락되지 않게 한다. 선택 기간과 녹화 구간이 겹치고 이벤트 유형이 일치하는 영상을 조회한다.
+실제 v2 Backend의 기본 목록은 날짜 녹화이며 날짜와 이벤트 조회를 같은 필터 영역에서
+구분한다. 날짜 조회는 한국 날짜를 사용하며 API의 기간과 pagination 변환은
+[실제 서비스 계약](contracts/backend/README.md#실시간-영상과-녹화-파일)을 따른다.
 조회 시 목록 첫 페이지와 첫 영상으로 이동하고 재생 및 다운로드 요청 표시를 초기화한다.
-MP4 확대는 기본 player를 pause하고 같은 재생 위치에서 시작한다. 확대 화면을 닫으면
+영상 확대는 기본 player를 pause하고 같은 재생 위치에서 시작한다. 확대 화면을 닫으면
 재생 위치를 기본 player에 반영하며 확대 중 기본 player의 time update는 촬영 시각을 변경하지 않는다.
 data source 변경은 진행 중 다운로드 재조회를 취소하고 이전 완료 표시를 적용하지 않는다.
 이력의 관련 녹화 링크로 진입하면 녹화 식별자로 메타데이터를 직접 조회하고 해당 영상의
@@ -489,6 +538,11 @@ synthetic data의 보관 시각은 화면 검토용 예시이며 실제 보관 �
 정의하지 않는다. HTTP 어댑터는 서버 응답의 보관 시작 시각과 만료 시각을 표시 형식으로
 변환한다.
 
+녹화의 시작 및 종료 시각과 파일 metadata는 Backend가 제공한 값을 표시 형식으로
+변환한다. 응답에 없는 파일 형식과 codec은 기본값으로 보충하지 않고 정보 없음으로
+표시한다. Backend 응답에 포함된 기본값은 유지하며 실제 파일 생성 여부는 녹화 상태로
+구분한다. 녹화 목록에서는 길이의 결측 문구를 생략하고 녹화 정보 카드에서는 유지한다.
+
 v1 현황의 수거 임계율 아래에는 monitoring snapshot의 사전 알림 기준을 보조 정보로
 표시하며 비활성 상태는 사전 알림 꺼짐으로 표시한다. 관리자 화면은 알림 설정 응답으로
 초기화한다.
@@ -498,13 +552,29 @@ v1 현황의 수거 임계율 아래에는 monitoring snapshot의 사전 알림 
 통해 반영하고 취소는 마지막 저장값을 복원한다. 테스트 알림 대상은 등록된 전체
 인원에서 선택하며 빈 목록에서는 대상 선택을 비활성화한다. 설정 저장 피드백은 서버
 응답을 기준으로 표시한다. 알림 대상 추가 모달은 dialog 의미와 키보드 포커스 복원을 제공한다.
-조회나 대상 변경으로 요청 표시를 초기화하면 이전 완료 타이머도 취소한다.
+수거 설정과 알림 정책은 같은 설정 resource를 사용하므로 저장 중 두 영역의 입력과
+저장 버튼을 함께 잠근다. 대상 생성과 개별 수신 설정은 저장 중 입력과 닫기를 잠가
+서버 저장 성공이 화면에서 누락되지 않게 한다. 테스트 요청도 중복 요청을 막으며
+이전 data source의 늦은 응답은 적용하지 않는다. SMS 선택 시 전화번호를
+검증하고 대상 생성은 비어 있는 이벤트 목록을 보내지 않는다. 저장 충돌은 기존 입력과
+적용값을 유지하고 새로고침을 안내한다.
+
+임계율 저장과 테스트 요청의 피드백은 기존 안내 위치를 사용하며 새 문단으로 카드 배치를
+늘리지 않는다. 테스트 카드는 요청 접수와 실제 수신을 구분하고 서버가 받지 않는 고정
+발송 본문을 표시하지 않는다. 테스트 접수 후 종 목록을 재조회하고 revision 및 session을
+검사하며 후속 조회 실패가 접수 성공을 실패로 바꾸지 않는다. 실제 발송과 저장 정책의
+Backend 적용 범위 및 추가 요청은
+[관리자 협의 항목](contracts/backend/frontend-mapping.md#관리자-설정과-알림의-협의-항목)을 따른다.
 
 관리자 설정의 발송 시점, 반복 알림, 최대 반복 횟수와 등록 대상 선택은
 `Dropdown` 공통 컴포넌트를 사용한다. 목록은 입력칸 아래에 이어지는 테두리와 공통 테마를
 사용하며 방향키, Home, End로 이동하고 Enter 또는 Space로 선택한다. Escape는 선택 변경
 없이 닫고, Tab과 바깥 클릭도 목록을 닫는다.
+긴 수신 대상 정보는 표와 선택창에서 기존 너비 안에 생략 표시하고 title로 전체 값을
+제공한다. 수신 설정 패널의 제목과 연락처는 패널 안에서 표시하며 닫기 버튼과 키보드
+focus 영역을 유지한다.
 
+로그인 화면은 계정 로그인만 제공하며 현황 화면으로 이동하는 바로가기를 표시하지 않는다.
 synthetic data source의 로그인은 `sessionStorage`에 상태를 기록하고 로그아웃은 이를 삭제한다.
 HTTP 어댑터는 same-origin session Cookie를 포함한 요청, session 응답의 CSRF token과 사용자
 역할을 사용한다. 실제 v2 및 녹화 조회는 비로그인 상태에서 로그인으로 이동한다. synthetic
@@ -538,30 +608,101 @@ A와 B 원의 중심은 해당 끝점과 일치한다. 반투명 면은 센서 �
 `src/data/load-history-v2.ts`는 v2 적재율 추이의 source와 bucket을 검증하고 결측 표본을
 유지한다. 조회 상한과 시각 및 지표 의미의 정본은
 [화면 데이터 매핑](contracts/backend/frontend-mapping.md#적재율-추이)이다.
+`src/data/load-one-hour-ago.ts`는 기존 v2 이력에서 과거 관측을 선택한다. 초기 조회,
+snapshot 수신과 약 1분 간격 이력 조회에 같은 함수를 적용하고 source 변경 및 이력 조회
+오류에서 선택 값을 지운다. 별도 API 요청, 타이머나 영구 저장소를 추가하지 않는다.
+시각과 선택 조건의 정본은
+[1시간 전 적재율](contracts/backend/frontend-mapping.md#1시간-전-적재율)이다.
 `src/pages/MonitoringPage.tsx`는 실제 API와 synthetic data에 같은 화면 구조를 사용한다.
+현재 상태 카드의 추정 적재율 아래 6개 지표는 같은 크기의 2행 3열 카드로 표시한다.
+제목은 작고 옅게, 값은 크고 진하게 표시하며 기본 화면의 카드 크기와 배치는 유지한다.
 제공되지 않은 지표의 영역을 유지하며 적재율 경보는 공통 화면 모델의 `alarmState`로
 표시한다. v2 adapter는 서버의 현재 경보 평가를 사용하고 synthetic data는 명시한 경보 값을
-제공한다. 경보 평가가 없는 v1 응답은 미제공으로 처리한다. 판단 사유, capability와 원본
-경보 평가는 상태 상세에서 표시한다. 기존 화면의 매핑 및 추가 계약은 `docs/contracts/backend/frontend-mapping.md`를
+제공한다. 경보 평가 정보가 없는 응답은 미지원으로 표시한다. 판단 사유, capability와 원본
+경보 평가는 수신 데이터 모델에 유지하며 별도 진단 버튼이나 상세창을 제공하지 않는다.
+기존 화면의 매핑 및 추가 계약은 `docs/contracts/backend/frontend-mapping.md`를
 따른다. `LiveVideo.tsx`는 MJPEG 또는 WHEP 모드를
 선택한다. `mjpeg-client.ts`와 `MjpegVideo.tsx`는 JPEG frame 수신 및 영상 연결 수명을,
 `whep-client.ts`와 `WhepVideo.tsx`는 선택적 WHEP signaling과 미디어 연결을 처리한다.
+
+현황 장비 상태는 계약에서 확인한 코드만 한국어 표시로 변환하고 원본 코드를 title에
+유지한다. 알 수 없는 코드는 원문을 표시한다. 장비 카드는 장비명과 보고된 상태만
+표시하며 scan 및 장비 보고 수신 시각과 latency를 표시하지 않는다. 수신 데이터 모델의
+장비 진단과 시각은 화면에 표시하지 않는다.
+v2 최근 적재율의 시간축 및 tooltip은 브라우저 시간대를 사용하며 표본 좌표는 변경하지 않는다.
+긴 소수 적재율은 자릿수를 유지하고 tooltip 폭을 조정하며 카드 배치는 유지한다.
+최근 적재율의 임계율 문구는 점선과 겹치지 않는 그래프 위쪽 여백에 표시한다.
+이력 그래프도 현재 임계율의 수치를 점선 위쪽 여백에 표시하며 과거 임계율로 표현하지 않는다.
+현황과 이력의 시간축 눈금은 정각에 정렬하며 최소 간격은 1시간이다. 24시간 구간은
+3시간 간격을 사용하고 여러 날짜의 이력은 자정 기준 날짜 눈금을 사용한다. 눈금 배치만
+조정하며 조회 구간과 표본 및 이벤트 좌표, tooltip의 실제 시각은 변경하지 않는다.
+
+실시간 영상의 `VideoTimestamp`는 유효한 `videoCapturedAt`을 우선 사용하고 없으면
+브라우저가 마지막으로 표시한 MJPEG frame의 수신 시각을 사용한다. 두 출처는 각각 촬영과
+영상 수신으로 구분하며 브라우저 시간대의 `HH:mm:ss`로 표시한다. 최초 frame decode 전과
+연결 오류에는 시각을 표시하지 않는다. 새 frame 없이 현재 시각으로 갱신하지 않으며
+모니터링 snapshot 수신 시각을 사용하지 않는다. 기본 및 확대 영상에 같은 규칙을 적용한다.
+현재 v2 adapter는 촬영 시각이 없어 `null`을 제공하며 실제 촬영 시각의 출처와 전달 형식은
+[화면 데이터 매핑](contracts/backend/frontend-mapping.md#현황-화면)의 추가 계약 경계다.
+
 실제 서비스 타입은 `src/generated/backend-contract.ts`, 제안 타입은
 `src/generated/api-contract.ts`에 추적하며 각 OpenAPI 변경 시 함께 갱신한다.
 
 `DetailDialog`는 추가 정보를 화면 위에 표시하며 내부 스크롤과 키보드 종료 및 focus 복원을
-제공한다. 경보 근거는 이력의 기존 내용 셀, 녹화 요청 및 확보 범위는 기존 부분 저장과
-누락 구간 표시에서 연다. 장비 진단과 pit 이름은 상태 상세창에서만 조회 및 표시한다.
+제공한다. 이력의 내용 셀은 짧은 제목으로 표시하고 선택하면 중앙의 이벤트 상세 모달에서
+발생 시각, 유형, 상태, 서버 설명과 관련 녹화 링크를 제공한다. Backend가 제공한 제목과
+설명은 번역하거나 설명 문자열로 별도 분류하지 않고 원문 그대로 표시한다.
+이벤트 상세는 이미 조회한 이벤트 정보만 사용하며 별도 판단 목록 조회와 페이지 탐색은
+제공하지 않는다. 이벤트 이력의 열 이름은 이벤트 유형이며 상태 값이 없는 행은 상태 칸과
+색상 원을 비워 두고 상세 모달의 상태 항목도 생략한다. 상태 표시 조건은
+[화면 데이터 매핑](contracts/backend/frontend-mapping.md)의 Backend 이력 계약을 따른다.
+이벤트 이력과 알림함은 각각
+운영 사건 조회와 알림 조회를 사용하며 같은 전체 목록으로 간주하지 않는다.
+녹화 요청 및 확보 범위는 부분 저장 표시에서 연다. pit 이름은 추가로 조회하지 않는다.
 상세 모듈은 선택 시 지연 로딩하며 기본 카드와 표에 상시 설명을 추가하지 않는다.
 
 `src/data/recording-coverage.ts`는 Backend의 이벤트 클립 응답을 요청 및 확보 범위로
-변환한다. `src/data/daily-recordings.ts`는 Media의 날짜 녹화 상태와 한국 날짜, 누락 및
-압축 재생 시각을 검사하는 순수 모델이다. 날짜별 Backend 브라우저 계약과 player 및
-export 연결은 포함하지 않는다. 브라우저는 Media의 내부 경로를 요청하지 않는다.
+변환한다. `src/data/daily-recordings.ts`는 Backend의 날짜 녹화 상태와 한국 날짜, 확보 및
+누락 구간과 압축 재생 시각을 검사하는 순수 모델이다. `src/data/daily-recording-api.ts`는
+목록과 단건 조회 및 export 요청을 처리하며 날짜 녹화를 사용할 때 지연 로딩한다.
+브라우저는 Media의 내부 경로를 요청하지 않는다.
 
-HTTP 어댑터의 최초 이력 및 녹화 조회와 이후 사용자 조회는 monitoring snapshot의
+`DailyRecordingVideo`는 `hls.js/light`를 지연 로딩하고 Media Source Extensions (MSE) 지원
+시 해당 player를 사용하며 미지원 시 native HLS로 재생한다. `hls.js`의 worker는 사용하지 않으며 same-origin의 같은 날짜 녹화 목록과
+segment만 요청한다. `hls.js`의 요청은 session Cookie를 사용하고 redirect를 거부한다. 화면 종료와
+선택 변경 시 player, 요청과 Blob URL을 정리한다. 제품 이미지의
+`/usr/share/licenses/scrap-monitoring-dashboard/Hls-Apache-2.0.txt`는 배포하는 `hls.js`의 license 고지다.
+
+날짜 녹화의 시간축은 확보 구간, 누락 구간과 아직 처리하지 않은 구간을 구분한다. 확보 구간을
+선택하면 대응하는 압축 재생 위치로 이동하며 누락 구간을 재생 가능한 시간으로 표시하지
+않는다. 녹화 정보의 관리 구간과 확보된 길이는 구분하고 미제공 파일 metadata는 보충하지 않는다.
+시간축은 시각을 한 번씩 파싱하고 정렬한 경계를 순차 탐색해 많은 확보 및 누락 구간을 처리한다.
+날짜 녹화 목록의 상태에는 누락 여부를 덧붙이지 않으며 확보 및 누락 범위는 시간축과
+상태 상세에서 확인한다. 현재 날짜 녹화 계약에는 썸네일이 없으므로 목록의 미리보기 영역은
+같은 크기의 빈 표시를 유지한다.
+다운로드 준비와 상태 재조회는 기존 녹화 파일 카드에서 처리하며 준비가 완료된 경로만
+다운로드에 사용한다. 오늘의 다운로드 불가는 정상적인 제한으로 표시한다.
+재생 오류와 다운로드 준비 오류는 분리하며 한 경로의 실패로 다른 경로를 비활성화하지 않는다.
+
+녹화 화면의 카드 높이와 열 배치는 데이터 상태와 무관하게 유지하며 녹화 정보 카드에는
+스크롤을 제공하지 않는다. 빈 목록에서도 조회 조건, 녹화 목록, 영상, 녹화 정보와 녹화 파일의
+5개 카드를 유지하며 값은 정보 없음으로 표시하고 재생과 다운로드 동작만 제한한다.
+후속 조회 실패는 기존 결과를 유지하며 화면에 별도 안내 문단을 추가하지 않는다.
+제목 오른쪽의 상태 표시를 hover하거나 선택하면 카드 배치와
+분리한 popover에서 상태, 사용자용 사유, 짧은 오류 코드와 누락 구간 수를 표시한다.
+오류 원문과 stack trace는 웹페이지에 출력하지 않으며 Backend와 Media Service의 서버
+로그에서 확인한다. 영상이 없는 상태는 같은 popover에 통합하며 별도 표시를 제공하지 않는다.
+이벤트 녹화의 부분 저장 누락 구간 시각은 기존 녹화 범위 상세창에서 표시한다.
+다운로드 설명과 처리 상태는 같은 문단에서 표시한다. 단건 정보는 선택과
+조회 시 확인하고 이벤트 녹화의 collecting 및 processing, 날짜 녹화의 recording 및
+finalizing과 export processing 상태만 자동 갱신한다. 별도 녹화 정보 새로고침
+버튼은 제공하지 않으며 전체 정보의 재확인은 브라우저 새로고침을 사용한다.
+
+HTTP 어댑터의 최초 이력 및 이벤트 녹화 조회와 이후 사용자 조회는 monitoring snapshot의
 `serverTime`에 포함된 명시적 UTC offset을 유지한다. 브라우저 운영체제의 시간대는 조회
-구간에 영향을 주지 않는다. v1 LiDAR profile은 LiDAR 1과 LiDAR 2 카드로 고정하며 응답에서
+구간에 영향을 주지 않는다. 이벤트 녹화 응답의 시작, 종료, 보관 시각과 누락 구간도 같은
+offset으로 변환해 표시와 기간 필터에 사용한다. 날짜 녹화는 `Asia/Seoul`을 적용한다.
+v1 LiDAR profile은 LiDAR 1과 LiDAR 2 카드로 고정하며 응답에서
 누락된 profile은 정보 없음으로 표시한다. 유효하지 않은 최근 적재율과 LiDAR 표본은 축의
 시각 또는 위치는 유지하되 그래프 선을 연결하지 않는다. 알림 대상 생성과 변경은 요청값이
 아니라 서버가 반환한 대상 및 수신 설정을 화면에 적용한다.
@@ -644,12 +785,15 @@ Playwright는 `e2e/`의 브라우저 테스트를 1280 x 900, 1440 x 900과 1920
 크기 예산을 검사한다. 실패한 테스트의 screenshot과 trace는 Git에서 제외한
 `test-results/`에 저장한다.
 
-빌드 크기 예산은 초기 JavaScript 260 KiB, 전체 JavaScript 320 KiB, CSS 50 KiB, 웹폰트
-4 MiB와 전체 자산 4.5 MiB다. production에서 선택한 모니터링 및 영상 구현 전체에 같은
+빌드 크기 예산은 초기 JavaScript 260 KiB, 전체 JavaScript 720 KiB, CSS 50 KiB, 웹폰트
+4 MiB와 전체 자산 5 MiB다. 날짜 녹화의 HLS light 모듈은 지연 로딩하며 전체 JavaScript 및
+자산 예산에 포함한다. production에서 선택한 모니터링 및 영상 구현 전체에 같은
 예산을 적용하며 초기 로딩과 전체 자산 예산은 별도로 유지한다.
+녹화 상태의 hover, click과 키보드 상세 처리는 녹화 경로의 지연 로딩 코드에 포함하며
+전체 JavaScript 예산으로 관리한다.
 
 현재 Playwright 테스트는 대시보드 진입, synthetic 실시간 갱신과 운영 주기 상태 전이, 상단 브랜드 이동, 알림함 읽음 처리와 닫기,
-관리자 메뉴와 로그인 및 로그아웃, 비로그인 화면 제한, 관리자 경로 제한, 적재율 이력의
+사용자 메뉴와 로그인 및 로그아웃, 비로그인 화면 제한, 관리자 경로 제한, 적재율 이력의
 이벤트 상세 표시, 빈 목록, 필터와 페이지 이동, 대상 뷰포트의 수평 오버플로와 카드 잘림,
 푸터 겹침, 대화형 요소의 접근 가능한 이름, 이미지 대체 텍스트와 외부 연동 전 요청
 피드백을 검증한다. 계약 테스트 서버를 사용하는 브라우저 테스트는 로그인, session Cookie와
@@ -699,14 +843,15 @@ Repository의 전체 commit SHA로 고정한다.
 
 ## 제품 구현 결정 상태
 
+### 결정이 필요한 범위
+
 다음 항목은 결정 대기 상태다.
 
 - Chrome 최소 버전, 빌드 출력 호환성과 브라우저 Web API 지원 범위
 - 코드 포맷 정책
-- 장기 운영의 계정 제공, session 저장 및 수명 정책과 v1 관리자 API의 서버 권한 검사
+- 장기 운영의 계정 제공, session 저장 및 수명 정책
 - 실제 적재율 산출, calibration과 현장 측정 정확도
 - 실제 LiDAR profile, 장기 적재율 추이, 예측, 활성 알림과 실제 수거 작업 상태의 계약
-- 날짜별 녹화의 Backend 브라우저 조회, 영상 경로와 export 계약
 - 다중 pit 및 camera 선택, 수동 clip 생성과 미디어 정책 관리의 제품 범위
 - 선택적 WHEP 서비스의 지원 계약과 시청자 제한
 - 환경별 upstream, DNS, readiness, timeout, 요청 제한, TLS와 CSP 값
@@ -725,6 +870,7 @@ Playwright Chromium을 추가하고 Repository를 bind mount하며, 의존성은
 비밀 파일 추적 검사가 Git 추적 상태를 확인한다. `verification` service는
 `VITE_ENABLE_MOCK_DATA=false`를 설정해 빠른 시작 `.env`의 mock 설정과 무관하게 release 정적 파일을
 검증한다.
+두 컨테이너의 시작 명령은 `CI=true pnpm install --frozen-lockfile`로 대화형 확인 없이 의존성을 설치한다.
 
 ```sh
 # 소스 변경을 감시하는 개발 서버를 실행한다.
@@ -826,6 +972,62 @@ bash scripts/remote-development.sh stop
 
 기존 Backend, Media Service와 external network는 제거하거나 재시작하지 않는다.
 
+#### 원격 화면 확인
+
+`scripts/remote-browser.sh`는 위 SSH 대상과 source mirror 설정을 사용해 서버에서
+Playwright Chromium을 실행한다. 별도 port나 SSH forwarding은 필요하지 않다.
+브라우저는 개발 서버의 `http://127.0.0.1:5173`에 접속하며 기본 경로는
+`/recordings?source=api`, viewport는 FHD 1920 x 1080이다. 개인 브라우저와 로그인
+세션을 공유하지 않는다.
+
+브라우저 이미지는 `Dockerfile`의 `browser-inspection` target으로 생성한다. 실행은
+non-root 사용자, read-only root filesystem과 제한된 임시 저장소를 사용한다. 캡처마다
+임시 컨테이너를 실행하고 종료 시 제거한다. 기존 개발 컨테이너와 Backend 및 Media Service는
+변경하지 않는다. 브라우저 요청은 same-origin GET, HEAD와 로그인 POST만 허용한다.
+관리 설정, 알림 상태와 계정 변경 요청은 차단한다.
+
+로그인에 사용할 기존 개발 계정은 로컬 `.secrets/dashboard-browser/credentials.json`에
+`{"username":"<development-user>","password":"<development-password>"}` 형식으로 저장한다.
+디렉토리 권한은 `0700`, 파일 권한은 `0600`이다. script는 SSH를 통해 이 파일을 서버의
+source mirror 아래 같은 경로로 전달한다. 계정 생성과 인증 정책 변경은 수행하지 않는다.
+
+```sh
+# 기존 source 동기화를 실행한 상태에서 캡처용 이미지를 빌드한다.
+bash scripts/remote-browser.sh build
+
+# 기존 계정으로 로그인한 녹화 화면을 기본 viewport로 캡처한다.
+bash scripts/remote-browser.sh capture
+
+# 현재 목록의 첫 항목을 선택하고 화면 높이를 넘는 영역도 캡처한다.
+bash scripts/remote-browser.sh capture --path /recordings --recording-index 0 --full-page
+
+# 녹화 상태의 상세 popover를 열어 캡처한다.
+bash scripts/remote-browser.sh capture --recording-status
+
+# 로그인 화면을 캡처한다.
+bash scripts/remote-browser.sh capture --path /login
+
+# 캡처 브라우저의 저장된 세션 파일만 제거한다.
+bash scripts/remote-browser.sh clear-session
+```
+
+`--path`는 `/`, `/login`, `/history`, `/recordings`, `/admin`을 허용한다.
+`--width`와 `--height`로 viewport를 지정하며 `--recording-index`는 현재 녹화 목록의
+0부터 시작하는 위치다. 기존 역할의 접근 권한은 그대로 적용한다. 로그인 실패 시 계정이나
+인증 정책을 변경하지 않는다. 이미지 build 상한은 900초, 캡처 실행 상한은 120초다.
+
+캡처 결과는 서버의 `.secrets/dashboard-browser/captures/run.<id>/`에 생성하고 로컬
+`test-results/browser-inspection/run.<id>/`로 가져온다. `capture.png`는 화면 원본이고
+`metadata.json`은 viewport, 카드 좌표, 가로 overflow, 오류 개수와 녹화 API 진단 요약을
+기록한다. 진단 요약은 HTTP 상태, 조회 조건의 형식 검사, 녹화 상태, 누락 메타데이터와
+짧은 오류 코드를 포함하며 식별자, 실제 시각과 오류 원문은 기록하지 않는다.
+자격 증명과 `session.json`은 서버의 `.secrets/dashboard-browser/`에 유지하며 세션 만료 시
+기존 계정으로 다시 로그인한다. 이 경로와 캡처 산출물은 Git, Docker build context와 source
+자동 동기화에서 제외한다. 화면에는 현장 정보가 포함될 수 있으므로 공개 artifact와 PR에
+첨부하지 않는다.
+
+### 컨테이너 통합 검증
+
 `scripts/verify-container-integration.sh`는 `test/container/Dockerfile`로 Node.js, Git, curl,
 OpenSSL, Docker CLI (Command-Line Interface)와 Compose plugin을 포함한 검증 이미지를 만든다.
 Docker CLI 29.8.0 이미지와 Node.js 이미지는 digest로 고정한다. Docker CLI의 Apache-2.0
@@ -843,6 +1045,7 @@ cleanup 실패도 비정상 종료로 처리한다. SIGKILL과 daemon 중단 등
 `artifacts/`에는 정제한 `summary.json`과 synthetic screenshot만 공개한다.
 원본 Playwright trace, request 및 response, Cookie, 비밀번호, token과 오류 원문은 공개
 artifact에 넣지 않는다. `private/`는 mode 700이며 원본 report와 로그를 저장한다.
+`private/service-logs.txt`는 자원 회수 전 수집한 격리 환경의 Backend, Media와 synthetic 입력 로그다.
 임시 `compose.env`는 mode 600이고 cleanup 성공 후 삭제한다. runtime 및 TLS wrapper의
 로그는 출력된 `/tmp/dashboard-container-integration.<id>/`에 남으며 임시 개인 키는 자원
 회수 뒤 삭제한다. source checkout은 출력된 임시 경로에 유지한다.

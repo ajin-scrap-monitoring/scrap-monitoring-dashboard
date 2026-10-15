@@ -25,7 +25,8 @@ test("합성 실시간 갱신 시나리오는 새 스냅샷을 표시한다", as
   await page.goto("/?scenario=live-update");
 
   await expect(page.locator(".kpi-value")).toHaveText("75%");
-  await expect(page.getByText("마지막 측정 10:24:21")).toBeVisible();
+  await expect(page.getByLabel("데이터 수신 상태")).toContainText("연결 정상");
+  await expect(page.getByLabel("데이터 수신 상태").locator("time")).toHaveAttribute("datetime", /T/);
 });
 
 test("합성 운영 주기 시나리오는 수거와 장애 상태를 순서대로 표시한다", async ({ page }) => {
@@ -38,9 +39,12 @@ test("합성 운영 주기 시나리오는 수거와 장애 상태를 순서대�
   await page.clock.runFor(500);
   await expect(page.getByText("수거 완료", { exact: true })).toBeVisible({ timeout: 1500 });
   await page.clock.runFor(500);
-  await expect(page.locator(".page-meta").getByText("측정 오류", { exact: true })).toBeVisible({ timeout: 1500 });
+  await expect(page.locator(".alarm-status")).toHaveText("판정 불가", { timeout: 1500 });
+  await expect(page.getByLabel("데이터 수신 상태")).toContainText("연결 정상");
   await page.clock.runFor(500);
-  await expect(page.locator(".page-meta").getByText("연결 끊김", { exact: true })).toBeVisible({ timeout: 1500 });
+  await expect(page.locator(".devices-card .status-text.error")).toHaveCount(4);
+  await expect(page.locator(".devices-card .device-meta")).toHaveCount(0);
+  await expect(page.getByLabel("데이터 수신 상태")).toContainText("연결 정상");
   await page.clock.runFor(500);
   await expect(page.getByText("정상", { exact: true }).first()).toBeVisible({ timeout: 1500 });
 });
@@ -106,7 +110,7 @@ test("합성 데이터의 로딩, 오류와 데이터 없음 상태를 구분한
   await expect(page.getByRole("main", { name: "표시할 모니터링 데이터가 없습니다." })).toBeVisible();
 });
 
-test("상단 알림함과 관리자 메뉴를 제공한다", async ({ page }) => {
+test("상단 알림함과 사용자 메뉴를 제공한다", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("아이디").fill("admin");
   await page.getByLabel("비밀번호").fill("test");
@@ -127,7 +131,7 @@ test("상단 알림함과 관리자 메뉴를 제공한다", async ({ page }) =>
   await page.getByRole("button", { name: "모두 읽음" }).click();
   await expect(page.getByRole("button", { name: "알림 0건" })).toBeVisible();
 
-  await page.getByRole("button", { name: "관리자 메뉴" }).click();
+  await page.getByRole("button", { name: "사용자 메뉴" }).click();
   await expect(page.getByRole("link", { name: "관리자 설정" })).toBeVisible();
 
   await page.getByRole("button", { name: "로그아웃" }).click();
@@ -170,7 +174,7 @@ test("상단 브랜드는 현황 화면으로 이동한다", async ({ page }) =>
 test("외부 연동 전 요청은 처리 범위를 화면에 표시한다", async ({ page }) => {
   await page.goto("/recordings");
   await page.getByRole("button", { name: "녹화 영상 다운로드" }).click();
-  await expect(page.getByRole("status")).toHaveText("예시 데이터에서는 파일을 다운로드하지 않습니다.");
+  await expect(page.locator(".recording-download").getByRole("status")).toHaveText("예시 데이터에서는 파일을 다운로드하지 않습니다.");
 
   await page.goto("/login");
   await page.getByLabel("아이디").fill("admin");
@@ -196,12 +200,13 @@ test("비로그인 사용자는 조회 화면만 사용한다", async ({ page })
 
   await expect(page.getByRole("link", { name: "로그인" })).toBeVisible();
   await expect(page.locator("header").getByRole("button", { name: /알림/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "관리자 메뉴" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "사용자 메뉴" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "관리자", exact: true })).toHaveCount(0);
 
   await page.goto("/admin");
   await expect(page).toHaveURL(/\/login$/);
-  await expect(page.getByRole("link", { name: "현황 보기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "로그인", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "현황 보기" })).toHaveCount(0);
 });
 
 test("빈 부가 목록은 각 화면의 빈 상태를 유지한다", async ({ page }) => {
@@ -226,8 +231,11 @@ test("녹화 영상 카드의 제목과 영상 영역을 분리한다", async ({
   expect(frameBox!.y).toBeGreaterThanOrEqual(titleBox!.y + titleBox!.height + 4);
 
   await page.goto("/recordings?scenario=empty-lists");
-  const panelBox = await page.locator(".recordings-empty-panel").boundingBox();
-  const emptyTitleBox = await page.locator(".recordings-empty-panel .section-title").boundingBox();
+  await expect(page.locator(".recordings-content .card")).toHaveCount(5);
+  await expect(page.locator(".recording-info")).toBeVisible();
+  await expect(page.getByRole("button", { name: "다운로드 불가", exact: true })).toBeDisabled();
+  const panelBox = await page.locator(".recording-player").boundingBox();
+  const emptyTitleBox = await page.locator(".recording-player .section-title").boundingBox();
   expect(panelBox).not.toBeNull();
   expect(emptyTitleBox).not.toBeNull();
   expect(emptyTitleBox!.x - panelBox!.x).toBeGreaterThanOrEqual(16);

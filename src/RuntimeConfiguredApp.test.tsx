@@ -13,6 +13,7 @@ test("설정을 읽고 검증하기 전에는 HTTP data source와 화면을 연�
   const fetchImplementation = vi.fn(() => new Promise<Response>((resolve) => { complete = resolve; }));
   render(<RuntimeConfiguredApp createDataSource={createDataSource} fetchImplementation={fetchImplementation} />);
   expect(screen.getByText("대시보드 설정을 불러오는 중입니다.")).toBeVisible();
+  expect(screen.queryByRole("link", { name: "로그인" })).not.toBeInTheDocument();
   expect(createDataSource).not.toHaveBeenCalled();
   await act(() => { complete(Response.json(config)); return Promise.resolve(); });
   expect(await screen.findByText("Configured application")).toBeVisible();
@@ -23,6 +24,7 @@ test("설정 오류에는 재시도를 표시하고 HTTP data source를 생성�
   const createDataSource = vi.fn(() => source);
   render(<RuntimeConfiguredApp createDataSource={createDataSource} fetchImplementation={() => Promise.resolve(new Response(null, { status: 404 }))} />);
   expect(await screen.findByText("대시보드 설정을 불러올 수 없습니다.")).toBeVisible();
+  expect(screen.queryByRole("link", { name: "로그인" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "다시 시도" })).toBeVisible();
   expect(createDataSource).not.toHaveBeenCalled();
 });

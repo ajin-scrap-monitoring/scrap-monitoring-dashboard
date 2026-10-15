@@ -4,7 +4,7 @@
     {
       "directory": "backend",
       "repository": "ajin-scrap-monitoring/scrap-monitoring-backend",
-      "revision": "73b9e28b135e670d6c5d6a460da3b76af16250a8"
+      "revision": "41c24d58066190ce4a673ee39b8e0c8bb7ad2553"
     },
     {
       "directory": "media",
@@ -39,6 +39,9 @@
     "/api/v2/monitoring/collection-events/{assessment_id}/revisions",
     "/api/v2/monitoring/events",
     "/api/v2/monitoring/load-history",
-    "/api/v2/monitoring/snapshot"
+    "/api/v2/monitoring/snapshot",
+    "/api/v2/recordings/daily",
+    "/api/v2/recordings/daily/{recording_id}",
+    "/api/v2/recordings/daily/{recording_id}/exports"
   ]
 }

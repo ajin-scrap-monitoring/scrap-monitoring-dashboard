@@ -56,60 +56,41 @@ for (const definition of pages) {
   });
 }
 
-test("긴 상태 상세와 pit 이름은 기존 배치를 밀어내지 않고 내부에서 스크롤한다", async ({ page }) => {
-  const longName = "상세에서만 표시하는 긴 pit 이름 ".repeat(30);
+test("긴 진단 정보와 pit 이름은 화면에 표시하거나 조회하지 않고 기존 배치를 유지한다", async ({ page }) => {
+  const longName = "화면에 표시하지 않는 긴 pit 이름 ".repeat(30);
   const initial = { ...monitoringV2StateFixture("UNAVAILABLE"), reasonCodes: Array.from({ length: 30 }, (_, index) => `SYNTHETIC_REASON_${index}_${"LONG_REASON_".repeat(25)}`) };
   await installBackendApi(page, { initial });
-  await page.route("**/api/v1/config/pits/*", (route) => route.fulfill({ json: {
-    id: initial.pitId, name: longName, total_depth_cm: 300, warning_threshold_percent: 75, critical_threshold_percent: 85,
-    updated_at: "2026-10-13T00:00:00Z",
-  } }));
+  let pitRequests = 0;
+  await page.route("**/api/v1/config/pits/*", (route) => {
+    pitRequests += 1;
+    return route.fulfill({ json: {
+      id: initial.pitId, name: longName, total_depth_cm: 300, warning_threshold_percent: 75, critical_threshold_percent: 85,
+      updated_at: "2026-10-13T00:00:00Z",
+    } });
+  });
   await page.goto("/?source=api");
-  const opener = page.getByRole("button", { name: "상태 상세", exact: true });
-  await expect(opener).toBeVisible();
+  await expect(page.locator(".monitoring-page h1")).toBeVisible();
   await fontsAndImagesReady(page);
-  const before = await geometry(page);
-  const scrollBefore = await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
-  await opener.focus();
-  await page.keyboard.press("Enter");
-  const dialog = page.getByRole("dialog", { name: "모니터링 상태 상세", exact: true });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByText(longName, { exact: true })).toBeVisible();
-  await expectGeometry(page, before);
-  expect(await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }))).toEqual(scrollBefore);
-  const panel = dialog.locator(".monitoring-detail-panel");
-  const overflow = await panel.evaluate((element) => ({ horizontal: element.scrollWidth - element.clientWidth, vertical: element.scrollHeight - element.clientHeight }));
-  expect(overflow.horizontal).toBeLessThanOrEqual(1);
-  expect(overflow.vertical).toBeGreaterThan(0);
-  const bounds = await panel.boundingBox();
+  await expect(page.getByRole("button", { name: "상태 상세", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "모니터링 상태 상세", exact: true })).toHaveCount(0);
+  await expect(page.getByText(longName, { exact: true })).toHaveCount(0);
+  expect(pitRequests).toBe(0);
   const viewport = page.viewportSize();
-  if (!bounds || !viewport) throw new Error("The detail panel and viewport must be measurable.");
-  expect(bounds.x).toBeGreaterThanOrEqual(0);
-  expect(bounds.y).toBeGreaterThanOrEqual(0);
-  expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width);
-  expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height);
-  await page.keyboard.press("Escape");
-  await expect(dialog).toHaveCount(0);
-  await expect(opener).toBeFocused();
-  await expectGeometry(page, before);
-  expect(await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }))).toEqual(scrollBefore);
+  if (!viewport) throw new Error("A fixed layout viewport is required.");
+  await expectGeometry(page, baseline[`${viewport.width}x${viewport.height}-monitoring`]);
 });
 
-test("경보 근거의 긴 식별자를 열고 닫아도 기존 표 행과 카드 크기를 유지한다", async ({ page }) => {
+test("이벤트의 긴 서버 설명을 열고 닫아도 기존 표 행과 카드 크기를 유지한다", async ({ page }) => {
   await installBackendApi(page);
   const occurredAt = "2026-10-12T12:00:00Z";
-  const assessmentId = "synthetic-assessment-".repeat(70);
+  const detail = "긴 서버 설명 ".repeat(200);
   await page.route("**/api/v1/events?*", (route) => {
     const url = new URL(route.request().url());
     if (url.searchParams.get("category") === "collection") return route.fallback();
-    return route.fulfill({ json: { ...eventPageFixture, items: [{ ...eventFixture, id: "evt-alt-1", occurredAt, recordingId: null }] } });
+    return route.fulfill({ json: { ...eventPageFixture, items: [{ ...eventFixture, id: "evt-alt-1", occurredAt, detail, recordingId: null }] } });
   });
-  await page.route("**/api/v2/monitoring/alerts?*", (route) => route.fulfill({ json: {
-    limit: 20, offset: 0, totalItems: 1,
-    items: [{ eventId: "evt-alt-1", notificationId: "notif-1", assessmentId, loadPercent: 85, observedAt: occurredAt, triggeredAt: occurredAt, readAt: null }],
-  } }));
   await page.goto("/history?source=api");
-  const opener = page.getByRole("button", { name: /경보 근거 보기$/ });
+  const opener = page.getByRole("button", { name: /수거 필요 상세 보기$/ });
   await expect(opener).toBeVisible();
   await fontsAndImagesReady(page);
   await opener.scrollIntoViewIfNeeded();
@@ -117,8 +98,8 @@ test("경보 근거의 긴 식별자를 열고 닫아도 기존 표 행과 카�
   const scrollBefore = await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
   await opener.focus();
   await page.keyboard.press("Enter");
-  const dialog = page.getByRole("dialog", { name: "경보 근거", exact: true });
-  await expect(dialog.getByText(assessmentId, { exact: true })).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "이벤트 상세", exact: true });
+  await expect(dialog.locator(".history-event-summary p")).toHaveText(detail);
   expect(await dialog.locator(".monitoring-detail-panel").evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
   await expectGeometry(page, before);
   expect(await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }))).toEqual(scrollBefore);

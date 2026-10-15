@@ -48,6 +48,7 @@ cleanup() {
   trap - EXIT INT TERM
   set +e
   stop_active_step
+  timeout --signal=TERM --kill-after=5s 10s "${compose[@]}" logs --no-color --tail 200 backend media camera-input >"$run_directory/private/service-logs.txt" 2>>"$step_log"
   timeout --signal=TERM --kill-after=5s 10s "${compose[@]}" ps --all --format json >"$run_directory/private/services.json" 2>>"$step_log"
   timeout --signal=TERM --kill-after=10s 45s bash "$repository_root/scripts/cleanup-service-project.sh" "$project_name" "${compose[@]}" >>"$step_log" 2>&1 || cleanup_result=$?
   if [[ $cleanup_result -ne 0 ]]; then

@@ -30,7 +30,7 @@ export function RuntimeConfiguredApp({ createDataSource, fetchImplementation }: 
   return <DashboardStatePage
     title={current.error ? "대시보드 설정을 불러올 수 없습니다." : "대시보드 설정을 불러오는 중입니다."}
     description={current.error ? "runtime-config.json의 파일 경로, schemaVersion과 식별자를 확인한 뒤 페이지를 새로고침하세요." : "모니터링에 사용할 runtime 설정을 확인하고 있습니다."}
-    header={<DashboardHeader activePage="monitoring" initialNotifications={[]} session={null} />}
+    header={<DashboardHeader activePage="monitoring" initialNotifications={[]} sessionPending />}
     footer={<ApplicationFooter />}
     onRetry={current.error ? () => window.location.reload() : undefined}
   />;

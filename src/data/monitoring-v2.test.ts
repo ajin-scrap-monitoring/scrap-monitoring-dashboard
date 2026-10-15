@@ -14,13 +14,14 @@ function inputUrl(input: RequestInfo | URL) {
   return new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, "https://dashboard.example");
 }
 
-function contract({ authenticated = true, snapshot = monitoringV2Fixture, completionEvents = [] }: { authenticated?: boolean; snapshot?: ApiMonitoringSnapshotV2; completionEvents?: unknown } = {}) {
+function contract({ authenticated = true, snapshot = monitoringV2Fixture, completionEvents = [], loadHistory }: { authenticated?: boolean; snapshot?: ApiMonitoringSnapshotV2; completionEvents?: unknown; loadHistory?: (url: URL) => unknown } = {}) {
   const urls: URL[] = [];
   const fetchImplementation = vi.fn((input: RequestInfo | URL) => {
     const url = inputUrl(input);
     urls.push(url);
     if (url.pathname === "/api/v1/session") return Promise.resolve(authenticated ? json(sessionFixture) : json({ detail: "Unauthorized" }, 401));
     if (url.pathname === "/api/v2/monitoring/snapshot") return Promise.resolve(json(snapshot));
+    if (url.pathname === "/api/v2/monitoring/load-history" && loadHistory) return Promise.resolve(json(loadHistory(url)));
     if (url.pathname === "/api/v1/notifications") return Promise.resolve(json(notificationPageFixture));
     if (url.pathname === "/api/v1/events") return Promise.resolve(json({ items: completionEvents, page: { page: 1, pageSize: 1, totalPages: 1, totalItems: 1 } }));
     if (url.pathname === "/api/v1/recordings") return Promise.resolve(json({ ...recordingPageFixture, items: [mediaRecordingFixture] }));
@@ -29,6 +30,23 @@ function contract({ authenticated = true, snapshot = monitoringV2Fixture, comple
     throw new Error(`Unexpected path ${url.pathname}`);
   });
   return { urls, fetchImplementation };
+}
+
+function historyWithBaseline(url: URL, snapshot: ApiMonitoringSnapshotV2, valuePercent: number | null = 68.5) {
+  const from = Date.parse(url.searchParams.get("from")!);
+  const to = Date.parse(url.searchParams.get("to")!);
+  const first = Math.floor(from / 60_000) * 60_000;
+  const baseline = to - 3_600_000 - 1000;
+  return { schemaVersion: "2", pitId: snapshot.pitId, source: snapshot.source, from: new Date(from).toISOString(), to: new Date(to).toISOString(),
+    bucketSeconds: 60, selectionPolicy: "LATEST_STATE_PER_BUCKET", samples: Array.from({ length: Math.ceil((to - first) / 60_000) }, (_, index) => {
+      const start = Math.max(from, first + index * 60_000);
+      const end = Math.min(to, first + (index + 1) * 60_000);
+      const present = baseline >= start && baseline < end;
+      const at = present ? new Date(baseline).toISOString() : null;
+      return { bucketStartAt: new Date(start).toISOString(), bucketEndAt: new Date(end).toISOString(), generatedAt: at, observedAt: at,
+        assessmentId: present ? "synthetic-past-load" : null, valuePercent: present ? valuePercent : null,
+        valid: present && valuePercent !== null, dataState: present && valuePercent !== null ? "AVAILABLE" : "NO_DATA", reasonCodes: [] };
+    }) };
 }
 
 class Stream {
@@ -41,6 +59,143 @@ class Stream {
 }
 
 describe("Backend v2 모니터링", () => {
+  test.each([
+    ["HEALTHY", "normal"], ["STARTING", "delayed"], ["DEGRADED", "delayed"],
+    ["RETRYING", "delayed"], ["FATAL", "unavailable"], ["UNKNOWN", "unknown"],
+  ])("카메라 service %s를 측정 판단과 독립적인 장비 상태 %s로 연결한다", (state, status) => {
+    const snapshot = monitoringV2StateFixture("UNAVAILABLE");
+    const result = monitoringV2Data({ ...snapshot, deviceStatus: { ...snapshot.deviceStatus,
+      connection_state: "REPORTING", effective_state: "MEASUREMENT_UNAVAILABLE", snapshot: {
+        sensors: [{ sensor_id: "lidar-a", data_state: "FRESH", last_scan_at: snapshot.serverTime, reason_codes: [] }],
+        services: [{ service: "camera-edge", state, last_progress_at: snapshot.serverTime, reason_codes: [] }],
+      },
+    } }, "pit-01");
+    expect(result.devices.find(device => device.label === "카메라")).toMatchObject({ status, statusLabel: state, latency: "정보 없음" });
+    expect(result.devices[0]).toMatchObject({ status: "normal", statusLabel: "FRESH" });
+    expect(result.summary.loadPercent).toBeNull();
+    expect(result.v2?.services?.[0].state).toBe(state);
+  });
+
+  test("장비 보고가 중단되면 보존된 센서와 카메라 service를 현재 정상 상태로 표시하지 않는다", () => {
+    const snapshot = monitoringV2StateFixture("UNAVAILABLE");
+    const sensors = [{ sensor_id: "lidar-a", data_state: "FRESH", last_scan_at: "2026-10-12T23:49:59Z", reason_codes: [] }];
+    const services = [{ service: "camera-edge", state: "HEALTHY", last_progress_at: "2026-10-12T23:49:59Z", reason_codes: [] }];
+    const result = monitoringV2Data({ ...snapshot, deviceStatus: { ...snapshot.deviceStatus,
+      last_received_at: "2026-10-12T23:50:00Z", snapshot: { sensors, services },
+    } }, "pit-01");
+    expect(result.devices[0]).toMatchObject({ status: "unknown", statusLabel: "UNKNOWN" });
+    expect(result.devices.find(device => device.label === "카메라")).toMatchObject({ status: "unknown", statusLabel: "UNKNOWN" });
+    expect(result.v2?.sensors[0]).toMatchObject({ state: "FRESH", lastScanAt: sensors[0].last_scan_at });
+    expect(result.v2?.services?.[0]).toMatchObject({ state: "HEALTHY", lastProgressAt: services[0].last_progress_at });
+  });
+
+  test.each([undefined, [], [{ service: "other-service", state: "HEALTHY", last_progress_at: null, reason_codes: [] }]])("카메라 service가 없으면 %j에서 정상 상태를 추정하지 않는다", services => {
+    const snapshot = monitoringV2StateFixture("UNAVAILABLE");
+    const result = monitoringV2Data({ ...snapshot, deviceStatus: { ...snapshot.deviceStatus,
+      connection_state: "REPORTING", snapshot: { sensors: [], services },
+    } }, "pit-01");
+    expect(result.devices.find(device => device.label === "카메라")).toMatchObject({ status: "unknown" });
+  });
+
+  test("과거 적재율은 현재 snapshot 및 연결 상태와 독립적이며 source 변경에서 값을 지운다", async () => {
+    const snapshot = monitoringV2StateFixture("FRESH", 72.5);
+    const api = contract({ snapshot, loadHistory: url => historyWithBaseline(url, snapshot) });
+    const stream = new Stream();
+    const source = createHttpDashboardDataSource({ ...api, apiContract: "backend", monitoringVersion: "v2", eventSourceFactory: () => stream as unknown as EventSource });
+    const data = await source.getDashboardData();
+    expect(data.monitoring.summary.loadOneHourAgo?.value).toBe(68.5);
+    const updates: DashboardData[] = [];
+    const unsubscribe = source.subscribe?.(value => updates.push(value));
+    try {
+      stream.emit("monitoring.snapshot", monitoringV2StateFixture("FRESH", 0));
+      expect(updates.at(-1)?.monitoring.summary.loadOneHourAgo?.value).toBe(68.5);
+      stream.emitRaw("error", "");
+      expect(updates.at(-1)?.monitoring.summary.loadOneHourAgo?.value).toBe(68.5);
+      stream.emit("monitoring.snapshot", snapshot);
+      expect(updates.at(-1)?.monitoring.summary.loadOneHourAgo?.value).toBe(68.5);
+      stream.emit("monitoring.snapshot", { ...snapshot, source: { ...snapshot.source, edge_id: "different-edge" } });
+      expect(updates.at(-1)?.monitoring.summary.loadOneHourAgo).toBeNull();
+      await vi.waitFor(() => expect(updates.at(-1)?.monitoring.loadHistoryState?.status).toBe("error"));
+      expect(updates.at(-1)?.monitoring.summary.loadOneHourAgo).toBeNull();
+      expect(api.urls.some(url => url.pathname === "/api/v1/monitoring/snapshot")).toBe(false);
+    } finally { unsubscribe?.(); }
+  });
+
+  test("약 1분 이력 갱신은 과거 적재율의 기준 시각을 진행하며 조회 실패의 캐시로 값을 유지하지 않는다", async () => {
+    vi.useFakeTimers();
+    const snapshot = monitoringV2StateFixture("FRESH", 72.5);
+    let value: number | null = 68.5;
+    let failHistory = false;
+    const api = contract({ snapshot, loadHistory: url => historyWithBaseline(url, snapshot, value) });
+    const fetchImplementation = (input: RequestInfo | URL) => inputUrl(input).pathname === "/api/v2/monitoring/load-history" && failHistory
+      ? Promise.resolve(json({ detail: "Synthetic load failure" }, 503)) : api.fetchImplementation(input);
+    const stream = new Stream();
+    const source = createHttpDashboardDataSource({ fetchImplementation, apiContract: "backend", monitoringVersion: "v2", eventSourceFactory: () => stream as unknown as EventSource });
+    let unsubscribe: (() => void) | undefined;
+    try {
+      expect((await source.getDashboardData()).monitoring.summary.loadOneHourAgo?.value).toBe(68.5);
+      const updates: DashboardData[] = [];
+      unsubscribe = source.subscribe?.(data => updates.push(data));
+      value = 64.5;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(updates.at(-1)?.monitoring.summary.loadOneHourAgo?.value).toBe(64.5);
+      failHistory = true;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(updates.at(-1)?.monitoring.summary.loadOneHourAgo).toBeNull();
+      expect(updates.at(-1)?.monitoring.loadHistory.length).toBeGreaterThan(0);
+      failHistory = false;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(updates.at(-1)?.monitoring.summary.loadOneHourAgo?.value).toBe(64.5);
+    } finally { unsubscribe?.(); vi.useRealTimers(); }
+  });
+
+  test("snapshot의 장비 진단 값을 보존하고 통신 지연으로 사용하지 않는다", () => {
+    const snapshot = monitoringV2StateFixture("FRESH", 0);
+    const result = monitoringV2Data({ ...snapshot, deviceStatus: { ...snapshot.deviceStatus, snapshot: {
+      sensors: [], clock: { state: "SYNCHRONIZED", offset_ms: 17 }, services: [{ service: "test-service", state: "HEALTHY", last_progress_at: "2026-10-13T00:00:00Z", reason_codes: [] }],
+    } } }, "pit-01");
+    expect(result.v2?.clock).toEqual({ state: "SYNCHRONIZED", offsetMs: 17 });
+    expect(result.v2?.services?.[0]).toMatchObject({ name: "test-service", lastProgressAt: "2026-10-13T00:00:00Z" });
+    expect(result.devices.every(device => device.latency === "정보 없음")).toBe(true);
+  });
+
+  test.each([{ clock: { state: "SYNCHRONIZED", offset_ms: Number.NaN } }, { services: [{ service: "test", state: "HEALTHY", last_progress_at: "bad-time", reason_codes: [] }] }])("잘못된 장비 진단 계약을 거부한다 %j", invalid => {
+    const snapshot = monitoringV2StateFixture("FRESH", 0);
+    expect(() => monitoringV2Data({ ...snapshot, deviceStatus: { ...snapshot.deviceStatus, snapshot: { sensors: [], ...invalid } } }, "pit-01")).toThrow();
+  });
+
+  test("브라우저 수신 시각은 측정 및 Backend 수신 시각과 분리하고 연결 오류와 같은 snapshot 재수신을 반영한다", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const now = "2026-10-15T12:00:00.000Z";
+    vi.setSystemTime(new Date(now));
+    const snapshot = { ...monitoringV2StateFixture("UNAVAILABLE"), measuredAt: null };
+    const api = contract({ snapshot });
+    const stream = new Stream();
+    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend", eventSourceFactory: () => stream as unknown as EventSource });
+    let unsubscribe: (() => void) | undefined;
+    try {
+      const initial = await source.getDashboardData();
+      expect(initial.reception).toEqual({ status: "connected", lastReceivedAt: now });
+      expect(initial.monitoring.v2?.measuredAt).toBeNull();
+      const listener = vi.fn<(data: DashboardData) => void>();
+      unsubscribe = source.subscribe?.(listener);
+      stream.emitRaw("error", "");
+      expect(listener.mock.lastCall?.[0].reception).toEqual({ status: "error", lastReceivedAt: now });
+      vi.setSystemTime(new Date("2026-10-15T12:01:00.000Z"));
+      stream.emitRaw("monitoring.snapshot", "invalid JSON");
+      expect(listener.mock.lastCall?.[0].reception).toEqual({ status: "error", lastReceivedAt: now });
+      stream.emit("monitoring.snapshot", snapshot);
+      const receivedAt = "2026-10-15T12:01:00.000Z";
+      expect(listener.mock.lastCall?.[0].reception).toEqual({ status: "connected", lastReceivedAt: receivedAt });
+      expect(listener.mock.lastCall?.[0].monitoring.status).toBe("unavailable");
+      vi.setSystemTime(new Date("2026-10-15T12:02:00.000Z"));
+      await source.queryRecordings?.({ from: "2026-10-01T00:00:00Z", to: "2026-10-15T00:00:00Z" });
+      expect(listener.mock.lastCall?.[0].reception).toEqual({ status: "connected", lastReceivedAt: receivedAt });
+    } finally {
+      unsubscribe?.();
+      vi.useRealTimers();
+    }
+  });
   test("NO_DATA의 null 관측 시각을 정보 없음으로 표시한다", async () => {
     const api = contract({ snapshot: monitoringV2StateFixture("NO_DATA") });
     const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });

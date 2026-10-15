@@ -1,6 +1,5 @@
 import type {
   AlertSettings,
-  AlertEvidencePage,
   DashboardData,
   EventCategory,
   NotificationRecipient,
@@ -16,6 +15,7 @@ export type DashboardDataRequestOptions = {
 export type DashboardDataUpdateListener = (data: DashboardData) => void;
 
 export type DateRangeQuery = {
+  recordingSource?: "daily" | "event";
   eventCategory?: EventCategory;
   from: string;
   to: string;
@@ -39,15 +39,14 @@ export type NotificationRecipientResult = {
 
 export interface DashboardDataSource {
   monitoringVersion?: "v1" | "v2";
+  supportsDailyRecordings?: boolean;
   createNotificationRecipient?(input: NotificationRecipientInput): Promise<NotificationRecipientResult>;
   createSession?(credentials: SessionCredentials): Promise<UserSession>;
   deleteSession?(): Promise<void>;
   getDashboardData(options?: DashboardDataRequestOptions): Promise<DashboardData>;
-  getRecording?(recordingId: string, signal?: AbortSignal): Promise<DashboardData["recordings"][number] | null>;
+  getRecording?(recordingId: string, signal?: AbortSignal, source?: "daily" | "event"): Promise<DashboardData["recordings"][number] | null>;
+  prepareDailyRecordingExport?(recordingId: string, signal?: AbortSignal): Promise<DashboardData["recordings"][number]>;
   getRecordingCoverage?(recordingId: string, signal?: AbortSignal): Promise<RecordingCoverageDetail>;
-  getAlertEvidencePage?(offset: number, signal?: AbortSignal): Promise<AlertEvidencePage>;
-  getPitName?(signal?: AbortSignal): Promise<string>;
-  refreshNotifications?(signal?: AbortSignal): Promise<void>;
   markAllNotificationsRead?(): Promise<void>;
   markNotificationRead?(notificationId: string): Promise<void>;
   queryHistory?(query: DateRangeQuery, signal?: AbortSignal): Promise<DashboardData["history"]>;

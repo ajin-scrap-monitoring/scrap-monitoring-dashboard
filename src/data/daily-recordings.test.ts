@@ -23,7 +23,7 @@ const fixture = {
   ],
   playback_state: "ready",
   playback_protocol: "hls",
-  playback_path: `/api/v2/daily-recordings/${id}/hls/index.m3u8`,
+  playback_path: `/media/daily-recordings/${id}/hls/index.m3u8`,
   export_allowed: false,
   export_state: "not_requested",
   download_path: null,
@@ -39,7 +39,7 @@ function closed(overrides: Record<string, unknown> = {}) {
   return recording({ status: "closed", coverage: "partial", export_allowed: true, expires_at: "2026-11-13T15:00:00.000Z", ...overrides });
 }
 
-describe("날짜 녹화의 내부 계약 모델", () => {
+describe("날짜 녹화의 Backend 공개 계약 모델", () => {
   test("한국 날짜와 null 메타데이터 및 독립 상태를 보존한다", () => {
     expect(recording()).toMatchObject({ source: "daily", recordingDate: "2026-10-14", timezone: "Asia/Seoul", status: "recording", coverage: null, playbackState: "ready", exportState: "not_requested", sizeBytes: null, expiresAt: null });
     expect(recording()).not.toHaveProperty("category");
@@ -64,6 +64,9 @@ describe("날짜 녹화의 내부 계약 모델", () => {
     { playback_state: "playing" }, { export_state: "done" }, { playback_protocol: "mp4" },
     { playback_path: "https://media.example/internal/index.m3u8" },
     { playback_path: "//media.example/index.m3u8" }, { download_path: "/api/v2/daily-recordings/other/content" },
+    { playback_path: `/api/v2/daily-recordings/${id}/hls/index.m3u8` },
+    { download_path: `/media/daily-recordings/${id}/content` },
+    { recording_id: "not-a-uuid" }, { recording_id: "550e8400-e29b-41d4-a716-446655440000/../other" },
     { playable_until_at: "2026-10-13T15:01:00" }, { gaps: null }, { available_intervals: undefined },
   ])("다른 계약과 타입 및 내부 경로를 거부한다: %j", (overrides) => {
     expect(() => recording(overrides)).toThrow("Unexpected daily recording contract.");
@@ -74,6 +77,28 @@ describe("날짜 녹화의 내부 계약 모델", () => {
     expect(empty.recordedSeconds).toBe(0);
     expect(dailyRecordingAvailability(empty, afterClosure).playbackReady).toBe(false);
     expect(dailyPlaybackTimestamp(empty, 0)).toBeNull();
+  });
+
+  test("다양한 precision과 명시적인 UTC offset을 같은 시각으로 검증한다", () => {
+    const item = recording({ window_start_at: "2026-10-14T00:00:00+09:00", window_end_at: "2026-10-15T00:00:00.000000+09:00",
+      coverage_as_of_at: "2026-10-14T00:01:00.123456+09:00", playable_until_at: "2026-10-13T15:01:00Z" });
+    expect(item.windowStartsAt).toBe("2026-10-14T00:00:00+09:00");
+    expect(dailyPlaybackPosition(item, "2026-10-14T00:00:35.000000+09:00")).toBe(25);
+    expect(() => recording({ window_start_at: "2026-02-30T00:00:00Z" })).toThrow();
+  });
+
+  test("protocol 미제공은 유지하고 재생 가능으로 표시하지 않는다", () => {
+    const item = recording({ playback_protocol: null, playback_path: null });
+    expect(item.playbackProtocol).toBeNull();
+    expect(dailyRecordingAvailability(item, afterClosure).playbackReady).toBe(false);
+  });
+
+  test("상태와 일치하지 않는 공개 경로 및 서버 오류 원문은 공개하지 않는다", () => {
+    expect(() => recording({ playback_state: "pending" })).toThrow();
+    expect(() => recording({ export_state: "processing", download_path: `/media/daily-recordings/${id}/content?download=true` })).toThrow();
+    expect(recording({ error: { code: "EXPORT_FAILED", message: "/private/path traceback secret" } }).error)
+      .toEqual({ code: "EXPORT_FAILED", message: "녹화 처리에 실패했습니다." });
+    expect(() => recording({ error: { code: "/private/path", message: "failure" } })).toThrow();
   });
 
   test("뒤바뀐 구간과 재생 축 중복 및 알려진 누락과 겹치는 확보 구간을 거부한다", () => {
@@ -136,6 +161,30 @@ describe("누락이 압축된 날짜 녹화의 재생 시각", () => {
     expect(dailyPlaybackPosition(item, "2026-10-13T15:00:40.000Z")).toBe(15);
   });
 
+  test("wall-clock 길이가 0인 기존 metadata도 nonzero 재생 구간을 보존한다", () => {
+    const item = recording({ has_gaps: false, gaps: [], recorded_seconds: 2,
+      playable_until_at: "2026-10-13T15:00:00Z",
+      available_intervals: [{ start_at: "2026-10-13T15:00:00Z", end_at: "2026-10-13T15:00:00.000Z", playback_start_seconds: 0, playback_end_seconds: 2 }] });
+    expect(item.availableIntervals[0].playbackEndsAtSeconds).toBe(2);
+    expect(dailyPlaybackTimestamp(item, 1)).toBe("2026-10-13T15:00:00.000Z");
+    expect(dailyPlaybackPosition(item, "2026-10-13T15:00:00Z")).toBe(0);
+  });
+
+  test("하루 누락 구간 안의 wall-clock 관측점도 확보된 재생 구간을 보존한다", () => {
+    const point = "2026-10-13T15:10:00.000Z";
+    const item = recording({ status: "closed", coverage: "partial", recorded_seconds: 2,
+      coverage_as_of_at: fixture.window_end_at, playable_until_at: point,
+      gaps: [{ start_at: fixture.window_start_at, end_at: fixture.window_end_at, reason_code: "UNKNOWN_CAPTURE_LOSS" }],
+      available_intervals: [{ start_at: point, end_at: point, playback_start_seconds: 0, playback_end_seconds: 2 }] });
+    expect(item.hasGaps).toBe(true);
+    expect(item.availableIntervals).toHaveLength(1);
+    expect(dailyRecordingAvailability(item, afterClosure).playbackReady).toBe(true);
+    expect(dailyPlaybackPosition(item, point)).toBe(0);
+    expect(dailyPlaybackTimestamp(item, 1)).toBe(point);
+    expect(dailyTimeState(item, "2026-10-13T15:09:59.000Z", afterClosure)).toBe("gap");
+    expect(dailyTimeState(item, "2026-10-13T15:10:01.000Z", afterClosure)).toBe("gap");
+  });
+
   test.each([-1, 50.001, Number.NaN, Number.POSITIVE_INFINITY])("재생 범위 밖 %s를 임의로 자르지 않는다", (seconds) => {
     expect(dailyPlaybackTimestamp(recording(), seconds)).toBeNull();
   });
@@ -154,7 +203,7 @@ describe("날짜 마감과 export 및 보관 만료의 분리", () => {
   });
 
   test("준비된 MP4의 캐시 만료는 원본 만료와 다르며 다시 준비할 수 있다", () => {
-    const ready = closed({ export_state: "ready", download_path: `/api/v2/daily-recordings/${id}/content`, size_bytes: 1024, export_expires_at: "2026-10-15T16:00:00.000Z" });
+    const ready = closed({ export_state: "ready", download_path: `/media/daily-recordings/${id}/content?download=true`, size_bytes: 1024, export_expires_at: "2026-10-15T16:00:00.000Z" });
     expect(dailyRecordingAvailability(ready, afterClosure)).toMatchObject({ downloadReady: true, canPrepareExport: false });
     expect(dailyRecordingAvailability(ready, Date.parse("2026-10-15T16:00:00.000Z"))).toMatchObject({ originalUnavailable: false, exportCacheExpired: true, playbackReady: true, downloadReady: false, canPrepareExport: true });
     expect(dailyRecordingAvailability(ready, Date.parse("2026-11-13T15:00:00.000Z"))).toMatchObject({ originalUnavailable: true, playbackReady: false, downloadReady: false, canPrepareExport: false });

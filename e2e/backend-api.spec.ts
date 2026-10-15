@@ -5,6 +5,67 @@ import { notificationPageFixture } from "../src/test/api-contract-fixtures.js";
 
 import { installBackendApi, type MediaMode } from "./backend-api.js";
 
+test("이력에서 녹화로 이동할 때 사용자 영역과 수신 상태를 숨기고 조회 완료 후 표시한다", async ({ page }) => {
+  await installBackendApi(page);
+  await page.addInitScript(() => {
+    new MutationObserver(() => {
+      if (document.querySelector("header .header-login-link")) document.documentElement.dataset.loginLinkSeen = "true";
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await page.goto("/history?source=api");
+  await expect(page.getByRole("button", { name: "사용자 메뉴", exact: true })).toBeVisible();
+  let releaseConfig = () => {};
+  let releaseSession = () => {};
+  const configGate = new Promise<void>((resolve) => { releaseConfig = resolve; });
+  const sessionGate = new Promise<void>((resolve) => { releaseSession = resolve; });
+  await page.route("**/runtime-config.json", async (route) => { await configGate; await route.fallback(); });
+  await page.route("**/api/v1/session", async (route) => { await sessionGate; await route.fallback(); });
+  try {
+    await page.getByRole("link", { name: "녹화 영상", exact: true }).click();
+    await expect(page.getByRole("main", { name: "대시보드 설정을 불러오는 중입니다.", exact: true })).toBeVisible();
+    await expect(page.locator("header .user-tools")).toBeEmpty();
+    await expect(page.getByLabel("데이터 수신 상태")).toHaveCount(0);
+    releaseConfig();
+    await expect(page.getByRole("main", { name: "데이터를 불러오는 중입니다.", exact: true })).toBeVisible();
+    await expect(page.locator("header .user-tools")).toBeEmpty();
+    await expect(page.getByLabel("데이터 수신 상태")).toHaveCount(0);
+    await expect(page.getByText("수신 대기", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("마지막 수신 없음", { exact: true })).toHaveCount(0);
+    releaseSession();
+    await expect(page.getByRole("heading", { name: "녹화 영상", level: 1, exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "사용자 메뉴", exact: true })).toBeVisible();
+    await expect(page.getByLabel("데이터 수신 상태")).toContainText("연결 정상");
+    await expect(page.locator("header .header-login-link")).toHaveCount(0);
+    expect(await page.locator("html").getAttribute("data-login-link-seen")).toBeNull();
+  } finally {
+    releaseConfig();
+    releaseSession();
+  }
+});
+
+test("공통 상단은 판단 상태와 별도로 수신 시각, 연결 오류와 동일 snapshot 복구를 표시한다", async ({ page }) => {
+  const initial = { ...monitoringV2StateFixture("UNAVAILABLE"), measuredAt: null };
+  const api = await installBackendApi(page, { initial });
+  for (const path of ["/", "/history", "/recordings"]) {
+    const first = "2026-10-15T12:34:56.000Z";
+    const recovered = "2026-10-15T12:35:56.000Z";
+    await page.clock.setFixedTime(new Date(first));
+    await page.goto(`${path}?source=api`);
+    const meta = page.getByLabel("데이터 수신 상태");
+    await expect(meta).toContainText("연결 정상");
+    await expect(meta.locator("time")).toHaveAttribute("datetime", first);
+    await expect(meta.locator("time")).toHaveText(/^\d{2}:\d{2}:\d{2}$/);
+    await expect(meta).not.toContainText("판단 불가");
+    await page.evaluate(() => window.backendFixture.emit("error", ""));
+    await expect(meta).toContainText("연결 문제");
+    await expect(meta.locator("time")).toHaveAttribute("datetime", first);
+    await page.clock.setFixedTime(new Date(recovered));
+    await api.snapshot(initial);
+    await expect(meta).toContainText("연결 정상");
+    await expect(meta.locator("time")).toHaveAttribute("datetime", recovered);
+  }
+});
+
 test("실제 API와 synthetic 화면은 같은 카드 순서, 위치와 크기를 유지한다", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator(".monitoring-grid > .card")).toHaveCount(8);
@@ -27,7 +88,7 @@ test("적재율 경보는 Backend의 평가 결과를 표시하고 연결 중단
   const api = await installBackendApi(page, { initial: monitoringV2StateFixture("FRESH", 72.5) });
   await page.goto("/?source=api");
   const alarm = page.locator(".alarm-status");
-  await expect(alarm).toHaveText("경보 평가 미제공");
+  await expect(alarm).toHaveText("미지원");
   for (const [effectiveState, text, tone, percent] of [
     ["NORMAL", "경고 기준 미만", "ok", 72.5],
     ["WARNING", "경고", "warning", 82.5],
@@ -54,7 +115,7 @@ test("적재율 경보는 Backend의 평가 결과를 표시하고 연결 중단
   await api.snapshot(critical);
   await expect(alarm).toHaveText("위험");
   await api.snapshot({ ...monitoringV2StateFixture("FRESH", 72.5), operations: null });
-  await expect(alarm).toHaveText("경보 평가 미제공");
+  await expect(alarm).toHaveText("미지원");
   expect(await alarm.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
 });
 
@@ -74,9 +135,8 @@ test("제공된 경보 평가와 실제 완료 시각을 변환하고 새 경보
   await page.getByRole("button", { name: "알림 2건", exact: true }).click();
   await expect(page.getByLabel("최근 알림").getByText("수거 필요", { exact: true })).toBeVisible();
   await page.getByRole("heading", { name: "스크랩 모니터링", exact: true }).click();
-  await page.getByRole("button", { name: "상태 상세" }).click();
-  const details = page.getByRole("dialog", { name: "모니터링 상태 상세" });
-  await expect(details.locator("dl > div").filter({ hasText: "현재 경보 상태" })).toContainText("CRITICAL");
+  await expect(page.locator(".alarm-status")).toHaveText("위험");
+  await expect(page.getByRole("button", { name: "상태 상세", exact: true })).toHaveCount(0);
   await expect(page.locator(".kpi-card")).not.toContainText("수거 중");
   await expect(page.locator(".alerts-card")).not.toContainText("0건");
   expect(api.requests.some((url) => url.pathname === "/api/v1/monitoring/snapshot")).toBe(false);
@@ -134,6 +194,7 @@ test("모두 읽음 이후의 목록 재조회 실패는 성공한 읽음을 되
   await expect(page.getByRole("button", { name: "알림 0건", exact: true })).toBeVisible();
   await expect(page.locator(".header-notification").first()).toHaveClass(/(?:^|\s)read(?:\s|$)/);
   await expect(page.getByRole("alert")).toContainText("알림");
+  await expect(page.getByRole("button", { name: "알림 다시 조회", exact: true })).toHaveCount(0);
   await api.snapshot(initial);
   await expect.poll(() => notificationRequests).toBe(3);
   await expect(page.getByRole("button", { name: "알림 0건", exact: true })).toBeVisible();
@@ -210,6 +271,7 @@ for (const mode of ["silent", "unavailable", "invalid"] satisfies MediaMode[]) {
     }
     await expect(page.getByText("영상 연결 불가", { exact: true })).toBeVisible();
     await expect(page.getByText("LIVE", { exact: true })).toHaveCount(0);
+    await expect(page.locator(".live-time")).toHaveCount(0);
     await page.getByRole("button", { name: "영상 다시 연결" }).click();
     await expect.poll(() => page.evaluate(() => window.backendFixture.metrics().attempts)).toBe(5);
   });
@@ -237,8 +299,8 @@ test("v2 긴 계약 정보와 녹화 metadata는 모든 대상 너비에서 잘�
     await page.goto(path);
     await expect(page.getByRole("main")).toBeVisible();
     if (path.startsWith("/?")) {
-      await page.getByRole("button", { name: "상태 상세" }).click();
-      await expect(page.getByRole("dialog", { name: "모니터링 상태 상세" }).getByText(initial.reasonCodes[0], { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "상태 상세", exact: true })).toHaveCount(0);
+      await expect(page.getByText(initial.reasonCodes[0], { exact: true })).toHaveCount(0);
     }
     const overflow = await page.evaluate(() => ({
       page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
