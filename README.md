@@ -112,6 +112,9 @@ sudo ./scripts/quick-start.sh clean
 sudo docker compose up --build development
 ```
 
+기존 서비스가 실행 중인 서버에서의 source 동기화, API 연결과 SSH 접속은
+[원격 개발 컨테이너](docs/implementation.md#원격-개발-컨테이너)를 따른다.
+
 ### 전체 검증
 
 전체 검증은 개발 서버를 중지한 뒤 또는 다른 터미널에서 실행한다.

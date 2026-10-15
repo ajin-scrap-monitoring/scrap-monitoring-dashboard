@@ -2,6 +2,9 @@ import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 
 const instance = process.env.UPSTREAM_INSTANCE ?? 'first'
+let mediaRequests = 0
+let authRequests = 0
+let lastAuthRequest = null
 
 function encodeTextFrame(text) {
   const payload = Buffer.from(text)
@@ -31,6 +34,8 @@ function decodeClientTextFrame(buffer) {
 }
 
 const server = createServer((request, response) => {
+  const pathname = new URL(request.url, 'http://proxy-fixture').pathname
+
   if (request.url === '/readyz') {
     response.writeHead(200, { 'content-type': 'text/plain' })
     response.end('ready\n')
@@ -55,6 +60,38 @@ const server = createServer((request, response) => {
       connection: request.headers.connection ?? '',
       requestId: request.headers['x-request-id'] ?? '',
     }))
+    return
+  }
+
+  if (pathname === '/api/v1/media/access') {
+    authRequests += 1
+    lastAuthRequest = { url: request.url, headers: request.headers }
+    const cookie = request.headers.cookie
+    const status = cookie === 'scrap_session=proxy-viewer' ? 204
+      : cookie === 'scrap_session=forbidden' ? 403
+        : cookie === 'scrap_session=unavailable' ? 503 : 401
+    response.writeHead(status)
+    response.end()
+    return
+  }
+
+  if (pathname === '/api/v1/proxy-test/echo') {
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ url: request.url, method: request.method, headers: request.headers }))
+    return
+  }
+
+  if (pathname === '/api/v1/proxy-test/metrics') {
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ mediaRequests, authRequests, lastAuthRequest }))
+    return
+  }
+
+  if (pathname === '/api/v1/cameras/camera-main/live'
+    || pathname === '/api/v1/clips/550e8400-e29b-41d4-a716-446655440000/content') {
+    mediaRequests += 1
+    response.writeHead(200, { 'content-type': 'application/json', 'set-cookie': 'media_cookie=must-not-reach-browser' })
+    response.end(JSON.stringify({ url: request.url, method: request.method, headers: request.headers }))
     return
   }
 

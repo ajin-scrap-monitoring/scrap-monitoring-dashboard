@@ -1,0 +1,46 @@
+services:
+  development:
+    environment:
+      DASHBOARD_DEV_PROXY_TARGET: http://development-gateway:8080
+      VITE_DEV_DATA_SOURCE: api
+      VITE_MONITORING_API_VERSION: v2
+      VITE_LIVE_VIDEO_MODE: mjpeg
+      VITE_PIT_ID: "${VITE_PIT_ID:?Set VITE_PIT_ID in .env.remote}"
+      VITE_CAMERA_ID: "${VITE_CAMERA_ID:?Set VITE_CAMERA_ID in .env.remote}"
+    depends_on:
+      development-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:5173/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+      retries: 24
+    mem_limit: 1536m
+    cpus: 2.0
+
+  development-gateway:
+    image: nginxinc/nginx-unprivileged:1.30.4-alpine3.24-slim@sha256:3a4485bf084957d56674ee22db07d77d5a281418815c5852827419d6d629d440
+    environment:
+      DASHBOARD_BACKEND_UPSTREAM: "${DASHBOARD_BACKEND_UPSTREAM:?Set the Backend host and port in .env.remote}"
+      DASHBOARD_MEDIA_UPSTREAM: "${DASHBOARD_MEDIA_UPSTREAM:?Set the Media Service host and port in .env.remote}"
+      NGINX_ENVSUBST_FILTER: "^DASHBOARD_(BACKEND|MEDIA)_UPSTREAM$$"
+    volumes:
+      - ./development/nginx-proxy.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./nginx/includes:/etc/nginx/includes:ro
+      - ./nginx/security-headers.conf:/etc/nginx/security-headers.conf:ro
+    networks:
+      - default
+      - existing-services
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/healthz]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    mem_limit: 128m
+    cpus: 0.5
+
+networks:
+  existing-services:
+    external: true
+    name: "${DASHBOARD_DEV_NETWORK:?Set the existing service network in .env.remote}"
