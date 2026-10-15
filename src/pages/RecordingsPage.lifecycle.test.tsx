@@ -238,6 +238,7 @@ test("MP4 확대는 기본 video를 pause하고 재생 위치 및 촬영 시각�
   fireEvent.loadedMetadata(expanded);
   expect(expanded.currentTime).toBe(10);
   expanded.currentTime = 20;
+  Object.defineProperty(expanded, "readyState", { value: HTMLMediaElement.HAVE_CURRENT_DATA });
   fireEvent.timeUpdate(expanded);
   const expandedTime = view.container.querySelector(".video-modal .recorded-time")?.textContent;
   base.currentTime = 11;
@@ -247,4 +248,20 @@ test("MP4 확대는 기본 video를 pause하고 재생 위치 및 촬영 시각�
   expect(pause.mock.instances).toContain(expanded);
   expect(base.currentTime).toBe(20);
   expect(view.container.querySelector(".recording-frame .recorded-time")).toHaveTextContent(expandedTime ?? "");
+});
+
+test.each([[0, false], [1, false], [2, true]])("확대 player가 readyState=%s, seeking=%s이면 닫을 때 원래 위치를 유지한다", async (readyState, seeking) => {
+  const { data, ready } = await fixture();
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  const source = { getDashboardData: () => Promise.resolve(data), getRecording: () => Promise.resolve(ready) };
+  const view = render(<RecordingsPage dataSource={source} recordings={[ready]} headerNotifications={[]} reception={data.reception} />);
+  await act(async () => { await Promise.resolve(); });
+  const base = view.container.querySelector("video")!;
+  base.currentTime = 31;
+  fireEvent.timeUpdate(base);
+  fireEvent.click(screen.getByRole("button", { name: "녹화 영상 크게 보기" }));
+  const expanded = view.container.querySelector<HTMLVideoElement>(".video-modal video")!;
+  Object.defineProperties(expanded, { readyState: { value: readyState }, seeking: { value: seeking } });
+  fireEvent.click(screen.getByRole("button", { name: "녹화 영상 닫기" }));
+  expect(base.currentTime).toBe(31);
 });

@@ -14,9 +14,7 @@ export function DailyRecordingVideo({ videoRef, path, label, poster, initialTime
   onTimeUpdate: (seconds: number) => void;
 }) {
   const reportError = useEffectEvent(onError);
-  const applyInitialTime = useEffectEvent((video: HTMLVideoElement) => {
-    if (Number.isFinite(initialTime) && initialTime >= 0) video.currentTime = initialTime;
-  });
+  const initialPosition = useEffectEvent(() => Number.isFinite(initialTime) && initialTime >= 0 ? initialTime : 0);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -28,7 +26,7 @@ export function DailyRecordingVideo({ videoRef, path, label, poster, initialTime
     const initializePosition = () => {
       if (!active || failed || initialTimeApplied) return;
       initialTimeApplied = true;
-      applyInitialTime(video);
+      video.currentTime = initialPosition();
     };
     const release = () => {
       player?.destroy();
@@ -44,14 +42,16 @@ export function DailyRecordingVideo({ videoRef, path, label, poster, initialTime
       reportError();
     };
     video.addEventListener("error", fail);
-    video.addEventListener("loadedmetadata", initializePosition);
     if (!validDailyPlaylistPath(path)) {
       fail();
     } else {
       void loadDailyHls().then(({ default: HlsPlayer, FetchLoader }) => {
         if (!active || failed) return;
         if (!HlsPlayer.isSupported()) {
-          if (video.canPlayType("application/vnd.apple.mpegurl")) video.src = path;
+          if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            video.addEventListener("loadedmetadata", initializePosition);
+            video.src = path;
+          }
           else fail();
           return;
         }
@@ -59,6 +59,7 @@ export function DailyRecordingVideo({ videoRef, path, label, poster, initialTime
         const policy = { default: { maxTimeToFirstByteMs: 10_000, maxLoadTimeMs: 20_000, timeoutRetry: retry, errorRetry: retry } };
         player = new HlsPlayer({
           enableWorker: false,
+          startPosition: initialPosition(),
           loader: FetchLoader,
           fetchSetup: (context, init) => dailyHlsRequest(path, context.url, init as RequestInit, window.location.origin),
           manifestLoadPolicy: policy,

@@ -53,6 +53,32 @@ test("날짜 녹화는 공개 HLS 경로의 MSE 재생과 확보 구간 및 누�
   expect(errors).toEqual([]);
 });
 
+test("녹화 중인 긴 EVENT playlist는 최신 구간이 아니라 첫 segment에서 재생한다", async ({ page }) => {
+  const api = await installBackendApi(page, { initial });
+  const recording: DailyRecordingResponse = { ...syntheticDailyRecording, recording_date: "2026-10-13", status: "recording", export_allowed: false,
+    window_start_at: "2026-10-12T15:00:00Z", window_end_at: "2026-10-13T15:00:00Z",
+    coverage_as_of_at: "2026-10-12T15:00:40Z", playable_until_at: "2026-10-12T15:00:40Z",
+    recorded_seconds: 40, gaps: [], has_gaps: false,
+    available_intervals: [{ start_at: "2026-10-12T15:00:00Z", end_at: "2026-10-12T15:00:40Z", playback_start_seconds: 0, playback_end_seconds: 40 }],
+  };
+  api.daily.setRecordings([recording]);
+  const prefix = `/media/daily-recordings/${recording.recording_id}/media`;
+  const segments = Array.from({ length: 40 }, (_, index) => `#EXTINF:1.000,\n${prefix}/segment-${index}.ts`);
+  await page.route("**/media/daily-recordings/*/hls/index.m3u8", route => route.fulfill({
+    contentType: "application/vnd.apple.mpegurl",
+    body: `#EXTM3U\n#EXT-X-VERSION:6\n#EXT-X-TARGETDURATION:1\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-INDEPENDENT-SEGMENTS\n#EXT-X-PLAYLIST-TYPE:EVENT\n${segments.join("\n#EXT-X-DISCONTINUITY\n")}\n`,
+  }));
+  await page.goto("/recordings?source=api");
+  const video = page.locator(".recording-frame video");
+  await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).videoWidth)).toBe(320);
+  const requested = api.daily.mediaRequests.filter(request => request.url().endsWith(".ts"));
+  expect(new URL(requested[0].url()).pathname).toBe(`${prefix}/segment-0.ts`);
+  await video.evaluate(element => { const player = element as HTMLVideoElement; player.muted = true; return player.play(); });
+  await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).currentTime)).toBeGreaterThan(0.1);
+  await video.evaluate(element => (element as HTMLVideoElement).pause());
+  expect(await video.evaluate(element => (element as HTMLVideoElement).currentTime)).toBeLessThan(5);
+});
+
 test("날짜 범위를 한국 날짜의 종료일 포함 조건으로 전송하고 이벤트 목록과 분리한다", async ({ page }) => {
   const api = await installBackendApi(page, { initial });
   api.setRecordings([{ ...mediaRecordingFixture, startedAt: "2026-10-12T01:00:00+09:00", endedAt: "2026-10-12T01:01:00+09:00" }]);
