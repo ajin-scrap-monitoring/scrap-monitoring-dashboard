@@ -89,18 +89,20 @@ test("적재율 경보는 Backend의 평가 결과를 표시하고 연결 중단
   await page.goto("/?source=api");
   const alarm = page.locator(".alarm-status");
   await expect(alarm).toHaveText("미지원");
-  for (const [effectiveState, text, tone, percent] of [
-    ["NORMAL", "경고 기준 미만", "ok", 72.5],
-    ["WARNING", "경고", "warning", 82.5],
-    ["CRITICAL", "위험", "error", 82.5],
-    ["UNKNOWN", "확인 불가", "muted", 82.5],
-    ["ERROR", "판정 불가", "error", 82.5],
+  const valueColor = await page.locator(".mini-stat strong").first().evaluate(element => getComputedStyle(element).color);
+  await expect(alarm).toHaveCSS("color", valueColor);
+  for (const [effectiveState, text, percent] of [
+    ["NORMAL", "경고 기준 미만", 72.5],
+    ["WARNING", "경고", 82.5],
+    ["CRITICAL", "위험", 82.5],
+    ["UNKNOWN", "확인 불가", 82.5],
+    ["ERROR", "판정 불가", 82.5],
   ] as const) {
     await api.snapshot({ ...monitoringV2StateFixture(effectiveState === "ERROR" ? "UNAVAILABLE" : effectiveState === "UNKNOWN" ? "UNKNOWN" : "FRESH", percent), operations: {
       effectiveState, lastKnownState: "CRITICAL", lastEvaluatedAt: null, lastAlertAt: null, notificationId: null,
     } });
     await expect(alarm).toHaveText(text);
-    await expect(alarm).toHaveClass(new RegExp(`\\b${tone}\\b`));
+    await expect(alarm).toHaveCSS("color", valueColor);
     expect(await alarm.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
     await expect(page.locator(".kpi-card")).not.toContainText("운영 상태");
     await expect(page.locator(".kpi-card")).not.toContainText("수거 중");
@@ -116,6 +118,7 @@ test("적재율 경보는 Backend의 평가 결과를 표시하고 연결 중단
   await expect(alarm).toHaveText("위험");
   await api.snapshot({ ...monitoringV2StateFixture("FRESH", 72.5), operations: null });
   await expect(alarm).toHaveText("미지원");
+  await expect(alarm).toHaveCSS("color", valueColor);
   expect(await alarm.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
 });
 

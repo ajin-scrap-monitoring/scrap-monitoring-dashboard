@@ -187,12 +187,12 @@ test("경보 상태는 실제 작업 상태와 분리하고 과거 CRITICAL을 �
 });
 
 test.each([
-  ["NORMAL", "경고 기준 미만", "ok"],
-  ["WARNING", "경고", "warning"],
-  ["CRITICAL", "위험", "error"],
-  ["UNKNOWN", "확인 불가", "muted"],
-  ["ERROR", "판정 불가", "error"],
-] as const)("Backend 경보 %s는 %s로 표시하고 작업 상태를 만들지 않는다", async (effectiveState, label, tone) => {
+  ["NORMAL", "경고 기준 미만"],
+  ["WARNING", "경고"],
+  ["CRITICAL", "위험"],
+  ["UNKNOWN", "확인 불가"],
+  ["ERROR", "판정 불가"],
+] as const)("Backend 경보 %s는 %s로 표시하고 작업 상태를 만들지 않는다", async (effectiveState, label) => {
   const dataSource = createMockDashboardDataSource();
   const data = await dataSource.getDashboardData();
   data.monitoring = monitoringV2Data({ ...monitoringV2StateFixture(effectiveState === "ERROR" ? "UNAVAILABLE" : "FRESH", effectiveState === "NORMAL" ? 72.5 : 82.5), operations: {
@@ -201,7 +201,7 @@ test.each([
   const view = render(<MonitoringPage data={data} dataSource={dataSource} />);
   const alarm = view.container.querySelector(".alarm-status");
   expect(alarm).toHaveTextContent(label);
-  expect(alarm).toHaveClass(tone);
+  expect(alarm).toHaveAttribute("class", "alarm-status");
   expect(screen.queryByText("운영 상태", { exact: true })).not.toBeInTheDocument();
   for (const operation of ["대기", "적재 중", "수거 중"]) expect(screen.queryByText(operation, { exact: true })).not.toBeInTheDocument();
   const disconnected = structuredClone(data);

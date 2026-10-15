@@ -156,7 +156,6 @@ button { cursor: pointer; }
 .label { color: #41526d; font-size: 15px; font-weight: 600; }
 .mini-stat > .label { color: #61708a; font-size: 12px; font-weight: 500; line-height: 16px; }
 .mini-stat strong { display: block; margin: 0; font-size: 18px; font-weight: 750; line-height: 24px; letter-spacing: -0.02em; overflow-wrap: anywhere; }
-.mini-stat .status-text.muted { color: #61708a; }
 .remaining-time, .pre-alert-summary { display: block; margin: 0; color: #61708a; font-size: 11px; font-weight: 400; line-height: 14px; }
 .status-details { margin-top: 10px; }
 

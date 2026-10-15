@@ -24,7 +24,8 @@ for (const source of ["mock", "api"]) {
       const value = element.querySelector<HTMLElement>("strong")!;
       return { x, y, width, height, overflowX: element.scrollWidth - element.clientWidth, overflowY: element.scrollHeight - element.clientHeight,
         titleSize: parseFloat(getComputedStyle(title).fontSize), valueSize: parseFloat(getComputedStyle(value).fontSize),
-        titleWeight: Number(getComputedStyle(title).fontWeight), valueWeight: Number(getComputedStyle(value).fontWeight) };
+        titleWeight: Number(getComputedStyle(title).fontWeight), valueWeight: Number(getComputedStyle(value).fontWeight),
+        valueColor: getComputedStyle(value).color };
     }));
     for (const box of boxes) {
       expect(Math.abs(box.width - boxes[0].width)).toBeLessThanOrEqual(0.1);
@@ -33,6 +34,7 @@ for (const source of ["mock", "api"]) {
       expect(box.overflowY).toBeLessThanOrEqual(1);
       expect(box.valueSize).toBeGreaterThan(box.titleSize);
       expect(box.valueWeight).toBeGreaterThan(box.titleWeight);
+      expect(box.valueColor).toBe(boxes[0].valueColor);
       expect(box.y + box.height).toBeLessThanOrEqual(bounds!.y + bounds!.height - 8);
     }
     expect(boxes.slice(0, 3).every(box => box.y === boxes[0].y)).toBe(true);

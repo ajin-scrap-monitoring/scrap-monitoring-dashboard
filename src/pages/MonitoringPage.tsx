@@ -14,7 +14,7 @@ import { useModalFocus } from "../use-modal-focus";
 
 const alertsPerPage = 4;
 const missingValue = "정보 없음";
-const alarmPresentation: Record<AlarmState, [string, string]> = { NORMAL: ["경고 기준 미만", "ok"], WARNING: ["경고", "warning"], CRITICAL: ["위험", "error"], UNKNOWN: ["확인 불가", "muted"], ERROR: ["판정 불가", "error"] };
+const alarmPresentation: Record<AlarmState, string> = { NORMAL: "경고 기준 미만", WARNING: "경고", CRITICAL: "위험", UNKNOWN: "확인 불가", ERROR: "판정 불가" };
 const deviceLabels = { normal: "정상", delayed: "지연", unavailable: "수신 없음", unknown: missingValue };
 const deviceTones = { normal: "ok", delayed: "warning", unavailable: "error", unknown: "" };
 const deviceStateLabels: Record<string, string> = {
@@ -38,7 +38,7 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
   const currentAlertPage = Math.min(alertPage, totalAlertPages - 1);
   const visibleAlerts = monitoring.alerts.slice(currentAlertPage * alertsPerPage, (currentAlertPage + 1) * alertsPerPage);
   const alarmState = state?.streamState === "reconnecting" && monitoring.alarmState ? "UNKNOWN" : monitoring.alarmState;
-  const [alarmLabel, alarmTone] = alarmState ? alarmPresentation[alarmState] : ["미지원", "muted"];
+  const alarmLabel = alarmState ? alarmPresentation[alarmState] : "미지원";
   const valueLength = String(monitoring.summary.loadPercent ?? "").length;
   const pastLoad = monitoring.summary.loadOneHourAgo;
   const pastLoadTitle = pastLoad
@@ -69,7 +69,7 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
                 </div>
                 <div className="mini-stat">
                   <span className="label">적재율 경보</span>
-                  <strong className={`alarm-status status-text ${alarmTone}`}>{alarmLabel}</strong>
+                  <strong className="alarm-status">{alarmLabel}</strong>
                 </div>
                 <div className="mini-stat">
                   <span className="label">예상 도달</span>
