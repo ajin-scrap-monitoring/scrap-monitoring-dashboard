@@ -59,6 +59,19 @@ class Stream {
 }
 
 describe("Backend v2 모니터링", () => {
+  test("알려진 센서의 표시명은 LiDAR 번호로 통일하고 원래 ID와 입력 순서는 보존한다", () => {
+    const snapshot = monitoringV2StateFixture("UNAVAILABLE");
+    const ids = ["lidar-b", "lidar-extra", "lidar-a"];
+    const sensors = ids.map(sensor_id => ({ sensor_id, data_state: "FRESH", last_scan_at: snapshot.serverTime, reason_codes: [] }));
+    const result = monitoringV2Data({ ...snapshot, deviceStatus: { ...snapshot.deviceStatus,
+      connection_state: "REPORTING", snapshot: { sensors },
+    } }, "pit-01");
+    expect(result.devices.map(device => device.label)).toEqual(["LiDAR 2", "lidar-extra", "LiDAR 1", "카메라", "엣지 장비"]);
+    expect(result.devices.slice(0, 3).every(device => device.status === "normal" && device.statusLabel === "FRESH")).toBe(true);
+    expect(result.v2?.sensors.map(sensor => sensor.id)).toEqual(ids);
+    expect(sensors.map(sensor => sensor.sensor_id)).toEqual(ids);
+  });
+
   test.each([
     ["HEALTHY", "normal"], ["STARTING", "delayed"], ["DEGRADED", "delayed"],
     ["RETRYING", "delayed"], ["FATAL", "unavailable"], ["UNKNOWN", "unknown"],

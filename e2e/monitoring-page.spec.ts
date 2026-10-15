@@ -107,7 +107,8 @@ test("현황 장비는 상태만 표시하고 scan 시각과 수신 시각 및 �
   const initial = deviceSnapshot();
   await installBackendApi(page, { initial });
   await page.goto("/?source=api");
-  const sensor = page.locator(".device").filter({ has: page.getByText("lidar-a", { exact: true }) });
+  await expect(page.locator(".devices-card .device-name")).toHaveText(["LiDAR 1", "LiDAR 2", "카메라", "엣지 장비"]);
+  const sensor = page.locator(".device").filter({ has: page.getByText("LiDAR 1", { exact: true }) });
   await expect(sensor.getByText("정상", { exact: true })).toHaveAttribute("title", "FRESH");
   await expect(sensor.locator("time")).toHaveCount(0);
   await expect(page.locator(".devices-card")).toContainText("갱신 지연");
@@ -134,7 +135,7 @@ test("카메라 service의 모든 상태와 오래된 장비 보고를 기존 �
   const api = await installBackendApi(page, { initial });
   await page.goto("/?source=api");
   const camera = page.locator(".device").filter({ has: page.getByText("카메라", { exact: true }) }).locator(".status-text");
-  const sensor = page.locator(".device").filter({ has: page.getByText("lidar-a", { exact: true }) }).locator(".status-text");
+  const sensor = page.locator(".device").filter({ has: page.getByText("LiDAR 1", { exact: true }) }).locator(".status-text");
   await expect(camera).toHaveText("정상");
   await expect(sensor).toHaveText("정상");
   await expect(page.locator(".kpi-value")).toHaveText("판단 불가");
