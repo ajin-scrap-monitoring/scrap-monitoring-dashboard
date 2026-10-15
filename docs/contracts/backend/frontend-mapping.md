@@ -186,8 +186,9 @@ Backend가 CRITICAL을 유지하면 위험으로 표시한다. 실제 작업의 
 알 수 없는 상태로 표시한다.
 
 v2 SSE는 별도의 `notification.created`를 제공하지 않는다. 프론트엔드는 snapshot의 새로운
-`notificationId`로 기존 `/api/v1/notifications`를 다시 조회한다. 완료 기록도 snapshot 수신 시
-같은 pit으로 재조회하며 중복 요청을 병합하고 구독 종료 시 요청을 취소한다.
+`notificationId`로 기존 `/api/v1/notifications`를 다시 조회한다. 완료 기록의 조회 범위와
+갱신 주기는 [프론트엔드 구현 정보](../../implementation.md)의 HTTP adapter 기준을 따른다.
+진행 중인 조회는 중복 요청을 병합하고 구독 종료 시 요청을 취소한다.
 읽음 처리는 경보 해제나 cooldown 초기화를 의미하지 않는다. LOG 기록은 이메일 및 문자
 전달 성공을 의미하지 않는다.
 
