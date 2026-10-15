@@ -419,21 +419,34 @@ describe("Backend v2 모니터링", () => {
     expect(listener.mock.lastCall?.[0].monitoring.v2?.operations?.notificationId).toBe("notif-B");
     unsubscribe?.();
   });
-  test("실패한 완료 기록 재조회 뒤에도 대기 중인 재조회는 실행한다", async () => {
-    const api = contract({ completionEvents: [{ type: "collection_completed", status: "completed", category: "collection", occurredAt: "2026-10-12T22:00:10Z" }] });
-    const stream = new Stream();
-    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend", eventSourceFactory: () => stream as unknown as EventSource });
-    await source.getDashboardData();
-    let rejectCollection: (error: Error) => void = () => undefined;
-    api.fetchImplementation.mockImplementationOnce(() => new Promise<Response>((_resolve, reject) => { rejectCollection = reject; }));
-    const listener = vi.fn<(data: DashboardData) => void>();
-    const unsubscribe = source.subscribe?.(listener);
-    stream.emit("monitoring.snapshot", monitoringV2Fixture);
-    stream.emit("monitoring.snapshot", { ...monitoringV2Fixture, snapshotId: "completion-update" });
-    rejectCollection(new TypeError("Network request failed"));
-    await vi.waitFor(() => expect(api.fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v1/events")).toHaveLength(3));
-    expect(listener.mock.lastCall?.[0].monitoring.summary.timeSinceCollection).toBe("2시간 0분");
-    unsubscribe?.();
+  test("실패한 완료 기록 재조회는 다음 1분 주기에 복구하고 snapshot으로 중복하지 않는다", async () => {
+    vi.useFakeTimers();
+    try {
+      const api = contract({ completionEvents: [{ type: "collection_completed", status: "completed", category: "collection", occurredAt: "2026-10-12T22:00:10Z" }] });
+      const stream = new Stream();
+      let pending = false;
+      let rejectCollection: (error: Error) => void = () => undefined;
+      const source = createHttpDashboardDataSource({ fetchImplementation: input => pending && inputUrl(input).pathname === "/api/v1/events"
+        ? new Promise<Response>((_resolve, reject) => { rejectCollection = reject; }) : api.fetchImplementation(input),
+        monitoringVersion: "v2", apiContract: "backend", eventSourceFactory: () => stream as unknown as EventSource });
+      await source.getDashboardData();
+      const listener = vi.fn<(data: DashboardData) => void>();
+      const unsubscribe = source.subscribe?.(listener);
+      pending = true;
+      await vi.advanceTimersByTimeAsync(60_000);
+      stream.emit("monitoring.snapshot", monitoringV2Fixture);
+      stream.emit("monitoring.snapshot", { ...monitoringV2Fixture, snapshotId: "completion-update" });
+      rejectCollection(new TypeError("Network request failed"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listener.mock.lastCall?.[0].monitoring.completedCollectionState?.status).toBe("error");
+      pending = false;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(api.fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v1/events")).toHaveLength(2);
+      expect(listener.mock.lastCall?.[0].monitoring.completedCollectionState?.status).toBe("ready");
+      expect(listener.mock.lastCall?.[0].monitoring.summary.timeSinceCollection).toBe("2시간 0분");
+      unsubscribe?.();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
   });
   test("구독 종료는 모두 읽음 이후의 재조회를 취소하고 이전 데이터를 갱신하지 않는다", async () => {
     const api = contract();

@@ -46,6 +46,8 @@ type FetchImplementation = typeof fetch;
 type EventSourceFactory = (url: string) => EventSource;
 const APPLIED_EVENT_ID_LIMIT = 1024;
 const HEADER_NOTIFICATION_LIMIT = 20;
+const REQUEST_TIMEOUT_MS = 10_000;
+const MONITORING_REFRESH_MS = 60_000;
 const missingValue = "정보 없음";
 const notificationFailureMessage = "알림을 불러오지 못했습니다.";
 const loadHistoryFailureMessage = "적재율 추이를 불러오지 못했습니다.";
@@ -520,6 +522,7 @@ export function createHttpDashboardDataSource({
   let notificationRevision = 0;
   let notificationRefreshRequired = false;
   let completedCollectionAt: string | null = null;
+  let collectionRequestedAt = -Infinity;
   let monitoringScope: LoadHistoryScope | null = null;
   let serverClock: { timestamp: number; receivedAt: number } | null = null;
   let dailyApiPromise: Promise<DailyRecordingApi> | null = null;
@@ -556,36 +559,61 @@ export function createHttpDashboardDataSource({
   };
 
   const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
-    const checkAbort = () => {
-      if (init.signal?.aborted) throw new DOMException("API request aborted.", "AbortError");
+    const controller = new AbortController();
+    let authorizationStatus: number | undefined;
+    let rejectDeadline: (error: Error) => void = () => undefined;
+    const deadline = new Promise<never>((_, reject) => { rejectDeadline = reject; });
+    const abort = () => {
+      const error = authorizationStatus ? new ApiError(authorizationStatus, "API authorization failed.")
+        : new DOMException("API request aborted.", "AbortError");
+      controller.abort(error);
+      rejectDeadline(error);
     };
-    checkAbort();
-    const headers = new Headers(init.headers);
-    headers.set("Accept", "application/json");
-    if (init.body !== undefined && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-    if (csrfToken && init.method && init.method !== "GET") headers.set("X-CSRF-Token", csrfToken);
-    const response = await fetchImplementation(path, { ...init, credentials: "include", headers });
-    checkAbort();
-    if (!response.ok) {
-      let detail: { code?: string; detail?: string; title?: string; error?: { code?: string; message?: string } } = {};
-      try {
-        const payload: unknown = await response.json();
-        if (payload && typeof payload === "object") detail = payload;
-      } catch { /* Empty or non-JSON error response. */ }
+    init.signal?.addEventListener("abort", abort, { once: true });
+    const timer = window.setTimeout(() => {
+      const error = new ApiError(authorizationStatus ?? 504, "API request timed out.", "REQUEST_TIMEOUT");
+      controller.abort(error);
+      rejectDeadline(error);
+    }, REQUEST_TIMEOUT_MS);
+    const operation = async () => {
+      const checkAbort = () => {
+        if (controller.signal.aborted) throw controller.signal.reason;
+        if (init.signal?.aborted) throw new DOMException("API request aborted.", "AbortError");
+      };
       checkAbort();
-      if (response.status === 401 && hasAuthenticatedSession && path !== API_PATHS.session) {
-        csrfToken = "";
-        hasAuthenticatedSession = false;
-        notificationActionsController.abort();
-        onSessionExpired();
+      const headers = new Headers(init.headers);
+      headers.set("Accept", "application/json");
+      if (init.body !== undefined && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+      if (csrfToken && init.method && init.method !== "GET") headers.set("X-CSRF-Token", csrfToken);
+      const response = await fetchImplementation(path, { ...init, signal: controller.signal, credentials: "include", headers });
+      checkAbort();
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) authorizationStatus = response.status;
+        if (response.status === 401 && hasAuthenticatedSession && path !== API_PATHS.session) {
+          csrfToken = "";
+          hasAuthenticatedSession = false;
+          notificationActionsController.abort();
+          onSessionExpired();
+        }
+        let detail: { code?: string; detail?: string; title?: string; error?: { code?: string; message?: string } } = {};
+        try {
+          const payload: unknown = await response.json();
+          if (payload && typeof payload === "object") detail = payload;
+        } catch { /* Empty or non-JSON error response. */ }
+        checkAbort();
+        const code = detail.code ?? detail.error?.code ?? (detail.detail === "MONITORING_SOURCE_NOT_CONFIGURED" ? detail.detail : undefined);
+        throw new ApiError(response.status, typeof detail.detail === "string" ? detail.detail : detail.error?.message ?? detail.title ?? `API request failed with ${response.status}`, code);
       }
-      const code = detail.code ?? detail.error?.code ?? (detail.detail === "MONITORING_SOURCE_NOT_CONFIGURED" ? detail.detail : undefined);
-      throw new ApiError(response.status, typeof detail.detail === "string" ? detail.detail : detail.error?.message ?? detail.title ?? `API request failed with ${response.status}`, code);
+      const responseText = await response.text();
+      checkAbort();
+      if (!responseText) return undefined as T;
+      return JSON.parse(responseText) as T;
+    };
+    try { return await Promise.race([operation(), deadline]); }
+    finally {
+      window.clearTimeout(timer);
+      init.signal?.removeEventListener("abort", abort);
     }
-    const responseText = await response.text();
-    checkAbort();
-    if (!responseText) return undefined as T;
-    return JSON.parse(responseText) as T;
   };
 
   const getSession = async (signal?: AbortSignal) => {
@@ -632,6 +660,7 @@ export function createHttpDashboardDataSource({
   };
 
   const getCompletedCollectionAt = async (signal?: AbortSignal) => {
+    collectionRequestedAt = performance.now();
     const result = await request<unknown>(pitPath(`${API_PATHS.events}?category=collection&page=1&pageSize=1`), { signal });
     if (!result || typeof result !== "object" || !("items" in result) || !Array.isArray(result.items) || result.items.length > 1) throw new Error("Unexpected collection history contract.");
     const row: unknown = result.items[0];
@@ -828,6 +857,7 @@ export function createHttpDashboardDataSource({
       resetNotificationActions();
       const session = await getSession(options.signal);
       const path = route();
+      const monitoringDetails = !["/history", "/recordings", "/admin"].includes(path);
       if (session === null && (useV2Monitoring || (backendContract && path === "/recordings"))) {
         onSessionExpired();
         throw new ApiError(401, "로그인이 필요합니다.");
@@ -862,9 +892,9 @@ export function createHttpDashboardDataSource({
           : Promise.resolve([]), previousRecordings, "녹화 목록을 불러오지 못했습니다.", options.signal, previousRecordings.length > 0),
         path === "/admin" ? getAlertSettings(session, options.signal) : emptyAlertSettings(),
         path === "/admin" ? getRecipients(session, options.signal) : { recipients: [], settings: {} },
-        optionalArea(useV2Monitoring && backendContract ? getCompletedCollectionAt(options.signal) : Promise.resolve(null),
+        optionalArea(useV2Monitoring && backendContract && monitoringDetails ? getCompletedCollectionAt(options.signal) : Promise.resolve(null),
           previous ? completedCollectionAt : null, collectionHistoryFailureMessage, options.signal, previous !== null),
-        optionalArea(useV2Monitoring ? recentHistory(snapshot.serverTime, options.signal) : Promise.resolve(null), null,
+        optionalArea(useV2Monitoring && monitoringDetails ? recentHistory(snapshot.serverTime, options.signal) : Promise.resolve(null), null,
           loadHistoryFailureMessage, options.signal, Boolean(previousLoad?.loadHistory.length)),
       ]);
       Object.assign(monitoring, notificationResult.state.status === "ready"
@@ -951,6 +981,7 @@ export function createHttpDashboardDataSource({
       catch { /* The accepted request is independent of notification refresh or cancellation. */ }
     },
     subscribe: (listener) => {
+      const monitoringDetails = !["/history", "/recordings", "/admin"].includes(route());
       const eventSource = eventSourceFactory(eventsPath);
       listeners.add(listener);
       const appliedEventIds = new Set<string>();
@@ -959,7 +990,6 @@ export function createHttpDashboardDataSource({
       let refreshingNotifications = false;
       let notificationsRefreshQueued = false;
       let refreshingCollection = false;
-      let collectionRefreshQueued = false;
       let refreshingLoadHistory = false;
       let synchronizedNotificationId = currentData?.monitoring.v2?.operations?.notificationId ?? null;
       const sessionController = new AbortController();
@@ -1008,7 +1038,10 @@ export function createHttpDashboardDataSource({
           listener(structuredClone(currentData));
         } finally { refreshingLoadHistory = false; }
       };
-      const historyTimer = useV2Monitoring ? window.setInterval(() => { void refreshRecentLoadHistory(); }, 60_000) : undefined;
+      const historyTimer = useV2Monitoring && monitoringDetails ? window.setInterval(() => {
+        void refreshRecentLoadHistory();
+        if (backendContract) refreshCompletedCollection();
+      }, MONITORING_REFRESH_MS) : undefined;
       const isDuplicate = (event: Event) => {
         if (useV2Monitoring) return false;
         if (!(event instanceof MessageEvent) || !event.lastEventId) return false;
@@ -1040,6 +1073,7 @@ export function createHttpDashboardDataSource({
               notificationRevision += 1;
               notificationRefreshRequired = false;
               synchronizedNotificationId = expectedNotificationId;
+              if ((currentData.monitoring.v2?.operations?.notificationId ?? null) === synchronizedNotificationId) notificationsRefreshQueued = false;
               listener(structuredClone(currentData));
             } catch (error) {
               if (isAuthorizationError(error)) {
@@ -1056,12 +1090,10 @@ export function createHttpDashboardDataSource({
         })().finally(() => { refreshingNotifications = false; });
       };
       const refreshCompletedCollection = () => {
-        collectionRefreshQueued = true;
-        if (refreshingCollection) return;
+        if (!monitoringDetails || refreshingCollection || performance.now() - collectionRequestedAt < MONITORING_REFRESH_MS) return;
         refreshingCollection = true;
         void (async () => {
-          while (active && currentData?.monitoring.v2 && collectionRefreshQueued) {
-            collectionRefreshQueued = false;
+          if (active && currentData?.monitoring.v2) {
             try {
               const completedAt = await getCompletedCollectionAt(sessionController.signal);
               if (!active || !currentData?.monitoring.v2) return;
@@ -1122,7 +1154,7 @@ export function createHttpDashboardDataSource({
         const notificationId = monitoring.v2?.operations?.notificationId;
         if (notificationRefreshRequired || (notificationId && notificationId !== synchronizedNotificationId)) refreshV2Notifications();
         if (useV2Monitoring && monitoring.v2 && backendContract) refreshCompletedCollection();
-        if (useV2Monitoring && sourceChanged) void refreshRecentLoadHistory();
+        if (useV2Monitoring && monitoringDetails && sourceChanged) void refreshRecentLoadHistory();
       });
       eventSource.addEventListener("error", () => {
         if (!active) return;

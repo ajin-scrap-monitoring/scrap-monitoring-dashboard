@@ -82,7 +82,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Verify container runtime
-        run: ./scripts/verify-container-image.sh scrap-monitoring-dashboard:test scrap-monitoring-dashboard-test 0.4.0
+        run: ./scripts/verify-container-image.sh scrap-monitoring-dashboard:test scrap-monitoring-dashboard-test 0.4.1
 
       - name: Verify TLS secret integration
         run: ./test/tls/integration.sh scrap-monitoring-dashboard:test

@@ -19,7 +19,7 @@ import { dailyRecordingFixture, dailyRecordingId } from "../test/daily-recording
 
 type RecordedRequest = { init?: RequestInit; url: URL };
 
-test("현재 분의 녹화 조회 종료와 v2 추이 종료 시각을 분리한다", async () => {
+test("현재 분의 녹화 조회 종료를 올림하고 현황 전용 추이는 조회하지 않는다", async () => {
   const requests: URL[] = [];
   const serverTime = "2026-10-15T12:34:50+09:00";
   const snapshot = { ...monitoringV2StateFixture("FRESH", 0), serverTime };
@@ -40,7 +40,7 @@ test("현재 분의 녹화 조회 종료와 v2 추이 종료 시각을 분리한
   expect(data.recordings).toHaveLength(1);
   expect(data.history.endsAt).toBe("2026-10-15T12:35");
   expect(requests.find(url => url.pathname === "/api/v1/recordings")?.searchParams.get("to")).toBe("2026-10-15T12:35:00+09:00");
-  expect(requests.find(url => url.pathname === "/api/v2/monitoring/load-history")?.searchParams.get("to")).toBe(serverTime);
+  expect(requests.some(url => url.pathname === "/api/v2/monitoring/load-history")).toBe(false);
 });
 
 function jsonResponse(value: unknown, status = 200) {
@@ -221,6 +221,150 @@ function dailySource({
   return { source, requests };
 }
 
+describe("화면별 조회 범위와 요청 대기 제한", () => {
+  test.each(["all", "single", "refresh"])("알림 %s의 401은 session 취소 후에도 ApiError로 보존한다", async action => {
+    let failed = false;
+    const onSessionExpired = vi.fn();
+    const fetchImplementation = createV2ContractFetch((url, init) => failed && (
+      action === "all" && url.pathname === "/api/v1/notifications/read-all"
+      || action === "single" && init?.method === "PATCH"
+      || action === "refresh" && url.pathname === "/api/v1/notifications"
+    ) ? jsonResponse({}, 401) : undefined);
+    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation, onSessionExpired });
+    await source.getDashboardData();
+    failed = true;
+    const operation = action === "single" ? source.markNotificationRead!(notificationPageFixture.items[0].id) : source.markAllNotificationsRead!();
+    await expect(operation).rejects.toMatchObject({ name: "ApiError", status: 401 });
+    expect(onSessionExpired).toHaveBeenCalledOnce();
+  });
+
+  test.each(["/history", "/recordings", "/admin"])("%s는 현황 전용 조회와 timer를 시작하지 않는다", async route => {
+    vi.useFakeTimers();
+    const stream = new FakeEventSource();
+    const base = createV2ContractFetch();
+    const fetchImplementation = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = inputUrl(input);
+      if (url.pathname === "/api/v2/recordings/daily") return jsonResponse({ items: [], next_cursor: null });
+      return base(input, init);
+    });
+    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", route: () => route,
+      fetchImplementation, eventSourceFactory: () => stream as unknown as EventSource });
+    await source.getDashboardData();
+    const unsubscribe = source.subscribe!(() => undefined);
+    const count = () => fetchImplementation.mock.calls.map(([input]) => inputUrl(input));
+    const initial = count().length;
+    expect(count().filter(url => url.pathname === "/api/v2/monitoring/load-history")).toHaveLength(route === "/history" ? 1 : 0);
+    expect(count().some(url => url.pathname === "/api/v1/events" && url.searchParams.get("pageSize") === "1")).toBe(false);
+    for (let i = 0; i < 5; i += 1) stream.emit("monitoring.snapshot", monitoringV2StateFixture("FRESH", 72));
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(count()).toHaveLength(initial);
+    unsubscribe();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test.each([false, true])("최근 완료 조회는 초기 요청과 실패(%s)를 포함해 1분 간격을 유지한다", async failed => {
+    vi.useFakeTimers();
+    const stream = new FakeEventSource();
+    const fetchImplementation = createV2ContractFetch(url => url.pathname === "/api/v1/events"
+      ? failed ? jsonResponse({}, 503) : jsonResponse({ ...eventPageFixture, items: [] }) : undefined);
+    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", route: () => "/",
+      fetchImplementation, eventSourceFactory: () => stream as unknown as EventSource });
+    await source.getDashboardData();
+    const unsubscribe = source.subscribe!(() => undefined);
+    const count = () => fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v1/events").length;
+    for (let i = 0; i < 20; i += 1) stream.emit("monitoring.snapshot", monitoringV2StateFixture("FRESH", 72));
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(count()).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(count()).toBe(2);
+    for (let i = 0; i < 20; i += 1) stream.emit("monitoring.snapshot", monitoringV2StateFixture("FRESH", 72));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(count()).toBe(2);
+    unsubscribe();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(count()).toBe(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test.each(["headers", "body"])("보조 요청의 %s 대기는 10초 후 종료하고 snapshot을 보존한다", async stage => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | null | undefined;
+    const fetchImplementation = createV2ContractFetch((url, init) => {
+      if (url.pathname !== "/api/v1/notifications") return undefined;
+      signal = init?.signal;
+      if (stage === "headers") return new Promise<Response>(() => undefined);
+      const response = new Response("{}");
+      vi.spyOn(response, "text").mockReturnValue(new Promise(() => undefined));
+      return Promise.resolve(response);
+    });
+    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+    const pending = source.getDashboardData();
+    await vi.advanceTimersByTimeAsync(10_000);
+    const data = await pending;
+    expect(signal?.aborted).toBe(true);
+    expect(data.monitoring.summary.loadPercent).toBe(72);
+    expect(data.monitoring.notificationState).toMatchObject({ status: "error", httpStatus: 504, code: "REQUEST_TIMEOUT" });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test.each([401, 403])("지연된 오류 body도 HTTP %i 권한 오류를 보존한다", async status => {
+    vi.useFakeTimers();
+    const onSessionExpired = vi.fn();
+    const fetchImplementation = createV2ContractFetch(url => {
+      if (url.pathname !== "/api/v1/notifications") return undefined;
+      const response = new Response("{}", { status });
+      vi.spyOn(response, "json").mockReturnValue(new Promise(() => undefined));
+      return Promise.resolve(response);
+    });
+    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation, onSessionExpired });
+    const rejected = expect(source.getDashboardData()).rejects.toMatchObject({ status });
+    await vi.advanceTimersByTimeAsync(10_000);
+    await rejected;
+    expect(onSessionExpired).toHaveBeenCalledTimes(status === 401 ? 1 : 0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("초기 session의 무응답을 종료하고 호출자 취소와 구분한다", async () => {
+    vi.useFakeTimers();
+    const fetchImplementation = vi.fn(() => new Promise<Response>(() => undefined));
+    const source = createHttpDashboardDataSource({ fetchImplementation });
+    const rejected = expect(source.getDashboardData()).rejects.toMatchObject({ status: 504, code: "REQUEST_TIMEOUT" });
+    await vi.advanceTimersByTimeAsync(10_000);
+    await rejected;
+    const controller = new AbortController();
+    const aborted = expect(source.getDashboardData({ signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
+    controller.abort();
+    await aborted;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test.each([false, true])("pending 알림 조회의 동일 ID를 중복 조회하지 않고 새 ID(%s)는 보존한다", async changed => {
+    const stream = new FakeEventSource();
+    let complete: ((response: Response) => void) | undefined;
+    let notificationRequests = 0;
+    const fetchImplementation = createV2ContractFetch(url => {
+      if (url.pathname !== "/api/v1/notifications") return undefined;
+      notificationRequests += 1;
+      if (notificationRequests === 2) return new Promise(resolve => { complete = resolve; });
+      return undefined;
+    });
+    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation,
+      eventSourceFactory: () => stream as unknown as EventSource });
+    await source.getDashboardData();
+    const unsubscribe = source.subscribe!(() => undefined);
+    const snapshot = (id: string) => ({ ...monitoringV2StateFixture("FRESH", 72), operations: {
+      effectiveState: "NORMAL", lastKnownState: "NORMAL", lastEvaluatedAt: null, lastAlertAt: null, notificationId: id,
+    } });
+    stream.emit("monitoring.snapshot", snapshot("notification-one"));
+    stream.emit("monitoring.snapshot", snapshot(changed ? "notification-two" : "notification-one"));
+    complete!(await jsonResponse(notificationPageFixture));
+    await vi.waitFor(() => expect(notificationRequests).toBe(changed ? 3 : 2));
+    await Promise.resolve();
+    expect(notificationRequests).toBe(changed ? 3 : 2);
+    unsubscribe();
+  });
+});
+
 describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", () => {
   test("v2 녹화 기본 진입은 날짜 목록만 조회하고 이벤트로 분류하지 않는다", async () => {
     const { source, requests } = dailySource();
@@ -267,7 +411,7 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
     expect(pages[0].url.searchParams.get("from_date")).toBe("2026-10-12");
     expect(pages[0].url.searchParams.get("to_date")).toBe("2026-10-13");
     expect(pages[1].url.searchParams.get("cursor")).toBe(cursor);
-    expect(pages.every(({ init }) => init?.signal === signal && init.credentials === "include")).toBe(true);
+    expect(pages.every(({ init }) => init?.signal && !init.signal.aborted && init.credentials === "include")).toBe(true);
   });
 
   test("자정 직전 날짜 조회는 event용 분 올림으로 다음 날을 추가하지 않는다", async () => {
@@ -677,12 +821,12 @@ describe("보조 조회의 오류 경계", () => {
     unsubscribe?.();
   });
 
-  test("최근 완료와 녹화 목록 오류도 snapshot과 별도 상태로 남긴다", async () => {
+  test("녹화 목록 오류는 snapshot과 별도 상태로 남기며 최근 완료는 조회하지 않는다", async () => {
     const fetchImplementation = createV2ContractFetch((url) => ["/api/v1/events", "/api/v2/recordings/daily"].includes(url.pathname) ? jsonResponse({}, 500) : undefined);
     const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation, route: () => "/recordings" });
     const data = await source.getDashboardData();
     expect(data.monitoring.summary.loadPercent).toBe(72);
-    expect(data.monitoring.completedCollectionState).toMatchObject({ status: "error", httpStatus: 500 });
+    expect(fetchImplementation.mock.calls.some(([input]) => inputUrl(input).pathname === "/api/v1/events")).toBe(false);
     expect(data.recordingsState).toMatchObject({ status: "error", httpStatus: 500 });
   });
 
