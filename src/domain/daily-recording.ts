@@ -1,0 +1,27 @@
+export type DailyRecording = {
+  source: "daily";
+  id: string;
+  cameraId: string;
+  recordingDate: string;
+  timezone: "Asia/Seoul";
+  windowStartsAt: string;
+  windowEndsAt: string;
+  status: "recording" | "finalizing" | "closed" | "failed" | "expired" | "deleted";
+  coverage: "complete" | "partial" | "none" | null;
+  hasGaps: boolean;
+  coverageAsOfAt: string;
+  playableUntilAt: string | null;
+  recordedSeconds: number;
+  gaps: { startsAt: string; endsAt: string; reasonCode: string }[];
+  availableIntervals: { startsAt: string; endsAt: string; playbackStartsAtSeconds: number; playbackEndsAtSeconds: number }[];
+  playbackState: "pending" | "ready" | "unavailable";
+  playbackProtocol: "hls" | null;
+  playbackPath: string | null;
+  exportAllowed: boolean;
+  exportState: "not_requested" | "processing" | "ready" | "failed";
+  downloadPath: string | null;
+  sizeBytes: number | null;
+  expiresAt: string | null;
+  exportExpiresAt: string | null;
+  error: { code: string; message: string } | null;
+};

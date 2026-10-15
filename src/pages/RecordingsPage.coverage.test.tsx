@@ -15,7 +15,7 @@ test("기존 부분 저장 표시를 선택한 경우에만 범위를 조회하�
   const recording = { ...data.recordings[0], id, coverage: "partial", gaps: detail.gaps };
   const getRecordingCoverage = vi.fn().mockResolvedValue(detail);
   const source: DashboardDataSource = { getDashboardData: () => Promise.resolve(data), getRecordingCoverage };
-  render(<RecordingsPage dataSource={source} recordings={[recording]} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="normal" />);
+  render(<RecordingsPage dataSource={source} recordings={[recording]} headerNotifications={[]} reception={data.reception} />);
   expect(getRecordingCoverage).not.toHaveBeenCalled();
   const opener = screen.getByRole("button", { name: "부분 저장" });
   opener.focus();
@@ -35,17 +35,18 @@ test("녹화 범위 조회 오류와 재시도를 기본 카드 밖에서 처리
   const data = await createMockDashboardDataSource().getDashboardData();
   const getRecordingCoverage = vi.fn().mockRejectedValueOnce(new Error("Temporary failure")).mockResolvedValue(detail);
   const source: DashboardDataSource = { getDashboardData: () => Promise.resolve(data), getRecordingCoverage };
-  render(<RecordingsPage dataSource={source} recordings={[{ ...data.recordings[0], id, coverage: "partial" }]} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="normal" />);
+  render(<RecordingsPage dataSource={source} recordings={[{ ...data.recordings[0], id, coverage: "partial" }]} headerNotifications={[]} reception={data.reception} />);
   fireEvent.click(screen.getByRole("button", { name: "부분 저장" }));
   const dialog = screen.getByRole("dialog");
   expect(await within(dialog).findByRole("alert")).toHaveTextContent("조회 실패");
+  expect(dialog).not.toHaveTextContent("Temporary failure");
   fireEvent.click(within(dialog).getByRole("button", { name: "다시 조회" }));
   expect(await within(dialog).findByText(detail.requestedStart)).toBeVisible();
 });
 
 test("최초 녹화 조회 실패를 빈 목록과 0건으로 표시하지 않는다", async () => {
   const data = await createMockDashboardDataSource().getDashboardData();
-  render(<RecordingsPage recordings={[]} recordingsState={{ status: "error", message: "녹화 목록 조회 실패" }} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="normal" />);
+  render(<RecordingsPage recordings={[]} recordingsState={{ status: "error", message: "녹화 목록 조회 실패" }} headerNotifications={[]} reception={data.reception} />);
   expect(screen.getByRole("alert")).toHaveTextContent("녹화 목록 조회 실패");
   expect(screen.getByText("확인 불가", { exact: true })).toBeVisible();
   expect(screen.queryByText("0건")).not.toBeInTheDocument();

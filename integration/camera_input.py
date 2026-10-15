@@ -30,6 +30,9 @@ async def main():
             response.raise_for_status()
             session = await response.json()
             headers = {"X-CSRF-Token": session["csrfToken"]}
+            response = await api.put("http://backend:8000/api/v2/recordings/daily/policy",
+                json={"enabled": True, "retention_days": 1}, headers=headers)
+            response.raise_for_status()
             response = await api.put("http://backend:8000/api/v1/media/cameras/camera-main/recording-policy",
                 json={"pre_roll_seconds": 5, "post_roll_seconds": 1, "retention_days": 1}, headers=headers)
             response.raise_for_status()
@@ -38,19 +41,25 @@ async def main():
                 "pit_id": "pit-01", "residual_height_cm": 0, "operator_name": "Synthetic integration", "notes": "Synthetic camera input",
             }, headers=headers)
             response.raise_for_status()
-            for _ in range(60):
+            for _ in range(120):
                 response = await api.get("http://backend:8000/api/v1/recordings?pit_id=pit-01")
                 response.raise_for_status()
                 items = (await response.json())["items"]
                 if items and items[0]["mediaStatus"] == "ready":
                     if items[0]["coverage"] != "partial":
                         raise RuntimeError("Expected partial synthetic recording")
+                    response = await api.get("http://backend:8000/api/v2/recordings/daily")
+                    response.raise_for_status()
+                    daily = (await response.json())["items"]
+                    if not any(item["playback_state"] == "ready" and item["recorded_seconds"] > 0 for item in daily):
+                        await asyncio.sleep(0.5)
+                        continue
                     Path("/tmp/input-ready").touch()
-                    print("Synthetic MJPEG and partial MP4 ready.", flush=True)
+                    print("Synthetic MJPEG, partial event MP4 and daily HLS ready.", flush=True)
                     await feed
                     return
                 await asyncio.sleep(0.5)
-            raise RuntimeError("Event recording did not become ready")
+            raise RuntimeError("Event MP4 and daily HLS did not become ready")
         finally:
             feed.cancel()
 

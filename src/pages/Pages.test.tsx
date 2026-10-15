@@ -16,7 +16,7 @@ beforeEach(() => {
 
 test("이력 유형 필터와 페이지 이동을 제공한다", async () => {
   const data = await createMockDashboardDataSource().getDashboardData();
-  render(<HistoryPage history={data.history} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="normal" />);
+  render(<HistoryPage history={data.history} headerNotifications={[]} reception={data.reception} />);
 
   expect(screen.getByText("총 9건")).toBeVisible();
   expect(screen.getByText("1 / 2")).toBeVisible();
@@ -32,7 +32,7 @@ test("이력 유형 필터와 페이지 이동을 제공한다", async () => {
 
 test("이력 빠른 기간 선택은 최근 7일이 기본이며 직접 입력하면 선택이 해제된다", async () => {
   const data = await createMockDashboardDataSource().getDashboardData();
-  render(<HistoryPage history={data.history} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="normal" />);
+  render(<HistoryPage history={data.history} headerNotifications={[]} reception={data.reception} />);
   const start = screen.getByLabelText<HTMLInputElement>("시작 시각");
   const end = screen.getByLabelText<HTMLInputElement>("종료 시각");
   const durationHours = () => (new Date(end.value).getTime() - new Date(start.value).getTime()) / 3_600_000;
@@ -58,7 +58,7 @@ test("이력 빠른 기간 선택은 최근 7일이 기본이며 직접 입력�
 
 test("이력 조회는 기간과 유형을 함께 적용하고 범례와 빈 결과를 갱신한다", async () => {
   const data = await createMockDashboardDataSource().getDashboardData();
-  render(<HistoryPage history={data.history} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="normal" />);
+  render(<HistoryPage history={data.history} headerNotifications={[]} reception={data.reception} />);
   fireEvent.click(screen.getByRole("button", { name: "최근 24시간" }));
   fireEvent.click(screen.getByRole("button", { name: "수거" }));
   expect(screen.getByText("총 9건")).toBeVisible();
@@ -83,7 +83,7 @@ test("이력 조회는 기간과 유형을 함께 적용하고 범례와 빈 결
 
 test("녹화 목록을 필터링하고 다음 페이지에서 영상을 선택한다", async () => {
   const data = await createMockDashboardDataSource().getDashboardData();
-  render(<RecordingsPage recordings={data.recordings} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="normal" />);
+  render(<RecordingsPage recordings={data.recordings} headerNotifications={[]} reception={data.reception} />);
 
   expect(screen.getByText("8건")).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "다음 녹화 목록 페이지" }));
@@ -98,8 +98,9 @@ test("녹화 목록을 필터링하고 다음 페이지에서 영상을 선택�
 });
 
 test("녹화 조회는 겹치는 기간을 찾고 잘못된 기간에서는 기존 결과를 유지한다", async () => {
+  const reportValidity = vi.spyOn(HTMLInputElement.prototype, "reportValidity").mockReturnValue(false);
   const data = await createMockDashboardDataSource().getDashboardData();
-  render(<RecordingsPage recordings={data.recordings} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="normal" />);
+  render(<RecordingsPage recordings={data.recordings} headerNotifications={[]} reception={data.reception} />);
   expect(screen.getByRole("button", { name: "최근 7일" })).toHaveAttribute("aria-pressed", "true");
   fireEvent.click(screen.getByRole("button", { name: "최근 24시간" }));
   expect(screen.getByText("8건")).toBeVisible();
@@ -111,7 +112,8 @@ test("녹화 조회는 겹치는 기간을 찾고 잘못된 기간에서는 기�
   expect(screen.getByText("1건")).toBeVisible();
   fireEvent.change(screen.getByLabelText("시작 시각"), { target: { value: "2026-09-10T00:00" } });
   fireEvent.click(screen.getByRole("button", { name: "조회" }));
-  expect(screen.getByRole("alert")).toBeVisible();
+  expect(reportValidity).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(screen.getByText("1건")).toBeVisible();
   fireEvent.change(screen.getByLabelText("종료 시각"), { target: { value: "2026-09-11T00:00" } });
   fireEvent.click(screen.getByRole("button", { name: "조회" }));
@@ -129,7 +131,7 @@ test("재생 또는 다운로드 경로가 없는 녹화 상태를 명시한다"
     thumbnailUrl: undefined,
   };
 
-  render(<RecordingsPage recordings={[recording]} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="normal" />);
+  render(<RecordingsPage recordings={[recording]} headerNotifications={[]} reception={data.reception} />);
 
   expect(screen.getByText("재생 가능한 영상이 없습니다.")).toBeVisible();
   expect(screen.getByRole("button", { name: "다운로드 불가" })).toBeDisabled();
@@ -141,7 +143,7 @@ test("분 안에서 끝나는 관련 녹화도 초기 조회 구간에 포함한
   const data = await createMockDashboardDataSource().getDashboardData();
   const recording = { ...data.recordings[0], start: "2026-10-13 10:05:52", end: "2026-10-13 10:05:54" };
   window.history.replaceState(null, "", `/recordings?recordingId=${recording.id}`);
-  render(<RecordingsPage recordings={[recording]} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="normal" />);
+  render(<RecordingsPage recordings={[recording]} headerNotifications={[]} reception={data.reception} />);
   expect(screen.getByText("1건")).toBeVisible();
   expect(screen.getByLabelText("시작 시각")).toHaveValue("2026-10-13 10:05");
   expect(screen.getByLabelText("종료 시각")).toHaveValue("2026-10-13 10:06");
@@ -153,7 +155,7 @@ test("녹화 A를 다시 선택하면 새 단건 확인 전에는 이전 영상 
   const pending: Array<(recording: Recording) => void> = [];
   const getRecording = vi.fn(() => new Promise<Recording>((resolve) => pending.push(resolve)));
   const dataSource = { getDashboardData: vi.fn(), getRecording };
-  const { container } = render(<RecordingsPage dataSource={dataSource} recordings={recordings} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="normal" />);
+  const { container } = render(<RecordingsPage dataSource={dataSource} recordings={recordings} headerNotifications={[]} reception={data.reception} />);
   await act(() => { pending[0](recordings[0]); return Promise.resolve(); });
   expect(container.querySelector("video")).toHaveAttribute("src", recordings[0].contentUrl);
   const buttons = container.querySelectorAll<HTMLButtonElement>(".recording-item");
@@ -170,11 +172,11 @@ test("녹화 A를 다시 선택하면 새 단건 확인 전에는 이전 영상 
 
 test("빈 이력, 녹화 목록과 알림 대상에 명시적인 상태를 표시한다", async () => {
   const data = await createMockDashboardDataSource("empty-lists").getDashboardData();
-  const { unmount } = render(<HistoryPage history={data.history} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="normal" />);
+  const { unmount } = render(<HistoryPage history={data.history} headerNotifications={[]} reception={data.reception} />);
   expect(screen.getByText("조회된 이벤트가 없습니다.")).toBeVisible();
   unmount();
 
-  const recordings = render(<RecordingsPage recordings={data.recordings} headerNotifications={[]} lastMeasuredAt={data.lastMeasuredAt} status="normal" />);
+  const recordings = render(<RecordingsPage recordings={data.recordings} headerNotifications={[]} reception={data.reception} />);
   expect(screen.getByText("조회된 녹화 영상이 없습니다.")).toBeVisible();
   expect(screen.getByText("선택할 수 있는 녹화 영상이 없습니다.")).toBeVisible();
   recordings.unmount();
@@ -278,6 +280,15 @@ test("정책 취소는 저장값을 복원하고 테스트 대상은 등록된 �
   expect(timing).toHaveTextContent("5분 후");
   await user.click(screen.getByRole("combobox", { name: "등록 대상" }));
   expect(screen.getAllByRole("option")).toHaveLength(data.admin.recipients.length);
+});
+
+test("로그인 화면은 계정 로그인만 제공하고 현황 바로가기를 표시하지 않는다", () => {
+  render(<LoginPage />);
+
+  expect(screen.getByLabelText("아이디")).toBeVisible();
+  expect(screen.getByLabelText("비밀번호")).toBeVisible();
+  expect(screen.getByRole("button", { name: "로그인" })).toBeVisible();
+  expect(screen.queryByRole("link", { name: "현황 보기" })).not.toBeInTheDocument();
 });
 
 test("로그인 비밀번호 표시 상태를 전환한다", async () => {

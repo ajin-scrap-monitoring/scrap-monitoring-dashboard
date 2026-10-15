@@ -14,12 +14,42 @@ test("측정 참고도의 SVG 태그, 좌표, 색상과 순서를 고정한다",
 test("최근 적재율 눈금은 표본 누락과 무관하게 3시간 간격을 유지한다", () => {
   render(<LoadChart threshold={80} samples={[
     { measuredAt: "2026-09-09T09:00:00+09:00", time: "09:00", value: 44 },
-    { measuredAt: "2026-09-09T15:00:00+09:00", time: "15:00", value: 56 },
+    { measuredAt: "2026-09-09T18:00:00+09:00", time: "18:00", value: 56 },
   ]} />);
 
   expect(screen.getByText("09:00")).toBeVisible();
   expect(screen.getByText("12:00")).toBeVisible();
   expect(screen.getByText("15:00")).toBeVisible();
+});
+
+test("최근 24시간 눈금은 정각을 표시하고 표본 좌표와 실제 분 단위 시각은 유지한다", () => {
+  const { container } = render(<LoadChart threshold={80} samples={[
+    { measuredAt: "2026-10-14T19:21:34+09:00", time: "19:21", value: 44 },
+    { measuredAt: "2026-10-15T19:21:34+09:00", time: "19:21", value: 56 },
+  ]} />);
+  const labels = [...container.querySelectorAll('text[y="166"]')].map(text => text.textContent);
+  expect(labels).toEqual(["21:00", "00:00", "03:00", "06:00", "09:00", "12:00", "15:00", "18:00"]);
+  const targets = container.querySelectorAll(".chart-point-target");
+  expect(targets[0]).toHaveAttribute("cx", "40");
+  expect(targets[1]).toHaveAttribute("cx", "410");
+  fireEvent.focus(targets[0]);
+  expect(container.querySelector(".chart-tooltip")).toHaveTextContent("19:21");
+});
+
+test("분 단위 offset의 시간대에서도 표시 시간 기준 정각에 눈금을 배치한다", () => {
+  const { container } = render(<LoadChart threshold={80} samples={[
+    { measuredAt: "2026-10-14T19:21:34+05:30", time: "19:21", value: 44 },
+    { measuredAt: "2026-10-15T19:21:34+05:30", time: "19:21", value: 56 },
+  ]} />);
+  expect([...container.querySelectorAll('text[y="166"]')].map(text => text.textContent)).toEqual(["21:00", "00:00", "03:00", "06:00", "09:00", "12:00", "15:00", "18:00"]);
+});
+
+test("조회 범위를 알 수 없는 단독 표본은 분 단위 눈금을 임의로 배치하지 않는다", () => {
+  const { container } = render(<LoadChart threshold={80} samples={[
+    { measuredAt: "2026-10-14T19:21:34Z", time: "19:21", value: 44 },
+  ]} />);
+  expect(container.querySelectorAll('text[y="166"]')).toHaveLength(0);
+  expect(container.querySelector(".chart-point-target")).toHaveAttribute("cx", "225");
 });
 
 test("최근 적재율과 LiDAR profile은 유효하지 않은 표본에서 선을 끊는다", () => {
@@ -50,7 +80,7 @@ test("v2 그래프는 bucket 범위를 유지하고 실제 점을 판단 생성 
   expect(targets).toHaveLength(2);
   expect(Number(targets[0].getAttribute("cx"))).toBeCloseTo(40 + 370 / 6);
   expect(Number(targets[0].getAttribute("cy"))).toBe(148);
-  expect(screen.getByText("현재 임계율(참고) 85%")).toBeVisible();
+  expect(screen.getByText("현재 임계율 85%")).toBeVisible();
   expect(targets[1]).toHaveAccessibleName(/입력 제한.*판단 생성.*관측/);
   fireEvent.focus(targets[1]);
   expect(container.querySelector(".chart-tooltip")).toHaveTextContent("입력 제한");
@@ -93,6 +123,25 @@ test("갱신 실패에서 마지막 유효 결과를 유지하면 이전 결과�
   ]} />);
   expect(container.querySelectorAll(".load-chart-line")).toHaveLength(1);
   expect(screen.getByText("이전 조회 결과 / 갱신 실패")).toBeVisible();
+});
+
+test("적재율 소수 자릿수를 유지하고 tooltip 폭을 값 길이에 맞춘다", () => {
+  const { container } = render(<LoadChart threshold={90} thresholdKind="current" samples={[
+    { measuredAt: "2026-10-15T00:00:00Z", time: "00:00", value: 99.123456789, dataState: "AVAILABLE" },
+  ]} />);
+  fireEvent.focus(container.querySelector(".chart-point-target")!);
+  const tooltip = container.querySelector(".chart-tooltip");
+  expect(tooltip).toHaveTextContent("대표 적재율 99.123456789%");
+  expect(Number(tooltip?.querySelector("rect")?.getAttribute("width"))).toBeGreaterThan(140);
+  expect(screen.getByText("현재 임계율 90%")).not.toHaveAttribute("transform");
+});
+
+test.each([0, 80, 90, 100])("임계율 %s%%의 문구는 점선과 분리한 그래프 위쪽 여백에 표시한다", (threshold) => {
+  const { container } = render(<LoadChart threshold={threshold} thresholdKind="current" samples={[]} />);
+  const label = screen.getByText(`현재 임계율 ${threshold}%`);
+  expect(Number(label.getAttribute("y")) + Number(label.getAttribute("font-size")) / 2).toBeLessThan(20);
+  expect(container.querySelector('path[stroke-dasharray="5 5"]')).toHaveAttribute("d", `M40 ${148 - threshold * 1.28}H410`);
+  expect(screen.getByRole("img")).toHaveAttribute("viewBox", "0 0 430 175");
 });
 
 test("STATE 기록이 없는 구간과 유효한 수치가 없는 판단을 구분한다", () => {

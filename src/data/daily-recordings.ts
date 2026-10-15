@@ -1,31 +1,9 @@
-// Media internal metadata is not a browser API; public paths require a Backend contract.
-export type DailyRecording = {
-  source: "daily";
-  id: string;
-  cameraId: string;
-  recordingDate: string;
-  timezone: "Asia/Seoul";
-  windowStartsAt: string;
-  windowEndsAt: string;
-  status: "recording" | "finalizing" | "closed" | "failed" | "expired" | "deleted";
-  coverage: "complete" | "partial" | "none" | null;
-  hasGaps: boolean;
-  coverageAsOfAt: string;
-  playableUntilAt: string | null;
-  recordedSeconds: number;
-  gaps: { startsAt: string; endsAt: string; reasonCode: string }[];
-  availableIntervals: { startsAt: string; endsAt: string; playbackStartsAtSeconds: number; playbackEndsAtSeconds: number }[];
-  playbackState: "pending" | "ready" | "unavailable";
-  playbackProtocol: "hls";
-  internalPlaybackPath: string | null;
-  exportAllowed: boolean;
-  exportState: "not_requested" | "processing" | "ready" | "failed";
-  internalDownloadPath: string | null;
-  sizeBytes: number | null;
-  expiresAt: string | null;
-  exportExpiresAt: string | null;
-  error: { code: string; message: string } | null;
-};
+import type { DailyRecording } from "../domain/daily-recording";
+import { timestamp as validTimestamp, timestampValue } from "./contract-values";
+
+export type { DailyRecording } from "../domain/daily-recording";
+
+export const dailyRecordingIdentifier = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function fail(): never { throw new Error("Unexpected daily recording contract."); }
 
@@ -54,11 +32,6 @@ function timestamp(value: unknown): string {
   return result;
 }
 
-function validTimestamp(value: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)
-    && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
-}
-
 function nullableTimestamp(value: unknown): string | null { return value === null ? null : timestamp(value); }
 
 function date(value: unknown): string {
@@ -72,21 +45,21 @@ function entries<T>(value: unknown, convert: (entry: unknown) => T): T[] {
   return Array.isArray(value) ? value.map(convert) : fail();
 }
 
-function internalPath(value: unknown, expected: string): string | null {
+function publicPath(value: unknown, expected: string): string | null {
   return value === null ? null : value === expected ? expected : fail();
 }
 
 export function dailyRecording(value: unknown, cameraId: string): DailyRecording {
   const item = object(value);
   const id = text(item.recording_id);
-  if (!/^[a-zA-Z0-9-]+$/.test(id) || item.camera_id !== cameraId || !cameraId) return fail();
+  if (!dailyRecordingIdentifier.test(id) || item.camera_id !== cameraId || !cameraId) return fail();
   const recordingDate = date(item.recording_date);
   const windowStartsAt = timestamp(item.window_start_at);
   const windowEndsAt = timestamp(item.window_end_at);
-  const start = Date.parse(windowStartsAt);
-  const end = Date.parse(windowEndsAt);
+  const start = timestampValue(windowStartsAt);
+  const end = timestampValue(windowEndsAt);
   const coverageAsOfAt = timestamp(item.coverage_as_of_at);
-  const coverageUntil = Date.parse(coverageAsOfAt);
+  const coverageUntil = timestampValue(coverageAsOfAt);
   if (item.timezone !== "Asia/Seoul" || start !== Date.parse(`${recordingDate}T00:00:00.000+09:00`)
     || end - start !== 86_400_000 || coverageUntil < start || coverageUntil > end) return fail();
 
@@ -96,9 +69,9 @@ export function dailyRecording(value: unknown, cameraId: string): DailyRecording
   });
   let previousGapEnd = start;
   for (const gap of gaps) {
-    const gapStart = Date.parse(gap.startsAt);
-    const gapEnd = Date.parse(gap.endsAt);
-    if (gapStart < previousGapEnd || gapEnd <= gapStart || gapEnd > coverageUntil) return fail();
+    const gapStart = timestampValue(gap.startsAt);
+    const gapEnd = timestampValue(gap.endsAt);
+    if (gapStart < previousGapEnd || gapEnd < gapStart || gapEnd > coverageUntil) return fail();
     previousGapEnd = gapEnd;
   }
 
@@ -112,42 +85,50 @@ export function dailyRecording(value: unknown, cameraId: string): DailyRecording
   let previousEnd = start;
   let previousPlaybackEnd = 0;
   for (const interval of availableIntervals) {
-    const intervalStart = Date.parse(interval.startsAt);
-    const intervalEnd = Date.parse(interval.endsAt);
-    if (intervalStart < previousEnd || intervalEnd <= intervalStart || intervalEnd > coverageUntil
+    const intervalStart = timestampValue(interval.startsAt);
+    const intervalEnd = timestampValue(interval.endsAt);
+    if (intervalStart < previousEnd || intervalEnd < intervalStart || intervalEnd > coverageUntil
       || interval.playbackStartsAtSeconds !== previousPlaybackEnd
-      || interval.playbackEndsAtSeconds <= interval.playbackStartsAtSeconds) return fail();
+      || interval.playbackEndsAtSeconds <= interval.playbackStartsAtSeconds || interval.playbackEndsAtSeconds > 86_400) return fail();
     previousEnd = intervalEnd;
     previousPlaybackEnd = interval.playbackEndsAtSeconds;
   }
   let gapIndex = 0;
   for (const interval of availableIntervals) {
-    while (gapIndex < gaps.length && Date.parse(gaps[gapIndex].endsAt) <= Date.parse(interval.startsAt)) gapIndex += 1;
-    if (gapIndex < gaps.length && Date.parse(gaps[gapIndex].startsAt) < Date.parse(interval.endsAt)) return fail();
+    if (timestampValue(interval.startsAt) === timestampValue(interval.endsAt)) continue;
+    while (gapIndex < gaps.length && timestampValue(gaps[gapIndex].endsAt) <= timestampValue(interval.startsAt)) gapIndex += 1;
+    if (gapIndex < gaps.length && timestampValue(gaps[gapIndex].startsAt) < timestampValue(interval.endsAt)) return fail();
   }
   const recordedSeconds = number(item.recorded_seconds);
   const playableUntilAt = nullableTimestamp(item.playable_until_at);
-  if (Math.abs(previousPlaybackEnd - recordedSeconds) > 0.001
-    || (availableIntervals.length === 0 ? playableUntilAt !== null : playableUntilAt !== availableIntervals.at(-1)?.endsAt)) return fail();
+  if (recordedSeconds > 86_400 || Math.abs(previousPlaybackEnd - recordedSeconds) > 0.001
+    || (availableIntervals.length === 0 ? playableUntilAt !== null
+      : playableUntilAt === null || timestampValue(playableUntilAt) !== timestampValue(availableIntervals.at(-1)!.endsAt))) return fail();
   const hasGaps = boolean(item.has_gaps);
   if (hasGaps !== (gaps.length > 0)) return fail();
   const error = item.error === null ? null : object(item.error);
+  if (error !== null && (typeof error.code !== "string" || !/^[A-Z0-9_]{1,100}$/.test(error.code) || typeof error.message !== "string")) return fail();
   const sizeBytes = item.size_bytes === null ? null : number(item.size_bytes);
   if (sizeBytes !== null && !Number.isSafeInteger(sizeBytes)) return fail();
+  const playbackState = choice(item.playback_state, ["pending", "ready", "unavailable"]);
+  const exportState = choice(item.export_state, ["not_requested", "processing", "ready", "failed"]);
+  const playbackPath = publicPath(item.playback_path, `/media/daily-recordings/${id}/hls/index.m3u8`);
+  const downloadPath = publicPath(item.download_path, `/media/daily-recordings/${id}/content?download=true`);
+  if ((playbackPath !== null && playbackState !== "ready") || (downloadPath !== null && exportState !== "ready")) return fail();
 
   return {
     source: "daily", id, cameraId, recordingDate, timezone: "Asia/Seoul", windowStartsAt, windowEndsAt,
     status: choice(item.status, ["recording", "finalizing", "closed", "failed", "expired", "deleted"]),
     coverage: item.coverage === null ? null : choice(item.coverage, ["complete", "partial", "none"]),
     hasGaps, coverageAsOfAt, playableUntilAt, recordedSeconds, gaps, availableIntervals,
-    playbackState: choice(item.playback_state, ["pending", "ready", "unavailable"]),
-    playbackProtocol: choice(item.playback_protocol, ["hls"]),
-    internalPlaybackPath: internalPath(item.playback_path, `/api/v2/daily-recordings/${id}/hls/index.m3u8`),
+    playbackState,
+    playbackProtocol: item.playback_protocol === null ? null : choice(item.playback_protocol, ["hls"]),
+    playbackPath,
     exportAllowed: boolean(item.export_allowed),
-    exportState: choice(item.export_state, ["not_requested", "processing", "ready", "failed"]),
-    internalDownloadPath: internalPath(item.download_path, `/api/v2/daily-recordings/${id}/content`),
+    exportState,
+    downloadPath,
     sizeBytes, expiresAt: nullableTimestamp(item.expires_at), exportExpiresAt: nullableTimestamp(item.export_expires_at),
-    error: error === null ? null : { code: text(error.code), message: typeof error.message === "string" ? error.message : fail() },
+    error: error === null ? null : { code: text(error.code), message: "녹화 처리에 실패했습니다." },
   };
 }
 
@@ -155,7 +136,7 @@ export function dailyRecordingPage(value: unknown, cameraId: string): { items: D
   const page = object(value);
   return {
     items: entries(page.items, (entry) => dailyRecording(entry, cameraId)),
-    nextCursor: page.next_cursor === null ? null : text(page.next_cursor),
+    nextCursor: page.next_cursor === null ? null : typeof page.next_cursor === "string" && page.next_cursor.length <= 4096 ? text(page.next_cursor) : fail(),
   };
 }
 
@@ -167,17 +148,20 @@ export function dailyPlaybackTimestamp(recording: DailyRecording, seconds: numbe
     ?? (seconds === recording.availableIntervals.at(-1)?.playbackEndsAtSeconds ? recording.availableIntervals.at(-1) : undefined);
   if (!interval) return null;
   const progress = (seconds - interval.playbackStartsAtSeconds) / (interval.playbackEndsAtSeconds - interval.playbackStartsAtSeconds);
-  return new Date(Date.parse(interval.startsAt) + progress * (Date.parse(interval.endsAt) - Date.parse(interval.startsAt))).toISOString();
+  return new Date(timestampValue(interval.startsAt) + progress * (timestampValue(interval.endsAt) - timestampValue(interval.startsAt))).toISOString();
 }
 
 export function dailyPlaybackPosition(recording: DailyRecording, receivedAt: string): number | null {
   if (!accessible(recording) || !validTimestamp(receivedAt)) return null;
-  const at = Date.parse(receivedAt);
+  const at = timestampValue(receivedAt);
   if (!Number.isFinite(at)) return null;
-  const interval = recording.availableIntervals.find((item) => at >= Date.parse(item.startsAt) && at < Date.parse(item.endsAt))
-    ?? (receivedAt === recording.availableIntervals.at(-1)?.endsAt ? recording.availableIntervals.at(-1) : undefined);
+  const interval = recording.availableIntervals.find((item) => at >= timestampValue(item.startsAt) && (at < timestampValue(item.endsAt)
+    || (at === timestampValue(item.startsAt) && timestampValue(item.startsAt) === timestampValue(item.endsAt))))
+    ?? (at === timestampValue(recording.availableIntervals.at(-1)?.endsAt ?? "") ? recording.availableIntervals.at(-1) : undefined);
   if (!interval) return null;
-  const progress = (at - Date.parse(interval.startsAt)) / (Date.parse(interval.endsAt) - Date.parse(interval.startsAt));
+  const duration = timestampValue(interval.endsAt) - timestampValue(interval.startsAt);
+  if (duration === 0) return interval.playbackStartsAtSeconds;
+  const progress = (at - timestampValue(interval.startsAt)) / duration;
   return interval.playbackStartsAtSeconds + progress * (interval.playbackEndsAtSeconds - interval.playbackStartsAtSeconds);
 }
 
@@ -188,11 +172,11 @@ export function dailyRecordingAvailability(recording: DailyRecording, now: numbe
   const exportable = !originalUnavailable && recording.exportAllowed && recording.status === "closed"
     && now >= Date.parse(recording.windowEndsAt) && recording.recordedSeconds > 0;
   const downloadReady = exportable && recording.exportState === "ready" && !exportCacheExpired
-    && recording.internalDownloadPath !== null;
+    && recording.downloadPath !== null;
   return {
     originalUnavailable,
     exportCacheExpired,
-    playbackReady: !originalUnavailable && recording.playbackState === "ready" && recording.internalPlaybackPath !== null && recording.availableIntervals.length > 0,
+    playbackReady: !originalUnavailable && recording.playbackState === "ready" && recording.playbackProtocol === "hls" && recording.playbackPath !== null && recording.availableIntervals.length > 0,
     downloadReady,
     exportProcessing: !originalUnavailable && recording.exportState === "processing",
     canPrepareExport: exportable && !downloadReady && recording.exportState !== "processing",

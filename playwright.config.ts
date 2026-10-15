@@ -22,14 +22,14 @@ export default defineConfig({
       },
     },
     {
-      name: "chromium-primary",
+      name: "chromium-compact",
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1440, height: 900 },
       },
     },
     {
-      name: "chromium-wide",
+      name: "chromium-primary",
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1920, height: 1080 },

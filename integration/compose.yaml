@@ -13,6 +13,7 @@ services:
       EDGE_V2_ASSESSMENT_TTL_SECONDS: "180"
       EDGE_V2_OPERATIONS_ENABLED: "true"
       MEDIA_SERVICE_URL: http://media:8889/api/v1
+      MEDIA_DAILY_SERVICE_URL: http://media:8889/api/v2
       MEDIA_API_TOKEN: ${SYNC_MEDIA_TOKEN:?}
       MEDIA_POLL_INTERVAL_SECONDS: "1"
       WHEP_MOCK_FALLBACK: "false"
@@ -31,6 +32,13 @@ services:
       MEDIA_API_PORT: "8889"
       MEDIA_INGEST_PORT: "8443"
       MAX_BUFFER_BYTES: "16777216"
+      DAILY_RECORDING_ENABLED: "true"
+      MAX_DAILY_STORAGE_BYTES: "100000000"
+      MIN_FREE_STORAGE_BYTES: "0"
+      DAILY_WIDTH: "320"
+      DAILY_HEIGHT: "240"
+      DAILY_FPS: "10"
+      DAILY_SEGMENT_SECONDS: "2"
     volumes:
       - media_data:/var/lib/camera-media
     healthcheck:

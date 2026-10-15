@@ -1,3 +1,5 @@
+import type { DailyRecording } from "./daily-recording";
+
 export type AlertLevel = "info" | "warning" | "error";
 export type EventTone = "complete" | "warning" | "error";
 export type EventCategory = "collection" | "alert" | "error";
@@ -23,23 +25,6 @@ export type LoadHistoryMetadata = {
   observedAt?: string | null;
   dataState?: "AVAILABLE" | "LIMITED" | "UNAVAILABLE" | "STALE" | "UNKNOWN" | "NO_DATA";
   reasonCodes?: string[];
-};
-
-export type AlertEvidence = {
-  eventId: string;
-  notificationId: string;
-  assessmentId: string;
-  loadPercent: number | null;
-  observedAt: string;
-  triggeredAt: string;
-  readAt: string | null;
-};
-
-export type AlertEvidencePage = {
-  items: AlertEvidence[];
-  offset: number;
-  limit: number;
-  totalItems: number;
 };
 
 export type UserSession = {
@@ -100,7 +85,7 @@ export type MonitoringSummary = {
   loadPercent: number | null;
   operationState: OperationState | null;
   preCollectionAlert: { enabled: boolean; threshold: number };
-  recentChange: string;
+  loadOneHourAgo: { value: number; observedAt: string; dataState: "AVAILABLE" | "LIMITED" } | null;
   remainingTime: string;
   timeSinceCollection: string;
 };
@@ -108,8 +93,10 @@ export type MonitoringSummary = {
 export type HistoryEvent = {
   id: string;
   content: string;
+  title?: string;
+  detail?: string;
   recordingId: string | null;
-  status: string;
+  status: string | null;
   time: string;
   tone: EventTone;
   type: "수거" | "알림" | "오류";
@@ -136,6 +123,8 @@ export type HistoryThresholdSample = {
 };
 
 export type Recording = {
+  source?: "daily" | "event";
+  daily?: DailyRecording;
   codec: string;
   contentUrl?: string;
   retentionStartsAt: string;
@@ -156,7 +145,7 @@ export type Recording = {
   thumbnailUrl?: string;
   time: string;
   tone: EventTone;
-  type: "수거" | "알림" | "오류";
+  type: "수거" | "알림" | "오류" | "날짜 녹화";
   width: number | null;
   mediaStatus?: string | null;
   coverage?: string | null;
@@ -208,6 +197,11 @@ export type AlertSettings = {
 
 export type DashboardStatus = "normal" | "collection-required" | "measurement-error" | "disconnected" | "no-data" | "fresh" | "stale" | "unavailable" | "unknown";
 
+export type DataReception = {
+  status: "waiting" | "connected" | "error";
+  lastReceivedAt: string | null;
+};
+
 export type MonitoringV2 = {
   serverTime: string;
   dataState: "FRESH" | "STALE" | "UNAVAILABLE" | "UNKNOWN" | "NO_DATA";
@@ -244,6 +238,7 @@ export type MonitoringV2 = {
 
 export type DashboardData = {
   authError?: { status: 401 | 403; message: string };
+  reception: DataReception;
   lastMeasuredAt: string;
   session: UserSession | null;
   admin: {
@@ -280,8 +275,9 @@ export type DashboardData = {
     videoUrl?: string;
     videoStatus: "available" | "delayed" | "unavailable";
     videoStreamId: string;
-    videoTimestamp: string;
+    videoCapturedAt: string | null;
   };
   recordings: Recording[];
+  recordingsSource?: "daily" | "event";
   recordingsState?: DataAreaState;
 };

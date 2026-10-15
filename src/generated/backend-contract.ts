@@ -444,6 +444,58 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v2/recordings/daily": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Daily Recordings */
+        readonly get: operations["list_daily_recordings_api_v2_recordings_daily_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v2/recordings/daily/{recording_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Daily Recording */
+        readonly get: operations["get_daily_recording_api_v2_recordings_daily__recording_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        /** Delete Daily Recording */
+        readonly delete: operations["delete_daily_recording_api_v2_recordings_daily__recording_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v2/recordings/daily/{recording_id}/exports": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Prepare Daily Download */
+        readonly post: operations["prepare_daily_download_api_v2_recordings_daily__recording_id__exports_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -727,6 +779,132 @@ export interface components {
             /** Valuepercent */
             readonly valuePercent: number;
         };
+        /** DailyAvailableInterval */
+        readonly DailyAvailableInterval: {
+            /**
+             * End At
+             * Format: date-time
+             */
+            readonly end_at: string;
+            /** Playback End Seconds */
+            readonly playback_end_seconds: number;
+            /** Playback Start Seconds */
+            readonly playback_start_seconds: number;
+            /**
+             * Start At
+             * Format: date-time
+             */
+            readonly start_at: string;
+        };
+        /** DailyError */
+        readonly DailyError: {
+            /** Code */
+            readonly code: string;
+            /** Message */
+            readonly message: string;
+        };
+        /** DailyGap */
+        readonly DailyGap: {
+            /**
+             * End At
+             * Format: date-time
+             */
+            readonly end_at: string;
+            /** Reason Code */
+            readonly reason_code: string;
+            /**
+             * Start At
+             * Format: date-time
+             */
+            readonly start_at: string;
+        };
+        /** DailyPage */
+        readonly DailyPage: {
+            /** Items */
+            readonly items: readonly components["schemas"]["DailyRecording"][];
+            /** Next Cursor */
+            readonly next_cursor: string | null;
+        };
+        /**
+         * DailyRecording
+         * @description Do not equate a calendar window, recorded duration and export readiness.
+         */
+        readonly DailyRecording: {
+            /** Available Intervals */
+            readonly available_intervals: readonly components["schemas"]["DailyAvailableInterval"][];
+            /** Camera Id */
+            readonly camera_id: string;
+            /** Coverage */
+            readonly coverage: ("complete" | "partial" | "none") | null;
+            /**
+             * Coverage As Of At
+             * Format: date-time
+             */
+            readonly coverage_as_of_at: string;
+            /** Download Path */
+            readonly download_path: string | null;
+            readonly error: components["schemas"]["DailyError"] | null;
+            /** Expires At */
+            readonly expires_at: string | null;
+            /** Export Allowed */
+            readonly export_allowed: boolean;
+            /** Export Expires At */
+            readonly export_expires_at: string | null;
+            /**
+             * Export State
+             * @enum {string}
+             */
+            readonly export_state: "not_requested" | "processing" | "ready" | "failed";
+            /** Gaps */
+            readonly gaps: readonly components["schemas"]["DailyGap"][];
+            /** Has Gaps */
+            readonly has_gaps: boolean;
+            /** Playable Until At */
+            readonly playable_until_at: string | null;
+            /** Playback Path */
+            readonly playback_path: string | null;
+            /** Playback Protocol */
+            readonly playback_protocol: "hls" | null;
+            /**
+             * Playback State
+             * @enum {string}
+             */
+            readonly playback_state: "pending" | "ready" | "unavailable";
+            /** Recorded Seconds */
+            readonly recorded_seconds: number;
+            /**
+             * Recording Date
+             * Format: date
+             */
+            readonly recording_date: string;
+            /**
+             * Recording Id
+             * Format: uuid
+             */
+            readonly recording_id: string;
+            /** Size Bytes */
+            readonly size_bytes: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "recording" | "finalizing" | "closed" | "failed" | "deleted" | "expired";
+            /**
+             * Timezone
+             * @constant
+             */
+            readonly timezone: "Asia/Seoul";
+            /**
+             * Window End At
+             * Format: date-time
+             */
+            readonly window_end_at: string;
+            /**
+             * Window Start At
+             * Format: date-time
+             */
+            readonly window_start_at: string;
+        };
         /** DeliveryStatus */
         readonly DeliveryStatus: {
             /** Last Backend Ack At */
@@ -985,6 +1163,7 @@ export interface components {
         readonly LoginRequest: {
             /**
              * Password
+             * Format: password
              * @description Password
              */
             readonly password: string;
@@ -1802,7 +1981,9 @@ export interface operations {
             readonly path: {
                 readonly pit_id: string;
             };
-            readonly cookie?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
         };
         readonly requestBody?: never;
         readonly responses: {
@@ -1829,11 +2010,15 @@ export interface operations {
     readonly update_pit_config_api_v1_config_pits__pit_id__put: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                readonly "X-CSRF-Token"?: string | null;
+            };
             readonly path: {
                 readonly pit_id: string;
             };
-            readonly cookie?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
         };
         readonly requestBody: {
             readonly content: {
@@ -2075,7 +2260,9 @@ export interface operations {
             };
             readonly header?: never;
             readonly path?: never;
-            readonly cookie?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
         };
         readonly requestBody?: never;
         readonly responses: {
@@ -2102,9 +2289,13 @@ export interface operations {
     readonly create_notification_recipient_api_v1_notification_recipients_post: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                readonly "X-CSRF-Token"?: string | null;
+            };
             readonly path?: never;
-            readonly cookie?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
         };
         readonly requestBody: {
             readonly content: {
@@ -2137,12 +2328,15 @@ export interface operations {
             readonly query?: never;
             readonly header?: {
                 readonly "If-Match"?: string | null;
+                readonly "X-CSRF-Token"?: string | null;
             };
             readonly path: {
                 /** @description Recipient identifier */
                 readonly recipientId: string;
             };
-            readonly cookie?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
         };
         readonly requestBody: {
             readonly content: {
@@ -2182,7 +2376,9 @@ export interface operations {
             };
             readonly header?: never;
             readonly path?: never;
-            readonly cookie?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
         };
         readonly requestBody?: never;
         readonly responses: {
@@ -2213,7 +2409,9 @@ export interface operations {
                 readonly "X-CSRF-Token"?: string | null;
             };
             readonly path?: never;
-            readonly cookie?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
         };
         readonly requestBody?: never;
         readonly responses: {
@@ -2238,9 +2436,13 @@ export interface operations {
     readonly send_test_notification_api_v1_notifications_test_post: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                readonly "X-CSRF-Token"?: string | null;
+            };
             readonly path?: never;
-            readonly cookie?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
         };
         readonly requestBody: {
             readonly content: {
@@ -2280,7 +2482,9 @@ export interface operations {
                 /** @description Notification identifier */
                 readonly notificationId: string;
             };
-            readonly cookie?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
         };
         readonly requestBody: {
             readonly content: {
@@ -2486,7 +2690,9 @@ export interface operations {
             };
             readonly header?: never;
             readonly path?: never;
-            readonly cookie?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
         };
         readonly requestBody?: never;
         readonly responses: {
@@ -2518,9 +2724,12 @@ export interface operations {
             };
             readonly header?: {
                 readonly "If-Match"?: string | null;
+                readonly "X-CSRF-Token"?: string | null;
             };
             readonly path?: never;
-            readonly cookie?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
         };
         readonly requestBody: {
             readonly content: {
@@ -2744,6 +2953,153 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["MonitoringSnapshotV2"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_daily_recordings_api_v2_recordings_daily_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly from_date?: string | null;
+                readonly to_date?: string | null;
+                readonly status?: ("recording" | "finalizing" | "closed" | "failed" | "deleted" | "expired") | null;
+                readonly limit?: number;
+                readonly cursor?: string | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DailyPage"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_daily_recording_api_v2_recordings_daily__recording_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly recording_id: string;
+            };
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DailyRecording"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_daily_recording_api_v2_recordings_daily__recording_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly "X-CSRF-Token"?: string | null;
+            };
+            readonly path: {
+                readonly recording_id: string;
+            };
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly prepare_daily_download_api_v2_recordings_daily__recording_id__exports_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly "X-CSRF-Token"?: string | null;
+            };
+            readonly path: {
+                readonly recording_id: string;
+            };
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DailyRecording"];
+                };
+            };
+            /** @description Accepted */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DailyRecording"];
                 };
             };
             /** @description Validation Error */

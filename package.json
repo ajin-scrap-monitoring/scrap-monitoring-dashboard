@@ -27,6 +27,7 @@
     "check": "pnpm run security:check && pnpm run contract:check && pnpm run lint && pnpm run test:tooling && pnpm run test && pnpm run test:e2e"
   },
   "dependencies": {
+    "hls.js": "1.7.3",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

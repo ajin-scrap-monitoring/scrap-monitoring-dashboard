@@ -73,10 +73,10 @@ export function Dropdown({ label, options, defaultValue = "", value: controlledV
           }
         }}
       >
-        <span>{value}</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        <span className="dropdown-value" title={value}>{value}</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </button>
       {open && <div className="dropdown-options" id={id} role="listbox" aria-label={label} onMouseDown={(event) => event.preventDefault()}>
-        {options.map((option, index) => <div key={option} id={`${id}-${index}`} role="option" aria-selected={value === option} className={`dropdown-option${active === index ? " active" : ""}`} onPointerMove={() => setActive(index)} onClick={() => select(index)}>{option}{value === option && <span aria-hidden="true">선택</span>}</div>)}
+        {options.map((option, index) => <div key={option} id={`${id}-${index}`} role="option" aria-selected={value === option} className={`dropdown-option${active === index ? " active" : ""}`} onPointerMove={() => setActive(index)} onClick={() => select(index)}><span className="dropdown-option-label" title={option}>{option}</span>{value === option && <span aria-hidden="true">선택</span>}</div>)}
       </div>}
     </div>
   );

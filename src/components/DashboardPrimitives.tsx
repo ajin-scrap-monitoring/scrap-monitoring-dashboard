@@ -1,23 +1,5 @@
-import type { DashboardData } from "../domain/dashboard";
-
 export function SectionTitle({ children }: { children: string }) {
   return <h2 className="section-title">{children}</h2>;
-}
-
-export function DashboardStatusLabel({ status }: { status: DashboardData["monitoring"]["status"] }) {
-  const labels = {
-    normal: "정상",
-    "collection-required": "수거 필요",
-    "measurement-error": "측정 오류",
-    disconnected: "연결 끊김",
-    "no-data": "데이터 없음",
-    fresh: "표시 가능",
-    stale: "관측 기한 초과",
-    unavailable: "판단 불가",
-    unknown: "상태 확인 불가",
-  };
-  const tone = status === "normal" || status === "fresh" ? "ok" : status === "collection-required" || status === "stale" ? "warning" : "error";
-  return <span className={`status-text ${tone}`}>{labels[status]}</span>;
 }
 
 export function UserIcon() {

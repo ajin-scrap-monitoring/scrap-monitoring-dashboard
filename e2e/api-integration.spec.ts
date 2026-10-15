@@ -6,8 +6,9 @@ import { mediaRecordingFixture, monitoringV2StateFixture } from "../src/test/bac
 
 import { installBackendApi } from "./backend-api.js";
 
-test("알림 500은 현황과 과거 그래프를 막지 않고 기존 popover 안에서 복구한다", async ({ page }) => {
-  await installBackendApi(page, { initial: monitoringV2StateFixture("FRESH", 0) });
+test("알림 500은 현황과 과거 그래프를 유지하고 수동 재조회 없이 snapshot 수신으로 복구한다", async ({ page }) => {
+  const initial = monitoringV2StateFixture("FRESH", 0);
+  const api = await installBackendApi(page, { initial });
   let failing = true;
   let attempts = 0;
   await page.route("**/api/v1/notifications?*", route => { attempts += 1; return failing ? route.fulfill({ status: 500, json: { detail: "Synthetic failure" } }) : route.fallback(); });
@@ -22,29 +23,42 @@ test("알림 500은 현황과 과거 그래프를 막지 않고 기존 popover �
   const before = await geometry();
   await page.getByRole("button", { name: "알림 조회 실패", exact: true }).click();
   const popover = page.getByLabel("최근 알림");
-  await expect(popover.getByRole("alert")).toContainText("알림");
+  const notice = popover.getByRole("alert");
+  await expect(notice).toContainText("알림을 확인할 수 없습니다");
+  await expect(notice).toContainText("알림 정보를 받으면 자동으로 표시합니다.");
+  await expect(notice.locator("strong")).toHaveCSS("font-size", "14px");
+  await expect(notice.locator("p")).toHaveCSS("font-size", "12px");
+  await expect(notice).not.toContainText("Synthetic failure");
+  await expect(popover.getByRole("button", { name: /다시 조회/ })).toHaveCount(0);
   failing = false;
-  await popover.getByRole("button", { name: "다시 조회" }).click();
+  await api.snapshot(initial);
   await expect(page.getByRole("button", { name: "알림 1건", exact: true })).toBeVisible();
+  await expect(popover.getByRole("alert")).toHaveCount(0);
   expect(await geometry()).toEqual(before);
   expect(attempts).toBeGreaterThanOrEqual(2);
 });
 
-test("30일 조회는 기존 운영 기록을 유지하고 v2 그래프만 범위 미지원으로 표시한다", async ({ page }) => {
+test("30일과 90일 조회는 기존 운영 기록을 유지하고 v2 그래프만 범위 미지원으로 표시한다", async ({ page }) => {
   const api = await installBackendApi(page);
+  const eventQueries: URL[] = [];
   await page.route("**/api/v1/events?*", route => {
     const url = new URL(route.request().url());
+    if (url.searchParams.get("pageSize") === "100") eventQueries.push(url);
     return url.searchParams.get("category") === "collection" ? route.fallback() : route.fulfill({ json: { ...eventPageFixture, items: [{ ...eventFixture, occurredAt: "2026-10-12T00:00:00Z", recordingId: null }] } });
   });
   await page.goto("/history?source=api");
   await expect(page.locator(".history-chart")).toBeVisible();
   const requested = api.requests.filter(url => url.pathname === "/api/v2/monitoring/load-history").length;
-  await page.getByRole("button", { name: "최근 30일", exact: true }).click();
-  await page.getByRole("button", { name: "조회", exact: true }).click();
-  await expect(page.locator(".history-chart")).toContainText("최대 7일");
-  await expect(page.locator(".history-events")).toContainText(eventFixture.detail);
-  expect(api.requests.filter(url => url.pathname === "/api/v2/monitoring/load-history")).toHaveLength(requested);
-  await expect(page.getByRole("button", { name: "최근 90일", exact: true })).toBeEnabled();
+  for (const days of [30, 90]) {
+    await page.getByRole("button", { name: `최근 ${days}일`, exact: true }).click();
+    await page.getByRole("button", { name: "조회", exact: true }).click();
+    await expect(page.getByRole("button", { name: "조회", exact: true })).toBeEnabled();
+    await expect(page.locator(".history-chart")).toContainText("최대 7일");
+    await expect(page.locator(".history-events")).toContainText(eventFixture.title);
+    expect(api.requests.filter(url => url.pathname === "/api/v2/monitoring/load-history")).toHaveLength(requested);
+    const query = eventQueries.at(-1)!;
+    expect(Date.parse(query.searchParams.get("to")!) - Date.parse(query.searchParams.get("from")!)).toBe(days * 86_400_000);
+  }
   await expect(page.locator(".history-event-target")).toHaveCount(0);
 });
 
@@ -91,7 +105,7 @@ test("현재 분의 녹화는 목록에 유지하고 v2 추이는 미래 종료 
   const initial = { ...monitoringV2StateFixture("FRESH", 0), serverTime: "2026-10-15T12:34:50+09:00" };
   const api = await installBackendApi(page, { initial });
   api.setRecordings([{ ...mediaRecordingFixture, startedAt: "2026-10-15T12:34:10+09:00", endedAt: "2026-10-15T12:34:40+09:00" }]);
-  await page.goto("/recordings?source=api");
+  await page.goto("/recordings?source=api&recordingSource=event");
   await expect(page.locator(".recordings-list .recording-item")).toHaveCount(1);
   await expect(page.getByRole("textbox", { name: "종료 시각", exact: true })).toHaveValue("2026-10-15 12:35");
   const requests = api.requests.filter(url => url.pathname === "/api/v2/monitoring/load-history");

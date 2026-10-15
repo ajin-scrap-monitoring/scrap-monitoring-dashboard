@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { MjpegResponseError, readMjpeg } from "./mjpeg-client";
+import { VideoTimestamp } from "./VideoTimestamp";
 
 const retryDelays = [1000, 2000, 3000];
 
@@ -8,9 +9,9 @@ function redirectToLogin() {
   window.location.assign("/login");
 }
 
-export function MjpegVideo({ alt, url, onSessionExpired = redirectToLogin }: { alt: string; url: string; onSessionExpired?: () => void }) {
+export function MjpegVideo({ alt, url, capturedAt, onSessionExpired = redirectToLogin }: { alt: string; url: string; capturedAt?: string | null; onSessionExpired?: () => void }) {
   const imageRef = useRef<HTMLImageElement>(null);
-  const [connection, setConnection] = useState({ key: url, attempt: 0, connected: false, exhausted: false });
+  const [connection, setConnection] = useState<{ key: string; attempt: number; connected: boolean; exhausted: boolean; receivedAt?: string }>({ key: url, attempt: 0, connected: false, exhausted: false });
   const current = connection.key === url ? connection : { key: url, attempt: 0, connected: false, exhausted: false };
   useEffect(() => {
     const image = imageRef.current;
@@ -18,6 +19,7 @@ export function MjpegVideo({ alt, url, onSessionExpired = redirectToLogin }: { a
     let active = true;
     let failed = false;
     let objectUrl: string | undefined;
+    let receivedAt: string | undefined;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     if (!image) return;
     const releaseFrame = () => {
@@ -39,7 +41,7 @@ export function MjpegVideo({ alt, url, onSessionExpired = redirectToLogin }: { a
       if (delay !== undefined) retryTimer = setTimeout(() => setConnection({ key: url, attempt: current.attempt + 1, connected: false, exhausted: false }), delay);
     };
     const displayFrame = () => {
-      if (active && !failed) setConnection({ key: url, attempt: current.attempt, connected: true, exhausted: false });
+      if (active && !failed) setConnection({ key: url, attempt: current.attempt, connected: true, exhausted: false, receivedAt });
     };
     const decodeFailed = () => fail(new Error("Invalid JPEG image."));
     image.addEventListener("load", displayFrame);
@@ -47,6 +49,7 @@ export function MjpegVideo({ alt, url, onSessionExpired = redirectToLogin }: { a
     void readMjpeg({ url, signal: controller.signal, onFrame: (frame) => {
       if (!active || failed) return;
       const previous = objectUrl;
+      receivedAt = new Date().toISOString();
       objectUrl = URL.createObjectURL(frame);
       image.src = objectUrl;
       if (previous) URL.revokeObjectURL(previous);
@@ -67,6 +70,7 @@ export function MjpegVideo({ alt, url, onSessionExpired = redirectToLogin }: { a
     {current.connected
       ? <span className="live-indicator">LIVE</span>
       : <span className="video-connection-state" role="status">{current.exhausted ? "영상 연결 불가" : "영상 연결 중"}</span>}
+    {current.connected && <VideoTimestamp capturedAt={capturedAt} receivedAt={current.receivedAt} />}
     {!current.connected && current.exhausted && <button className="video-retry" type="button" onClick={() => setConnection({ key: url, attempt: 0, connected: false, exhausted: false })}>영상 다시 연결</button>}
   </>;
 }

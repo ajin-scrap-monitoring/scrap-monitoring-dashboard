@@ -15,10 +15,10 @@ const totalAssets = [...sizes.values()].reduce((total, size) => total + size, 0)
 
 const budgets = [
   ["초기 JavaScript", initialJavaScript, 260 * 1024],
-  ["전체 JavaScript", totalJavaScript, 320 * 1024],
+  ["전체 JavaScript", totalJavaScript, 720 * 1024],
   ["전체 CSS", totalStyles, 50 * 1024],
   ["전체 웹폰트", totalFonts, 4 * 1024 * 1024],
-  ["전체 정적 자산", totalAssets, 4.5 * 1024 * 1024],
+  ["전체 정적 자산", totalAssets, 5 * 1024 * 1024],
 ];
 
 const failures = budgets.filter(([, size, limit]) => size > limit);

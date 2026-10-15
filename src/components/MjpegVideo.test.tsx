@@ -50,10 +50,39 @@ test("image decode 이후 LIVE를 표시하고 frame 교체 및 종료 시 Blob 
   expect(vi.getTimerCount()).toBe(0);
 });
 
+test("유효한 frame을 표시한 뒤 수신 시각을 표시하며 새 frame 없이 시각을 갱신하지 않는다", async () => {
+  vi.setSystemTime(new Date("2026-10-15T00:00:01Z"));
+  render(<MjpegVideo alt="live" url="/live" />);
+  expect(screen.queryByText(/^영상 수신 /)).not.toBeInTheDocument();
+  frame();
+  expect(screen.queryByText(/^영상 수신 /)).not.toBeInTheDocument();
+  await act(() => vi.advanceTimersByTimeAsync(2000));
+  fireEvent.load(screen.getByAltText("live"));
+  expect(screen.getByText(/^영상 수신 /)).toHaveAttribute("datetime", "2026-10-15T00:00:01.000Z");
+  await act(() => vi.advanceTimersByTimeAsync(2000));
+  expect(screen.getByText(/^영상 수신 /)).toHaveAttribute("datetime", "2026-10-15T00:00:01.000Z");
+  frame();
+  fireEvent.load(screen.getByAltText("live"));
+  expect(screen.getByText(/^영상 수신 /)).toHaveAttribute("datetime", "2026-10-15T00:00:05.000Z");
+});
+
+test("촬영 시각은 수신 시각보다 우선하며 값 변경만으로 stream을 재연결하지 않는다", () => {
+  const capturedAt = "2026-10-15T00:00:01Z";
+  vi.setSystemTime(new Date("2026-10-15T00:00:05Z"));
+  const view = render(<MjpegVideo alt="live" url="/live" capturedAt={capturedAt} />);
+  frame();
+  fireEvent.load(screen.getByAltText("live"));
+  expect(screen.getByText(/^촬영 /)).toHaveAttribute("datetime", "2026-10-15T00:00:01.000Z");
+  view.rerender(<MjpegVideo alt="live" url="/live" capturedAt={null} />);
+  expect(screen.getByText(/^영상 수신 /)).toHaveAttribute("datetime", "2026-10-15T00:00:05.000Z");
+  expect(reads).toHaveLength(1);
+});
+
 test("URL 변경과 종료 뒤 이전 frame이나 오류를 적용하지 않는다", async () => {
   const view = render(<MjpegVideo alt="live" url="/first" />);
   frame();
   view.rerender(<MjpegVideo alt="live" url="/second" />);
+  expect(screen.queryByText(/^영상 수신 /)).not.toBeInTheDocument();
   expect(reads[0].options.signal.aborted).toBe(true);
   frame(0);
   await act(() => { reads[0].reject(new Error("late error")); return Promise.resolve(); });
@@ -92,6 +121,7 @@ test("연결 오류는 마지막 frame을 숨기고 예약한 재연결은 종�
   await act(() => { reads[0].reject(new Error("timeout")); return Promise.resolve(); });
   expect(screen.getByAltText("live")).not.toHaveAttribute("src");
   expect(screen.queryByText("LIVE")).not.toBeInTheDocument();
+  expect(screen.queryByText(/^영상 수신 /)).not.toBeInTheDocument();
   expect(revokeObjectURL).toHaveBeenCalledOnce();
   view.unmount();
   await act(() => vi.advanceTimersByTimeAsync(10_000));

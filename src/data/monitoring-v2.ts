@@ -13,6 +13,12 @@ const states: Record<ApiMonitoringSnapshotV2["dataState"], DashboardStatus> = {
   NO_DATA: "no-data",
 };
 
+function deviceStatus(state = ""): DeviceStatus["status"] {
+  return /^(FRESH|HEALTHY)$/.test(state) ? "normal"
+    : /^(STALE|RECOVERING|STARTING|DEGRADED|RETRYING)$/.test(state) ? "delayed"
+      : /^(UNAVAILABLE|MEASUREMENT_UNAVAILABLE|CONFIG_ERROR|FATAL)$/.test(state) ? "unavailable" : "unknown";
+}
+
 function validate(snapshot: unknown, pitId: string): asserts snapshot is ApiMonitoringSnapshotV2 {
   const fail = () => { throw new Error("Unexpected monitoring contract or pit assignment."); };
   if (!record(snapshot) || snapshot.schemaVersion !== "2" || snapshot.pitId !== pitId
@@ -72,17 +78,18 @@ export function monitoringV2Data(snapshot: unknown, pitId: string): DashboardDat
   validate(snapshot, pitId);
   const assessment = snapshot.assessment;
   const device = snapshot.deviceStatus;
-  const load = snapshot.summary.loadPercent ?? null;
-  const loadPercent = snapshot.dataState === "FRESH" && typeof load === "number" && Number.isFinite(load) && load >= 0 && load <= 100
+  const load = snapshot.summary.loadPercent;
+  const loadPercent = snapshot.dataState === "FRESH" && typeof load === "number" && load >= 0 && load <= 100
     ? load : null;
   const sensors = device.snapshot?.sensors ?? [];
+  const reporting = device.connection_state === "REPORTING";
+  const cameraState = reporting ? device.snapshot?.services?.find(service => service.service === "camera-edge")?.state : "UNKNOWN";
   const sensorDevices: DeviceStatus[] = sensors.length ? sensors.map((sensor) => ({
     label: sensor.sensor_id,
     received: sensor.last_scan_at ?? missingValue,
-    receivedLabel: "마지막 scan",
     latency: missingValue,
-    status: sensor.data_state === "FRESH" ? "normal" : sensor.data_state === "STALE" || sensor.data_state === "RECOVERING" ? "delayed" : sensor.data_state === "UNAVAILABLE" ? "unavailable" : "unknown",
-    statusLabel: sensor.data_state,
+    status: deviceStatus(reporting ? sensor.data_state : undefined),
+    statusLabel: reporting ? sensor.data_state : "UNKNOWN",
   })) : ["LiDAR 1", "LiDAR 2"].map((label) => ({ label, received: missingValue, latency: missingValue, status: "unknown" }));
 
   return {
@@ -90,8 +97,8 @@ export function monitoringV2Data(snapshot: unknown, pitId: string): DashboardDat
     alerts: [],
     devices: [
       ...sensorDevices,
-      { label: "카메라", received: missingValue, latency: missingValue, status: "unknown" },
-      { label: "엣지 장비", received: device.last_received_at ?? missingValue, latency: missingValue, status: device.effective_state === "HEALTHY" ? "normal" : device.effective_state === "DEGRADED" ? "delayed" : ["MEASUREMENT_UNAVAILABLE", "CONFIG_ERROR"].includes(device.effective_state) ? "unavailable" : "unknown", statusLabel: device.effective_state },
+      { label: "카메라", received: missingValue, latency: missingValue, status: deviceStatus(cameraState), statusLabel: cameraState },
+      { label: "엣지 장비", received: device.last_received_at ?? missingValue, latency: missingValue, status: deviceStatus(device.effective_state), statusLabel: device.effective_state },
     ],
     headerNotifications: [],
     unreadNotificationCount: 0,
@@ -105,14 +112,14 @@ export function monitoringV2Data(snapshot: unknown, pitId: string): DashboardDat
       loadPercent,
       operationState: null,
       preCollectionAlert: { enabled: false, threshold: snapshot.summary.warningThresholdPercent },
-      recentChange: missingValue,
+      loadOneHourAgo: null,
       remainingTime: missingValue,
       timeSinceCollection: missingValue,
     },
     videoMode: "mjpeg",
     videoStatus: "available",
     videoStreamId: "",
-    videoTimestamp: "촬영 시각 미제공",
+    videoCapturedAt: null,
     v2: {
       serverTime: snapshot.serverTime,
       dataState: snapshot.dataState,

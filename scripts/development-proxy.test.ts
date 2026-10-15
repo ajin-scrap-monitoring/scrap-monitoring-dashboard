@@ -26,6 +26,52 @@ for (const target of ["invalid", "file:///tmp/config", "http://user:secret@gatew
   });
 }
 
+await test("daily media locations share the authenticated header and playlist boundary in production and development", async () => {
+  const source = async (path: string) => readFile(new URL(path, import.meta.url), "utf8");
+  const snippet = await source("../nginx/includes/proxy-daily-recording.conf");
+  assert.match(snippet, /proxy_pass_request_headers off;/);
+  assert.match(snippet, /proxy_pass_request_body off;/);
+  for (const header of ["Cookie", "Authorization", "Accept-Encoding"]) {
+    assert.ok(snippet.includes(`proxy_set_header ${header} "";`));
+  }
+  for (const header of ["Range", "If-Range"]) {
+    assert.match(snippet, new RegExp(`proxy_set_header ${header} \\$http_`));
+  }
+  assert.ok(snippet.includes("sub_filter '/api/v2/daily-recordings/' '/media/daily-recordings/';"));
+  assert.ok(snippet.includes('add_header Cache-Control "no-store" always;'));
+  assert.match(snippet, /set \$args \$daily_recording_args;/);
+  assert.match(snippet, /\$request_method !~ "\^\(GET\|HEAD\)\$"/);
+  assert.match(snippet, /if \(\$request_uri !~/);
+  for (const [path, auth] of [
+    ["../development/nginx-proxy.conf.template", "/_development_media_access"],
+    ["../integration/nginx/runtime.conf", "/_integration_media_auth"],
+    ["../test/proxy/runtime/20-proxy-locations.conf", "/_proxy_test_media_access"],
+  ]) {
+    const config = await source(path);
+    assert.ok(config.includes(`auth_request ${auth};\n`));
+    assert.ok(config.includes("include /etc/nginx/includes/proxy-daily-recording.conf;"));
+    assert.ok(config.includes("location /media/daily-recordings/ {\n"));
+  }
+  assert.match(await source("../Dockerfile"), /COPY nginx\/includes \/etc\/nginx\/includes/);
+  assert.match(await source("../compose.remote-development.yaml"), /\.\/nginx\/includes:\/etc\/nginx\/includes:ro/);
+});
+
+await test("browser gateway separates Backend reads and Media viewing from Edge camera ingest", async () => {
+  const config = await readFile(new URL("../development/nginx-proxy.conf.template", import.meta.url), "utf8");
+  const api = config.match(/location \/api\/ \{([\s\S]*?)\n {4}\}/)?.[1];
+  assert.ok(api);
+  assert.match(api, /proxy_pass http:\/\/development_backend;/);
+  assert.doesNotMatch(api, /development_media/);
+  assert.match(config, /cameras\/\[A-Za-z0-9\][^\n]*\/live/);
+  assert.doesNotMatch(config, /\/stream\$|proxy_set_header Upgrade/);
+  assert.match(config, /location ~ \^\/api\/\(v2\/monitoring\/events\|v1\/monitoring\/events\)\$/);
+  assert.match(config, /include \/etc\/nginx\/includes\/proxy-streaming\.conf;/);
+  assert.match(config, /auth_request \/_development_media_access;/);
+  const streaming = await readFile(new URL("../nginx/includes/proxy-streaming.conf", import.meta.url), "utf8");
+  assert.match(streaming, /proxy_buffering off;/);
+  assert.match(streaming, /proxy_cache off;/);
+});
+
 const scriptPath = fileURLToPath(new URL("./remote-development.sh", import.meta.url));
 const remoteEnvironment = {
   ...process.env,

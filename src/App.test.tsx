@@ -1,8 +1,41 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
 import { App } from "./App";
 import { createMockDashboardDataSource } from "./data/mock-dashboard-data-source";
+
+test.each(["/history", "/recordings"])("%s의 최초 데이터 확인 중에는 로그인 링크나 사용자 메뉴를 표시하지 않는다", async (path) => {
+  const data = await createMockDashboardDataSource().getDashboardData();
+  data.session = { expiresAt: "2026-10-16T00:00:00Z", user: { displayName: "조회 사용자", id: "viewer-1", role: "viewer" } };
+  let complete: (value: typeof data) => void = () => undefined;
+  const dataSource = { getDashboardData: () => new Promise<typeof data>((resolve) => { complete = resolve; }) };
+  window.history.replaceState(null, "", path);
+  render(<App dataSource={dataSource} />);
+  expect(screen.getByRole("main", { name: "데이터를 불러오는 중입니다." })).toBeVisible();
+  expect(screen.queryByRole("link", { name: "로그인" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "사용자 메뉴" })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("데이터 수신 상태")).not.toBeInTheDocument();
+  await act(() => { complete(data); return Promise.resolve(); });
+  expect(await screen.findByRole("button", { name: "사용자 메뉴" })).toBeVisible();
+  expect(screen.getByText("조회 사용자")).toBeVisible();
+  expect(screen.queryByRole("link", { name: "로그인" })).not.toBeInTheDocument();
+  expect(await screen.findByLabelText("데이터 수신 상태")).toHaveTextContent("연결 정상");
+});
+
+test("최초 조회 중에는 수신 상태를 숨기고 실패와 재시도 성공 후에는 표시한다", async () => {
+  const data = await createMockDashboardDataSource().getDashboardData();
+  let reject: (error: Error) => void = () => undefined;
+  const getDashboardData = vi.fn().mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; })).mockResolvedValue(data);
+  render(<App dataSource={{ getDashboardData }} />);
+  expect(screen.queryByLabelText("데이터 수신 상태")).not.toBeInTheDocument();
+  expect(screen.queryByText("수신 대기")).not.toBeInTheDocument();
+  expect(screen.queryByText("마지막 수신 없음")).not.toBeInTheDocument();
+  await act(() => { reject(new TypeError("Network error")); return Promise.resolve(); });
+  expect(screen.getByLabelText("데이터 수신 상태")).toHaveTextContent("연결 문제");
+  fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+  expect(await screen.findByRole("main", { name: "스크랩 모니터링 대시보드" })).toBeVisible();
+  expect(screen.getByLabelText("데이터 수신 상태")).toHaveTextContent("연결 정상");
+});
 
 test("대시보드 주 영역을 렌더링한다", async () => {
   render(<App dataSource={createMockDashboardDataSource()} />);
