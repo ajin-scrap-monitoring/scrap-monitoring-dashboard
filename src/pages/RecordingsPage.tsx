@@ -1,19 +1,22 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 import cameraFrame from "../assets/camera-frame.png";
 import { DashboardPageShell } from "../components/DashboardShell";
 import { DashboardStatusLabel, ExpandIcon, SectionTitle } from "../components/DashboardPrimitives";
 import { Pagination } from "../components/Pagination";
 import { DateTimeField } from "../components/DateTimeField";
+import { DetailDialog } from "../components/DetailDialog";
 import { dateTimeValue, isValidDateTime, recentPeriods, recentRange } from "../date-range";
 import type { DashboardDataSource } from "../data/dashboard-data-source";
-import type { DashboardData, EventCategory, HeaderNotification, Recording, UserSession } from "../domain/dashboard";
+import type { DashboardData, DataAreaState, EventCategory, HeaderNotification, Recording, UserSession } from "../domain/dashboard";
+import { clipIdentifier } from "../data/recording-coverage";
 import { useDelayedState } from "../use-delayed-state";
 import { useModalFocus } from "../use-modal-focus";
 import { useLatestRequest } from "../use-latest-request";
 
 const recordingsPerPage = 6;
 const recordingTypes = ["전체", "수거", "알림", "오류"];
+const RecordingCoverageDetails = lazy(() => import("../components/RecordingCoverageDetails"));
 
 function recordingStatus(recording: Recording) {
   const states: Record<string, string> = { collecting: "녹화 구간 수집 중", processing: "파일 생성 중", ready: "재생 가능", failed: "녹화 실패", deleted: "삭제됨", expired: "보관 만료" };
@@ -44,15 +47,17 @@ function recordingRange(recording: Recording) {
 type RecordingsPageProps = {
   dataSource?: DashboardDataSource;
   headerNotifications: HeaderNotification[];
-  headerUnreadCount?: number;
+  headerUnreadCount?: number | null;
+  headerNotificationState?: DataAreaState;
   lastMeasuredAt: string;
   queryEndsAt?: string;
   recordings: DashboardData["recordings"];
+  recordingsState?: DataAreaState;
   session?: UserSession | null;
   status: DashboardData["monitoring"]["status"];
 };
 
-export function RecordingsPage({ dataSource, recordings, headerNotifications, headerUnreadCount, lastMeasuredAt, queryEndsAt, session, status }: RecordingsPageProps) {
+export function RecordingsPage({ dataSource, recordings, recordingsState, headerNotifications, headerUnreadCount, headerNotificationState, lastMeasuredAt, queryEndsAt, session, status }: RecordingsPageProps) {
   const requestedRecordingId = new URLSearchParams(window.location.search).get("recordingId");
   const requestedRecording = recordings.find((recording) => recording.id === requestedRecordingId);
   const [availableRecordings, setAvailableRecordings] = useState(recordings);
@@ -64,6 +69,8 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
   const [preset, setPreset] = useState<number | null>(requestedRecording ? null : 168);
   const [applied, setApplied] = useState(() => ({ ...initialRange, type: "전체" }));
   const [queryError, setQueryError] = useState("");
+  const [queryCompleted, setQueryCompleted] = useState(false);
+  const initialError = !queryCompleted && recordingsState?.status === "error" ? recordingsState.message ?? "녹화 목록 조회 실패" : undefined;
   const [queryState, setQueryState] = useState({ source: dataSource, busy: false });
   const querying = queryState.source === dataSource && queryState.busy;
   const setQuerying = (busy: boolean) => setQueryState({ source: dataSource, busy });
@@ -73,6 +80,8 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSeconds, setPlaybackSeconds] = useState(0);
   const [recordingOpen, setRecordingOpen] = useState(false);
+  const [coverageRecordingId, setCoverageRecordingId] = useState<string | null>(null);
+  const closeCoverage = useCallback(() => setCoverageRecordingId(null), []);
   const [recordingPage, setRecordingPage] = useState(0);
   const [detailState, setDetailState] = useState<{ id?: string; ready: boolean; error?: string }>({ ready: false });
   const [detailRevision, setDetailRevision] = useState(0);
@@ -182,7 +191,7 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
   };
 
   return (
-    <DashboardPageShell activePage="recordings" dataSource={dataSource} headerNotifications={headerNotifications} headerUnreadCount={headerUnreadCount} session={session}>
+    <DashboardPageShell activePage="recordings" dataSource={dataSource} headerNotifications={headerNotifications} headerUnreadCount={headerUnreadCount} notificationState={headerNotificationState} session={session}>
       <main className="recordings-page" aria-label="스크랩 모니터링 녹화 영상">
         <div className="page-heading">
           <h1>녹화 영상</h1>
@@ -212,8 +221,10 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
                 setIsPlaying(false);
                 setPlaybackSeconds(0);
                 setRecordingOpen(false);
+                setCoverageRecordingId(null);
                 setDownloadState("idle");
                 setQueryError("");
+                setQueryCompleted(true);
               };
               if (!dataSource?.queryRecordings) {
                 applyResult();
@@ -256,7 +267,7 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
             <section className="card recordings-list">
               <div className="recordings-card-head">
                 <SectionTitle>녹화 목록</SectionTitle>
-                <span>{visibleRecordings.length}건</span>
+                <span>{initialError && !recordingsState?.stale ? "확인 불가" : `${visibleRecordings.length}건`}</span>
               </div>
               <div className="recordings-list-items">
                 {pagedRecordings.length > 0 ? pagedRecordings.map((recording, index) => (
@@ -287,7 +298,7 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
                       <span>{recording.duration}</span>
                     </span>
                   </button>
-                )) : <p className="collection-empty">조회된 녹화 영상이 없습니다.</p>}
+                )) : <p className="collection-empty" role={initialError ? "alert" : undefined}>{initialError ? `${initialError} 조회 버튼으로 다시 시도하세요.` : "조회된 녹화 영상이 없습니다."}</p>}
               </div>
               <Pagination
                 ariaLabel="녹화 목록 페이지"
@@ -358,8 +369,8 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
                       <div className="recording-retention"><dt>보관 기간</dt><dd><span>{selectedRecording.retentionStartsAt}</span><span>~ {selectedRecording.retentionEndsAt}</span></dd></div>
                     </dl>
                     {selectedRecording.mediaStatus && <p>미디어 상태 {recordingStatus(selectedRecording)}</p>}
-                    {selectedRecording.coverage && <p>녹화 범위 {selectedRecording.coverage === "partial" ? "부분 저장" : selectedRecording.coverage === "complete" ? "전체 구간" : "영상 없음"}</p>}
-                    {selectedRecording.gaps && selectedRecording.gaps.length > 0 && <ul aria-label="녹화 누락 구간">{selectedRecording.gaps.map((gap) => <li key={`${gap.start}-${gap.end}`}>{gap.start} ~ {gap.end}</li>)}</ul>}
+                    {selectedRecording.coverage && <p>녹화 범위 {dataSource?.getRecordingCoverage && clipIdentifier.test(selectedRecording.id) ? <button className="detail-trigger" type="button" aria-haspopup="dialog" onClick={() => setCoverageRecordingId(selectedRecording.id)}>{selectedRecording.coverage === "partial" ? "부분 저장" : selectedRecording.coverage === "complete" ? "전체 구간" : "영상 없음"}</button> : selectedRecording.coverage === "partial" ? "부분 저장" : selectedRecording.coverage === "complete" ? "전체 구간" : "영상 없음"}</p>}
+                    {selectedRecording.gaps && selectedRecording.gaps.length > 0 && <ul aria-label="녹화 누락 구간">{selectedRecording.gaps.map((gap) => <li key={`${gap.start}-${gap.end}`}>{dataSource?.getRecordingCoverage && clipIdentifier.test(selectedRecording.id) ? <button className="detail-trigger" type="button" aria-haspopup="dialog" onClick={() => setCoverageRecordingId(selectedRecording.id)}>{gap.start} ~ {gap.end}</button> : <>{gap.start} ~ {gap.end}</>}</li>)}</ul>}
                     {selectedRecording.errorCode && <p role="alert">{selectedRecording.errorCode}</p>}
                   </section>
                   <section className="card recording-download">
@@ -376,12 +387,15 @@ export function RecordingsPage({ dataSource, recordings, headerNotifications, he
             ) : (
               <section className="card recordings-empty-panel">
                 <SectionTitle>녹화 영상</SectionTitle>
-                <p className="collection-empty">선택할 수 있는 녹화 영상이 없습니다.</p>
+                <p className="collection-empty">{initialError ? "녹화 목록 조회에 실패했습니다." : "선택할 수 있는 녹화 영상이 없습니다."}</p>
               </section>
             )}
           </div>
         </div>
       </main>
+      {coverageRecordingId && dataSource && <DetailDialog id="recording-coverage-title" title="녹화 범위 상세" onClose={closeCoverage}>
+        <Suspense fallback={<p role="status">녹화 범위 확인 중</p>}><RecordingCoverageDetails key={coverageRecordingId} dataSource={dataSource} recordingId={coverageRecordingId} /></Suspense>
+      </DetailDialog>}
       {recordingOpen && selectedRecording && (
         <div
           ref={recordingModalRef}

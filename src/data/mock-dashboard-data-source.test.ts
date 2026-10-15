@@ -7,6 +7,7 @@ test("기본 합성 데이터는 화면에 필요한 데이터를 제공한다",
   const data = await createMockDashboardDataSource().getDashboardData();
 
   expect(data.monitoring.status).toBe("normal");
+  expect(data.monitoring.alarmState).toBe("WARNING");
   expect(data.monitoring.devices).toHaveLength(4);
   expect(data.monitoring.loadHistory).toHaveLength(24);
   expect(data.history.loadSamples).not.toHaveLength(0);
@@ -20,6 +21,9 @@ test("합성 시나리오는 상태별 화면 데이터를 분리한다", async 
   const disconnected = await createMockDashboardDataSource("disconnected").getDashboardData();
 
   expect(collectionRequired.monitoring.status).toBe("collection-required");
+  expect(collectionRequired.monitoring.alarmState).toBe("CRITICAL");
+  expect(measurementError.monitoring.alarmState).toBe("ERROR");
+  expect(disconnected.monitoring.alarmState).toBe("UNKNOWN");
   expect(collectionRequired.monitoring.alerts[0].detail).toBe("대표 적재율 84%");
   expect(measurementError.monitoring.devices[1].latency).toBe("-");
   expect(disconnected.monitoring.devices.every((device) => device.latency === "수신 없음")).toBe(true);
@@ -29,6 +33,7 @@ test("데이터 없음과 요청 오류 시나리오를 제공한다", async () 
   const noData = await createMockDashboardDataSource("no-data").getDashboardData();
 
   expect(noData.monitoring.status).toBe("no-data");
+  expect(noData.monitoring.alarmState).toBeNull();
   expect(noData.monitoring.loadHistory).toHaveLength(0);
   expect(noData.history.events).toHaveLength(0);
   await expect(createMockDashboardDataSource("request-error").getDashboardData()).rejects.toThrow("합성 데이터 요청 오류");
@@ -80,20 +85,20 @@ afterEach(() => {
 
 test("operation-cycle 시나리오는 수거와 장애 상태 전이를 순서대로 전달한다", () => {
   vi.useFakeTimers();
-  const statuses: Array<{ status: string; loadPercent: number | null }> = [];
+  const statuses: Array<{ status: string; loadPercent: number | null; alarmState: DashboardData["monitoring"]["alarmState"] }> = [];
   const source = createMockDashboardDataSource("operation-cycle");
   const unsubscribe = source.subscribe?.((data) => {
-    statuses.push({ status: data.monitoring.status, loadPercent: data.monitoring.summary.loadPercent });
+    statuses.push({ status: data.monitoring.status, loadPercent: data.monitoring.summary.loadPercent, alarmState: data.monitoring.alarmState });
   });
 
   vi.advanceTimersByTime(2500);
 
   expect(statuses).toEqual([
-    { status: "collection-required", loadPercent: 80 },
-    { status: "normal", loadPercent: 4 },
-    { status: "measurement-error", loadPercent: 72 },
-    { status: "disconnected", loadPercent: 72 },
-    { status: "normal", loadPercent: 72 },
+    { status: "collection-required", loadPercent: 80, alarmState: "CRITICAL" },
+    { status: "normal", loadPercent: 4, alarmState: "NORMAL" },
+    { status: "measurement-error", loadPercent: 72, alarmState: "ERROR" },
+    { status: "disconnected", loadPercent: 72, alarmState: "UNKNOWN" },
+    { status: "normal", loadPercent: 72, alarmState: "WARNING" },
   ]);
   unsubscribe?.();
 });

@@ -6,6 +6,9 @@
 조건의 정본이다. 실제 작업 진행 상태와 검토 요청은 GitHub Issue와 Pull Request (PR)에서
 관리한다.
 
+실제 제공 정보와 기존 화면 항목의 변환, 사용 불가 정보 및 추가 계약의 평가는
+`backend/frontend-mapping.md`를 따른다.
+
 Dashboard의 runtime 설정은 `runtime-config.schema.json`을 따른다. 제공 경로와 mount 및
 오류 처리 절차는 `../implementation.md`의 `Runtime 설정`에 기록한다.
 이 계약은 내부 service 간 공유 token 제거를 정의하지 않는다.

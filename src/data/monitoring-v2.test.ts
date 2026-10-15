@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 
 import type { DashboardData } from "../domain/dashboard";
+import type { components } from "../generated/backend-contract";
 import { alertSettingsFixture, recipientPageFixture, sessionFixture, notificationPageFixture, recordingPageFixture } from "../test/api-contract-fixtures";
 import { mediaRecordingFixture, monitoringV2Fixture, monitoringV2StateFixture } from "../test/backend-contract-fixtures";
 
@@ -9,14 +10,19 @@ import { monitoringV2Data, type ApiMonitoringSnapshotV2 } from "./monitoring-v2"
 
 function json(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status }); }
 
-function contract({ authenticated = true, snapshot = monitoringV2Fixture }: { authenticated?: boolean; snapshot?: ApiMonitoringSnapshotV2 } = {}) {
+function inputUrl(input: RequestInfo | URL) {
+  return new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, "https://dashboard.example");
+}
+
+function contract({ authenticated = true, snapshot = monitoringV2Fixture, completionEvents = [] }: { authenticated?: boolean; snapshot?: ApiMonitoringSnapshotV2; completionEvents?: unknown } = {}) {
   const urls: URL[] = [];
   const fetchImplementation = vi.fn((input: RequestInfo | URL) => {
-    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, "https://dashboard.example");
+    const url = inputUrl(input);
     urls.push(url);
     if (url.pathname === "/api/v1/session") return Promise.resolve(authenticated ? json(sessionFixture) : json({ detail: "Unauthorized" }, 401));
     if (url.pathname === "/api/v2/monitoring/snapshot") return Promise.resolve(json(snapshot));
     if (url.pathname === "/api/v1/notifications") return Promise.resolve(json(notificationPageFixture));
+    if (url.pathname === "/api/v1/events") return Promise.resolve(json({ items: completionEvents, page: { page: 1, pageSize: 1, totalPages: 1, totalItems: 1 } }));
     if (url.pathname === "/api/v1/recordings") return Promise.resolve(json({ ...recordingPageFixture, items: [mediaRecordingFixture] }));
     if (url.pathname === "/api/v1/settings/alerts") return Promise.resolve(json(alertSettingsFixture));
     if (url.pathname === "/api/v1/notification-recipients") return Promise.resolve(json(recipientPageFixture));
@@ -59,10 +65,261 @@ describe("Backend v2 모니터링", () => {
   ])("누락되거나 다른 계약의 snapshot을 거부한다: %j", (invalid) => {
     expect(() => monitoringV2Data({ ...monitoringV2Fixture, ...invalid }, "pit-01")).toThrow();
   });
+  test("실제 완료 기록과 서버 시각으로 수거 후 경과를 계산하고 v1 모니터링 값을 조회하지 않는다", async () => {
+    const api = contract({ completionEvents: [{ type: "collection_completed", status: "completed", category: "collection", occurredAt: "2026-10-12T22:00:10Z" }] });
+    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
+    const result = await source.getDashboardData();
+    expect(result.monitoring.summary.timeSinceCollection).toBe("2시간 0분");
+    expect(result.monitoring.summary.averageCollectionCycle).toBe("정보 없음");
+    const request = api.urls.find((url) => url.pathname === "/api/v1/events");
+    expect(request?.searchParams.get("pit_id")).toBe("pit-01");
+    expect(request?.searchParams.get("pageSize")).toBe("1");
+    expect(request?.searchParams.get("category")).toBe("collection");
+    expect(api.urls.some((url) => url.pathname === "/api/v1/monitoring/snapshot")).toBe(false);
+  });
+  test.each([
+    [{ type: "collection_required", status: "completed", category: "alert", occurredAt: "2026-10-12T22:00:10Z" }],
+    [{ type: "collection_completed", status: "completed", category: "collection", occurredAt: "invalid" }],
+    [{ type: "collection_completed", status: "completed", category: "collection", occurredAt: "2026-10-12T22:00:10" }],
+    { items: [] },
+  ])("잘못된 수거 완료 계약 %j는 해당 지표만 정보 없음으로 처리한다", async (completionEvents) => {
+    const api = contract({ completionEvents, snapshot: monitoringV2StateFixture("FRESH", 72.5) });
+    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
+    const data = await source.getDashboardData();
+    expect(data.monitoring.summary.timeSinceCollection).toBe("정보 없음");
+    expect(data.monitoring.summary.loadPercent).toBe(72.5);
+  });
+  test("완료 시각이 서버보다 미래이면 음수 또는 0 경과 시간으로 보충하지 않는다", async () => {
+    const api = contract({ completionEvents: [{ type: "collection_completed", status: "completed", category: "collection", occurredAt: "2026-10-14T00:00:00Z" }] });
+    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
+    expect((await source.getDashboardData()).monitoring.summary.timeSinceCollection).toBe("정보 없음");
+  });
+  test("새 v2 경보 ID는 알림함을 다시 조회하며 같은 ID는 중복 조회하지 않는다", async () => {
+    const api = contract();
+    const stream = new Stream();
+    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend", eventSourceFactory: () => stream as unknown as EventSource });
+    await source.getDashboardData();
+    const listener = vi.fn();
+    const unsubscribe = source.subscribe?.(listener);
+    const updated = { ...monitoringV2Fixture, snapshotId: "alert-new", operations: {
+      effectiveState: "CRITICAL" as const, lastKnownState: "CRITICAL" as const, lastEvaluatedAt: null, lastAlertAt: null, notificationId: "notif-opaque-new",
+    } };
+    stream.emit("monitoring.snapshot", updated);
+    await vi.waitFor(() => expect(api.urls.filter((url) => url.pathname === "/api/v1/notifications")).toHaveLength(2));
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(2));
+    stream.emit("monitoring.snapshot", updated);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(api.urls.filter((url) => url.pathname === "/api/v1/notifications")).toHaveLength(2);
+    expect(stream.closed).toBe(false);
+    unsubscribe?.();
+  });
+  test("구독 종료는 지연된 새 경보 조회를 취소하고 상태를 갱신하지 않는다", async () => {
+    const api = contract();
+    const stream = new Stream();
+    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend", eventSourceFactory: () => stream as unknown as EventSource });
+    await source.getDashboardData();
+    let resolveNotification: (response: Response) => void = () => undefined;
+    let notificationSignal: AbortSignal | null | undefined;
+    api.fetchImplementation.mockImplementationOnce((_input, init?: RequestInit) => {
+      notificationSignal = init?.signal;
+      return new Promise<Response>((resolve) => { resolveNotification = resolve; });
+    });
+    const listener = vi.fn();
+    const unsubscribe = source.subscribe?.(listener);
+    stream.emit("monitoring.snapshot", { ...monitoringV2Fixture, operations: {
+      effectiveState: "CRITICAL", lastKnownState: "CRITICAL", lastEvaluatedAt: null, lastAlertAt: null, notificationId: "notif-new",
+    } });
+    unsubscribe?.();
+    expect(notificationSignal?.aborted).toBe(true);
+    resolveNotification(json(notificationPageFixture));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(listener).toHaveBeenCalledOnce();
+    expect(stream.closed).toBe(true);
+  });
+  test("늦은 모두 읽음 응답은 요청 뒤에 발생한 새 경보를 읽음으로 바꾸지 않는다", async () => {
+    const api = contract();
+    const stream = new Stream();
+    let notifications: components["schemas"]["NotificationPage"] = structuredClone(notificationPageFixture);
+    let notificationRequests = 0;
+    let acknowledgeRead: (response: Response) => void = () => undefined;
+    const fetchImplementation: typeof fetch = (input) => {
+      const path = inputUrl(input).pathname;
+      if (path === "/api/v1/notifications/read-all") {
+        notifications = { ...notifications, unreadCount: 0, items: notifications.items.map((item) => ({ ...item, readAt: monitoringV2Fixture.serverTime })) };
+        return new Promise((resolve) => { acknowledgeRead = resolve; });
+      }
+      if (path === "/api/v1/notifications") {
+        notificationRequests += 1;
+        return Promise.resolve(json(notifications));
+      }
+      return api.fetchImplementation(input);
+    };
+    const source = createHttpDashboardDataSource({ fetchImplementation, monitoringVersion: "v2", apiContract: "backend", eventSourceFactory: () => stream as unknown as EventSource });
+    await source.getDashboardData();
+    const listener = vi.fn<(data: DashboardData) => void>();
+    const unsubscribe = source.subscribe?.(listener);
+    const reading = source.markAllNotificationsRead?.();
+    notifications = { ...notifications, unreadCount: 1, items: [{ ...notificationPageFixture.items[0], id: "notif-after-read", readAt: null }, ...notifications.items] };
+    const updated = { ...monitoringV2Fixture, operations: {
+      effectiveState: "CRITICAL" as const, lastKnownState: "CRITICAL" as const, lastEvaluatedAt: null, lastAlertAt: null, notificationId: "notif-after-read",
+    } };
+    stream.emit("monitoring.snapshot", updated);
+    await vi.waitFor(() => expect(listener.mock.lastCall?.[0].monitoring.headerNotifications[0]).toMatchObject({ id: "notif-after-read", read: false }));
+    acknowledgeRead(new Response(null, { status: 204 }));
+    await reading;
+    stream.emit("monitoring.snapshot", updated);
+    expect(notificationRequests).toBe(3);
+    expect(listener.mock.lastCall?.[0].monitoring.unreadNotificationCount).toBe(1);
+    expect(listener.mock.lastCall?.[0].monitoring.headerNotifications[0]).toMatchObject({ id: "notif-after-read", read: false });
+    unsubscribe?.();
+  });
+  test("모두 읽음 성공 뒤의 재조회 실패는 읽음을 되돌리지 않고 같은 snapshot에서 다시 조회한다", async () => {
+    const api = contract();
+    const stream = new Stream();
+    let notifications: components["schemas"]["NotificationPage"] = structuredClone(notificationPageFixture);
+    let notificationRequests = 0;
+    const fetchImplementation: typeof fetch = (input) => {
+      const path = inputUrl(input).pathname;
+      if (path === "/api/v1/notifications/read-all") {
+        notifications = { ...notifications, unreadCount: 0, items: notifications.items.map((item) => ({ ...item, readAt: monitoringV2Fixture.serverTime })) };
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      if (path === "/api/v1/notifications") return Promise.resolve(++notificationRequests === 2 ? json({ detail: "Unavailable" }, 503) : json(notifications));
+      return api.fetchImplementation(input);
+    };
+    const source = createHttpDashboardDataSource({ fetchImplementation, monitoringVersion: "v2", apiContract: "backend", eventSourceFactory: () => stream as unknown as EventSource });
+    await source.getDashboardData();
+    const listener = vi.fn<(data: DashboardData) => void>();
+    const unsubscribe = source.subscribe?.(listener);
+    await source.markAllNotificationsRead?.();
+    expect(notificationRequests).toBe(2);
+    expect(listener.mock.lastCall?.[0].monitoring.unreadNotificationCount).toBe(0);
+    expect(listener.mock.lastCall?.[0].monitoring.headerNotifications[0].read).toBe(true);
+    stream.emit("monitoring.snapshot", monitoringV2Fixture);
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(4));
+    expect(notificationRequests).toBe(3);
+    expect(listener.mock.lastCall?.[0].monitoring.unreadNotificationCount).toBe(0);
+    unsubscribe?.();
+  });
+  test("늦은 개별 읽음 결과는 새 경보 재조회 뒤에도 화면에 전달한다", async () => {
+    const api = contract();
+    const stream = new Stream();
+    let notifications: components["schemas"]["NotificationPage"] = structuredClone(notificationPageFixture);
+    let acknowledgeRead: (response: Response) => void = () => undefined;
+    const fetchImplementation: typeof fetch = (input, init) => {
+      const path = inputUrl(input).pathname;
+      if (init?.method === "PATCH") return new Promise((resolve) => { acknowledgeRead = resolve; });
+      if (path === "/api/v1/notifications") return Promise.resolve(json(notifications));
+      return api.fetchImplementation(input);
+    };
+    const source = createHttpDashboardDataSource({ fetchImplementation, monitoringVersion: "v2", apiContract: "backend", eventSourceFactory: () => stream as unknown as EventSource });
+    await source.getDashboardData();
+    const listener = vi.fn<(data: DashboardData) => void>();
+    const unsubscribe = source.subscribe?.(listener);
+    const reading = source.markNotificationRead?.(notificationPageFixture.items[0].id);
+    notifications = { ...notifications, unreadCount: 2, items: [{ ...notificationPageFixture.items[0], id: "notif-after-single-read", readAt: null }, ...notifications.items] };
+    stream.emit("monitoring.snapshot", { ...monitoringV2Fixture, operations: {
+      effectiveState: "CRITICAL", lastKnownState: "CRITICAL", lastEvaluatedAt: null, lastAlertAt: null, notificationId: "notif-after-single-read",
+    } });
+    await vi.waitFor(() => expect(listener.mock.lastCall?.[0].monitoring.unreadNotificationCount).toBe(2));
+    notifications = { ...notifications, unreadCount: 1, items: notifications.items.map((item) => item.id === notificationPageFixture.items[0].id ? { ...item, readAt: monitoringV2Fixture.serverTime } : item) };
+    acknowledgeRead(json(notifications.items[1]));
+    await reading;
+    expect(listener.mock.lastCall?.[0].monitoring.unreadNotificationCount).toBe(1);
+    expect(listener.mock.lastCall?.[0].monitoring.headerNotifications).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "notif-after-single-read", read: false }),
+      expect.objectContaining({ id: notificationPageFixture.items[0].id, read: true }),
+    ]));
+    unsubscribe?.();
+  });
+  test("실패한 경보 재조회 뒤에도 대기 중인 새 경보의 재조회는 실행한다", async () => {
+    const api = contract();
+    const stream = new Stream();
+    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend", eventSourceFactory: () => stream as unknown as EventSource });
+    await source.getDashboardData();
+    let rejectNotification: (error: Error) => void = () => undefined;
+    api.fetchImplementation.mockImplementationOnce(() => new Promise<Response>((_resolve, reject) => { rejectNotification = reject; }));
+    const listener = vi.fn<(data: DashboardData) => void>();
+    const unsubscribe = source.subscribe?.(listener);
+    const operations = { effectiveState: "CRITICAL" as const, lastKnownState: "CRITICAL" as const, lastEvaluatedAt: null, lastAlertAt: null, notificationId: "notif-A" };
+    stream.emit("monitoring.snapshot", { ...monitoringV2Fixture, operations });
+    stream.emit("monitoring.snapshot", { ...monitoringV2Fixture, operations: { ...operations, notificationId: "notif-B" } });
+    rejectNotification(new TypeError("Network request failed"));
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(4));
+    expect(listener.mock.calls[2][0].monitoring.notificationState?.status).toBe("error");
+    expect(api.fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v1/notifications")).toHaveLength(3);
+    expect(listener.mock.lastCall?.[0].monitoring.v2?.operations?.notificationId).toBe("notif-B");
+    unsubscribe?.();
+  });
+  test("실패한 완료 기록 재조회 뒤에도 대기 중인 재조회는 실행한다", async () => {
+    const api = contract({ completionEvents: [{ type: "collection_completed", status: "completed", category: "collection", occurredAt: "2026-10-12T22:00:10Z" }] });
+    const stream = new Stream();
+    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend", eventSourceFactory: () => stream as unknown as EventSource });
+    await source.getDashboardData();
+    let rejectCollection: (error: Error) => void = () => undefined;
+    api.fetchImplementation.mockImplementationOnce(() => new Promise<Response>((_resolve, reject) => { rejectCollection = reject; }));
+    const listener = vi.fn<(data: DashboardData) => void>();
+    const unsubscribe = source.subscribe?.(listener);
+    stream.emit("monitoring.snapshot", monitoringV2Fixture);
+    stream.emit("monitoring.snapshot", { ...monitoringV2Fixture, snapshotId: "completion-update" });
+    rejectCollection(new TypeError("Network request failed"));
+    await vi.waitFor(() => expect(api.fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v1/events")).toHaveLength(3));
+    expect(listener.mock.lastCall?.[0].monitoring.summary.timeSinceCollection).toBe("2시간 0분");
+    unsubscribe?.();
+  });
+  test("구독 종료는 모두 읽음 이후의 재조회를 취소하고 이전 데이터를 갱신하지 않는다", async () => {
+    const api = contract();
+    const stream = new Stream();
+    let notificationRequests = 0;
+    let resolveNotifications: (response: Response) => void = () => undefined;
+    let actionSignal: AbortSignal | null | undefined;
+    const fetchImplementation: typeof fetch = (input, init) => {
+      const path = inputUrl(input).pathname;
+      if (path === "/api/v1/notifications/read-all") return Promise.resolve(new Response(null, { status: 204 }));
+      if (path === "/api/v1/notifications" && ++notificationRequests > 1) {
+        actionSignal = init?.signal;
+        return new Promise((resolve) => { resolveNotifications = resolve; });
+      }
+      return api.fetchImplementation(input);
+    };
+    const source = createHttpDashboardDataSource({ fetchImplementation, monitoringVersion: "v2", apiContract: "backend", eventSourceFactory: () => stream as unknown as EventSource });
+    await source.getDashboardData();
+    const listener = vi.fn();
+    const unsubscribe = source.subscribe?.(listener);
+    const reading = source.markAllNotificationsRead?.();
+    const rejection = expect(reading).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(actionSignal).toBeDefined());
+    const callsBeforeUnsubscribe = listener.mock.calls.length;
+    unsubscribe?.();
+    resolveNotifications(json({ ...notificationPageFixture, unreadCount: 0, items: [] }));
+    await rejection;
+    expect(actionSignal?.aborted).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(callsBeforeUnsubscribe);
+  });
   test("assessment와 장비 snapshot이 없으면 상태와 결측값을 유지한다", () => {
     const result = monitoringV2Data({ ...monitoringV2Fixture, dataState: "NO_DATA", assessment: null }, "pit-01");
     expect(result.v2).toMatchObject({ capabilities: null, fillState: null, configRevision: null, sensors: [] });
     expect(result.summary.loadPercent).toBeNull();
+    expect(result.devices.map((device) => device.label)).toEqual(["LiDAR 1", "LiDAR 2", "카메라", "엣지 장비"]);
+    expect(result.devices.every((device) => device.status === "unknown")).toBe(true);
+  });
+  test.each(["NORMAL", "WARNING", "CRITICAL", "UNKNOWN", "ERROR"] as const)("경보 평가 %s를 물리적 작업 상태로 변환하지 않는다", (effectiveState) => {
+    const operations = { effectiveState, lastKnownState: "CRITICAL" as const, lastEvaluatedAt: null, lastAlertAt: null, notificationId: "notif-opaque" };
+    const result = monitoringV2Data({ ...monitoringV2Fixture, operations }, "pit-01");
+    expect(result.v2).toMatchObject({ operations, recoveryThreshold: 80 });
+    expect(result.alarmState).toBe(effectiveState);
+    expect(result.summary.operationState).toBeNull();
+    expect(result.alerts).toEqual([]);
+  });
+  test.each([null, undefined])("경보 평가 %s는 비활성화 또는 미제공 상태로 보존한다", (operations) => {
+    expect(monitoringV2Data({ ...monitoringV2Fixture, operations }, "pit-01").v2?.operations).toBeNull();
+  });
+  test.each([
+    { operations: {} }, { operations: { effectiveState: "COLLECTING" } },
+    { summary: { ...monitoringV2Fixture.summary, recoveryThresholdPercent: undefined } },
+    { summary: { ...monitoringV2Fixture.summary, recoveryThresholdPercent: 101 } },
+  ])("새 경보 계약의 잘못된 입력 %j를 거부한다", (invalid) => {
+    expect(() => monitoringV2Data({ ...monitoringV2Fixture, ...invalid }, "pit-01")).toThrow();
   });
   test("잘못된 SSE JSON과 필수 구조가 없는 event는 화면에 적용하지 않는다", async () => {
     const api = contract();
@@ -190,14 +447,19 @@ describe("Backend v2 모니터링", () => {
     const updates: DashboardData[] = [];
     const unsubscribe = source.subscribe?.((value) => updates.push(value));
     expect(factory).toHaveBeenCalledWith("/api/v2/monitoring/events?pit_id=pit-01");
-    const fresh = { ...monitoringV2Fixture, dataState: "FRESH", summary: { ...monitoringV2Fixture.summary, loadPercent: 0 } };
+    const fresh = { ...monitoringV2StateFixture("FRESH", 0), operations: {
+      effectiveState: "NORMAL" as const, lastKnownState: "NORMAL" as const, lastEvaluatedAt: null, lastAlertAt: null, notificationId: null,
+    } };
     stream.emit("monitoring.snapshot", fresh);
     expect(updates.at(-1)?.monitoring.summary.loadPercent).toBe(0);
+    expect(updates.at(-1)?.monitoring.alarmState).toBe("NORMAL");
     stream.emit("error", {});
     expect(updates.at(-1)?.monitoring.summary.loadPercent).toBeNull();
+    expect(updates.at(-1)?.monitoring.alarmState).toBe("UNKNOWN");
     expect(updates.at(-1)?.monitoring.v2?.streamState).toBe("reconnecting");
     stream.emit("monitoring.snapshot", fresh);
     expect(updates.at(-1)?.monitoring.summary.loadPercent).toBe(0);
+    expect(updates.at(-1)?.monitoring.alarmState).toBe("NORMAL");
     expect(updates.at(-1)?.monitoring.v2?.streamState).toBe("connected");
     const count = updates.length;
     stream.emit("monitoring.snapshot", { ...fresh, pitId: "other" });

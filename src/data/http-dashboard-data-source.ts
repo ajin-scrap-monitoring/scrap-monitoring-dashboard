@@ -3,8 +3,10 @@ import type { components as BackendComponents, paths as BackendPaths } from "../
 import type {
   AlertLevel,
   AlertSettings,
+  AlertEvidencePage,
   DashboardData,
   DashboardStatus,
+  DataAreaState,
   EventCategory,
   EventTone,
   HistoryEvent,
@@ -17,11 +19,16 @@ import type {
 import type {
   DashboardDataRequestOptions,
   DashboardDataSource,
+  DashboardDataUpdateListener,
   DateRangeQuery,
   NotificationRecipientInput,
   SessionCredentials,
 } from "./dashboard-data-source";
 import { monitoringV2Data, type ApiMonitoringSnapshotV2 } from "./monitoring-v2";
+import { parseLoadHistoryV2, type LoadHistoryScope } from "./load-history-v2";
+import { clipIdentifier, parseClipCoverage } from "./recording-coverage";
+import { configuredLiveVideoMode, configuredMonitoringVersion, mjpegPlaybackEnabled, runtimeFeatureSelection, v1MonitoringEnabled, v2MonitoringEnabled, whepPlaybackEnabled } from "../build-features";
+import { timestamp } from "./contract-values";
 
 type ApiAlertSettings = BackendComponents["schemas"]["AlertSettings"];
 type ApiEventPage = BackendComponents["schemas"]["EventPage"];
@@ -39,13 +46,14 @@ type FetchImplementation = typeof fetch;
 type EventSourceFactory = (url: string) => EventSource;
 const APPLIED_EVENT_ID_LIMIT = 1024;
 const HEADER_NOTIFICATION_LIMIT = 20;
+const missingValue = "정보 없음";
+const notificationFailureMessage = "알림을 불러오지 못했습니다.";
+const loadHistoryFailureMessage = "적재율 추이를 불러오지 못했습니다.";
+const collectionHistoryFailureMessage = "최근 수거 완료 기록을 불러오지 못했습니다.";
 
 const API_PATHS = {
   alertSettings: "/api/v1/settings/alerts",
   events: "/api/v1/events",
-  loadHistory: "/api/v1/history/load",
-  monitoringEvents: "/api/v1/monitoring/events",
-  monitoringSnapshot: "/api/v1/monitoring/snapshot",
   notification: "/api/v1/notifications/{notificationId}",
   notificationRecipient: "/api/v1/notification-recipients/{recipientId}",
   notificationRecipients: "/api/v1/notification-recipients",
@@ -55,6 +63,12 @@ const API_PATHS = {
   recordings: "/api/v1/recordings",
   session: "/api/v1/session",
   testNotification: "/api/v1/notifications/test",
+} as const satisfies Record<string, keyof paths & keyof BackendPaths>;
+
+const V1_MONITORING_PATHS = {
+  loadHistory: "/api/v1/history/load",
+  events: "/api/v1/monitoring/events",
+  snapshot: "/api/v1/monitoring/snapshot",
 } as const satisfies Record<string, keyof paths & keyof BackendPaths>;
 
 function pathWithId(path: string, parameter: string, value: string) {
@@ -74,14 +88,14 @@ export class ApiError extends Error {
 }
 
 function wallClock(value: string | null, includeSeconds = false) {
-  if (value === null) return "정보 없음";
+  if (value === null) return missingValue;
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
   if (!match) return value;
   return `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}${includeSeconds ? `:${match[6] ?? "00"}` : ""}`;
 }
 
 function timeOnly(value: string | null, includeSeconds = false) {
-  if (value === null) return "정보 없음";
+  if (value === null) return missingValue;
   return wallClock(value, includeSeconds).split(" ")[1] ?? value;
 }
 
@@ -92,14 +106,20 @@ function expectedTime(value: string | null | undefined) {
 }
 
 function durationText(seconds: number | null | undefined) {
-  if (seconds === null || seconds === undefined) return "정보 없음";
+  if (seconds === null || seconds === undefined) return missingValue;
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   return `${hours}시간 ${minutes}분`;
 }
 
+function sinceCollection(completedAt: string | null, serverTime: string) {
+  if (completedAt === null) return missingValue;
+  const elapsed = (Date.parse(serverTime) - Date.parse(completedAt)) / 1000;
+  return Number.isFinite(elapsed) && elapsed >= 0 ? durationText(elapsed) : missingValue;
+}
+
 function clockDuration(seconds: number | null) {
-  if (seconds === null) return "정보 없음";
+  if (seconds === null) return missingValue;
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const remainingSeconds = Math.floor(seconds % 60);
@@ -107,7 +127,7 @@ function clockDuration(seconds: number | null) {
 }
 
 function byteSize(bytes: number | null) {
-  if (bytes === null) return "정보 없음";
+  if (bytes === null) return missingValue;
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
@@ -127,13 +147,14 @@ function timeOffset(value: string) {
   return value.match(/(?:Z|[+-]\d{2}:\d{2})$/i)?.[0] ?? "Z";
 }
 
-function rfc3339AtOffset(timestamp: number, offset: string) {
+function rfc3339AtOffset(timestamp: number, offset: string, preserveMilliseconds = false) {
   const match = offset.match(/^([+-])(\d{2}):(\d{2})$/);
   const offsetMinutes = match
     ? (match[1] === "-" ? -1 : 1) * (Number(match[2]) * 60 + Number(match[3]))
     : 0;
   const suffix = match ? offset : "Z";
-  return new Date(timestamp + offsetMinutes * 60_000).toISOString().replace(/\.\d{3}Z$/, suffix);
+  const iso = new Date(timestamp + offsetMinutes * 60_000).toISOString();
+  return preserveMilliseconds ? iso.replace(/Z$/, suffix) : iso.replace(/\.\d{3}Z$/, suffix);
 }
 
 function toDateTimeInput(value: string) {
@@ -289,7 +310,7 @@ function mapRecording(recording: ApiRecording): Recording {
   const status = recording.status ?? "unavailable";
   const available = status === "available" && (recording.mediaStatus == null || recording.mediaStatus === "ready");
   return {
-    codec: recording.videoCodec?.toUpperCase() ?? "정보 없음",
+    codec: recording.videoCodec?.toUpperCase() ?? missingValue,
     contentUrl: available ? sameOriginResourcePath(recording.contentPath) : undefined,
     date,
     detail: recording.detail || recording.title,
@@ -318,7 +339,7 @@ function mapRecording(recording: ApiRecording): Recording {
   };
 }
 
-function historyData(load: ApiLoadHistory, events: readonly ApiEvent[]): DashboardData["history"] {
+function historyData(load: ApiLoadHistory, events: readonly ApiEvent[], backendRecords = false): DashboardData["history"] {
   const origin = new Date(load.from).getTime();
   const hour = (value: string) => (new Date(value).getTime() - origin) / 3_600_000;
   return {
@@ -331,9 +352,16 @@ function historyData(load: ApiLoadHistory, events: readonly ApiEvent[]): Dashboa
       value: event.valuePercent,
     })),
     endsAt: toDateTimeInput(load.to),
-    events: events.map(mapEvent),
-    loadSamples: load.samples.flatMap((sample) => sample.valid && typeof sample.valuePercent === "number" && Number.isFinite(sample.valuePercent)
-      ? [{ hour: hour(sample.measuredAt), value: sample.valuePercent }] : []),
+    events: events.map((event) => {
+      const mapped = mapEvent(event);
+      if (backendRecords && (event.category === "alert" || event.category === "error")) {
+        mapped.status = "기록";
+        mapped.tone = event.severity === "error" ? "error" : "warning";
+      }
+      return mapped;
+    }),
+    loadSamples: load.samples.map((sample) => ({ hour: hour(sample.measuredAt),
+      value: sample.valid && typeof sample.valuePercent === "number" && Number.isFinite(sample.valuePercent) ? sample.valuePercent : null })),
     startsAt: toDateTimeInput(load.from),
     thresholds: load.collectionThresholds.map((sample) => ({ hour: hour(sample.effectiveAt), value: sample.valuePercent })),
   };
@@ -353,11 +381,40 @@ function notificationData(notifications: ApiNotificationPage | null) {
   };
 }
 
+function isAuthorizationError(error: unknown): error is ApiError {
+  return error instanceof ApiError && (error.status === 401 || error.status === 403);
+}
+
+function areaError(error: unknown, message: string, stale = false): DataAreaState {
+  const unsupported = error instanceof ApiError && (error.status === 404 || error.status === 405);
+  return {
+    status: "error",
+    message: unsupported ? `${message} 현재 서버가 조회 경로를 지원하지 않습니다.` : message,
+    stale,
+    code: error instanceof ApiError ? error.code ?? (unsupported ? "UNSUPPORTED_ENDPOINT" : "HTTP_ERROR")
+      : error instanceof TypeError ? "NETWORK_ERROR" : "INVALID_RESPONSE",
+    ...(error instanceof ApiError ? { httpStatus: error.status } : {}),
+  };
+}
+
+function validateNotifications(value: ApiNotificationPage) {
+  if (!value || !Array.isArray(value.items) || !Number.isInteger(value.unreadCount) || value.unreadCount < 0
+    || value.items.some((notification: ApiNotificationPage["items"][number]) => !notification || typeof notification.id !== "string"
+      || typeof notification.title !== "string" || typeof notification.detail !== "string"
+      || !["info", "warning", "error"].includes(notification.severity)
+      || !timestamp(notification.occurredAt)
+      || (notification.readAt != null && !timestamp(notification.readAt)))) {
+    throw new Error("Unexpected notification contract.");
+  }
+  return value;
+}
+
 function monitoringData(snapshot: ApiMonitoringSnapshot, notifications: ApiNotificationPage | null): DashboardData["monitoring"] {
   const remainingSeconds = snapshot.summary.expectedThresholdAt
     ? Math.max(0, Math.floor((new Date(snapshot.summary.expectedThresholdAt).getTime() - new Date(snapshot.serverTime).getTime()) / 1000))
     : null;
   return {
+    alarmState: null,
     alerts: snapshot.activeAlerts.map((alert) => ({
       detail: alert.detail,
       id: alert.id,
@@ -390,11 +447,11 @@ function monitoringData(snapshot: ApiMonitoringSnapshot, notifications: ApiNotif
         threshold: snapshot.summary.preCollectionAlert.thresholdPercent,
       },
       recentChange: typeof snapshot.summary.loadChangeLastHourPercentagePoints === "number"
-        ? `${snapshot.summary.loadChangeLastHourPercentagePoints >= 0 ? "+" : ""}${snapshot.summary.loadChangeLastHourPercentagePoints}%` : "정보 없음",
+        ? `${snapshot.summary.loadChangeLastHourPercentagePoints >= 0 ? "+" : ""}${snapshot.summary.loadChangeLastHourPercentagePoints}%` : missingValue,
       remainingTime: durationText(remainingSeconds),
       timeSinceCollection: snapshot.summary.lastCollectionAt
         ? durationText(Math.max(0, (new Date(snapshot.serverTime).getTime() - new Date(snapshot.summary.lastCollectionAt).getTime()) / 1000))
-        : "정보 없음",
+        : missingValue,
     },
     videoMode: "webrtc",
     videoStatus: snapshot.video.status ?? "unavailable",
@@ -428,11 +485,11 @@ export function createHttpDashboardDataSource({
   locationSearch = () => window.location.search,
   onSessionExpired = () => window.location.assign("/login"),
   route = () => window.location.pathname,
-  apiContract = "proposal",
-  monitoringVersion = "v1",
+  apiContract = runtimeFeatureSelection ? "proposal" : "backend",
+  monitoringVersion = runtimeFeatureSelection ? "v1" : configuredMonitoringVersion,
   pitId = "pit-01",
   cameraId = "camera-main",
-  liveVideoMode,
+  liveVideoMode = runtimeFeatureSelection ? undefined : configuredLiveVideoMode,
 }: {
   eventSourceFactory?: EventSourceFactory;
   fetchImplementation?: FetchImplementation;
@@ -445,26 +502,50 @@ export function createHttpDashboardDataSource({
   cameraId?: string;
   liveVideoMode?: "webrtc" | "mjpeg";
 } = {}): DashboardDataSource {
-  const selectedLiveVideoMode = liveVideoMode ?? (monitoringVersion === "v2" ? "mjpeg" : "webrtc");
-  if (monitoringVersion === "v2" && selectedLiveVideoMode !== "mjpeg") throw new Error("Monitoring v2 supports only MJPEG live video.");
+  if ((!v1MonitoringEnabled && monitoringVersion === "v1") || (!v2MonitoringEnabled && monitoringVersion === "v2")) throw new Error("Monitoring version is not enabled in this build.");
+  if (!runtimeFeatureSelection && apiContract !== "backend") throw new Error("Production requires the Backend contract.");
+  const useV2Monitoring = v2MonitoringEnabled && (!v1MonitoringEnabled || monitoringVersion === "v2");
+  const backendContract = !runtimeFeatureSelection || apiContract === "backend";
+  const selectedLiveVideoMode = liveVideoMode ?? (useV2Monitoring ? "mjpeg" : "webrtc");
+  if ((!mjpegPlaybackEnabled && selectedLiveVideoMode === "mjpeg") || (!whepPlaybackEnabled && selectedLiveVideoMode === "webrtc")) throw new Error("Live video mode is not enabled in this build.");
+  if (useV2Monitoring && selectedLiveVideoMode !== "mjpeg") throw new Error("Monitoring v2 supports only MJPEG live video.");
   let csrfToken = "";
   let currentData: DashboardData | null = null;
   let displayTimeOffset = "Z";
   let hasAuthenticatedSession = false;
   let monitoringRevision = 0;
   let notificationRevision = 0;
-  const pitPath = (path: string) => apiContract === "backend"
+  let notificationRefreshRequired = false;
+  let completedCollectionAt: string | null = null;
+  let monitoringScope: LoadHistoryScope | null = null;
+  let serverClock: { timestamp: number; receivedAt: number } | null = null;
+  let notificationActionsController = new AbortController();
+  const listeners = new Set<DashboardDataUpdateListener>();
+  const resetNotificationActions = () => {
+    notificationActionsController.abort();
+    notificationActionsController = new AbortController();
+  };
+  const publishNotifications = () => {
+    const data = currentData;
+    if (data) listeners.forEach((listener) => listener(structuredClone(data)));
+  };
+  const pitPath = (path: string) => backendContract
     ? `${path}${path.includes("?") ? "&" : "?"}${new URLSearchParams({ pit_id: pitId })}` : path;
-  const snapshotPath = pitPath(monitoringVersion === "v2" ? "/api/v2/monitoring/snapshot" : API_PATHS.monitoringSnapshot);
-  const eventsPath = pitPath(monitoringVersion === "v2" ? "/api/v2/monitoring/events" : API_PATHS.monitoringEvents);
+  const snapshotPath = pitPath(useV2Monitoring ? "/api/v2/monitoring/snapshot" : V1_MONITORING_PATHS.snapshot);
+  const eventsPath = pitPath(useV2Monitoring ? "/api/v2/monitoring/events" : V1_MONITORING_PATHS.events);
   const mapMonitoring = (snapshot: ApiMonitoringSnapshot | ApiMonitoringSnapshotV2, notifications: ApiNotificationPage | null) => {
-    const monitoring = monitoringVersion === "v2"
+    const monitoring = useV2Monitoring
       ? { ...monitoringV2Data(snapshot, pitId), ...notificationData(notifications) }
       : monitoringData(snapshot as ApiMonitoringSnapshot, notifications);
-    if (selectedLiveVideoMode === "mjpeg") {
+    if (mjpegPlaybackEnabled && (!whepPlaybackEnabled || selectedLiveVideoMode === "mjpeg")) {
       monitoring.videoMode = "mjpeg";
       monitoring.videoUrl = `/media/cameras/${encodeURIComponent(cameraId)}/live`;
       monitoring.videoStatus = "available";
+    }
+    if (monitoring.v2) monitoring.summary.timeSinceCollection = sinceCollection(completedCollectionAt, snapshot.serverTime);
+    if (monitoring.v2) {
+      monitoringScope = { pitId, siteId: monitoring.v2.siteId, edgeId: monitoring.v2.edgeId };
+      serverClock = { timestamp: Date.parse(snapshot.serverTime), receivedAt: performance.now() };
     }
     return monitoring;
   };
@@ -482,11 +563,15 @@ export function createHttpDashboardDataSource({
     checkAbort();
     if (!response.ok) {
       let detail: { code?: string; detail?: string; title?: string; error?: { code?: string; message?: string } } = {};
-      try { detail = await response.json() as typeof detail; } catch { /* Empty or non-JSON error response. */ }
+      try {
+        const payload: unknown = await response.json();
+        if (payload && typeof payload === "object") detail = payload;
+      } catch { /* Empty or non-JSON error response. */ }
       checkAbort();
       if (response.status === 401 && hasAuthenticatedSession && path !== API_PATHS.session) {
         csrfToken = "";
         hasAuthenticatedSession = false;
+        notificationActionsController.abort();
         onSessionExpired();
       }
       const code = detail.code ?? detail.error?.code ?? (detail.detail === "MONITORING_SOURCE_NOT_CONFIGURED" ? detail.detail : undefined);
@@ -517,8 +602,64 @@ export function createHttpDashboardDataSource({
   };
 
   const getNotifications = async (session: UserSession | null, signal?: AbortSignal) => session
-    ? request<ApiNotificationPage>(`${API_PATHS.notifications}?page=1&pageSize=20`, { signal })
+    ? validateNotifications(await request<ApiNotificationPage>(`${API_PATHS.notifications}?page=1&pageSize=20`, { signal }))
     : null;
+
+  const optionalArea = async <T>(operation: Promise<T>, fallback: T, message: string, signal?: AbortSignal, stale = false) => {
+    try { return { value: await operation, state: { status: "ready" } as DataAreaState }; }
+    catch (error) {
+      if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError") || isAuthorizationError(error)) throw error;
+      return { value: fallback, state: areaError(error, message, stale) };
+    }
+  };
+
+  const applyNotificationFailure = (error: unknown) => {
+    if (!currentData) return;
+    notificationRefreshRequired = true;
+    currentData.monitoring.notificationState = areaError(error, notificationFailureMessage, currentData.monitoring.unreadNotificationCount !== null);
+  };
+
+  const publishAuthorizationError = (error: ApiError) => {
+    if (!currentData) return;
+    currentData.authError = { status: error.status === 401 ? 401 : 403,
+      message: error.status === 401 ? "로그인이 만료되었습니다." : "조회 권한이 없습니다." };
+    publishNotifications();
+  };
+
+  const refreshNotifications = async (signal?: AbortSignal) => {
+    const session = currentData?.session;
+    if (!currentData || !session) return;
+    const expectedRevision = notificationRevision;
+    const actionSignal = signal ?? notificationActionsController.signal;
+    try {
+      const notifications = await getNotifications(session, actionSignal);
+      if (!notifications || actionSignal.aborted || !currentData || currentData.session !== session) return;
+      if (expectedRevision !== notificationRevision) return;
+      currentData.monitoring = { ...currentData.monitoring, ...notificationData(notifications), notificationState: { status: "ready" } };
+      notificationRevision += 1;
+      notificationRefreshRequired = false;
+      publishNotifications();
+    } catch (error) {
+      if (actionSignal.aborted || !currentData || currentData.session !== session) throw error;
+      if (isAuthorizationError(error)) { publishAuthorizationError(error); throw error; }
+      applyNotificationFailure(error);
+      publishNotifications();
+      throw error;
+    }
+  };
+
+  const getCompletedCollectionAt = async (signal?: AbortSignal) => {
+    const result = await request<unknown>(pitPath(`${API_PATHS.events}?category=collection&page=1&pageSize=1`), { signal });
+    if (!result || typeof result !== "object" || !("items" in result) || !Array.isArray(result.items) || result.items.length > 1) throw new Error("Unexpected collection history contract.");
+    const row: unknown = result.items[0];
+    if (row === undefined) return null;
+    if (!row || typeof row !== "object" || !("type" in row) || row.type !== "collection_completed"
+      || !("category" in row) || row.category !== "collection" || !("status" in row) || row.status !== "completed"
+      || !("occurredAt" in row) || typeof row.occurredAt !== "string" || !/(?:Z|[+-]\d{2}:\d{2})$/i.test(row.occurredAt) || !Number.isFinite(Date.parse(row.occurredAt))) {
+      throw new Error("Unexpected collection history contract.");
+    }
+    return row.occurredAt;
+  };
 
   const listEveryPage = async <TPage extends { readonly items: readonly unknown[]; readonly page: { readonly totalPages: number } }, TItem>(
     path: string,
@@ -538,18 +679,62 @@ export function createHttpDashboardDataSource({
 
   const queryParameters = (query: DateRangeQuery) => {
     const parameters = new URLSearchParams({ from: toRfc3339(query.from, displayTimeOffset), to: toRfc3339(query.to, displayTimeOffset) });
-    if (apiContract === "backend") parameters.set("pit_id", pitId);
-    if (query.eventCategory) parameters.set(apiContract === "backend" ? "category" : "eventCategory", query.eventCategory);
+    if (backendContract) parameters.set("pit_id", pitId);
+    if (query.eventCategory) parameters.set(backendContract ? "category" : "eventCategory", query.eventCategory);
     return parameters;
   };
 
+  const requestV2LoadHistory = async (from: string, to: string, signal?: AbortSignal) => {
+    if (!monitoringScope) throw new Error("Monitoring source is not initialized.");
+    const scope = { ...monitoringScope };
+    const parameters = new URLSearchParams({ pit_id: pitId, from, to });
+    const result = parseLoadHistoryV2(await request<unknown>(`/api/v2/monitoring/load-history?${parameters}`, { signal }), scope);
+    if (monitoringScope.siteId !== scope.siteId || monitoringScope.edgeId !== scope.edgeId) throw new Error("Monitoring source changed during history request.");
+    if (Date.parse(result.from) !== Date.parse(from) || Date.parse(result.to) !== Date.parse(to)) throw new Error("Unexpected load history range.");
+    return { ...result, monitoringSamples: result.monitoringSamples.map((sample) => ({ ...sample,
+      measuredAt: rfc3339AtOffset(Date.parse(sample.measuredAt), displayTimeOffset, true),
+      time: timeOnly(rfc3339AtOffset(Date.parse(sample.measuredAt), displayTimeOffset)),
+    })) };
+  };
+
+  const recentHistory = (to: string, signal?: AbortSignal) => requestV2LoadHistory(
+    rfc3339AtOffset(Date.parse(to) - 24 * 3_600_000, displayTimeOffset), to, signal);
+
   const queryHistory = async (query: DateRangeQuery, signal?: AbortSignal) => {
     const parameters = queryParameters(query);
-    const [load, events] = await Promise.all([
-      request<ApiLoadHistory>(`${API_PATHS.loadHistory}?${parameters}`, { signal }),
-      listEveryPage<ApiEventPage, ApiEvent>(`${API_PATHS.events}?${parameters}`, signal),
+    if (!useV2Monitoring) {
+      const [load, events] = await Promise.all([
+        request<ApiLoadHistory>(`${V1_MONITORING_PATHS.loadHistory}?${parameters}`, { signal }),
+        listEveryPage<ApiEventPage, ApiEvent>(`${API_PATHS.events}?${parameters}`, signal),
+      ]);
+      return historyData(load, events, backendContract);
+    }
+    const from = toRfc3339(query.from, displayTimeOffset);
+    const to = toRfc3339(query.to, displayTimeOffset);
+    const unsupported = Date.parse(to) - Date.parse(from) > 7 * 24 * 3_600_000;
+    const [loadResult, eventsResult] = await Promise.all([
+      unsupported ? Promise.resolve({ value: null, state: { status: "unsupported" as const, message: "v2 적재율 추이는 최대 7일까지 조회할 수 있습니다." } })
+        : optionalArea(requestV2LoadHistory(from, to, signal), null, loadHistoryFailureMessage, signal),
+      optionalArea(listEveryPage<ApiEventPage, ApiEvent>(`${API_PATHS.events}?${parameters}`, signal), [], "운영 이력을 불러오지 못했습니다.", signal),
     ]);
-    return historyData(load, events);
+    const load = loadResult.value;
+    const history = emptyHistory(to);
+    return {
+      ...history,
+      startsAt: toDateTimeInput(from), endsAt: toDateTimeInput(to),
+      loadSamples: load?.historySamples ?? [],
+      events: eventsResult.value.map((event) => {
+        const mapped = mapEvent(event);
+        if (backendContract && event.category !== "collection") {
+          mapped.status = "기록";
+          mapped.tone = event.severity === "error" ? "error" : "warning";
+        }
+        return mapped;
+      }),
+      thresholds: currentData ? [{ hour: 0, value: currentData.monitoring.summary.collectionThreshold }] : [],
+      loadState: { ...loadResult.state, from, to, thresholdKind: "current" as const },
+      eventsState: eventsResult.state,
+    };
   };
 
   const queryRecordings = async (query: DateRangeQuery, signal?: AbortSignal) => {
@@ -580,6 +765,42 @@ export function createHttpDashboardDataSource({
     ? mapAlertSettings(await request<ApiAlertSettings>(pitPath(API_PATHS.alertSettings), { signal }))
     : emptyAlertSettings();
 
+  const finishNotificationsRead = async (ids: Set<string>, session: UserSession | null | undefined, signal: AbortSignal, readAllRevision?: number) => {
+    const isCurrentSession = () => currentData?.session === session && hasAuthenticatedSession && !signal.aborted;
+    if (!currentData || !session || !isCurrentSession()) return;
+    for (const notification of currentData.monitoring.headerNotifications) {
+      if (ids.has(notification.id) && !notification.read) {
+        notification.read = true;
+        if (currentData.monitoring.unreadNotificationCount !== null) {
+          currentData.monitoring.unreadNotificationCount = Math.max(0, currentData.monitoring.unreadNotificationCount - 1);
+        }
+      }
+    }
+    if (readAllRevision === notificationRevision) currentData.monitoring.unreadNotificationCount = 0;
+    notificationRevision += 1;
+    notificationRefreshRequired = true;
+    publishNotifications();
+    while (currentData && isCurrentSession()) {
+      const expectedRevision = notificationRevision;
+      let notifications: ApiNotificationPage | null;
+      try { notifications = await getNotifications(session, signal); }
+      catch (error) {
+        if (signal.aborted) throw error;
+        if (isAuthorizationError(error)) { publishAuthorizationError(error); throw error; }
+        applyNotificationFailure(error);
+        publishNotifications();
+        return;
+      }
+      if (!currentData || !isCurrentSession() || !notifications) return;
+      if (notificationRevision !== expectedRevision) continue;
+      currentData.monitoring = { ...currentData.monitoring, ...notificationData(notifications), notificationState: { status: "ready" } };
+      notificationRevision += 1;
+      notificationRefreshRequired = false;
+      publishNotifications();
+      return;
+    }
+  };
+
   const source: DashboardDataSource = {
     monitoringVersion,
     createNotificationRecipient: async (input: NotificationRecipientInput) => {
@@ -595,43 +816,66 @@ export function createHttpDashboardDataSource({
     createSession: async (credentials: SessionCredentials) => {
       const body = { ...credentials } satisfies BackendComponents["schemas"]["LoginRequest"] & components["schemas"]["LoginRequest"];
       const session = await request<ApiSession>(API_PATHS.session, { method: "POST", body: JSON.stringify(body) });
+      resetNotificationActions();
       csrfToken = session.csrfToken ?? "";
       hasAuthenticatedSession = true;
       return mapSession(session);
     },
     deleteSession: async () => {
       await request<void>(API_PATHS.session, { method: "DELETE" });
+      notificationActionsController.abort();
       csrfToken = "";
       hasAuthenticatedSession = false;
     },
     getDashboardData: async (options: DashboardDataRequestOptions = {}) => {
+      resetNotificationActions();
       const session = await getSession(options.signal);
       const path = route();
-      if (session === null && (monitoringVersion === "v2" || (apiContract === "backend" && path === "/recordings"))) {
+      if (session === null && (useV2Monitoring || (backendContract && path === "/recordings"))) {
         onSessionExpired();
         throw new ApiError(401, "로그인이 필요합니다.");
       }
       const snapshot = await request<ApiMonitoringSnapshot | ApiMonitoringSnapshotV2>(snapshotPath, { signal: options.signal });
       const monitoring = mapMonitoring(snapshot, null);
-      const notifications = await getNotifications(session, options.signal);
+      const previous = session?.user.id === currentData?.session?.user.id ? currentData : null;
+      const previousLoad = previous?.monitoring.v2?.siteId === monitoring.v2?.siteId
+        && previous?.monitoring.v2?.edgeId === monitoring.v2?.edgeId ? previous?.monitoring : undefined;
       displayTimeOffset = timeOffset(snapshot.serverTime);
-      const end = apiContract === "backend"
+      const end = backendContract && (!useV2Monitoring || path === "/recordings")
         ? rfc3339AtOffset(Math.ceil(new Date(snapshot.serverTime).getTime() / 60_000) * 60_000, displayTimeOffset)
-        : snapshot.serverTime;
+        : useV2Monitoring ? rfc3339AtOffset(path === "/history"
+          ? Math.floor(Date.parse(snapshot.serverTime) / 60_000) * 60_000 : Date.parse(snapshot.serverTime), displayTimeOffset) : snapshot.serverTime;
       const start = rfc3339AtOffset(new Date(end).getTime() - 7 * 24 * 3_600_000, displayTimeOffset);
       const requestedRecordingId = path === "/recordings" ? new URLSearchParams(locationSearch()).get("recordingId") : null;
-      const [history, recordings, settings, recipients] = await Promise.all([
-        path === "/history" ? queryHistory({ from: start, to: end }, options.signal) : emptyHistory(end),
-        path === "/recordings"
+      const [notificationResult, historyResult, recordingsResult, settings, recipients, completionResult, recentHistoryResult] = await Promise.all([
+        optionalArea(getNotifications(session, options.signal), null, notificationFailureMessage, options.signal, previous?.monitoring.unreadNotificationCount != null),
+        optionalArea(path === "/history" ? queryHistory({ from: start, to: end }, options.signal) : Promise.resolve(emptyHistory(end)),
+          previous?.history ?? emptyHistory(end), "이력을 불러오지 못했습니다.", options.signal, previous !== null),
+        optionalArea(path === "/recordings"
           ? requestedRecordingId
             ? getRecording(requestedRecordingId, options.signal).then((recording) => recording ? [recording] : [])
             : queryRecordings({ from: start, to: end }, options.signal)
-          : [],
+          : Promise.resolve([]), previous?.recordings ?? [], "녹화 목록을 불러오지 못했습니다.", options.signal, previous !== null),
         path === "/admin" ? getAlertSettings(session, options.signal) : emptyAlertSettings(),
         path === "/admin" ? getRecipients(session, options.signal) : { recipients: [], settings: {} },
+        optionalArea(useV2Monitoring && backendContract ? getCompletedCollectionAt(options.signal) : Promise.resolve(null),
+          previous ? completedCollectionAt : null, collectionHistoryFailureMessage, options.signal, previous !== null),
+        optionalArea(useV2Monitoring ? recentHistory(snapshot.serverTime, options.signal) : Promise.resolve(null), null,
+          loadHistoryFailureMessage, options.signal, Boolean(previousLoad?.loadHistory.length)),
       ]);
-      Object.assign(monitoring, notificationData(notifications));
+      Object.assign(monitoring, notificationResult.state.status === "ready"
+        ? notificationData(notificationResult.value)
+        : { headerNotifications: previous?.monitoring.headerNotifications ?? [], unreadNotificationCount: previous?.monitoring.unreadNotificationCount ?? null });
+      monitoring.notificationState = notificationResult.state;
+      monitoring.completedCollectionState = completionResult.state;
+      if (useV2Monitoring) {
+        monitoring.loadHistory = recentHistoryResult.value?.monitoringSamples ?? previousLoad?.loadHistory ?? [];
+        monitoring.loadHistoryState = { ...recentHistoryResult.state, from: recentHistoryResult.value?.from, to: recentHistoryResult.value?.to };
+      }
       if (options.signal?.aborted) throw new DOMException("Dashboard request aborted.", "AbortError");
+      completedCollectionAt = completionResult.value;
+      notificationRefreshRequired = notificationResult.state.status === "error";
+      if (monitoring.v2) monitoring.summary.timeSinceCollection = sinceCollection(completedCollectionAt, snapshot.serverTime);
       currentData = {
         admin: {
           alertSettings: settings,
@@ -639,34 +883,57 @@ export function createHttpDashboardDataSource({
           recipientSettings: recipients.settings,
           recipients: recipients.recipients,
         },
-        history,
+        history: historyResult.state.status === "error"
+          ? { ...historyResult.value, loadState: historyResult.state, eventsState: historyResult.state }
+          : useV2Monitoring ? { ...historyResult.value, thresholds: [{ hour: 0, value: monitoring.summary.collectionThreshold }] } : historyResult.value,
         lastMeasuredAt: timeOnly(snapshot.measuredAt, true),
         monitoring,
-        recordings,
+        recordings: recordingsResult.value,
+        recordingsState: recordingsResult.state,
         session,
       };
       return structuredClone(currentData);
     },
     getRecording,
+    getRecordingCoverage: async (recordingId, signal) => {
+      if (!clipIdentifier.test(recordingId)) throw new Error("Recording coverage requires a media clip identifier.");
+      return parseClipCoverage(await request<unknown>(`/api/v1/media/clips/${encodeURIComponent(recordingId)}`, { signal }), recordingId, cameraId);
+    },
+    ...(v2MonitoringEnabled ? { getPitName: async (signal?: AbortSignal) => {
+      const config = await request<BackendComponents["schemas"]["PitConfigResponse"]>(`/api/v1/config/pits/${encodeURIComponent(pitId)}`, { signal });
+      if (!config || config.id !== pitId || typeof config.name !== "string" || config.name.trim() === "") throw new Error("Unexpected pit configuration contract.");
+      return config.name;
+    },
+    getAlertEvidencePage: async (offset: number, signal?: AbortSignal): Promise<AlertEvidencePage> => {
+      if (!Number.isInteger(offset) || offset < 0 || offset > 10000) throw new Error("Alert history offset is not supported.");
+      const parameters = new URLSearchParams({ pit_id: pitId, limit: "20", offset: String(offset) });
+      const page = await request<BackendComponents["schemas"]["V2AlertPage"]>(`/api/v2/monitoring/alerts?${parameters}`, { signal });
+      if (!page || page.offset !== offset || page.limit !== 20 || !Number.isSafeInteger(page.totalItems) || page.totalItems < 0
+        || !Array.isArray(page.items) || page.items.length > 20 || page.items.length > Math.max(0, page.totalItems - offset)
+        || page.items.some((item: BackendComponents["schemas"]["V2Alert"]) => !item || typeof item.eventId !== "string" || !/^evt-alt-[1-9]\d*$/.test(item.eventId)
+          || item.notificationId !== `notif-${item.eventId.slice(8)}` || typeof item.assessmentId !== "string" || item.assessmentId.length === 0
+          || typeof item.loadPercent !== "number" || !Number.isFinite(item.loadPercent) || item.loadPercent < 0 || item.loadPercent > 100
+          || !timestamp(item.observedAt) || !timestamp(item.triggeredAt) || !(item.readAt === null || timestamp(item.readAt)))
+        || new Set(page.items.map((item: BackendComponents["schemas"]["V2Alert"]) => item.eventId)).size !== page.items.length) throw new Error("Unexpected alert history contract.");
+      return { ...page, items: page.items.map((item: BackendComponents["schemas"]["V2Alert"]) => ({ ...item })) };
+    } } : {}),
     markAllNotificationsRead: async () => {
-      await request<void>(API_PATHS.notificationsReadAll, { method: "POST" });
-      if (currentData) {
-        notificationRevision += 1;
-        currentData.monitoring.headerNotifications.forEach((notification) => { notification.read = true; });
-        currentData.monitoring.unreadNotificationCount = 0;
-      }
+      const session = currentData?.session;
+      const { signal } = notificationActionsController;
+      const ids = new Set(currentData?.monitoring.headerNotifications.map((notification) => notification.id));
+      const revision = notificationRevision;
+      await request<void>(API_PATHS.notificationsReadAll, { method: "POST", signal });
+      await finishNotificationsRead(ids, session, signal, revision);
     },
     markNotificationRead: async (notificationId) => {
-      await request(pathWithId(API_PATHS.notification, "notificationId", notificationId), { method: "PATCH", body: JSON.stringify({ read: true }) });
-      const notification = currentData?.monitoring.headerNotifications.find((item) => item.id === notificationId);
-      if (currentData && notification && !notification.read) {
-        notificationRevision += 1;
-        notification.read = true;
-        currentData.monitoring.unreadNotificationCount = Math.max(0, currentData.monitoring.unreadNotificationCount - 1);
-      }
+      const session = currentData?.session;
+      const { signal } = notificationActionsController;
+      await request(pathWithId(API_PATHS.notification, "notificationId", notificationId), { method: "PATCH", body: JSON.stringify({ read: true }), signal });
+      await finishNotificationsRead(new Set([notificationId]), session, signal);
     },
     queryHistory,
     queryRecordings,
+    refreshNotifications,
     replaceAlertSettings: async (settings) => {
       const body = {
         collectionThresholdPercent: settings.collectionThreshold,
@@ -689,21 +956,63 @@ export function createHttpDashboardDataSource({
     },
     subscribe: (listener) => {
       const eventSource = eventSourceFactory(eventsPath);
+      listeners.add(listener);
       const appliedEventIds = new Set<string>();
       let active = true;
       let checkingSession = false;
+      let refreshingNotifications = false;
+      let notificationsRefreshQueued = false;
+      let refreshingCollection = false;
+      let collectionRefreshQueued = false;
+      let refreshingLoadHistory = false;
+      let synchronizedNotificationId = currentData?.monitoring.v2?.operations?.notificationId ?? null;
       const sessionController = new AbortController();
+      const notificationActionScope = notificationActionsController;
       const expireSession = () => {
         if (!active) return;
         active = false;
         sessionController.abort();
+        notificationActionScope.abort();
         csrfToken = "";
         hasAuthenticatedSession = false;
+        window.clearInterval(historyTimer);
         eventSource.close();
         onSessionExpired();
       };
+      const failAuthorization = (error: ApiError) => {
+        if (!active || !currentData) return;
+        currentData.authError = { status: error.status === 401 ? 401 : 403,
+          message: error.status === 401 ? "로그인이 만료되었습니다." : "조회 권한이 없습니다." };
+        listener(structuredClone(currentData));
+        active = false;
+        sessionController.abort();
+        notificationActionScope.abort();
+        window.clearInterval(historyTimer);
+        eventSource.close();
+      };
+      const refreshRecentLoadHistory = async () => {
+        if (!active || !currentData?.monitoring.v2 || !serverClock || refreshingLoadHistory) return;
+        refreshingLoadHistory = true;
+        const to = rfc3339AtOffset(serverClock.timestamp + performance.now() - serverClock.receivedAt, displayTimeOffset);
+        try {
+          const load = await recentHistory(to, sessionController.signal);
+          if (!active || !currentData) return;
+          currentData.monitoring.loadHistory = load.monitoringSamples;
+          currentData.monitoring.loadHistoryState = { status: "ready", from: load.from, to: load.to };
+          listener(structuredClone(currentData));
+        } catch (error) {
+          if (isAuthorizationError(error)) { failAuthorization(error); return; }
+          if (!active || sessionController.signal.aborted || !currentData) return;
+          currentData.monitoring.loadHistoryState = {
+            ...areaError(error, loadHistoryFailureMessage, currentData.monitoring.loadHistory.length > 0),
+            from: currentData.monitoring.loadHistoryState?.from, to: currentData.monitoring.loadHistoryState?.to,
+          };
+          listener(structuredClone(currentData));
+        } finally { refreshingLoadHistory = false; }
+      };
+      const historyTimer = useV2Monitoring ? window.setInterval(() => { void refreshRecentLoadHistory(); }, 60_000) : undefined;
       const isDuplicate = (event: Event) => {
-        if (monitoringVersion === "v2") return false;
+        if (useV2Monitoring) return false;
         if (!(event instanceof MessageEvent) || !event.lastEventId) return false;
         if (appliedEventIds.has(event.lastEventId)) return true;
         appliedEventIds.add(event.lastEventId);
@@ -712,6 +1021,72 @@ export function createHttpDashboardDataSource({
           if (oldestEventId !== undefined) appliedEventIds.delete(oldestEventId);
         }
         return false;
+      };
+      const refreshV2Notifications = () => {
+        notificationsRefreshQueued = true;
+        if (refreshingNotifications) return;
+        refreshingNotifications = true;
+        void (async () => {
+          while (active && currentData && notificationsRefreshQueued) {
+            notificationsRefreshQueued = false;
+            const expectedRevision = notificationRevision;
+            const expectedNotificationId = currentData.monitoring.v2?.operations?.notificationId ?? null;
+            try {
+              const notifications = await getNotifications(currentData.session, sessionController.signal);
+              if (!active || !currentData || !notifications) return;
+              if (notificationRevision !== expectedRevision) {
+                notificationsRefreshQueued = true;
+                continue;
+              }
+              currentData.monitoring = { ...currentData.monitoring, ...notificationData(notifications), notificationState: { status: "ready" } };
+              notificationRevision += 1;
+              notificationRefreshRequired = false;
+              synchronizedNotificationId = expectedNotificationId;
+              listener(structuredClone(currentData));
+            } catch (error) {
+              if (isAuthorizationError(error)) {
+                failAuthorization(error);
+                return;
+              }
+              if (sessionController.signal.aborted) return;
+              if (active && currentData) {
+                applyNotificationFailure(error);
+                listener(structuredClone(currentData));
+              }
+            }
+          }
+        })().finally(() => { refreshingNotifications = false; });
+      };
+      const refreshCompletedCollection = () => {
+        collectionRefreshQueued = true;
+        if (refreshingCollection) return;
+        refreshingCollection = true;
+        void (async () => {
+          while (active && currentData?.monitoring.v2 && collectionRefreshQueued) {
+            collectionRefreshQueued = false;
+            try {
+              const completedAt = await getCompletedCollectionAt(sessionController.signal);
+              if (!active || !currentData?.monitoring.v2) return;
+              completedCollectionAt = completedAt;
+              const elapsed = sinceCollection(completedAt, currentData.monitoring.v2.serverTime);
+              if (currentData.monitoring.summary.timeSinceCollection !== elapsed || currentData.monitoring.completedCollectionState?.status === "error") {
+                currentData.monitoring.summary.timeSinceCollection = elapsed;
+                currentData.monitoring.completedCollectionState = { status: "ready" };
+                listener(structuredClone(currentData));
+              }
+            } catch (error) {
+              if (isAuthorizationError(error)) {
+                failAuthorization(error);
+                return;
+              }
+              if (sessionController.signal.aborted) return;
+              if (active && currentData?.monitoring.v2) {
+                currentData.monitoring.completedCollectionState = areaError(error, collectionHistoryFailureMessage, completedCollectionAt !== null);
+                listener(structuredClone(currentData));
+              }
+            }
+          }
+        })().finally(() => { refreshingCollection = false; });
       };
       eventSource.addEventListener("monitoring.snapshot", (event) => {
         if (!active || !currentData || !(event instanceof MessageEvent) || isDuplicate(event)) return;
@@ -731,41 +1106,51 @@ export function createHttpDashboardDataSource({
         displayTimeOffset = offset;
         const headerNotifications = currentData.monitoring.headerNotifications;
         const unreadNotificationCount = currentData.monitoring.unreadNotificationCount;
+        const sourceChanged = monitoring.v2 && currentData.monitoring.v2
+          && (monitoring.v2.siteId !== currentData.monitoring.v2.siteId || monitoring.v2.edgeId !== currentData.monitoring.v2.edgeId);
         currentData = {
           ...currentData,
           lastMeasuredAt: measuredAt,
-          monitoring: { ...monitoring, headerNotifications, unreadNotificationCount },
+          monitoring: { ...monitoring, headerNotifications, unreadNotificationCount,
+            notificationState: currentData.monitoring.notificationState,
+            completedCollectionState: currentData.monitoring.completedCollectionState,
+            ...(useV2Monitoring ? { loadHistory: sourceChanged ? [] : currentData.monitoring.loadHistory,
+              loadHistoryState: sourceChanged ? { status: "loading" } : currentData.monitoring.loadHistoryState } : {}),
+          },
         };
         listener(structuredClone(currentData));
+        const notificationId = monitoring.v2?.operations?.notificationId;
+        if (notificationRefreshRequired || (notificationId && notificationId !== synchronizedNotificationId)) refreshV2Notifications();
+        if (useV2Monitoring && monitoring.v2 && backendContract) refreshCompletedCollection();
+        if (useV2Monitoring && sourceChanged) void refreshRecentLoadHistory();
       });
       eventSource.addEventListener("error", () => {
         if (!active) return;
         if (currentData?.monitoring.v2) {
           currentData.monitoring.status = "disconnected";
+          if (currentData.monitoring.alarmState) currentData.monitoring.alarmState = "UNKNOWN";
           currentData.monitoring.summary.loadPercent = null;
           currentData.monitoring.v2.streamState = "reconnecting";
           listener(structuredClone(currentData));
         }
-        if (apiContract !== "backend" || !hasAuthenticatedSession || checkingSession) return;
+        if (!backendContract || !hasAuthenticatedSession || checkingSession) return;
         checkingSession = true;
         void getSession(sessionController.signal)
           .then((session) => { if (active && session === null) expireSession(); })
-          .catch(() => undefined)
+          .catch((error: unknown) => { if (isAuthorizationError(error)) failAuthorization(error); })
           .finally(() => { checkingSession = false; });
       });
-      eventSource.addEventListener("notification.created", (event) => {
+      if (v1MonitoringEnabled) eventSource.addEventListener("notification.created", (event) => {
         if (!active || !currentData || !(event instanceof MessageEvent) || isDuplicate(event)) return;
         if (typeof event.data !== "string") return;
         let notification: BackendComponents["schemas"]["Notification"];
         try {
           notification = JSON.parse(event.data) as typeof notification;
-          if (!notification || typeof notification.id !== "string" || typeof notification.title !== "string"
-            || typeof notification.detail !== "string" || typeof notification.occurredAt !== "string"
-            || (notification.readAt !== null && typeof notification.readAt !== "string")) return;
+          validateNotifications({ items: [notification], unreadCount: 0, page: { page: 1, pageSize: 1, totalItems: 1, totalPages: 1 } });
         } catch { return; }
         if (currentData.monitoring.headerNotifications.some((item) => item.id === notification.id)) return;
         notificationRevision += 1;
-        const read = notification.readAt !== null;
+        const read = (notification.readAt ?? null) !== null;
         currentData.monitoring.headerNotifications.unshift({
           detail: notification.detail,
           id: notification.id,
@@ -775,23 +1160,24 @@ export function createHttpDashboardDataSource({
           title: notification.title,
         });
         currentData.monitoring.headerNotifications.splice(HEADER_NOTIFICATION_LIMIT);
-        if (!read) currentData.monitoring.unreadNotificationCount += 1;
+        if (!read && currentData.monitoring.unreadNotificationCount !== null) currentData.monitoring.unreadNotificationCount += 1;
         listener(structuredClone(currentData));
       });
       eventSource.addEventListener("session.expired", (event) => {
         if (!active || isDuplicate(event)) return;
         expireSession();
       });
-      eventSource.addEventListener("stream.resync-required", (event) => {
+      if (v1MonitoringEnabled) eventSource.addEventListener("stream.resync-required", (event) => {
         if (!active || !currentData || isDuplicate(event)) return;
         const expectedMonitoringRevision = monitoringRevision;
         const expectedNotificationRevision = notificationRevision;
         const session = currentData.session;
         void Promise.all([
           request<ApiMonitoringSnapshot | ApiMonitoringSnapshotV2>(snapshotPath, { signal: sessionController.signal }),
-          getNotifications(session, sessionController.signal),
+          optionalArea(getNotifications(session, sessionController.signal), null, notificationFailureMessage, sessionController.signal,
+            currentData.monitoring.unreadNotificationCount !== null),
         ])
-          .then(([snapshot, notifications]) => {
+          .then(([snapshot, notificationResult]) => {
             if (!active || !currentData) return;
             let changed = false;
             if (expectedMonitoringRevision === monitoringRevision) {
@@ -803,23 +1189,35 @@ export function createHttpDashboardDataSource({
                   ...mapMonitoring(snapshot, null),
                   headerNotifications: currentData.monitoring.headerNotifications,
                   unreadNotificationCount: currentData.monitoring.unreadNotificationCount,
+                  notificationState: currentData.monitoring.notificationState,
+                  completedCollectionState: currentData.monitoring.completedCollectionState,
+                  ...(useV2Monitoring ? { loadHistory: currentData.monitoring.loadHistory, loadHistoryState: currentData.monitoring.loadHistoryState } : {}),
                 },
               };
               monitoringRevision += 1;
               changed = true;
             }
-            if (notifications && expectedNotificationRevision === notificationRevision) {
-              currentData.monitoring = { ...currentData.monitoring, ...notificationData(notifications) };
-              notificationRevision += 1;
+            if (expectedNotificationRevision === notificationRevision) {
+              if (notificationResult.state.status === "error") {
+                currentData.monitoring.notificationState = notificationResult.state;
+                notificationRefreshRequired = true;
+              } else if (notificationResult.value) {
+                currentData.monitoring = { ...currentData.monitoring, ...notificationData(notificationResult.value), notificationState: { status: "ready" } };
+                notificationRevision += 1;
+                notificationRefreshRequired = false;
+              }
               changed = true;
             }
             if (changed) listener(structuredClone(currentData));
           })
-          .catch(() => undefined);
+          .catch((error: unknown) => { if (isAuthorizationError(error)) failAuthorization(error); });
       });
       return () => {
         active = false;
+        listeners.delete(listener);
+        if (listeners.size === 0) notificationActionScope.abort();
         sessionController.abort();
+        window.clearInterval(historyTimer);
         eventSource.close();
       };
     },

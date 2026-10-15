@@ -18,10 +18,39 @@ declare global {
   interface Window { backendFixture: BrowserControl }
 }
 
+function historyV2(url: URL, snapshot: BackendSnapshot): components["schemas"]["LoadHistoryV2"] {
+  const until = Date.parse(url.searchParams.get("to") ?? snapshot.serverTime);
+  const since = Date.parse(url.searchParams.get("from") ?? new Date(until - 86_400_000).toISOString());
+  const bucketSeconds = until - since <= 86_400_000 ? 60 : 900;
+  const interval = bucketSeconds * 1000;
+  const first = Math.floor(since / interval) * interval;
+  return {
+    schemaVersion: "2", pitId: snapshot.pitId, source: snapshot.source,
+    from: new Date(since).toISOString(), to: new Date(until).toISOString(), bucketSeconds,
+    selectionPolicy: "LATEST_STATE_PER_BUCKET",
+    samples: Array.from({ length: Math.ceil((until - first) / interval) }, (_, index) => {
+      const start = Math.max(since, first + index * interval);
+      const end = Math.min(until, first + (index + 1) * interval);
+      const missing = index % 7 === 3;
+      const generatedAt = new Date(start + Math.floor((end - start) / 2)).toISOString();
+      return {
+        bucketStartAt: new Date(start).toISOString(), bucketEndAt: new Date(end).toISOString(),
+        generatedAt: missing ? null : generatedAt, observedAt: missing ? null : generatedAt,
+        assessmentId: missing ? null : `assessment-${index}`, valid: !missing,
+        valuePercent: missing ? null : index % 5 === 0 ? 0 : 68.5,
+        dataState: missing ? "NO_DATA" : index % 5 === 1 ? "LIMITED" : "AVAILABLE",
+        reasonCodes: missing ? ["STATE_NOT_RECEIVED"] : [],
+      };
+    }),
+  };
+}
+
 export async function installBackendApi(page: Page, { initial = monitoringV2StateFixture("UNAVAILABLE"), authenticated = true, mediaMode = "healthy", runtimeConfig = true }: { initial?: BackendSnapshot; authenticated?: boolean; mediaMode?: MediaMode; runtimeConfig?: boolean } = {}) {
   let snapshot = initial;
   let sessionActive = authenticated;
   let recordings: components["schemas"]["Recording"][] = [mediaRecordingFixture];
+  let notifications: components["schemas"]["NotificationPage"] = notificationPageFixture;
+  let completionEvents: components["schemas"]["EventPage"]["items"] = [];
   const requests: URL[] = [];
   if (runtimeConfig) await page.route("**/runtime-config.json", (route) => route.fulfill({ json: { schemaVersion: 1, pitId: initial.pitId, cameraId: "camera-main" } }));
   await page.addInitScript(({ initialSnapshot, mode }) => {
@@ -111,9 +140,25 @@ export async function installBackendApi(page: Page, { initial = monitoringV2Stat
       await (sessionActive ? json(sessionFixture) : json({ detail: "Unauthorized" }, 401));
     } else if (!sessionActive) await json({ detail: "Unauthorized" }, 401);
     else if (url.pathname === "/api/v2/monitoring/snapshot") await json(snapshot);
-    else if (url.pathname === "/api/v1/notifications") await json(notificationPageFixture);
+    else if (url.pathname === "/api/v2/monitoring/load-history") await json(historyV2(url, snapshot));
+    else if (url.pathname === "/api/v2/monitoring/alerts") await json({ items: [], limit: 20, offset: Number(url.searchParams.get("offset") ?? 0), totalItems: 0 });
+    else if (url.pathname === `/api/v1/config/pits/${encodeURIComponent(snapshot.pitId)}`) await json({ id: snapshot.pitId, name: "시험 pit", total_depth_cm: 300, warning_threshold_percent: 75, critical_threshold_percent: 85, updated_at: snapshot.serverTime });
+    else if (url.pathname === "/api/v1/notifications") await json(notifications);
+    else if (url.pathname === "/api/v1/notifications/read-all") {
+      notifications = { ...notifications, unreadCount: 0, items: notifications.items.map((item) => ({ ...item, readAt: "2026-10-13T00:00:10Z" })) };
+      await route.fulfill({ status: 204 });
+    }
+    else if (url.pathname.startsWith("/api/v1/notifications/") && route.request().method() === "PATCH") {
+      const id = decodeURIComponent(url.pathname.split("/").at(-1) ?? "");
+      const notification = notifications.items.find((item) => item.id === id);
+      if (!notification) { await json({ detail: "Not found" }, 404); return; }
+      const updated = { ...notification, readAt: notification.readAt ?? "2026-10-13T00:00:10Z" };
+      notifications = { ...notifications, unreadCount: Math.max(0, notifications.unreadCount - (notification.readAt ? 0 : 1)), items: notifications.items.map((item) => item.id === id ? updated : item) };
+      await json(updated);
+    }
     else if (url.pathname === "/api/v1/history/load") await json(loadHistoryFixture);
-    else if (url.pathname === "/api/v1/events") await json(eventPageFixture);
+    else if (url.pathname === "/api/v1/events") await json(url.searchParams.get("pageSize") === "1" && url.searchParams.get("category") === "collection"
+      ? { items: completionEvents, page: { page: 1, pageSize: 1, totalPages: completionEvents.length ? 1 : 0, totalItems: completionEvents.length } } : eventPageFixture);
     else if (url.pathname === "/api/v1/settings/alerts") await json(alertSettingsFixture);
     else if (url.pathname === "/api/v1/notification-recipients") await json({ items: [], page: { page: 1, pageSize: 100, totalItems: 0, totalPages: 1 } });
     else if (url.pathname === "/api/v1/recordings") await json({ items: recordings, page: { page: 1, pageSize: 100, totalItems: recordings.length, totalPages: 1 } });
@@ -127,6 +172,8 @@ export async function installBackendApi(page: Page, { initial = monitoringV2Stat
     requests,
     expire: () => { sessionActive = false; },
     setRecordings: (next: typeof recordings) => { recordings = next; },
+    setNotifications: (next: typeof notifications) => { notifications = next; },
+    setCompletionEvents: (next: typeof completionEvents) => { completionEvents = next; },
     async snapshot(next: BackendSnapshot) { snapshot = next; await page.evaluate((value) => window.backendFixture.emit("monitoring.snapshot", JSON.stringify(value)), next); },
   };
 }

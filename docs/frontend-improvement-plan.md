@@ -25,7 +25,7 @@ Continuous Integration (CI)를 기준으로 다음 6개 항목을 구분한다.
 | 항목 | 구현 경계 | 완료 조건 | 우선순위 |
 | --- | --- | --- | --- |
 | FE-01 영상 parser와 연결 수명 | [parser](../src/components/mjpeg-client.ts)와 [영상 컴포넌트](../src/components/MjpegVideo.tsx) | chunk 분할과 무관한 크기 제한, timeout과 decode 및 자원 정리 회귀 테스트 | 최우선 |
-| FE-02 v2 상태와 인증 흐름 | [adapter](../src/data/monitoring-v2.ts), [v2 화면](../src/pages/MonitoringV2Page.tsx)과 [browser fixture](../e2e/backend-api.ts) | 외부 서비스 없이 전체 v2 상태와 오류 및 복구 흐름 재현 | 높음 |
+| FE-02 v2 상태와 인증 흐름 | [adapter](../src/data/monitoring-v2.ts), [공통 현황 화면](../src/pages/MonitoringPage.tsx)과 [browser fixture](../e2e/backend-api.ts) | 외부 서비스 없이 전체 v2 상태와 오류 및 복구 흐름 재현 | 높음 |
 | FE-03 녹화 상태 전이와 조회 취소 | [녹화 화면](../src/pages/RecordingsPage.tsx)과 [목록 조회 수명](../src/use-latest-request.ts) | 녹화 처리 상태와 늦은 응답 격리, 이력 및 녹화 목록 조회 취소 | 높음 |
 | FE-04 계약 검사와 생성 재현성 | [manifest](contracts/backend/manifest.json), [추출기](../scripts/backend-contract.ts)와 [계약 설정](../redocly.yaml) | 실제 계약 타입 경계와 snapshot 재생성 및 검사 자동화 | 높음 |
 | FE-05 최소 화면 너비와 키보드 | [브라우저 설정](../playwright.config.ts), [v2 테스트](../e2e/backend-api.spec.ts)와 [실제 서비스 테스트](../integration/services.spec.ts) | 최소 너비 1280을 포함한 키보드 및 레이아웃 검사 | 보통 |
@@ -58,8 +58,8 @@ JPEG decode 실패도 브라우저에서 재현하고, 표시할 수 없는 이�
 ### FE-02 v2 상태와 인증 흐름
 
 수정 대상은 `src/data/monitoring-v2.ts`, `http-dashboard-data-source.ts`,
-`monitoring-v2.test.ts`, `use-dashboard-data.test.tsx`와 `src/pages/MonitoringV2Page.tsx`다.
-v2 화면 전용 컴포넌트 테스트와 browser fixture를 사용한다.
+`monitoring-v2.test.ts`, `use-dashboard-data.test.tsx`와 `src/pages/MonitoringPage.tsx`다.
+공통 현황 컴포넌트 테스트와 browser fixture를 사용한다.
 
 1. `src/test/backend-contract-fixtures.ts`에 실제 생성 타입을 따르는 상태별 fixture를 구성한다.
 2. 기존 v1 제안 fixture와 구분되는 v2 HTTP 및 SSE browser fixture를 사용한다.
@@ -73,7 +73,7 @@ v2 화면 전용 컴포넌트 테스트와 browser fixture를 사용한다.
 | SSE 연결 오류와 같은 snapshotId의 재수신 | 연결 오류 동안 적재율 숨김, snapshot 재수신 후 연결 상태 복구 |
 | 재연결 중 session 조회 지연 및 네트워크 오류 | 중복 session 조회 억제, 네트워크 오류를 인증 만료로 오인하지 않는 동작 |
 | 초기 401, 조회 중 401, session.expired와 구독 종료 후 응답 | 로그인 이동, 구독 종료와 늦은 상태 갱신 차단 |
-| assessment 또는 장비 snapshot 부재, 긴 reason code와 sensor 목록 | 정보 없음 표시, 불필요한 측정값과 미제공 기능 미표시 |
+| assessment 또는 장비 snapshot 부재, 긴 reason code와 sensor 목록 | 기존 화면 영역 유지, 미제공 값과 실측의 구분, 상세 정보의 접근 가능성 |
 
 실제 SSE transport와 session Cookie 연동의 증거는 서비스 통합 테스트로 유지한다.
 제어 가능한 browser fixture는 클라이언트 오류 및 상태 전이 검사에 사용한다.

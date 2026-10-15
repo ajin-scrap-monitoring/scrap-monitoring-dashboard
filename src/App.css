@@ -501,11 +501,28 @@ button { cursor: pointer; }
   .profile-stat .range { font-size: 11px; }
 }
 /* v2 모니터링은 Backend가 제공하는 판단과 장비 상태를 표시한다. */
-.monitoring-v2 .card { padding: 20px; min-width: 0; overflow-wrap: anywhere; }
-.monitoring-v2 .live-frame { aspect-ratio: 16 / 9; position: relative; }
-.monitoring-v2 .kpi-value { font-size: 38px; }
-.v2-details { display: grid; gap: 10px; }
-.v2-details > div { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; }
-.v2-details dt { color: var(--text-secondary, #64748b); }
-.v2-details dd { margin: 0; }
-.monitoring-v2 ul { padding-left: 20px; }
+.monitoring-card-title { display: flex; min-height: 22px; align-items: center; justify-content: space-between; gap: 8px; }
+.monitoring-detail-button { padding: 0; border: 0; background: transparent; color: #61708a; font-size: 12px; }
+.mini-stat .alarm-status { font-size: 12px; line-height: 30px; white-space: nowrap; }
+.unavailable-value { display: flex; height: 76px; align-items: center; color: #61708a; font-size: 38px; letter-spacing: -0.03em; }
+.precise-value { display: flex; height: 76px; align-items: center; }
+.progress-unavailable { display: flex; height: 18px; align-items: center; margin: 12px 0 16px; color: #61708a; font-size: 12px; }
+.measurement-note { color: #61708a; font-size: 11px; }
+.chart-unavailable-label { padding-right: 12px; color: #61708a; font-size: 12px; }
+.chart-unavailable { display: grid; height: 197px; margin-top: -4px; place-items: center; padding: 16px; color: #61708a; font-size: 13px; text-align: center; }
+.monitoring-page .device-grid { overflow: auto; }
+.monitoring-page .device-grid > .device { min-width: 0; }
+.monitoring-page .device-name, .monitoring-page .device-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.monitoring-detail-modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; background: rgb(8 14 22 / 78%); }
+.monitoring-detail-panel { position: relative; width: min(700px, 100%); max-height: calc(100vh - 48px); overflow: auto; padding: 24px; border-radius: 6px; background: #fff; color: #172238; overflow-wrap: anywhere; }
+.monitoring-detail-panel h2 { margin-top: 0; padding-right: 60px; }
+.monitoring-detail-close { position: sticky; top: 0; float: right; padding: 4px 12px; border: 1px solid #d8e0e9; border-radius: 3px; background: #fff; }
+.monitoring-detail-list { display: grid; gap: 10px; }
+.monitoring-detail-list > div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; }
+.monitoring-detail-list dt { color: #61708a; }
+.monitoring-detail-list dd { margin: 0; }
+.monitoring-detail-panel { overscroll-behavior: contain; }
+.detail-trigger { all: unset; font: inherit; color: inherit; cursor: pointer; }
+.detail-trigger:hover { text-decoration: underline; }
+.detail-trigger:focus-visible { outline: 2px solid #c46b00; outline-offset: 2px; }
+.history-table-wrap .detail-trigger { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; white-space: nowrap; }

@@ -12,7 +12,7 @@ export const monitoringV2Fixture = {
   assessmentReceivedAt: "2026-10-13T00:00:10Z",
   dataState: "UNAVAILABLE",
   reasonCodes: ["FILL_METHOD_NOT_IMPLEMENTED"],
-  summary: { loadPercent: null, warningThresholdPercent: 75, collectionThresholdPercent: 85 },
+  summary: { loadPercent: null, warningThresholdPercent: 75, collectionThresholdPercent: 85, recoveryThresholdPercent: 80 },
   assessment: {
     schema_version: "2.0",
     message_type: "edge_assessment",

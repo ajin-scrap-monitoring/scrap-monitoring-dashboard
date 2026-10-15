@@ -34,6 +34,7 @@ export async function installContractApi(page: Page, { initiallyAuthenticated = 
   let authenticated = initiallyAuthenticated;
   let remainingWhepFailures = whepFailures;
   let settings: components["schemas"]["AlertSettings"] = structuredClone(alertSettingsFixture);
+  let notifications: components["schemas"]["NotificationPage"] = structuredClone(notificationPageFixture);
   let recipients: components["schemas"]["NotificationRecipient"][] = [structuredClone(recipientFixture)];
   const requests: ContractRequest[] = [];
   await page.addInitScript((backend) => {
@@ -124,15 +125,20 @@ export async function installContractApi(page: Page, { initiallyAuthenticated = 
       return;
     }
     if (url.pathname === "/api/v1/notifications" && method === "GET") {
-      await json(notificationPageFixture);
+      await json(notifications);
       return;
     }
     if (url.pathname === "/api/v1/notifications/read-all" && method === "POST") {
+      notifications = { ...notifications, unreadCount: 0, items: notifications.items.map((item) => ({ ...item, readAt: item.readAt ?? monitoringFixture.serverTime })) };
       await route.fulfill({ status: 204 });
       return;
     }
     if (url.pathname.startsWith("/api/v1/notifications/") && method === "PATCH") {
-      await json({ ...notificationPageFixture.items[0], readAt: monitoringFixture.serverTime });
+      const notification = notifications.items.find((item) => item.id === decodeURIComponent(url.pathname.split("/").at(-1) ?? ""));
+      if (!notification) { await json({ detail: "Not found" }, 404); return; }
+      const updated = { ...notification, readAt: notification.readAt ?? monitoringFixture.serverTime };
+      notifications = { ...notifications, unreadCount: Math.max(0, notifications.unreadCount - (notification.readAt ? 0 : 1)), items: notifications.items.map((item) => item.id === updated.id ? updated : item) };
+      await json(updated);
       return;
     }
     if (url.pathname === "/api/v1/history/load") {
