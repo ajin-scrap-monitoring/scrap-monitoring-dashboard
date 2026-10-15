@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 
 import { ROUTES } from "./app-routing";
 import { ApplicationFooter, DashboardHeader, type DashboardPage } from "./components/DashboardShell";
@@ -6,16 +6,20 @@ import { DashboardStatePage } from "./components/DashboardStatePage";
 import type { DashboardDataSource } from "./data/dashboard-data-source";
 import { ApiError } from "./data/http-dashboard-data-source";
 import { useDashboardData } from "./data/use-dashboard-data";
-import { LoginPage } from "./pages/LoginPage";
 import { MonitoringPage } from "./pages/MonitoringPage";
 import "./App.css";
 
-const AdminPage = lazy(() => import("./pages/AdminPage"));
-const HistoryPage = lazy(() => import("./pages/HistoryPage"));
-const RecordingsPage = lazy(() => import("./pages/RecordingsPage"));
+const loadAdminPage = () => import("./pages/AdminPage");
+const loadHistoryPage = () => import("./pages/HistoryPage");
+const loadRecordingsPage = () => import("./pages/RecordingsPage");
+const LoginPage = lazy(() => import("./pages/LoginPage").then(module => ({ default: module.LoginPage })));
+const AdminPage = lazy(loadAdminPage);
+const HistoryPage = lazy(loadHistoryPage);
+const RecordingsPage = lazy(loadRecordingsPage);
+const loginPage = (dataSource: DashboardDataSource) => <Suspense fallback={<main className="login-page" aria-label="로그인 화면 준비 중" aria-busy="true" />}><LoginPage dataSource={dataSource} /></Suspense>;
 
 export function App({ dataSource }: { dataSource: DashboardDataSource }) {
-  if (window.location.pathname === ROUTES.login) return <LoginPage dataSource={dataSource} />;
+  if (window.location.pathname === ROUTES.login) return loginPage(dataSource);
 
   return <DashboardApplication dataSource={dataSource} />;
 }
@@ -28,6 +32,10 @@ function DashboardApplication({ dataSource }: { dataSource: DashboardDataSource 
       : window.location.pathname === ROUTES.admin
         ? "admin"
         : "monitoring";
+  useEffect(() => {
+    const load = activePage === "admin" ? loadAdminPage : activePage === "history" ? loadHistoryPage : activePage === "recordings" ? loadRecordingsPage : undefined;
+    void load?.().catch(() => undefined);
+  }, [activePage]);
   const { data: dashboardData, error: dashboardError, reload } = useDashboardData(dataSource);
   const reception = dashboardData?.reception ?? { status: "waiting" as const, lastReceivedAt: null };
 
@@ -47,7 +55,7 @@ function DashboardApplication({ dataSource }: { dataSource: DashboardDataSource 
 
   if (window.location.pathname === ROUTES.admin && dashboardData.session === null) {
     window.history.replaceState(null, "", ROUTES.login);
-    return <LoginPage dataSource={dataSource} />;
+    return loginPage(dataSource);
   }
   if (window.location.pathname === ROUTES.admin && dashboardData.session?.user.role !== "administrator") {
     return <DashboardStatePage title="접근 권한이 없습니다." description="관리자 권한이 있는 계정으로 로그인하세요." header={statePageHeader} footer={statePageFooter} />;

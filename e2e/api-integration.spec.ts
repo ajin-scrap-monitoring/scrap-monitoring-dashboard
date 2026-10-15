@@ -101,7 +101,7 @@ test("녹화 범위 상세는 선택 시에만 조회하고 카드와 다운로�
   expect(await geometry()).toEqual(before);
 });
 
-test("현재 분의 녹화는 목록에 유지하고 v2 추이는 미래 종료 시각을 요청하지 않는다", async ({ page }) => {
+test("현재 분의 녹화는 목록에 유지하고 현황 전용 추이는 요청하지 않는다", async ({ page }) => {
   const initial = { ...monitoringV2StateFixture("FRESH", 0), serverTime: "2026-10-15T12:34:50+09:00" };
   const api = await installBackendApi(page, { initial });
   api.setRecordings([{ ...mediaRecordingFixture, startedAt: "2026-10-15T12:34:10+09:00", endedAt: "2026-10-15T12:34:40+09:00" }]);
@@ -109,8 +109,7 @@ test("현재 분의 녹화는 목록에 유지하고 v2 추이는 미래 종료 
   await expect(page.locator(".recordings-list .recording-item")).toHaveCount(1);
   await expect(page.getByRole("textbox", { name: "종료 시각", exact: true })).toHaveValue("2026-10-15 12:35");
   const requests = api.requests.filter(url => url.pathname === "/api/v2/monitoring/load-history");
-  expect(requests.length).toBeGreaterThan(0);
-  for (const request of requests) expect(Date.parse(request.searchParams.get("to")!)).toBeLessThanOrEqual(Date.parse(initial.serverTime));
+  expect(requests).toHaveLength(0);
   const recordingRequest = api.requests.find(url => url.pathname === "/api/v1/recordings");
   expect(recordingRequest?.searchParams.get("to")).toBe("2026-10-15T12:35:00+09:00");
 });

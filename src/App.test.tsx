@@ -70,13 +70,13 @@ test("유효한 차트 표본이 없어도 현재 상태 화면을 유지한다"
   expect(screen.getByText("지연", { exact: true })).toBeVisible();
 });
 
-test("로그인 화면에서는 대시보드 데이터를 요청하지 않는다", () => {
+test("로그인 화면에서는 대시보드 데이터를 요청하지 않는다", async () => {
   const getDashboardData = vi.fn(async () => createMockDashboardDataSource().getDashboardData());
   window.history.replaceState(null, "", "/login");
 
   render(<App dataSource={{ getDashboardData }} />);
 
-  expect(screen.getByRole("main", { name: "사용자 로그인" })).toBeVisible();
+  expect(await screen.findByRole("main", { name: "사용자 로그인" })).toBeVisible();
   expect(getDashboardData).not.toHaveBeenCalled();
 });
 

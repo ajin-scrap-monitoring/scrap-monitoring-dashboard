@@ -121,3 +121,18 @@ test("이전 알림을 유지한 조회 실패는 마지막 응답이라는 설�
   expect(screen.getByRole("alert")).toHaveTextContent("마지막으로 받은 알림을 표시합니다.");
   expect(screen.queryByRole("button", { name: "알림 다시 조회" })).not.toBeInTheDocument();
 });
+
+test("긴 사용자명과 알림의 원문은 title과 접근 가능한 텍스트에 유지한다", () => {
+  const displayName = "현장모니터링담당자".repeat(10);
+  const title = "서버 알림 제목 ".repeat(20);
+  const detail = "서버 알림 내용 ".repeat(20);
+  const view = render(<DashboardHeader activePage="monitoring" initialNotifications={[{ id: "long-notice", title, detail, read: false, level: "warning", time: "10:00" }]}
+    session={{ expiresAt: "2026-10-16T00:00:00Z", user: { id: "synthetic-user", role: "administrator", displayName } }} />);
+  expect(view.container.querySelector(".user-menu > span")).toHaveAttribute("title", displayName);
+  expect(view.container.querySelector(".user-menu > span")).toHaveTextContent(displayName);
+  fireEvent.click(screen.getByRole("button", { name: "사용자 메뉴" }));
+  expect(view.container.querySelector(".user-popover-profile strong")).toHaveAttribute("title", displayName);
+  fireEvent.click(screen.getByRole("button", { name: "알림 1건" }));
+  expect(view.container.querySelector(".header-notification strong")).toHaveAttribute("title", title);
+  expect(view.container.querySelector(".header-notification small")).toHaveAttribute("title", detail);
+});

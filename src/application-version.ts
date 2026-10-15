@@ -1,1 +1,1 @@
-export const applicationVersion = import.meta.env.VITE_APP_VERSION || "0.4.0";
+export const applicationVersion = import.meta.env.VITE_APP_VERSION || "0.4.1";

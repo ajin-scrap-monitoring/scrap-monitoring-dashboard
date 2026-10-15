@@ -604,6 +604,15 @@ A와 B 원의 중심은 해당 끝점과 일치한다. 반투명 면은 센서 �
 정의한다. `src/data/use-dashboard-data.ts`는 데이터 소스 수명 주기와 화면 상태를 관리한다.
 `src/data/mock-dashboard-data-source.ts`는 개발과 synthetic 시나리오 테스트에 사용하는 구현이다.
 `src/data/http-dashboard-data-source.ts`는 실제 Backend와 기존 제안 API를 구분해 호출한다.
+HTTP 요청은 응답 body 수신을 포함해 10초로 제한하며 화면 종료는 진행 중 요청을 취소한다.
+timeout은 `REQUEST_TIMEOUT`으로 구분하고 이미 수신한 401 및 403은 권한 오류로 유지한다.
+현황 전용 최근 24시간 추이와 최근 수거 완료 이력은 현황 화면에서만 조회한다.
+두 조회는 약 1분 간격으로 갱신하며 같은 snapshot의 반복 수신은 최근 수거 조회 간격을
+줄이지 않는다. 알림 조회 중 같은 경보 ID를 다시 받아도 완료된 조회를 반복하지 않는다.
+화면별 JavaScript 모듈은 초기 데이터 조회와 병렬로 불러오며 로그인 모듈은 로그인 화면에서만
+불러온다. 메뉴 이동은 document navigation을 사용하고 session과 runtime 설정을 다시 확인한다.
+공통 헤더의 긴 사용자명은 원문을 title에 유지하고 생략 표시한다. 최근 알림은 popover의
+목록 안에서 스크롤하며 제목과 이력 링크는 viewport 안에 유지한다.
 `src/data/monitoring-v2.ts`는 v2 판단과 실제 센서 및 장비 상태를 화면 모델로 변환한다.
 `src/data/load-history-v2.ts`는 v2 적재율 추이의 source와 bucket을 검증하고 결측 표본을
 유지한다. 조회 상한과 시각 및 지표 의미의 정본은
