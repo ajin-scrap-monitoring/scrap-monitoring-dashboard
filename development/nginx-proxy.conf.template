@@ -1,0 +1,83 @@
+# 개발 gateway가 기존 Backend와 Media Service에 요청을 전달하는 설정이다.
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+map "$uri:$arg_download" $development_media_args {
+    default "";
+    "~^/media/clips/[0-9a-fA-F-]{36}/content:true$" "download=true";
+}
+
+upstream development_backend {
+    zone development_backend 64k;
+    server ${DASHBOARD_BACKEND_UPSTREAM} resolve;
+}
+
+upstream development_media {
+    zone development_media 64k;
+    server ${DASHBOARD_MEDIA_UPSTREAM} resolve;
+}
+
+server {
+    listen 8080;
+    server_name _;
+    access_log off;
+    client_max_body_size 1m;
+
+    location = /healthz {
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location ~ ^/api/(v2/monitoring/events|v1/monitoring/events)$ {
+        include /etc/nginx/includes/proxy-streaming.conf;
+        proxy_pass http://development_backend;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 300s;
+    }
+
+    location /api/ {
+        include /etc/nginx/includes/proxy-common.conf;
+        proxy_pass http://development_backend;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 30s;
+    }
+
+    location = /_development_media_access {
+        internal;
+        proxy_pass http://development_backend/api/v1/media/access;
+        proxy_pass_request_headers off;
+        proxy_pass_request_body off;
+        proxy_set_header Host $proxy_host;
+        proxy_set_header Content-Length "";
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header Authorization "";
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 5s;
+    }
+
+    location ~ "^/media/(cameras/[A-Za-z0-9][A-Za-z0-9._~-]{0,127}/live|clips/[0-9a-fA-F-]{36}/content)$" {
+        if ($request_method != GET) { return 405; }
+        auth_request /_development_media_access;
+        set $args $development_media_args;
+        rewrite ^/media/(.*)$ /api/v1/$1 break;
+        proxy_pass http://development_media;
+        proxy_http_version 1.1;
+        proxy_pass_request_headers off;
+        proxy_pass_request_body off;
+        proxy_set_header Host $proxy_host;
+        proxy_set_header Connection "";
+        proxy_set_header Content-Length "";
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+        proxy_set_header Range $http_range;
+        proxy_set_header If-Range $http_if_range;
+        proxy_hide_header Set-Cookie;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 30s;
+    }
+
+    location / {
+        return 404;
+    }
+}

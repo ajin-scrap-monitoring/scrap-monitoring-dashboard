@@ -437,8 +437,10 @@ synthetic data source의 인스턴스는 화면에서 수행한 설정과 알림
 인스턴스와 상태를 공유하지 않는다. `src/data/http-dashboard-data-source.ts`의 HTTP adapter는
 실제 Backend 응답을 도메인 모델로 변환하고 HTTP 요청과 SSE 구독을 처리한다. 화면 컴포넌트는 서버
 DTO (Data Transfer Object)에 직접 의존하지 않는다. 운영 빌드는 HTTP 어댑터를 사용한다.
-개발 환경과 브라우저 테스트 빌드는 기본적으로 synthetic data source를 사용하며 `source=api`와
-`source=mock` query로 session 단위 데이터 소스를 선택할 수 있다. 현황 영상, 녹화 목록의
+개발 환경은 `VITE_DEV_DATA_SOURCE`로 기본 data source를 선택하며 미설정 시 synthetic data를
+사용한다. 명시한 `source=api`, `source=mock` query와 session에 저장한 선택은 개발 기본값보다
+우선한다. 이 환경변수는 production 빌드의 source 선택에 사용하지 않는다. 브라우저 테스트
+빌드는 기본적으로 synthetic data source를 사용한다. 현황 영상, 녹화 목록의
 썸네일, 녹화 재생 화면과 확대 화면은
 `src/assets/camera-frame.png`의 synthetic 이미지를 예시로 사용한다. 개발 환경과
 배포 빌드에 같은 이미지를 포함한다. 이미지는 정적인 예시이며 실제 영상 재생 상태를
@@ -548,7 +550,7 @@ v1 SSE 구독은 최근 event ID 1024개로 중복을 제거하고 개인 알림
 
 UI와 synthetic data를 변경할 때는 `sudo docker compose up --build development`로 Vite 개발 서버를
 실행하고 필요한 상태를 `scenario` query로 확인한다. 실제 API는 `source=api`로 선택하며
-개발 서버의 별도 same-origin gateway가 필요하다. 기존 제안 계약 테스트만 개발 빌드의
+개발 서버의 same-origin proxy는 아래의 `원격 개발 컨테이너` 구성을 사용한다. 기존 제안 계약 테스트만 개발 빌드의
 `scrap-monitoring-api-contract=proposal` sessionStorage 값을 사용하고 운영 빌드는 이 값을
 무시한다. 변경 완료 전에는 `sudo docker compose build verification`과
 `sudo docker compose run --rm verification`을 실행한다. 실제 연동 변경은 README의 서비스
@@ -709,6 +711,85 @@ sudo docker compose down
 # 개발과 검증 종료 후 의존성 volume까지 제거한다.
 sudo docker compose down --volumes
 ```
+
+### 원격 개발 컨테이너
+
+`compose.remote-development.yaml`은 기존 `development` service에 API 모드와 내부 gateway를
+추가하는 개발용 override다. 컨테이너는 2개다.
+
+| Service | 역할 |
+| --- | --- |
+| `development` | 서버의 source mirror를 bind mount하는 Vite 개발 서버와 Hot Module Replacement (HMR) |
+| `development-gateway` | 기존 Backend의 API와 session 검사 및 Media Service의 영상 전달 |
+
+Vite는 서버의 `127.0.0.1:5173`에만 공개한다. gateway에는 host port를 공개하지 않고 기존
+서비스의 external Docker network에 연결한다. v2와 MJPEG를 사용하며 API 실패를 v1이나
+synthetic data로 대체하지 않는다. Backend와 Media Service의 배포 및 상태 확인은 이
+script의 범위가 아니다.
+
+Source 동기화 client에는 Git, OpenSSH와 `--from0`, `--delete-missing-args`를 지원하는 rsync가
+필요하다. 서버에는 Docker Engine, Compose plugin, 기존 서비스 network와 비대화형
+`sudo docker` 권한이 필요하다. 서버의 source mirror 경로는
+`/scrap-monitoring-dashboard-dev`로 끝나는 절대 경로를 사용한다. 첫 실행은 빈 디렉토리만
+사용하며 기존 Git worktree는 덮어쓰지 않는다.
+
+Git이 제외하지 않은 source와 작업 중인 변경을 전달하며 `.git`, 로컬 환경변수, 비밀 파일과
+루트 runtime JSON은 전달하지 않는다. `start`만 `.env.remote`를 서버에 mode `0600`으로 복사한다.
+동기화 client는 Git 디렉토리에 대상별 성공 및 진행 중 전송 목록을 보관한다.
+성공 목록은 전송 성공 뒤 갱신한다. 전송 중단 시 부분 전송한 경로도 삭제 추적에 포함하며,
+파일 삭제는 stage 및 commit 여부와 무관하게 다음 동기화에 반영한다.
+설정에는 다음 5개 값이 필요하다. 예시는 `development/.env.example`이다.
+
+| 변수 | 값 |
+| --- | --- |
+| `DASHBOARD_DEV_NETWORK` | Backend와 Media Service가 연결된 기존 Docker network 이름 |
+| `DASHBOARD_BACKEND_UPSTREAM` | Backend의 내부 DNS 이름과 port |
+| `DASHBOARD_MEDIA_UPSTREAM` | Media Service의 내부 DNS 이름과 port |
+| `VITE_PIT_ID` | Backend에 등록한 pit 식별자 |
+| `VITE_CAMERA_ID` | Media Service에 등록한 camera 식별자 |
+
+```sh
+# 기존 서비스에 맞게 network, upstream과 식별자를 입력한다.
+cp development/.env.example .env.remote
+
+# Source mirror의 SSH 대상과 전용 경로를 지정한다.
+export DASHBOARD_DEV_SSH_TARGET='<server-user>@<server-host>'
+export DASHBOARD_DEV_REMOTE_PATH='/home/<server-user>/scrap-monitoring-dashboard-dev'
+
+# 선택한 SSH host를 경유할 때만 지정한다.
+# export DASHBOARD_DEV_SSH_RELAY='<relay-host>'
+
+# Source와 설정을 전달하고 개발 컨테이너 2개를 빌드 및 시작한다.
+bash scripts/remote-development.sh start
+
+# 2초 간격으로 source를 동기화하며 Ctrl+C로 중지한다.
+bash scripts/remote-development.sh watch
+```
+
+Source 변경은 rsync가 서버에 반영하고 Vite가 HMR로 브라우저에 적용한다. 의존성, 환경변수와
+gateway 설정 변경은 `start`를 다시 실행해 개발 컨테이너를 재생성한다. SSH 연결이 끊기면
+source 반영도 중지되며 `watch`는 연결 복구 후 동기화를 재개한다.
+
+브라우저를 사용할 컴퓨터의 다른 터미널에서 서버의 Vite port를 forwarding한다.
+
+```sh
+# 서버의 loopback port를 브라우저 컴퓨터의 loopback port로 연결한다.
+ssh -N -o ExitOnForwardFailure=yes \
+  -L 127.0.0.1:5173:127.0.0.1:5173 '<server-user>@<server-host>'
+```
+
+브라우저는 `http://127.0.0.1:5173/?source=api`로 접속한다. 영상 요청은 gateway가 Backend의
+session을 확인한 뒤 전달한다. Media Service에는 `Host`, `Range`, `If-Range` header와 클립
+다운로드의 `download=true` query만 전달한다. Session 검사 실패는 영상 요청을 거부한다.
+
+종료할 때는 `watch`와 forwarding 터미널을 각각 `Ctrl+C`로 중지한 뒤 실행한다.
+
+```sh
+# 개발 컨테이너와 전용 network만 제거하고 의존성 volume 및 source mirror는 유지한다.
+bash scripts/remote-development.sh stop
+```
+
+기존 Backend, Media Service와 external network는 제거하거나 재시작하지 않는다.
 
 `scripts/verify-container-integration.sh`는 `test/container/Dockerfile`로 Node.js, Git, curl,
 OpenSSL, Docker CLI (Command-Line Interface)와 Compose plugin을 포함한 검증 이미지를 만든다.

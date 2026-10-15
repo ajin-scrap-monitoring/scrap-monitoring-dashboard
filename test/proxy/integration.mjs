@@ -55,6 +55,21 @@ async function request(path, options) {
   return fetch(`http://127.0.0.1:${hostPort}${path}`, options)
 }
 
+async function waitForFrontend() {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      const response = await request('/healthz')
+      if (response.ok) {
+        return
+      }
+    } catch {
+      // Nginx can still be starting.
+    }
+    await sleep(250)
+  }
+  throw new Error('Frontend container did not become ready.')
+}
+
 function websocketEcho(message) {
   return new Promise((resolvePromise, reject) => {
     const key = randomBytes(16).toString('base64')
@@ -175,20 +190,7 @@ try {
     image,
   ])
 
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    try {
-      const response = await request('/healthz')
-      if (response.ok) {
-        break
-      }
-    } catch {
-      // Nginx can still be starting.
-    }
-    if (attempt === 19) {
-      throw new Error('Frontend container did not become ready.')
-    }
-    await sleep(250)
-  }
+  await waitForFrontend()
 
   const apiResponse = await request('/contract-api/echo')
   assert.equal(apiResponse.status, 200)
@@ -281,6 +283,95 @@ try {
   assert.equal(parsedLog.method, 'GET')
   assert.match(parsedLog.uri, /^\//)
   assert.match(parsedLog.request_id, /.+/)
+
+  run('docker', ['rm', '--force', frontendName])
+  run('docker', [
+    'run', '--detach', '--read-only', '--tmpfs', '/tmp',
+    '--tmpfs', '/etc/nginx/conf.d:rw,uid=101,gid=101,mode=0755,size=1m',
+    '--name', frontendName, '--network', network,
+    '--publish', `127.0.0.1:${hostPort}:8080`,
+    '--mount', `type=bind,src=${resolve(repositoryRoot, 'development/nginx-proxy.conf.template')},dst=/etc/nginx/templates/default.conf.template,readonly`,
+    '--env', 'DASHBOARD_BACKEND_UPSTREAM=proxy-integration-upstream:18081',
+    '--env', 'DASHBOARD_MEDIA_UPSTREAM=proxy-integration-upstream:18081',
+    '--env', 'NGINX_ENVSUBST_FILTER=^DASHBOARD_(BACKEND|MEDIA)_UPSTREAM$',
+    image,
+  ])
+  await waitForFrontend()
+  run('docker', ['exec', frontendName, 'nginx', '-t'])
+
+  const credentials = {
+    cookie: 'scrap_session=proxy-viewer',
+    authorization: 'Bearer synthetic-authorization',
+    'proxy-authorization': 'Basic synthetic-proxy-authorization',
+    'x-auth-token': 'synthetic-auth-token',
+    'x-api-key': 'synthetic-api-key',
+    'x-original-uri': '/media/private?token=synthetic-original-token',
+    origin: 'https://dashboard.example.invalid',
+    referer: 'https://dashboard.example.invalid/?token=synthetic-referer-token',
+    range: 'bytes=100-199',
+    'if-range': '"proxy-media-etag"',
+  }
+  const forwardedToBackend = await request('/api/v1/proxy-test/echo?token=synthetic-query-token', { headers: credentials })
+  assert.equal(forwardedToBackend.status, 200)
+  const backendEcho = await forwardedToBackend.json()
+  assert.equal(backendEcho.url, '/api/v1/proxy-test/echo?token=synthetic-query-token')
+  for (const [name, value] of Object.entries(credentials)) {
+    assert.equal(backendEcho.headers[name], value, `Test client did not send ${name}.`)
+  }
+
+  const livePath = '/media/cameras/camera-main/live'
+  const clipPath = '/media/clips/550e8400-e29b-41d4-a716-446655440000/content'
+  for (const [path, upstreamPath] of [
+    [`${livePath}?download=true&token=secret&api_key=synthetic-query-key`, '/api/v1/cameras/camera-main/live'],
+    [`${clipPath}?download=true&token=secret`, '/api/v1/clips/550e8400-e29b-41d4-a716-446655440000/content?download=true'],
+    [`${clipPath}?download=false&token=secret`, '/api/v1/clips/550e8400-e29b-41d4-a716-446655440000/content'],
+    [`${clipPath}?token=secret`, '/api/v1/clips/550e8400-e29b-41d4-a716-446655440000/content'],
+  ]) {
+    const response = await request(path, { headers: credentials })
+    assert.equal(response.status, 200, path)
+    assert.equal(response.headers.get('set-cookie'), null)
+    const body = await response.json()
+    assert.equal(body.url, upstreamPath)
+    assert.equal(body.method, 'GET')
+    assert.deepEqual(body.headers, {
+      host: 'development_media',
+      range: 'bytes=100-199',
+      'if-range': '"proxy-media-etag"',
+    })
+    const metrics = await (await request('/api/v1/proxy-test/metrics')).json()
+    assert.deepEqual(metrics.lastAuthRequest, {
+      url: '/api/v1/media/access',
+      headers: { host: 'development_backend', cookie: credentials.cookie },
+    })
+  }
+
+  const mediaBeforeRejection = await (await request('/api/v1/proxy-test/metrics')).json()
+  for (const [cookie, expectedStatus] of [
+    [null, 401],
+    ['scrap_session=expired', 401],
+    ['scrap_session=forbidden', 403],
+    ['scrap_session=unavailable', 500],
+  ]) {
+    const headers = { ...credentials }
+    if (cookie === null) {
+      delete headers.cookie
+    } else {
+      headers.cookie = cookie
+    }
+    const response = await request(`${livePath}?token=synthetic-bypass-token`, { headers })
+    assert.equal(response.status, expectedStatus, `Unexpected authentication result for ${cookie}.`)
+  }
+  for (const method of ['HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']) {
+    const response = await request(clipPath, { headers: credentials, method })
+    assert.equal(response.status, 405, `${method} must not reach Media.`)
+  }
+  for (const path of ['/_development_media_access', '/media/cameras/camera-main/private', '/media/clips/not-a-uuid/content']) {
+    const response = await request(path, { headers: credentials })
+    assert.equal(response.status, 404, path)
+  }
+  const mediaAfterRejection = await (await request('/api/v1/proxy-test/metrics')).json()
+  assert.equal(mediaAfterRejection.mediaRequests, mediaBeforeRejection.mediaRequests)
+  assert.equal(mediaAfterRejection.authRequests, mediaBeforeRejection.authRequests + 4)
 
   console.log(`Verified reverse proxy integration for ${image}.`)
 } finally {

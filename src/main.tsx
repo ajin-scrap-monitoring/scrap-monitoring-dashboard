@@ -19,7 +19,8 @@ const requestedSource = searchParameters.get("source");
 if (mockDataEnabled && (requestedSource === "api" || requestedSource === "mock")) {
   window.sessionStorage.setItem("scrap-monitoring-data-source", requestedSource);
 }
-const selectedSource = mockDataEnabled ? requestedSource ?? window.sessionStorage.getItem("scrap-monitoring-data-source") : null;
+const selectedSource = mockDataEnabled ? requestedSource ?? window.sessionStorage.getItem("scrap-monitoring-data-source")
+  ?? (import.meta.env.DEV ? import.meta.env.VITE_DEV_DATA_SOURCE : null) : null;
 const proposalMode = mockDataEnabled && window.sessionStorage.getItem("scrap-monitoring-api-contract") === "proposal";
 const monitoringVersion = proposalMode ? "v1" : import.meta.env.VITE_MONITORING_API_VERSION ?? "v2";
 const liveVideoMode = proposalMode ? "webrtc" : import.meta.env.VITE_LIVE_VIDEO_MODE ?? "mjpeg";
