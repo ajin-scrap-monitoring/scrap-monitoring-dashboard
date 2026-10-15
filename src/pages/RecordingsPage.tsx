@@ -111,8 +111,10 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
     const expanded = expandedPlayerRef.current;
     if (expanded) {
       expanded.pause();
-      if (playerRef.current) playerRef.current.currentTime = expanded.currentTime;
-      setPlaybackSeconds(expanded.currentTime);
+      if (expanded.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && !expanded.seeking && Number.isFinite(expanded.currentTime)) {
+        if (playerRef.current) playerRef.current.currentTime = expanded.currentTime;
+        setPlaybackSeconds(expanded.currentTime);
+      }
     }
     setRecordingOpen(false);
   }, []);

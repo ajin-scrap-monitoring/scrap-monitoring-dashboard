@@ -298,9 +298,19 @@ test("실제 날짜 녹화의 session 보호, 공개 HLS 경로와 오늘 녹화
   const video = page.locator(".recording-frame video");
   await expect.poll(() => video.evaluate(element => (element as unknown as { videoWidth: number }).videoWidth)).toBe(320);
   // metadata preload does not require the browser to buffer playback before play().
-  await video.evaluate(element => { const player = element as HTMLVideoElement; player.muted = true; return player.play(); });
-  await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(3);
-  await expect.poll(() => video.evaluate(element => (element as unknown as { currentTime: number }).currentTime)).toBeGreaterThan(0.1);
+  await video.evaluate(element => {
+    const player = element as HTMLVideoElement;
+    player.muted = true;
+    player.dataset.playResult = "pending";
+    void player.play().then(() => { player.dataset.playResult = "playing"; }, () => { player.dataset.playResult = "rejected"; });
+  });
+  await expect.poll(() => video.evaluate(element => {
+    const player = element as HTMLVideoElement;
+    return { playResult: player.dataset.playResult, advanced: player.currentTime > 0.1, ready: player.readyState >= 3,
+      paused: player.paused, seeking: player.seeking, mediaError: player.error?.code ?? null,
+      buffered: Array.from({ length: player.buffered.length }, (_, index) => [player.buffered.start(index), player.buffered.end(index)]),
+      currentTime: player.currentTime };
+  }), { timeout: 15_000 }).toMatchObject({ playResult: "playing", advanced: true, ready: true, paused: false, mediaError: null });
   await video.evaluate(element => (element as unknown as { pause: () => void }).pause());
   await expect(page.getByRole("button", { name: "다운로드 불가", exact: true })).toBeDisabled();
   await expect(page.locator(".recording-download")).toContainText("오늘 녹화는 재생만 가능합니다.");

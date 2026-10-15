@@ -22,7 +22,7 @@ test("장비 상태 코드는 표시 문구로 변환하고 scan 및 수신 시�
   data.monitoring = monitoringV2Data(monitoringV2StateFixture("UNAVAILABLE"), "pit-01");
   const received = "2026-10-15T00:00:12.123456Z";
   data.monitoring.devices = [
-    { label: "lidar-a", received, receivedLabel: "마지막 scan", latency: "정보 없음", status: "normal", statusLabel: "FRESH" },
+    { label: "LiDAR 1", received, receivedLabel: "마지막 scan", latency: "정보 없음", status: "normal", statusLabel: "FRESH" },
     { label: "엣지 장비", received, latency: "정보 없음", status: "delayed", statusLabel: "DEGRADED" },
     { label: "카메라", received: "정보 없음", latency: "정보 없음", status: "unknown" },
     { label: "미확인 장비", received: "정보 없음", latency: "정보 없음", status: "unknown", statusLabel: "constructor" },

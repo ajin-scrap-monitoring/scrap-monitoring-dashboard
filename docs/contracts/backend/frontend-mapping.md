@@ -71,7 +71,7 @@ Backend는 장비 보고가 30초 이상 없으면 연결 상태를 UNKNOWN으�
 | 최근 24시간 적재율 | `/api/v2/monitoring/load-history`의 같은 source STATE 표본 | 변환 사용 | percent 유지, 판단 생성 시각의 점과 bucket 구간 및 결측 보존 |
 | LiDAR 1 및 LiDAR 2 profile | v2 evidence 참조와 sensor ID, v1 생성 profile | 의미 불일치 | 실제 높이 표본, 단위, 위치 좌표, 통계와 화면 slot 연결 계약 |
 | 활성 알림 | v2 경보 이력과 `operations` | 추가 계약 필요 | [활성 알림의 제공 계약](#활성-알림의-제공-계약)에 따른 알림별 활성 및 해제 상태 |
-| 센서 상태 | `deviceStatus.snapshot.sensors` | 변환 사용 | 실제 sensor ID와 보고된 데이터 상태, scan 시각을 이용한 latency 추정 금지 |
+| 센서 상태 | `deviceStatus.snapshot.sensors` | 변환 사용 | `lidar-a`는 LiDAR 1, `lidar-b`는 LiDAR 2로 표시하며 원래 ID와 상태 보존, 나머지 ID는 그대로 표시, scan 시각을 이용한 latency 추정 금지 |
 | 엣지 장비 상태 | `connection_state`, `effective_state`, `last_received_at` | 변환 사용 | 보고된 장비 상태 반영, 연결 상태와 판단 가용성 구분 |
 | 카메라 상태 | v2 `deviceStatus.snapshot.services`의 `service=camera-edge`와 `state` | 변환 사용 | 기존 카메라 행에 서비스 상태 연결, 장비 보고와 브라우저 영상 수신 상태 구분 |
 | 카메라 latency | 해당 응답의 latency 부재 | 추가 계약 필요, 현재 세부 정보 미표시 | `last_progress_at`으로 추정하지 않으며 기존 숨김 정책 유지 |

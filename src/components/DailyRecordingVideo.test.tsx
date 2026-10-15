@@ -72,24 +72,45 @@ test("MSE player는 필요할 때 로드하고 FetchLoader와 요청 범위 및 
   const { props, view } = player();
   await waitFor(() => expect(instances).toHaveLength(1));
   const instance = instances[0];
-  expect(instance.config).toMatchObject({ enableWorker: false, loader: fakeFetchLoader, fragLoadPolicy: { default: { errorRetry: { maxNumRetry: 1 }, timeoutRetry: { maxNumRetry: 1 } } } });
+  expect(instance.config).toMatchObject({ enableWorker: false, startPosition: 0, loader: fakeFetchLoader, fragLoadPolicy: { default: { errorRetry: { maxNumRetry: 1 }, timeoutRetry: { maxNumRetry: 1 } } } });
   expect(instance.loadSource).toHaveBeenCalledWith(new URL(path, window.location.origin).href);
   expect(instance.attachMedia).toHaveBeenCalledWith(props.videoRef.current);
   view.unmount();
   expect(instance.destroy).toHaveBeenCalledOnce();
 });
 
-test("확대 player의 초기 재생 위치는 metadata 이후 한 번만 적용하고 자동 재생하지 않는다", async () => {
+test("MSE의 초기 위치는 player에 지정하고 metadata에서 별도 seek나 자동 재생하지 않는다", async () => {
   const { props } = player({ initialTime: 31 });
   await waitFor(() => expect(instances).toHaveLength(1));
+  expect(instances[0].config.startPosition).toBe(31);
   const video = props.videoRef.current!;
   expect(video.currentTime).toBe(0);
+  fireEvent.loadedMetadata(video);
+  expect(video.currentTime).toBe(0);
+  video.currentTime = 40;
+  fireEvent.loadedMetadata(video);
+  expect(video.currentTime).toBe(40);
+  expect(video).not.toHaveAttribute("autoplay");
+});
+
+test("native HLS의 초기 위치는 metadata 이후 한 번만 적용한다", async () => {
+  nativeHls = true;
+  supported.mockReturnValue(false);
+  const { props } = player({ initialTime: 31 });
+  const video = props.videoRef.current!;
+  await waitFor(() => expect(video).toHaveAttribute("src", path));
   fireEvent.loadedMetadata(video);
   expect(video.currentTime).toBe(31);
   video.currentTime = 40;
   fireEvent.loadedMetadata(video);
   expect(video.currentTime).toBe(40);
   expect(video).not.toHaveAttribute("autoplay");
+});
+
+test.each([-1, Number.NaN, Number.POSITIVE_INFINITY])("유효하지 않은 시작 위치 %s는 처음부터 재생한다", async initialTime => {
+  player({ initialTime });
+  await waitFor(() => expect(instances).toHaveLength(1));
+  expect(instances[0].config.startPosition).toBe(0);
 });
 
 test("fatal 오류만 사용자용 실패로 전달하고 player를 종료하며 추가 retry를 시작하지 않는다", async () => {

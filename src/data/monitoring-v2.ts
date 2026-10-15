@@ -85,7 +85,7 @@ export function monitoringV2Data(snapshot: unknown, pitId: string): DashboardDat
   const reporting = device.connection_state === "REPORTING";
   const cameraState = reporting ? device.snapshot?.services?.find(service => service.service === "camera-edge")?.state : "UNKNOWN";
   const sensorDevices: DeviceStatus[] = sensors.length ? sensors.map((sensor) => ({
-    label: sensor.sensor_id,
+    label: sensor.sensor_id === "lidar-a" ? "LiDAR 1" : sensor.sensor_id === "lidar-b" ? "LiDAR 2" : sensor.sensor_id,
     received: sensor.last_scan_at ?? missingValue,
     latency: missingValue,
     status: deviceStatus(reporting ? sensor.data_state : undefined),

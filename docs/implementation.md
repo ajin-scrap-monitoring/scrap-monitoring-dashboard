@@ -668,7 +668,10 @@ v2 최근 적재율의 시간축 및 tooltip은 브라우저 시간대를 사용
 브라우저는 Media의 내부 경로를 요청하지 않는다.
 
 `DailyRecordingVideo`는 `hls.js/light`를 지연 로딩하고 Media Source Extensions (MSE) 지원
-시 해당 player를 사용하며 미지원 시 native HLS로 재생한다. `hls.js`의 worker는 사용하지 않으며 same-origin의 같은 날짜 녹화 목록과
+시 해당 player를 사용하며 미지원 시 native HLS로 재생한다. MSE의 최초 재생 위치와 확대 시 복원 위치는
+player의 `startPosition`으로 지정하며 native HLS는 metadata 수신 후 한 번 적용한다.
+확대 player가 현재 frame을 확보하지 못했거나 seek 중이면 닫을 때 원래 재생 위치를 유지한다.
+`hls.js`의 worker는 사용하지 않으며 same-origin의 같은 날짜 녹화 목록과
 segment만 요청한다. `hls.js`의 요청은 session Cookie를 사용하고 redirect를 거부한다. 화면 종료와
 선택 변경 시 player, 요청과 Blob URL을 정리한다. 제품 이미지의
 `/usr/share/licenses/scrap-monitoring-dashboard/Hls-Apache-2.0.txt`는 배포하는 `hls.js`의 license 고지다.
