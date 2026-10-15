@@ -11,8 +11,8 @@
 | [ajin-camera-media-service](https://github.com/ajin-scrap-monitoring/ajin-camera-media-service) | MJPEG와 이벤트 MP4, 보관 상태와 Range 응답 |
 | [ajin-edge-platform](https://github.com/ajin-scrap-monitoring/ajin-edge-platform) | v2 configuration, status와 assessment 생성 및 schema 검사 |
 
-`openapi.json`은 해당 Backend의 `app.openapi()`에서 프론트엔드가 사용하는 16개 경로,
-20개 operation과 참조하는 49개 schema를 추출한 snapshot이다.
+`openapi.json`은 해당 Backend의 `app.openapi()`에서 manifest에 지정한 경로와 참조하는
+schema를 추출한 snapshot이다.
 `src/generated/backend-contract.ts`는 이 snapshot에서 생성한다. 통합 검증은 실행한
 Backend의 OpenAPI를 같은 추출기로 처리해 snapshot 전체가 일치하는지 검사한다.
 snapshot 검사 및 명시적 갱신 절차는
@@ -40,8 +40,9 @@ snapshot 검사 및 명시적 갱신 절차는
 `measuredAt`은 STATE assessment의 `observed_to`다. 서버가 assessment를 받은 시각은
 측정 시각이나 freshness 기준을 대신하지 않는다. `0`은 유효한 적재율이며 결측값이 아니다.
 프론트엔드는 `null`을 0으로 변환하지 않고 상태, reason code와 capability를 표시한다.
-v2의 LiDAR profile, 표본 배열, 추이, 예상 도달 시각과 자동 알림은 제공되지 않는다.
-v1 이력, 알림과 관리자 설정은 별도 데이터이며 v2 관측이나 판단 이력으로 표시하지 않는다.
+v2 경보 평가, 적재율 시계열, 경보 목록과 수거 사건의 revision 이력은 제공한다. LiDAR
+profile과 예상 도달 시각은 제공하지 않는다. v1 이력, 알림과 관리자 설정의 적용 경계 및
+기존 화면 항목별 변환과 추가 계약 평가는 [화면 데이터 매핑](frontend-mapping.md)을 따른다.
 
 Edge Orchestrator는 적재율 산출을 구현하지 않으며 `FILL_METHOD_NOT_IMPLEMENTED`와
 `UNAVAILABLE`을 제공한다. 프론트엔드는 이 값을 synthetic 적재율이나 v1 값으로 보충하지
@@ -56,6 +57,10 @@ snapshot으로 현재 상태를 복구하며 이력 누락을 복구했다고 �
 session을 다시 확인하며 인증 만료가 확인되면 로그인으로 이동한다. 연결 오류
 동안 적재율을 숨기고 재연결 상태를 표시한다. 동일한 `snapshotId`를 다시 받아도 연결
 상태를 복구한다. `session.expired`는 연결을 닫고 로그인 화면으로 이동한다.
+
+v2 경보 및 사건 조회는 같은 pit과 source를 사용하며 viewer 또는 administrator session으로
+조회한다. 경로와 필드 의미는 [화면 데이터 매핑](frontend-mapping.md#경보와-수거-사건)을
+따른다. 경보 worker는 Backend 설정으로 활성화하며 프론트엔드가 활성화를 대신하지 않는다.
 
 ## 인증과 접근 경계
 
@@ -102,6 +107,13 @@ frame rate, size와 보관 시각의 `null`은 정보 없음으로 표시한다.
 processing, failed, deleted, expired 상태에는 재생 및 다운로드 경로를 노출하지 않는다.
 collecting과 processing은 단건 조회를 반복하고 ready 또는 종료 상태에서 반복을 중단한다.
 다운로드 재조회가 접근 불가 상태나 HTTP 404 및 410을 반환하면 다운로드를 시작하지 않는다.
+
+부분 저장이나 누락 구간을 선택하면 `/api/v1/media/clips/{clip_id}`를 조회해 요청 구간과
+실제 확보 구간을 별도 상세창에 표시한다. 응답의 clip 및 camera 식별자를 검사하며 구간별
+누락 원인은 제공되지 않는다. 녹화 정책은 이 상세창에 표시하지 않는다.
+
+Media의 날짜별 녹화 계약은 순수 모델과 시간 매핑 테스트에서 사용한다. Backend의 날짜별
+브라우저 조회 및 export 계약은 제공되지 않으며 내부 Media 경로에 직접 연결하지 않는다.
 
 MP4 재생은 HTTP Range 요청을 사용한다. 삭제된 파일은 gateway에서 `410`으로 거절한다.
 프론트엔드는 clip 생성, 삭제와 보관 정책 변경 화면을 제공하지 않는다.

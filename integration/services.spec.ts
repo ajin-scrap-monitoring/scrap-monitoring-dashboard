@@ -39,8 +39,11 @@ test("실제 session과 Edge v2 판단 불가, MJPEG 연결 및 확대 종료", 
   expect(unauthorized.status()).toBe(401);
   await login(page);
   await expect(page.locator(".kpi-value")).toHaveText("판단 불가");
+  await expect(page.locator(".monitoring-grid > .card")).toHaveCount(8);
+  await page.getByRole("button", { name: "상태 상세" }).click();
   await expect(page.getByText("FILL_METHOD_NOT_IMPLEMENTED", { exact: true })).toBeVisible();
-  await expect(page.getByText("MEASUREMENT_UNAVAILABLE", { exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "모니터링 상태 상세" }).getByText("MEASUREMENT_UNAVAILABLE", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
   const image = page.getByRole("img", { name: "스크랩 적재 공간 실시간 영상", exact: true });
   await expect(image).toBeVisible();
   const pageWidth = await page.getByRole("main").evaluate((element) => {
@@ -54,13 +57,13 @@ test("실제 session과 Edge v2 판단 불가, MJPEG 연결 및 확대 종료", 
   await page.getByRole("button", { name: "실시간 영상 크게 보기" }).click();
   await expect(page.getByRole("dialog", { name: "실시간 영상 크게 보기" })).toBeVisible();
   await expect(page.getByRole("img", { name: "스크랩 적재 공간 실시간 영상", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "닫기", exact: true }).click();
+  await page.getByRole("button", { name: "영상 닫기", exact: true }).click();
   await expect(image).toBeVisible();
   await page.screenshot({ path: `${screenshots}/monitoring-v2.png`, fullPage: true });
   await page.setViewportSize({ width: 1280, height: 900 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   await page.getByRole("button", { name: "실시간 영상 크게 보기" }).click();
-  const close = page.getByRole("button", { name: "닫기", exact: true });
+  const close = page.getByRole("button", { name: "영상 닫기", exact: true });
   await expect(close).toBeFocused();
   expect((await close.boundingBox())?.y).toBeGreaterThanOrEqual(0);
   await page.keyboard.press("Escape");
@@ -75,7 +78,7 @@ test("실제 session과 Edge v2 판단 불가, MJPEG 연결 및 확대 종료", 
   await page.screenshot({ path: `${screenshots}/monitoring-v2-wide.png`, fullPage: true });
 });
 
-test("실제 v2 수신 API와 SSE에서 0%, STALE, session 종료 처리", async ({ page, playwright }) => {
+test("실제 v2 수신 API, SSE와 적재율 추이에서 0%, STALE, session 종료 처리", async ({ page, playwright }) => {
   const backend = await playwright.request.newContext({ baseURL: "http://backend:8000" });
   const now = new Date().toISOString();
   const envelope = (message_type: string) => ({ schema_version: "2.0", message_type, message_id: randomUUID(), site_id: "site-demo", edge_id: "edge-demo", generated_at: new Date().toISOString(), config_revision: "synthetic-config-1" });
@@ -100,6 +103,49 @@ test("실제 v2 수신 API와 SSE에서 0%, STALE, session 종료 처리", async
     };
     await send("assessments", assessment);
     await expect(page.locator(".kpi-value")).toHaveText("0%");
+    const snapshotResponse = await page.request.get("/api/v2/monitoring/snapshot?pit_id=pit-01");
+    expect(snapshotResponse.status(), "Authenticated v2 snapshot response").toBe(200);
+    const confirmedSnapshot = await snapshotResponse.json() as components["schemas"]["MonitoringSnapshotV2"];
+    const historyResponse = await page.request.get("/api/v2/monitoring/load-history?" + new URLSearchParams({
+      pit_id: "pit-01",
+      from: new Date(Date.parse(assessment.generated_at) - 60_000).toISOString(),
+      to: confirmedSnapshot.serverTime,
+    }).toString());
+    expect(historyResponse.status(), "Authenticated v2 load-history response").toBe(200);
+    const history = await historyResponse.json() as components["schemas"]["LoadHistoryV2"];
+    expect(history).toMatchObject({ schemaVersion: "2", pitId: "pit-01", bucketSeconds: 60,
+      source: { pit_id: "pit-01", site_id: "site-demo", edge_id: "edge-demo" } });
+    const zeroSample = history.samples.find((sample) => sample.assessmentId === assessment.assessment_id);
+    expect(zeroSample).toMatchObject({ assessmentId: assessment.assessment_id, valuePercent: 0, valid: true, dataState: "AVAILABLE" });
+    expect(Date.parse(zeroSample?.generatedAt ?? "")).toBe(Date.parse(assessment.generated_at));
+    expect(Date.parse(zeroSample?.observedAt ?? "")).toBe(Date.parse(assessment.observed_to));
+    await page.getByRole("button", { name: "상태 상세" }).click();
+    const detail = page.getByRole("dialog", { name: "모니터링 상태 상세" });
+    await expect(detail.locator("dl > div").filter({ hasText: "현재 경보 상태" })).toContainText("NORMAL");
+    await page.keyboard.press("Escape");
+    const criticalAt = new Date().toISOString();
+    await send("assessments", { ...assessment, ...envelope("edge_assessment"), assessment_id: randomUUID(), observed_from: criticalAt, observed_to: criticalAt, fill_estimate: { ratio: 0.95, method_version: "synthetic-browser-method" } });
+    await expect(page.locator(".kpi-value")).toHaveText("95%");
+    await page.getByRole("button", { name: "상태 상세" }).click();
+    await expect(detail.locator("dl > div").filter({ hasText: "현재 경보 상태" })).toContainText("CRITICAL");
+    await page.keyboard.press("Escape");
+    const alertResponse = await page.request.get("/api/v2/monitoring/alerts?pit_id=pit-01&limit=1");
+    expect(alertResponse.ok()).toBe(true);
+    const alerts = await alertResponse.json() as components["schemas"]["V2AlertPage"];
+    expect(alerts.items).toHaveLength(1);
+    const notificationResponse = await page.request.get("/api/v1/notifications?page=1&pageSize=20");
+    expect(notificationResponse.ok()).toBe(true);
+    const notifications = await notificationResponse.json() as components["schemas"]["NotificationPage"];
+    const recorded = notifications.items.find((item) => item.id === alerts.items[0].notificationId);
+    if (!recorded) throw new Error("Current v2 alert notification is missing.");
+    await page.getByRole("button", { name: /^알림 [1-9][0-9]*건$/ }).click();
+    await expect(page.getByLabel("최근 알림").getByText(recorded.title, { exact: true })).toBeVisible();
+    await page.getByRole("heading", { name: "스크랩 모니터링", exact: true }).click();
+    for (const path of ["/api/v2/monitoring/collection-events", "/api/v2/monitoring/collection-events/opaque-assessment/revisions"]) {
+      const response = await page.request.get(path + "?pit_id=pit-01&limit=1");
+      expect(response.ok()).toBe(true);
+      expect((await response.json() as components["schemas"]["CollectionEventPage"]).items).toEqual([]);
+    }
     const old = new Date(Date.now() - 181_000).toISOString();
     await send("assessments", { ...assessment, ...envelope("edge_assessment"), assessment_id: randomUUID(), observed_from: old, observed_to: old });
     await expect(page.getByText("관측 기한 초과", { exact: true })).toBeVisible();
@@ -108,6 +154,8 @@ test("실제 v2 수신 API와 SSE에서 0%, STALE, session 종료 처리", async
     const session = await response.json() as Session;
     expect((await page.request.delete("/api/v1/session", { headers: { "X-CSRF-Token": session.csrfToken } })).status()).toBe(204);
     await expect(page).toHaveURL(/\/login$/);
+    expect((await page.request.get("/api/v2/monitoring/alerts?pit_id=pit-01")).status()).toBe(401);
+    expect((await page.request.get("/api/v2/monitoring/load-history?pit_id=pit-01")).status()).toBe(401);
   } finally { await backend.dispose(); }
 });
 
@@ -129,6 +177,29 @@ test("실제 부분 MP4의 nullable metadata, Range, 다운로드와 삭제 후 
   expect(recording.coverage).toBe("partial");
   expect(recording.widthPixels).toBeNull();
   expect(recording.contentPath).toBeTruthy();
+  const clipPath = `/api/v1/media/clips/${recording.id}`;
+  const clipResponse = await page.request.get(clipPath);
+  expect(clipResponse.ok()).toBe(true);
+  const clip = await clipResponse.json() as components["schemas"]["ClipDetail"];
+  expect(clip).toMatchObject({ clip_id: recording.id, camera_id: "camera-main", status: "ready", coverage: "partial" });
+  expect(clip.actual_start_at).not.toBeNull();
+  expect(clip.actual_end_at).not.toBeNull();
+  const coverageResponse = page.waitForResponse((response) => new URL(response.url()).pathname === clipPath && response.request().method() === "GET");
+  const coverageButton = page.getByRole("button", { name: "부분 저장", exact: true });
+  await coverageButton.click();
+  expect((await coverageResponse).ok()).toBe(true);
+  const coverageDialog = page.getByRole("dialog", { name: "녹화 범위 상세", exact: true });
+  await expect(coverageDialog).toBeVisible();
+  for (const [label, value] of [
+    ["요청 시작", clip.requested_start_at], ["요청 종료", clip.requested_end_at],
+    ["확보 시작", clip.actual_start_at], ["확보 종료", clip.actual_end_at],
+  ] as const) {
+    await expect(coverageDialog.locator("dl > div").filter({ has: page.locator("dt", { hasText: label }) }).locator("dd")).toHaveText(value ?? "정보 없음");
+  }
+  await expect(coverageDialog.getByText("구간별 누락 원인은 API에서 제공하지 않습니다.", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(coverageDialog).toHaveCount(0);
+  await expect(coverageButton).toBeFocused();
   const range = await page.request.get(recording.contentPath ?? "", { headers: { Range: "bytes=0-31" } });
   expect(range.status()).toBe(206);
   expect((await range.body()).length).toBe(32);

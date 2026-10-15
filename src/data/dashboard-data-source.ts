@@ -1,9 +1,11 @@
 import type {
   AlertSettings,
+  AlertEvidencePage,
   DashboardData,
   EventCategory,
   NotificationRecipient,
   RecipientSettings,
+  RecordingCoverageDetail,
   UserSession,
 } from "../domain/dashboard";
 
@@ -42,6 +44,10 @@ export interface DashboardDataSource {
   deleteSession?(): Promise<void>;
   getDashboardData(options?: DashboardDataRequestOptions): Promise<DashboardData>;
   getRecording?(recordingId: string, signal?: AbortSignal): Promise<DashboardData["recordings"][number] | null>;
+  getRecordingCoverage?(recordingId: string, signal?: AbortSignal): Promise<RecordingCoverageDetail>;
+  getAlertEvidencePage?(offset: number, signal?: AbortSignal): Promise<AlertEvidencePage>;
+  getPitName?(signal?: AbortSignal): Promise<string>;
+  refreshNotifications?(signal?: AbortSignal): Promise<void>;
   markAllNotificationsRead?(): Promise<void>;
   markNotificationRead?(notificationId: string): Promise<void>;
   queryHistory?(query: DateRangeQuery, signal?: AbortSignal): Promise<DashboardData["history"]>;

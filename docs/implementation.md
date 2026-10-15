@@ -13,7 +13,7 @@
 | 영역 | 구현 상태 |
 | --- | --- |
 | 도구와 품질 기준선 | Node.js, pnpm, React, TypeScript, Vite, ESLint, Vitest와 Playwright 구성 완료 |
-| UI (User Interface) | v2 현재 판단 및 장비 상태, 이력, 녹화 영상, 로그인과 관리자 설정 및 synthetic 상태 구현 |
+| UI (User Interface) | 공통 현황의 v2 상태 및 추이, 장비 진단, 경보 근거와 녹화 범위 상세, 이력과 녹화 및 관리 기능과 synthetic 상태 구현 |
 | 외부 연동 경계 | 실제 Backend OpenAPI 생성 타입, HTTP adapter, v2 Server-Sent Events (SSE), MJPEG client와 v1 제안 및 WebRTC-HTTP Egress Protocol (WHEP) 대역 검증 |
 | 배포 산출물 | Nginx 기반 Open Container Initiative (OCI) 이미지, reverse proxy 공통 설정, TLS 주입 경계, CI와 Git tag 기반 Release 구성 완료 |
 | 실제 시스템 통합 | 고정한 Backend, Camera Media Service와 Edge Orchestrator의 synthetic 입력 통합 검증, 실제 hardware와 현장 측정 검증 제외 |
@@ -71,6 +71,9 @@ Dockerfile의 `VITE_ENABLE_MOCK_DATA` build argument는 기본값 `false`를 사
 빌드한 이미지는 synthetic data를 포함해 Backend 없이 대시보드 기능을 체험한다. 운영
 프론트엔드는 기본적으로 v2 모니터링과 MJPEG를 선택한다. API 버전과 영상 모드는 빌드 입력이며
 pit 및 camera 식별자는 `Runtime 설정`을 따른다. v2와 WHEP 조합은 거부하며 WHEP는 v1에서만 선택한다.
+`src/build-features.ts`는 production 빌드에서 선택하지 않은 모니터링과 영상 구현을 제외한다.
+v1 및 WHEP 선택 빌드는 해당 기능을 유지하며 개발과 synthetic 빌드에는 회귀 검증에 필요한
+모든 모드를 포함한다. 이 선택은 runtime의 pit 및 camera 설정을 변경하지 않는다.
 same-origin 경로를 사용하므로 API upstream 주소를
 브라우저 설정으로 주입하지 않는다. Repository 루트의 `.env.example`은 검증된 이미지 digest, 컨테이너 이름,
 플랫폼, 단독 실행 bind 주소와 port, `/tmp` 크기 및 TLS 파일 host 경로의 공개 기본값을
@@ -421,6 +424,11 @@ AbortSignal을 전달한다.
 `src/use-latest-request.ts`는 후속 목록 조회, data source 변경과 화면 종료 시 이전 요청을
 취소한다. 화면은 취소한 요청의 늦은 성공 및 오류 응답을 적용하지 않는다.
 
+알림, 최근 완료 기록, 적재율 추이와 녹화 목록의 보조 조회 오류는 현재 판단과 영상의
+초기화를 차단하지 않는다. `DataAreaState`는 영역별 실패, 미지원과 이전 응답 사용을
+구분한다. 인증 401과 권한 403은 보조 오류로 숨기지 않으며 구독의 권한 실패는 연결과
+timer를 정리하고 화면 오류로 전달한다.
+
 `src/data/mock-dashboard-data-source.ts`는 현황, 이력, 녹화 목록, 알림과 관리자 설정의
 synthetic data를 제공한다. 현황의 대표 적재율, 수거 임계율, 수거 주기, 예상 도달 시각,
 마지막 측정 시각과 영상 시각도 이 데이터 소스가 제공한다. 기본 시나리오는 `normal`이며 개발 환경에서 URL query의
@@ -511,8 +519,8 @@ HTTP 어댑터는 same-origin session Cookie를 포함한 요청, session 응답
 `src/components/DashboardShell.tsx`의 `DashboardPageShell`은 현황, 이력, 녹화 영상과
 관리자 설정 화면의 상단 헤더와 하단 푸터를 공통으로 조립한다. 공통 헤더는 인증 상태,
 갱신된 알림 목록과 기존 읽음 상태 병합, 팝오버 닫기와 로그아웃 상호작용을 관리한다.
-로그인, 이력, 녹화 영상과 관리자 설정은 `src/pages/`에서 화면별 상태와 상호작용을
-관리한다. v2 모니터링, 이력, 녹화 영상과 관리자 설정 모듈은 해당 경로에 진입할 때 지연 로딩한다.
+로그인, 현황, 이력, 녹화 영상과 관리자 설정은 `src/pages/`에서 화면별 상태와 상호작용을
+관리한다. 이력, 녹화 영상과 관리자 설정 모듈은 해당 경로에 진입할 때 지연 로딩한다.
 `src/components/DashboardPrimitives.tsx`, `MonitoringVisuals.tsx`와 `Pagination.tsx`는
 공통 제목, 상태, 아이콘, 차트, 측정 영역과 페이지 이동을 제공한다. 경로와 synthetic 인증 세션
 키는 `src/app-routing.ts`에서 관리한다.
@@ -526,12 +534,30 @@ A와 B 원의 중심은 해당 끝점과 일치한다. 반투명 면은 센서 �
 정의한다. `src/data/use-dashboard-data.ts`는 데이터 소스 수명 주기와 화면 상태를 관리한다.
 `src/data/mock-dashboard-data-source.ts`는 개발과 synthetic 시나리오 테스트에 사용하는 구현이다.
 `src/data/http-dashboard-data-source.ts`는 실제 Backend와 기존 제안 API를 구분해 호출한다.
-`src/data/monitoring-v2.ts`는 v2 현재 판단과 장비 상태를 별도 모델로 변환하며
-`src/pages/MonitoringV2Page.tsx`가 이를 표시한다. `LiveVideo.tsx`는 MJPEG 또는 WHEP 모드를
+`src/data/monitoring-v2.ts`는 v2 판단과 실제 센서 및 장비 상태를 화면 모델로 변환한다.
+`src/data/load-history-v2.ts`는 v2 적재율 추이의 source와 bucket을 검증하고 결측 표본을
+유지한다. 조회 상한과 시각 및 지표 의미의 정본은
+[화면 데이터 매핑](contracts/backend/frontend-mapping.md#적재율-추이)이다.
+`src/pages/MonitoringPage.tsx`는 실제 API와 synthetic data에 같은 화면 구조를 사용한다.
+제공되지 않은 지표의 영역을 유지하며 적재율 경보는 공통 화면 모델의 `alarmState`로
+표시한다. v2 adapter는 서버의 현재 경보 평가를 사용하고 synthetic data는 명시한 경보 값을
+제공한다. 경보 평가가 없는 v1 응답은 미제공으로 처리한다. 판단 사유, capability와 원본
+경보 평가는 상태 상세에서 표시한다. 기존 화면의 매핑 및 추가 계약은 `docs/contracts/backend/frontend-mapping.md`를
+따른다. `LiveVideo.tsx`는 MJPEG 또는 WHEP 모드를
 선택한다. `mjpeg-client.ts`와 `MjpegVideo.tsx`는 JPEG frame 수신 및 영상 연결 수명을,
 `whep-client.ts`와 `WhepVideo.tsx`는 선택적 WHEP signaling과 미디어 연결을 처리한다.
 실제 서비스 타입은 `src/generated/backend-contract.ts`, 제안 타입은
 `src/generated/api-contract.ts`에 추적하며 각 OpenAPI 변경 시 함께 갱신한다.
+
+`DetailDialog`는 추가 정보를 화면 위에 표시하며 내부 스크롤과 키보드 종료 및 focus 복원을
+제공한다. 경보 근거는 이력의 기존 내용 셀, 녹화 요청 및 확보 범위는 기존 부분 저장과
+누락 구간 표시에서 연다. 장비 진단과 pit 이름은 상태 상세창에서만 조회 및 표시한다.
+상세 모듈은 선택 시 지연 로딩하며 기본 카드와 표에 상시 설명을 추가하지 않는다.
+
+`src/data/recording-coverage.ts`는 Backend의 이벤트 클립 응답을 요청 및 확보 범위로
+변환한다. `src/data/daily-recordings.ts`는 Media의 날짜 녹화 상태와 한국 날짜, 누락 및
+압축 재생 시각을 검사하는 순수 모델이다. 날짜별 Backend 브라우저 계약과 player 및
+export 연결은 포함하지 않는다. 브라우저는 Media의 내부 경로를 요청하지 않는다.
 
 HTTP 어댑터의 최초 이력 및 녹화 조회와 이후 사용자 조회는 monitoring snapshot의
 `serverTime`에 포함된 명시적 UTC offset을 유지한다. 브라우저 운영체제의 시간대는 조회
@@ -619,8 +645,8 @@ Playwright는 `e2e/`의 브라우저 테스트를 1280 x 900, 1440 x 900과 1920
 `test-results/`에 저장한다.
 
 빌드 크기 예산은 초기 JavaScript 260 KiB, 전체 JavaScript 320 KiB, CSS 50 KiB, 웹폰트
-4 MiB와 전체 자산 4.5 MiB다. 전체 JavaScript 예산은 기존 v1/WHEP 호환 코드와 추가한 v2 및
-MJPEG client를 포함하며 초기 로딩과 전체 자산 예산은 별도로 유지한다.
+4 MiB와 전체 자산 4.5 MiB다. production에서 선택한 모니터링 및 영상 구현 전체에 같은
+예산을 적용하며 초기 로딩과 전체 자산 예산은 별도로 유지한다.
 
 현재 Playwright 테스트는 대시보드 진입, synthetic 실시간 갱신과 운영 주기 상태 전이, 상단 브랜드 이동, 알림함 읽음 처리와 닫기,
 관리자 메뉴와 로그인 및 로그아웃, 비로그인 화면 제한, 관리자 경로 제한, 적재율 이력의
@@ -638,6 +664,15 @@ ICE 전달, 종료와 재연결도 Vitest에서 검증한다. 계약 예제의 �
 v2 fixture는 실제 생성 타입을 사용하고 제안 HTTP 및 SSE fixture와 구분한다.
 v2 adapter 및 화면 테스트는 모든 dataState, 0%와 소수 및 결측값, 계약 위반 입력, 단일 pit,
 인증 선행, event ID가 없는 SSE, 연결 끊김 및 동일 snapshot 복구와 session 종료를 검사한다.
+공통 현황 화면의 카드 순서와 위치 및 크기는 실제 API와 synthetic data를 비교해 검사한다.
+`e2e/layout-baseline.json`은 승인된 기본 화면의 배치 기준이며 세 viewport의 현황, 이력,
+녹화 및 관리자 화면의 카드와 표 행 및 영상 영역을 검사한다. 긴 상세 내용의 표시와 종료도
+기본 화면 좌표 및 크기를 바꾸지 않는지 검사한다. 배치 차이를 해소하기 위해 이 기준을
+자동 갱신하지 않는다.
+경보 평가와 작업 상태의 분리, 실제 완료 기록 기반 경과 시간과 새 경보 ID의 알림함 재조회도
+검사한다. 경보 5개 상태와 미제공의 표시, 위험 복귀 기준 위의 CRITICAL 유지 및 연결 중단과
+복구의 표시도 검사한다. 읽음 응답 지연 중 새 경보 도착, 읽음 성공 후 목록 조회 실패, 실패한 재조회의
+대기 요청 처리와 구독 종료 뒤의 늦은 응답 격리도 검사한다.
 browser fixture는 영상 decode, 무응답 및 오류와 재시도, 확대 dialog의 키보드 종료 및 focus
 복원과 동시에 활성화되는 영상 연결 수를 검사한다. MJPEG parser와 컴포넌트는 chunk 경계,
 header 및 frame 크기 제한, timeout, 취소, decode 실패, 인증 오류, StrictMode와 Blob URL
@@ -667,11 +702,11 @@ Repository의 전체 commit SHA로 고정한다.
 다음 항목은 결정 대기 상태다.
 
 - Chrome 최소 버전, 빌드 출력 호환성과 브라우저 Web API 지원 범위
-- 시각 회귀 테스트 범위
 - 코드 포맷 정책
 - 장기 운영의 계정 제공, session 저장 및 수명 정책과 v1 관리자 API의 서버 권한 검사
 - 실제 적재율 산출, calibration과 현장 측정 정확도
-- v2 profile, 이력, 예측, 자동 알림의 제공 여부와 계약
+- 실제 LiDAR profile, 장기 적재율 추이, 예측, 활성 알림과 실제 수거 작업 상태의 계약
+- 날짜별 녹화의 Backend 브라우저 조회, 영상 경로와 export 계약
 - 다중 pit 및 camera 선택, 수동 clip 생성과 미디어 정책 관리의 제품 범위
 - 선택적 WHEP 서비스의 지원 계약과 시청자 제한
 - 환경별 upstream, DNS, readiness, timeout, 요청 제한, TLS와 CSP 값

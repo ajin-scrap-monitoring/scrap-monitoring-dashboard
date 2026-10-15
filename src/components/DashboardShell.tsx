@@ -3,8 +3,9 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { applicationVersion } from "../application-version";
 import { ROUTES, clearAuthentication, hasAuthenticationSession } from "../app-routing";
 import type { DashboardDataSource } from "../data/dashboard-data-source";
-import type { HeaderNotification, UserSession } from "../domain/dashboard";
+import type { DataAreaState, HeaderNotification, UserSession } from "../domain/dashboard";
 import { useModalFocus } from "../use-modal-focus";
+import { UserIcon } from "./DashboardPrimitives";
 
 export type DashboardPage = "monitoring" | "history" | "recordings" | "admin";
 
@@ -17,15 +18,6 @@ function BellIcon() {
   );
 }
 
-function UserIcon() {
-  return (
-    <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="7" r="4" />
-      <path d="M4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2" />
-    </svg>
-  );
-}
-
 function ChevronIcon() {
   return (
     <svg className="icon chevron-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -34,17 +26,18 @@ function ChevronIcon() {
   );
 }
 
-export function DashboardHeader({ activePage, dataSource, initialNotifications, initialUnreadCount, session }: {
+export function DashboardHeader({ activePage, dataSource, initialNotifications, initialUnreadCount, notificationState: notificationQueryState, session }: {
   activePage: DashboardPage;
   dataSource?: DashboardDataSource;
   initialNotifications: HeaderNotification[];
-  initialUnreadCount?: number;
+  initialUnreadCount?: number | null;
+  notificationState?: DataAreaState;
   session?: UserSession | null;
 }) {
-  const notificationVersion = `${initialUnreadCount ?? "derived"}:${initialNotifications.map((notification) => `${notification.id}:${notification.read}`).join("|")}`;
+  const notificationVersion = `${initialUnreadCount === null ? "unknown" : initialUnreadCount ?? "derived"}:${initialNotifications.map((notification) => `${notification.id}:${notification.read}`).join("|")}`;
   const serverNotificationState = {
     readIds: new Set(initialNotifications.filter((notification) => notification.read).map((notification) => notification.id)),
-    unreadCount: initialUnreadCount ?? initialNotifications.filter((notification) => !notification.read).length,
+    unreadCount: initialUnreadCount === null ? null : initialUnreadCount ?? initialNotifications.filter((notification) => !notification.read).length,
     version: notificationVersion,
   };
   const [localNotificationState, setLocalNotificationState] = useState(serverNotificationState);
@@ -53,6 +46,7 @@ export function DashboardHeader({ activePage, dataSource, initialNotifications, 
     : serverNotificationState;
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationActionError, setNotificationActionError] = useState("");
+  const [refreshingNotifications, setRefreshingNotifications] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
   const isAuthenticated = session === undefined ? hasAuthenticationSession() : session !== null;
@@ -95,7 +89,7 @@ export function DashboardHeader({ activePage, dataSource, initialNotifications, 
     const previousState = notificationState;
     setLocalNotificationState({
       readIds: new Set(notificationState.readIds).add(id),
-      unreadCount: Math.max(0, notificationState.unreadCount - 1),
+      unreadCount: notificationState.unreadCount === null ? null : Math.max(0, notificationState.unreadCount - 1),
       version: notificationVersion,
     });
     setNotificationActionError("");
@@ -129,16 +123,32 @@ export function DashboardHeader({ activePage, dataSource, initialNotifications, 
     }
   };
 
+  const retryNotifications = () => {
+    setRefreshingNotifications(true);
+    setNotificationActionError("");
+    void dataSource?.refreshNotifications?.()
+      .catch(() => setNotificationActionError("알림을 다시 불러오지 못했습니다."))
+      .finally(() => setRefreshingNotifications(false));
+  };
+
   return (
     <header className="topbar" ref={headerRef}>
       <a className="brand" href={ROUTES.monitoring} aria-label="AJIN SCRAP MONITORING 홈"><span className="brand-mark" aria-hidden="true" /><span>AJIN SCRAP MONITORING</span></a>
       <nav className="global-nav" aria-label="주요 메뉴">
-        <a className={`nav-link ${activePage === "monitoring" ? "active" : ""}`} href={ROUTES.monitoring} aria-current={activePage === "monitoring" ? "page" : undefined}>현황</a>
-        <a className={`nav-link ${activePage === "history" ? "active" : ""}`} href={ROUTES.history} aria-current={activePage === "history" ? "page" : undefined}>이력</a>
-        <a className={`nav-link ${activePage === "recordings" ? "active" : ""}`} href={ROUTES.recordings} aria-current={activePage === "recordings" ? "page" : undefined}>녹화 영상</a>
-        {canManage && <a className={`nav-link ${activePage === "admin" ? "active" : ""}`} href={ROUTES.admin} aria-current={activePage === "admin" ? "page" : undefined}>관리자</a>}
+        {([["monitoring", "현황"], ["history", "이력"], ["recordings", "녹화 영상"], ["admin", "관리자"]] as const).filter(([page]) => page !== "admin" || canManage).map(([page, label]) => <a key={page} className={`nav-link ${activePage === page ? "active" : ""}`} href={ROUTES[page]} aria-current={activePage === page ? "page" : undefined}>{label}</a>)}
       </nav>
-      {isAuthenticated ? <div className="user-tools"><div className="header-popover-anchor"><button className="icon-button notification-button" type="button" aria-label={`알림 ${notificationState.unreadCount}건`} aria-expanded={notificationsOpen} onClick={() => { setNotificationsOpen((open) => !open); setUserMenuOpen(false); }}><BellIcon />{notificationState.unreadCount > 0 && <span className="notification-badge">{notificationState.unreadCount}</span>}</button>{notificationsOpen && <section className="header-popover notifications-popover" aria-label="최근 알림"><div className="header-popover-head"><strong>최근 알림</strong><button type="button" onClick={markAllNotificationsRead}>모두 읽음</button></div>{notificationActionError && <p role="alert">{notificationActionError}</p>}<div className="header-notification-list">{notifications.map((notification) => <button key={notification.id} className={`header-notification ${notification.read ? "read" : ""}`} type="button" onClick={() => markNotificationRead(notification.id)}><span className={`header-notification-dot ${notification.level}`} /><span><strong>{notification.title}</strong><small>{notification.detail}</small></span><time>{notification.time}</time></button>)}</div><a className="header-popover-link" href={ROUTES.history}>알림 이력에서 보기</a></section>}</div><span className="tool-divider" aria-hidden="true" /><div className="header-popover-anchor"><button className="user-menu" type="button" aria-label="관리자 메뉴" aria-expanded={userMenuOpen} onClick={() => { setUserMenuOpen((open) => !open); setNotificationsOpen(false); }}><UserIcon /><span>{displayName}</span><ChevronIcon /></button>{userMenuOpen && <section className="header-popover user-popover" aria-label="관리자 메뉴"><div className="user-popover-profile"><strong>{displayName}</strong><span>{session?.user.role === "viewer" ? "조회 사용자" : "시스템 관리자"}</span></div>{session?.user.role !== "viewer" && <a href={ROUTES.admin}>관리자 설정</a>}<button type="button" onClick={() => void logout()}>로그아웃</button>{notificationActionError && <p role="alert">{notificationActionError}</p>}</section>}</div></div> : <div className="user-tools"><a className="header-login-link" href={ROUTES.login}>로그인</a></div>}
+      {isAuthenticated ? <div className="user-tools"><div className="header-popover-anchor">
+        <button className="icon-button notification-button" type="button" aria-label={notificationState.unreadCount === null ? "알림 조회 실패" : `알림 ${notificationState.unreadCount}건`} aria-expanded={notificationsOpen} onClick={() => { setNotificationsOpen((open) => !open); setUserMenuOpen(false); }}>
+          <BellIcon />{(notificationState.unreadCount === null || notificationState.unreadCount > 0) && <span className="notification-badge">{notificationState.unreadCount ?? "?"}</span>}
+        </button>
+        {notificationsOpen && <section className="header-popover notifications-popover" aria-label="최근 알림">
+          <div className="header-popover-head"><strong>최근 알림</strong><button type="button" disabled={notificationState.unreadCount === null} onClick={markAllNotificationsRead}>모두 읽음</button></div>
+          {notificationQueryState?.status === "error" && <p role="alert">{notificationQueryState.message ?? "알림을 불러오지 못했습니다."}{notificationQueryState.stale ? " 마지막으로 불러온 알림을 표시합니다." : " 미읽음 수를 확인할 수 없습니다."}{dataSource?.refreshNotifications && <button type="button" disabled={refreshingNotifications} onClick={retryNotifications}>{refreshingNotifications ? "조회 중" : "알림 다시 조회"}</button>}</p>}
+          {notificationActionError && <p role="alert">{notificationActionError}</p>}
+          <div className="header-notification-list">{notifications.map((notification) => <button key={notification.id} className={`header-notification ${notification.read ? "read" : ""}`} type="button" onClick={() => markNotificationRead(notification.id)}><span className={`header-notification-dot ${notification.level}`} /><span><strong>{notification.title}</strong><small>{notification.detail}</small></span><time>{notification.time}</time></button>)}</div>
+          <a className="header-popover-link" href={ROUTES.history}>알림 이력에서 보기</a>
+        </section>}
+      </div><span className="tool-divider" aria-hidden="true" /><div className="header-popover-anchor"><button className="user-menu" type="button" aria-label="관리자 메뉴" aria-expanded={userMenuOpen} onClick={() => { setUserMenuOpen((open) => !open); setNotificationsOpen(false); }}><UserIcon /><span>{displayName}</span><ChevronIcon /></button>{userMenuOpen && <section className="header-popover user-popover" aria-label="관리자 메뉴"><div className="user-popover-profile"><strong>{displayName}</strong><span>{session?.user.role === "viewer" ? "조회 사용자" : "시스템 관리자"}</span></div>{session?.user.role !== "viewer" && <a href={ROUTES.admin}>관리자 설정</a>}<button type="button" onClick={() => void logout()}>로그아웃</button>{notificationActionError && <p role="alert">{notificationActionError}</p>}</section>}</div></div> : <div className="user-tools"><a className="header-login-link" href={ROUTES.login}>로그인</a></div>}
     </header>
   );
 }
@@ -147,17 +157,18 @@ export function ApplicationFooter() {
   return <footer className="app-footer"><span>Copyright 2026 AJIN INDUSTRIAL. All rights reserved.</span><span>Version {applicationVersion}</span></footer>;
 }
 
-export function DashboardPageShell({ activePage, children, dataSource, headerNotifications, headerUnreadCount, session }: {
+export function DashboardPageShell({ activePage, children, dataSource, headerNotifications, headerUnreadCount, notificationState, session }: {
   activePage: DashboardPage;
   children: ReactNode;
   dataSource?: DashboardDataSource;
   headerNotifications: HeaderNotification[];
-  headerUnreadCount?: number;
+  headerUnreadCount?: number | null;
+  notificationState?: DataAreaState;
   session?: UserSession | null;
 }) {
   return (
     <div className="app-shell">
-      <DashboardHeader activePage={activePage} dataSource={dataSource} initialNotifications={headerNotifications} initialUnreadCount={headerUnreadCount} session={session} />
+      <DashboardHeader activePage={activePage} dataSource={dataSource} initialNotifications={headerNotifications} initialUnreadCount={headerUnreadCount} notificationState={notificationState} session={session} />
       {children}
       <ApplicationFooter />
     </div>

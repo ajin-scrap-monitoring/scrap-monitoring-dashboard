@@ -11,6 +11,7 @@ services:
       EDGE_V2_DEVICES: '[{"site_id":"site-demo","edge_id":"edge-demo","sensor_ids":["lidar-a","lidar-b"],"token":"${SYNC_EDGE_TOKEN:?}"}]'
       EDGE_V2_MONITORING_SOURCES: '[{"pit_id":"pit-01","site_id":"site-demo","edge_id":"edge-demo"}]'
       EDGE_V2_ASSESSMENT_TTL_SECONDS: "180"
+      EDGE_V2_OPERATIONS_ENABLED: "true"
       MEDIA_SERVICE_URL: http://media:8889/api/v1
       MEDIA_API_TOKEN: ${SYNC_MEDIA_TOKEN:?}
       MEDIA_POLL_INTERVAL_SECONDS: "1"

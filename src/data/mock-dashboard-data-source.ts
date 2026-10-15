@@ -18,6 +18,7 @@ const baseDashboardData: DashboardData = {
   lastMeasuredAt: "10:24:18",
   session: null,
   monitoring: {
+    alarmState: "WARNING",
     status: "normal",
     videoMode: "sample",
     videoStatus: "available",
@@ -161,15 +162,19 @@ function dashboardDataFor(scenario: MockScenario): DashboardData {
 
   switch (scenario) {
     case "collection-required":
+      data.monitoring.alarmState = "CRITICAL";
       data.monitoring.alerts[0] = { detail: "대표 적재율 84%", id: "alert-1", level: "warning", time: "10:24", title: "수거 필요" };
       break;
     case "measurement-error":
+      data.monitoring.alarmState = "ERROR";
       data.monitoring.devices[1] = { label: "LiDAR 2", received: "10:18:04", latency: "-", status: "unavailable" };
       break;
     case "disconnected":
+      data.monitoring.alarmState = "UNKNOWN";
       data.monitoring.devices = data.monitoring.devices.map((device) => ({ ...device, latency: "수신 없음", status: "unavailable" }));
       break;
     case "no-data":
+      data.monitoring.alarmState = null;
       data.monitoring.alerts = [];
       data.monitoring.devices = [];
       data.monitoring.headerNotifications = [];
@@ -214,6 +219,7 @@ function liveUpdateDashboardData() {
 function operationCycleData(step: number) {
   const data = dashboardDataFor("normal");
   if (step === 0) {
+    data.monitoring.alarmState = "CRITICAL";
     data.monitoring.status = "collection-required";
     data.monitoring.summary.loadPercent = 80;
     data.monitoring.alerts[0] = {
@@ -225,6 +231,7 @@ function operationCycleData(step: number) {
     };
   }
   if (step === 1) {
+    data.monitoring.alarmState = "NORMAL";
     data.monitoring.summary.loadPercent = 4;
     data.monitoring.summary.recentChange = "-76%";
     data.monitoring.alerts[0] = {
@@ -236,6 +243,7 @@ function operationCycleData(step: number) {
     };
   }
   if (step === 2) {
+    data.monitoring.alarmState = "ERROR";
     data.monitoring.status = "measurement-error";
     data.monitoring.devices[1] = {
       label: "LiDAR 2",
@@ -245,6 +253,7 @@ function operationCycleData(step: number) {
     };
   }
   if (step === 3) {
+    data.monitoring.alarmState = "UNKNOWN";
     data.monitoring.status = "disconnected";
     data.monitoring.devices = data.monitoring.devices.map((device) => ({
       ...device,
@@ -331,7 +340,8 @@ export function createMockDashboardDataSource(scenario: MockScenario = "normal")
       const notification = currentData.monitoring.headerNotifications.find((item) => item.id === notificationId);
       if (notification && !notification.read) {
         notification.read = true;
-        currentData.monitoring.unreadNotificationCount = Math.max(0, currentData.monitoring.unreadNotificationCount - 1);
+        const unread = currentData.monitoring.unreadNotificationCount;
+        currentData.monitoring.unreadNotificationCount = unread === null ? null : Math.max(0, unread - 1);
       }
       return Promise.resolve();
     },

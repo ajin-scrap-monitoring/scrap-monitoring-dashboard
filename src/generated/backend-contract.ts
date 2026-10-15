@@ -4,6 +4,30 @@
  */
 
 export interface paths {
+    readonly "/api/v1/config/pits/{pit_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get pit configuration
+         * @description Get configuration for a specific pit.
+         */
+        readonly get: operations["get_pit_config_api_v1_config_pits__pit_id__get"];
+        /**
+         * Update pit configuration
+         * @description Update threshold limits or physical depth of a scrap pit.
+         */
+        readonly put: operations["update_pit_config_api_v1_config_pits__pit_id__put"];
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/events": {
         readonly parameters: {
             readonly query?: never;
@@ -39,6 +63,24 @@ export interface paths {
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/media/clips/{clip_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Media Clip */
+        readonly get: operations["get_media_clip_api_v1_media_clips__clip_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        /** Delete Media Clip */
+        readonly delete: operations["delete_media_clip_api_v1_media_clips__clip_id__delete"];
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
@@ -300,6 +342,57 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v2/monitoring/alerts": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Alert History */
+        readonly get: operations["alert_history_api_v2_monitoring_alerts_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v2/monitoring/collection-events": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Collection History */
+        readonly get: operations["collection_history_api_v2_monitoring_collection_events_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v2/monitoring/collection-events/{assessment_id}/revisions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Collection Revisions */
+        readonly get: operations["collection_revisions_api_v2_monitoring_collection_events__assessment_id__revisions_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v2/monitoring/events": {
         readonly parameters: {
             readonly query?: never;
@@ -309,6 +402,23 @@ export interface paths {
         };
         /** Events */
         readonly get: operations["events_api_v2_monitoring_events_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v2/monitoring/load-history": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Load History */
+        readonly get: operations["get_load_history_api_v2_monitoring_load_history_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -513,12 +623,96 @@ export interface components {
              */
             readonly vision: "NOT_IMPLEMENTED" | "NOT_VALIDATED" | "ENABLED";
         };
+        /**
+         * ClipDetail
+         * @description Full remote state, including partial coverage and nullable completion times.
+         */
+        readonly ClipDetail: {
+            /**
+             * Accepted At
+             * Format: date-time
+             */
+            readonly accepted_at: string;
+            /** Actual End At */
+            readonly actual_end_at: string | null;
+            /** Actual Start At */
+            readonly actual_start_at: string | null;
+            /** Camera Id */
+            readonly camera_id: string;
+            /**
+             * Clip Id
+             * Format: uuid
+             */
+            readonly clip_id: string;
+            /** Completed At */
+            readonly completed_at: string | null;
+            /** Content Path */
+            readonly content_path: string | null;
+            /** Coverage */
+            readonly coverage: ("complete" | "partial" | "none") | null;
+            /** Deleted At */
+            readonly deleted_at: string | null;
+            readonly error: components["schemas"]["ClipError"] | null;
+            /** Event Id */
+            readonly event_id: string;
+            /** Expires At */
+            readonly expires_at: string | null;
+            /** Gaps */
+            readonly gaps: readonly components["schemas"]["ClipGap"][];
+            readonly recording_policy: components["schemas"]["RecordingPolicy"];
+            /**
+             * Requested End At
+             * Format: date-time
+             */
+            readonly requested_end_at: string;
+            /**
+             * Requested Start At
+             * Format: date-time
+             */
+            readonly requested_start_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "collecting" | "processing" | "ready" | "failed" | "deleted" | "expired";
+        };
+        /** ClipError */
+        readonly ClipError: {
+            /** Code */
+            readonly code: string;
+            /** Message */
+            readonly message: string;
+        };
+        /** ClipGap */
+        readonly ClipGap: {
+            /**
+             * End At
+             * Format: date-time
+             */
+            readonly end_at: string;
+            /**
+             * Start At
+             * Format: date-time
+             */
+            readonly start_at: string;
+        };
         /** Clock */
         readonly Clock: {
             /** Offset Ms */
             readonly offset_ms: number | null;
             /** State */
             readonly state: string;
+        };
+        /** CollectionEventPage */
+        readonly CollectionEventPage: {
+            /** Items */
+            readonly items: readonly components["schemas"]["Assessment-Output"][];
+            /** Limit */
+            readonly limit: number;
+            /** Offset */
+            readonly offset: number;
+            /** Totalitems */
+            readonly totalItems: number;
         };
         /**
          * CollectionThresholdSample
@@ -606,6 +800,40 @@ export interface components {
             /** Valuepercent */
             readonly valuePercent: number;
         };
+        /** HistorySampleV2 */
+        readonly HistorySampleV2: {
+            /** Assessmentid */
+            readonly assessmentId?: string | null;
+            /**
+             * Bucketendat
+             * Format: date-time
+             */
+            readonly bucketEndAt: string;
+            /**
+             * Bucketstartat
+             * Format: date-time
+             */
+            readonly bucketStartAt: string;
+            /**
+             * Datastate
+             * @default NO_DATA
+             * @enum {string}
+             */
+            readonly dataState?: "AVAILABLE" | "LIMITED" | "UNAVAILABLE" | "STALE" | "UNKNOWN" | "NO_DATA";
+            /** Generatedat */
+            readonly generatedAt?: string | null;
+            /** Observedat */
+            readonly observedAt?: string | null;
+            /** Reasoncodes */
+            readonly reasonCodes?: readonly string[];
+            /**
+             * Valid
+             * @default false
+             */
+            readonly valid?: boolean;
+            /** Valuepercent */
+            readonly valuePercent?: number | null;
+        };
         /**
          * LidarProfile
          * @description LiDAR surface cross-section profile.
@@ -691,6 +919,41 @@ export interface components {
             readonly from: string;
             /** Samples */
             readonly samples: readonly components["schemas"]["LoadSample"][];
+            /**
+             * To
+             * Format: date-time
+             */
+            readonly to: string;
+        };
+        /** LoadHistoryV2 */
+        readonly LoadHistoryV2: {
+            /**
+             * Bucketseconds
+             * @enum {integer}
+             */
+            readonly bucketSeconds: 60 | 300 | 900 | 3600;
+            /**
+             * From
+             * Format: date-time
+             */
+            readonly from: string;
+            /** Pitid */
+            readonly pitId: string;
+            /** Samples */
+            readonly samples: readonly components["schemas"]["HistorySampleV2"][];
+            /**
+             * Schemaversion
+             * @default 2
+             * @constant
+             */
+            readonly schemaVersion?: "2";
+            /**
+             * Selectionpolicy
+             * @default LATEST_STATE_PER_BUCKET
+             * @constant
+             */
+            readonly selectionPolicy?: "LATEST_STATE_PER_BUCKET";
+            readonly source: components["schemas"]["MonitoringSource"];
             /**
              * To
              * Format: date-time
@@ -793,6 +1056,7 @@ export interface components {
             readonly deviceStatus: components["schemas"]["src__app__schemas__edge_v2__DeviceStatus"];
             /** Measuredat */
             readonly measuredAt: string | null;
+            readonly operations?: components["schemas"]["OperationStatus"] | null;
             /** Pitid */
             readonly pitId: string;
             /** Reasoncodes */
@@ -853,6 +1117,8 @@ export interface components {
             readonly collectionThresholdPercent: number;
             /** Loadpercent */
             readonly loadPercent?: number | null;
+            /** Recoverythresholdpercent */
+            readonly recoveryThresholdPercent: number;
             /** Warningthresholdpercent */
             readonly warningThresholdPercent: number;
         };
@@ -1020,6 +1286,22 @@ export interface components {
              */
             readonly read: true;
         };
+        /** OperationStatus */
+        readonly OperationStatus: {
+            /**
+             * Effectivestate
+             * @enum {string}
+             */
+            readonly effectiveState: "NORMAL" | "WARNING" | "CRITICAL" | "UNKNOWN" | "ERROR";
+            /** Lastalertat */
+            readonly lastAlertAt: string | null;
+            /** Lastevaluatedat */
+            readonly lastEvaluatedAt: string | null;
+            /** Lastknownstate */
+            readonly lastKnownState: ("NORMAL" | "WARNING" | "CRITICAL") | null;
+            /** Notificationid */
+            readonly notificationId: string | null;
+        };
         /**
          * PageMetadata
          * @description Pagination metadata conforming to proposal/openapi.yaml.
@@ -1033,6 +1315,41 @@ export interface components {
             readonly totalItems: number;
             /** Totalpages */
             readonly totalPages: number;
+        };
+        /**
+         * PitConfigResponse
+         * @description Configuration response for a scrap pit.
+         */
+        readonly PitConfigResponse: {
+            /** Critical Threshold Percent */
+            readonly critical_threshold_percent: number;
+            /** Id */
+            readonly id: string;
+            /** Name */
+            readonly name: string;
+            /** Total Depth Cm */
+            readonly total_depth_cm: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at: string;
+            /** Warning Threshold Percent */
+            readonly warning_threshold_percent: number;
+        };
+        /**
+         * PitConfigUpdateRequest
+         * @description Update request for scrap pit configuration.
+         */
+        readonly PitConfigUpdateRequest: {
+            /** Critical Threshold Percent */
+            readonly critical_threshold_percent?: number | null;
+            /** Name */
+            readonly name?: string | null;
+            /** Total Depth Cm */
+            readonly total_depth_cm?: number | null;
+            /** Warning Threshold Percent */
+            readonly warning_threshold_percent?: number | null;
         };
         /**
          * PreCollectionAlert
@@ -1137,6 +1454,18 @@ export interface components {
             /** Items */
             readonly items: readonly components["schemas"]["Recording"][];
             readonly page: components["schemas"]["PageMetadata"];
+        };
+        /**
+         * RecordingPolicy
+         * @description Policy applies only to events first accepted after the update.
+         */
+        readonly RecordingPolicy: {
+            /** Post Roll Seconds */
+            readonly post_roll_seconds: number;
+            /** Pre Roll Seconds */
+            readonly pre_roll_seconds: number;
+            /** Retention Days */
+            readonly retention_days: number;
         };
         /** ScanReference */
         readonly ScanReference: {
@@ -1293,6 +1622,40 @@ export interface components {
              */
             readonly role: "viewer" | "administrator";
         };
+        /** V2Alert */
+        readonly V2Alert: {
+            /** Assessmentid */
+            readonly assessmentId: string;
+            /** Eventid */
+            readonly eventId: string;
+            /** Loadpercent */
+            readonly loadPercent: number;
+            /** Notificationid */
+            readonly notificationId: string;
+            /**
+             * Observedat
+             * Format: date-time
+             */
+            readonly observedAt: string;
+            /** Readat */
+            readonly readAt: string | null;
+            /**
+             * Triggeredat
+             * Format: date-time
+             */
+            readonly triggeredAt: string;
+        };
+        /** V2AlertPage */
+        readonly V2AlertPage: {
+            /** Items */
+            readonly items: readonly components["schemas"]["V2Alert"][];
+            /** Limit */
+            readonly limit: number;
+            /** Offset */
+            readonly offset: number;
+            /** Totalitems */
+            readonly totalItems: number;
+        };
         /** ValidationError */
         readonly ValidationError: {
             /** Context */
@@ -1432,6 +1795,72 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    readonly get_pit_config_api_v1_config_pits__pit_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly pit_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PitConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_pit_config_api_v1_config_pits__pit_id__put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly pit_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PitConfigUpdateRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PitConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly list_operational_events_api_v1_events_get: {
         readonly parameters: {
             readonly query?: {
@@ -1494,6 +1923,72 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["LoadHistory"];
                 };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_media_clip_api_v1_media_clips__clip_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly clip_id: string;
+            };
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ClipDetail"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_media_clip_api_v1_media_clips__clip_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly "X-CSRF-Token"?: string | null;
+            };
+            readonly path: {
+                readonly clip_id: string;
+            };
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             readonly 422: {
@@ -2053,6 +2548,113 @@ export interface operations {
             };
         };
     };
+    readonly alert_history_api_v2_monitoring_alerts_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+                readonly offset?: number;
+                readonly pit_id?: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["V2AlertPage"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly collection_history_api_v2_monitoring_collection_events_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+                readonly offset?: number;
+                readonly pit_id?: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CollectionEventPage"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly collection_revisions_api_v2_monitoring_collection_events__assessment_id__revisions_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+                readonly offset?: number;
+                readonly pit_id?: string;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly assessment_id: string;
+            };
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CollectionEventPage"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly events_api_v2_monitoring_events_get: {
         readonly parameters: {
             readonly query?: {
@@ -2073,6 +2675,42 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_load_history_api_v2_monitoring_load_history_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly from?: string | null;
+                readonly to?: string | null;
+                readonly bucket_seconds?: (60 | 300 | 900 | 3600) | null;
+                readonly pit_id?: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["LoadHistoryV2"];
                 };
             };
             /** @description Validation Error */

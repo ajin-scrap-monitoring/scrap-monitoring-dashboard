@@ -6,13 +6,14 @@ React 기반 대시보드다. 브라우저는 Backend의 same-origin Application
 
 ## 주요 기능
 
-- Backend v2의 현재 판단, 데이터 유효성, 장비 상태와 판단 기능 표시
+- Backend v2의 현재 판단, 적재율 추이, 데이터 유효성과 장비 상태 표시
 - Camera Media Service의 Motion JPEG (MJPEG) 실시간 영상과 MP4 녹화 영상 재생
 - 기간과 유형을 사용하는 이력 및 녹화 영상 조회
 - 로그인, 알림 읽음 처리와 관리자 설정 사용자 흐름
 
-v2가 제공하지 않는 LiDAR profile, 추이, 예측과 자동 알림은 현재 판단 화면에 표시하지
-않는다. 이력과 관리자 설정은 v1 API를 사용한다.
+제공되지 않은 지표는 기본 화면의 영역을 유지하고 미지원으로 구분한다.
+적재율 추이는 v2 API, 운영 이력과 관리자 설정은 v1 API를 사용한다.
+지표 의미와 지원 범위는 [화면 데이터 매핑](docs/contracts/backend/frontend-mapping.md)을 따른다.
 
 ## 사전 조건
 
@@ -183,8 +184,10 @@ SIGKILL 등으로 정리하지 못한 실행은 출력된 `Recovery command`로 
 | [`docs/project-spec.md`](docs/project-spec.md) | 제품 목적, 범위와 외부 경계 |
 | [`docs/implementation.md`](docs/implementation.md) | 현재 구현, 실행, 검증과 이미지 책임 |
 | [`docs/development-workflow.md`](docs/development-workflow.md) | 작업 단위와 단계별 완료 조건 |
+| [`docs/api-integration-plan.md`](docs/api-integration-plan.md) | 기존 디자인을 유지하는 Backend 및 Media API 연동 계획 |
 | [`docs/contracts/README.md`](docs/contracts/README.md) | 외부 연동 계약 항목과 확정 절차 |
 | [`docs/contracts/backend/README.md`](docs/contracts/backend/README.md) | 실제 서비스 계약 snapshot과 통합 검증 경계 |
+| [`docs/contracts/backend/frontend-mapping.md`](docs/contracts/backend/frontend-mapping.md) | 기존 화면과 Backend 정보의 매핑 및 추가 계약 평가 |
 
 ## 이용 조건
 

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { DashboardPageShell } from "./DashboardShell";
 
@@ -59,4 +59,31 @@ test("조회 사용자의 헤더에는 관리자 진입점을 표시하지 않�
 
   expect(screen.getByRole("button", { name: "관리자 메뉴" })).toBeVisible();
   expect(screen.queryByRole("link", { name: /^관리자$/ })).not.toBeInTheDocument();
+});
+
+test("최초 알림 실패는 0건 대신 미확인 배지를 표시하고 기존 popover에서만 재시도한다", () => {
+  const refreshNotifications = vi.fn(() => Promise.resolve());
+  render(<DashboardPageShell activePage="monitoring" headerNotifications={[]} headerUnreadCount={null}
+    notificationState={{ status: "error", message: "알림을 불러오지 못했습니다.", stale: false }}
+    dataSource={{ getDashboardData: vi.fn(), refreshNotifications }}
+    session={{ expiresAt: "2026-10-15T18:00:00Z", user: { displayName: "조회자", id: "viewer-1", role: "viewer" } }}>
+    <main>현황 본문</main>
+  </DashboardPageShell>);
+  expect(screen.queryByText(/미읽음 수를 확인/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "알림 0건" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "알림 조회 실패" }));
+  expect(screen.getByRole("button", { name: "모두 읽음" })).toBeDisabled();
+  expect(screen.getByRole("alert")).toHaveTextContent("미읽음 수를 확인할 수 없습니다.");
+  fireEvent.click(screen.getByRole("button", { name: "알림 다시 조회" }));
+  expect(refreshNotifications).toHaveBeenCalledOnce();
+});
+
+test("이전 알림을 유지한 조회 실패는 마지막 응답이라는 설명을 표시한다", () => {
+  render(<DashboardPageShell activePage="monitoring" headerNotifications={[]} headerUnreadCount={3}
+    notificationState={{ status: "error", stale: true }}
+    session={{ expiresAt: "2026-10-15T18:00:00Z", user: { displayName: "조회자", id: "viewer-1", role: "viewer" } }}>
+    <main>현황 본문</main>
+  </DashboardPageShell>);
+  fireEvent.click(screen.getByRole("button", { name: "알림 3건" }));
+  expect(screen.getByRole("alert")).toHaveTextContent("마지막으로 불러온 알림을 표시합니다.");
 });

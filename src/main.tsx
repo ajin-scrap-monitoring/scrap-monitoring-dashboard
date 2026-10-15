@@ -1,10 +1,9 @@
-import { StrictMode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
 import { RuntimeConfiguredApp } from "./RuntimeConfiguredApp";
 import { createHttpDashboardDataSource } from "./data/http-dashboard-data-source";
-import { createMockDashboardDataSource, resolveMockScenario } from "./data/mock-dashboard-data-source";
 import type { DashboardRuntimeConfig } from "./runtime-config";
 
 const rootElement = document.getElementById("root");
@@ -34,14 +33,13 @@ const createApiDataSource = ({ pitId, cameraId }: Pick<DashboardRuntimeConfig, "
     pitId,
     cameraId,
   });
-const application = mockDataEnabled && selectedSource !== "api"
-  ? <App dataSource={createMockDashboardDataSource(resolveMockScenario(searchParameters.get("scenario")))} />
-  : import.meta.env.DEV
+const renderApplication = (application: ReactNode) => createRoot(rootElement).render(<StrictMode>{application}</StrictMode>);
+if (mockDataEnabled && selectedSource !== "api") {
+  void import("./data/mock-dashboard-data-source").then(({ createMockDashboardDataSource, resolveMockScenario }) => {
+    renderApplication(<App dataSource={createMockDashboardDataSource(resolveMockScenario(searchParameters.get("scenario")))} />);
+  });
+} else {
+  renderApplication(import.meta.env.DEV
     ? <App dataSource={createApiDataSource({ pitId: import.meta.env.VITE_PIT_ID ?? "pit-01", cameraId: import.meta.env.VITE_CAMERA_ID ?? "camera-main" })} />
-    : <RuntimeConfiguredApp createDataSource={createApiDataSource} />;
-
-createRoot(rootElement).render(
-  <StrictMode>
-    {application}
-  </StrictMode>,
-);
+    : <RuntimeConfiguredApp createDataSource={createApiDataSource} />);
+}
