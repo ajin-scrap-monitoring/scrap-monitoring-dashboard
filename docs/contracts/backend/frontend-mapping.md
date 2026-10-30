@@ -60,7 +60,7 @@ Backend는 장비 보고가 30초 이상 없으면 연결 상태를 UNKNOWN으�
 | 장비 scan 및 진행 시각, clock, delivery와 storage | 진단 정보 또는 숨김 대상, 촬영 시각과 latency로 대체하지 않음 |
 | v1 이력의 `resolved` 단독 값 | `statusBasis`가 해제 근거를 확인한 경우에만 해제로 표시 |
 | clip ID가 없는 녹화 job | 기존 `/api/v1/media/clip-jobs`에서 조회 가능, 날짜 및 이벤트 녹화 목록과 별도 범위 |
-| 날짜 녹화의 구간별 reason code | 수신 및 보존, 현재 게이지의 표시 범위는 확보 및 누락 구간 |
+| 날짜 녹화의 구간별 reason code | 수신 및 보존, 녹화 범위 상세 창에서 누락 구간 시각과 함께 사유 코드를 표시 |
 | export cache 만료 시각 | 다운로드 가능 여부에 사용, 원본 보관 만료와 별도 표시하지 않음 |
 | 수신 대상 이름과 연락처 편집 | Backend PATCH 지원, 현재 수신 정책 패널의 편집 범위 밖 |
 | 녹화 revision, storage profile과 segment 설정 | 저장 및 전송 기술 정보로 기본 화면에 미표시 |
@@ -74,7 +74,7 @@ Backend 기준은 manifest의 revision이다. 현황 보조 조회 4개(`fill-fo
 
 | 기존 항목 | 제공 정보 | 평가 | 연결 또는 남은 계약 |
 | --- | --- | --- | --- |
-| 추정 적재율 | v2 `summary.loadPercent`, `dataState` | 직접 사용 | 서버의 percent 값 유지, 데이터 상태에 따른 표시 가능 여부 적용 |
+| 추정 적재율 | v2 `summary.loadPercent`, `dataState`, `filterState` | 직접 사용 | 서버의 percent 값 유지, `filterState`의 WARMING 및 UNAVAILABLE 보조 표기 적용 |
 | 수거 임계율과 경고 기준 | `summary.collectionThresholdPercent`, `warningThresholdPercent` | 직접 사용 | 기존 임계율 영역의 percent 표시 |
 | 적재율 경보 | v2 `operations.effectiveState` | 변환 사용 | Backend의 현재 평가 결과 표시 |
 | 예상 도달 및 남은 시간 | `/api/v2/monitoring/fill-forecast` | 변환 사용 | `AVAILABLE`은 `expectedThresholdAt`과 서버 시각 기준 남은 시간, `REACHED`는 임계율 도달, `UNAVAILABLE`은 정보 없음, `validUntil` 경과와 재연결 중에는 숨김 |
@@ -248,7 +248,7 @@ v2 경보와 수거 판단 목록(`/api/v2/monitoring/alerts`, `collection-event
 이벤트 재생 시간축의 위치다. 한 part가 끝나면 다음 part로 이동하고 마지막 part의 끝에서
 정지한다. `unavailableIntervals`는 재생하지 않는 구간이며 하루 또는 이벤트 구간 전체가
 녹화되었다고 가정하지 않는다. 날짜 녹화를 삭제하면 같은 날짜 영상을 쓰는 이벤트 구간도
-재생할 수 없다.
+재생할 수 없다. 이벤트 상세의 `unavailableIntervals` 또는 날짜 녹화의 `gaps`가 1개 이상이면 녹화 정보 카드의 누락 구간 버튼으로 녹화 범위 상세 창을 연다. 이벤트 창은 요청 구간(`windowFrom` ~ `windowTo`), 요청 길이, 확보 길이, 재생 길이와 각 구간의 시작 및 종료 시각, 종류(GAP, UNCONFIRMED, FUTURE, MISSING, EXPIRED)와 `reasonCode`를 표시한다. 날짜 창은 녹화 날짜와 `gaps`의 시작 및 종료 시각과 `reason_code`를 표시한다.
 
 ## 추가 계약 요청
 

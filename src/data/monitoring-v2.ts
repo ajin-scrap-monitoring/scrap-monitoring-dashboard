@@ -32,6 +32,10 @@ function validate(snapshot: unknown, pitId: string): asserts snapshot is ApiMoni
     const threshold = snapshot.summary[key];
     if (typeof threshold !== "number" || !Number.isFinite(threshold) || threshold < 0 || threshold > 100) return fail();
   }
+  const filterStates = ["DISABLED", "WARMING", "READY", "UNAVAILABLE"] as const;
+  if (snapshot.summary.filterState !== undefined && snapshot.summary.filterState !== null) {
+    if (typeof snapshot.summary.filterState !== "string" || !filterStates.includes(snapshot.summary.filterState as (typeof filterStates)[number])) return fail();
+  }
   if (snapshot.operations !== undefined && snapshot.operations !== null) {
     const operations = snapshot.operations;
     if (!record(operations) || typeof operations.effectiveState !== "string"
@@ -122,6 +126,7 @@ export function monitoringV2Data(snapshot: unknown, pitId: string): DashboardDat
     videoCapturedAt: null,
     v2: {
       ...(snapshot.summary.simulated === true && { simulated: true }),
+      filterState: snapshot.summary.filterState ?? null,
       serverTime: snapshot.serverTime,
       dataState: snapshot.dataState,
       snapshotId: snapshot.snapshotId,

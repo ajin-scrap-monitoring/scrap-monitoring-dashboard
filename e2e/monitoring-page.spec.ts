@@ -365,3 +365,21 @@ test("SENSOR_ANGLE처럼 표본 수가 많고 앞쪽이 무효인 profile도 A�
   expect(ranges[1].at(-1)!.x).toBeCloseTo(40 + 370 * (0.5 + 194 * 0.0025), 1);
   for (const range of ranges) for (const [index, point] of range.entries()) if (index > 0) expect(point.x).toBeGreaterThan(range[index - 1].x);
 });
+
+test("snapshot의 filterState=WARMING 상태를 추정 적재율 label과 title에 표시한다", async ({ page }) => {
+  const initial = monitoringV2StateFixture("FRESH", 72.5, { filterState: "WARMING" });
+  await installBackendApi(page, { initial });
+  await page.goto("/?source=api");
+  const label = page.locator(".kpi-label");
+  await expect(label).toHaveText("추정 적재율 (안정화 준비 중)");
+  await expect(label).toHaveAttribute("title", "시간 필터가 준비되는 동안의 값");
+});
+
+test("simulated와 filterState=WARMING이 함께인 snapshot은 라벨을 조합하여 표시한다", async ({ page }) => {
+  const initial = monitoringV2StateFixture("FRESH", 72.5, { filterState: "WARMING", simulated: true });
+  await installBackendApi(page, { initial });
+  await page.goto("/?source=api");
+  const label = page.locator(".kpi-label");
+  await expect(label).toHaveText("추정 적재율 (시뮬레이션, 안정화 준비 중)");
+  await expect(label).toHaveAttribute("title", "시간 필터가 준비되는 동안의 값");
+});

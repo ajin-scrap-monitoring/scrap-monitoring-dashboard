@@ -14,6 +14,30 @@ export function syntheticEventReplay(overrides: Record<string, unknown> = {}, ev
   const part = eventReplayPartFixture({ recordingId: id, playbackPath: `/media/daily-recordings/${id}/hls/index.m3u8`, fromAt: base.event.windowFrom, toAt: base.event.windowTo });
   return { ...base, effectiveTo: base.event.windowTo, parts: [part], ...overrides };
 }
+export function partialEventReplayWithGaps(overrides: Record<string, unknown> = {}, event: Record<string, unknown> = {}): EventReplayResponse {
+  const id = syntheticDailyRecording.recording_id;
+  const base = eventReplayFixture({
+    state: "PARTIAL",
+    requestedSeconds: 60,
+    coveredSeconds: 40,
+    playbackSeconds: 40,
+    unavailableIntervals: [
+      { fromAt: "2026-10-12T00:59:40Z", toAt: "2026-10-12T01:00:00Z", kind: "GAP", reasonCode: "RECORDING_GAP" },
+    ],
+  }, event);
+  const part = eventReplayPartFixture({
+    recordingId: id,
+    playbackPath: `/media/daily-recordings/${id}/hls/index.m3u8`,
+    fromAt: base.event.windowFrom,
+    toAt: "2026-10-12T00:59:40Z",
+    startSeconds: 3570,
+    endSeconds: 3610,
+    relativeStartSeconds: 0,
+    relativeEndSeconds: 40,
+    mapping: "LINEAR",
+  });
+  return { ...base, effectiveTo: base.event.windowTo, parts: [part], ...overrides };
+}
 export type MediaMode = "healthy" | "silent" | "slow-start" | "interrupted" | "invalid" | "unavailable" | "unauthorized";
 export type BrowserControl = {
   emit: (type: string, data: string) => void;

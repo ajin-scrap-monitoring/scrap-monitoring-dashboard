@@ -34,7 +34,7 @@ test("날짜 녹화는 날짜 source로 조회하며 이벤트 clip 상세를 �
   const view = render(<RecordingsPage {...props} dataSource={dataSource} />);
   await screen.findByLabelText("날짜 녹화 영상");
   expect(getRecording).toHaveBeenCalledWith(recording.id, expect.any(AbortSignal), "daily");
-  expect(view.container.querySelector(".recording-coverage-trigger")).toBeNull();
+  expect(view.container.querySelector(".recording-coverage-trigger")).not.toBeNull();
   expect(getRecordingCoverage).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: /^조회$/ }));
   await act(async () => { await Promise.resolve(); });

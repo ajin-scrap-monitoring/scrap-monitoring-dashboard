@@ -530,7 +530,9 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                     <div className="recording-info-heading">
                       <SectionTitle>녹화 정보</SectionTitle>
                       <div className="recording-info-actions">
-                        {selectedRecording?.source !== "daily" && selectedRecording?.coverage === "partial" && dataSource?.getRecordingCoverage && clipIdentifier.test(selectedRecording.id) && <button className="detail-trigger recording-coverage-trigger" type="button" aria-haspopup="dialog" onClick={() => setCoverageRecordingId(selectedRecording.id)}>부분 저장</button>}
+                        {(Boolean(selectedRecording?.source !== "daily" && selectedRecording?.coverage === "partial" && dataSource?.getRecordingCoverage && clipIdentifier.test(selectedRecording.id))
+                          || Boolean(selectedRecording?.replay && selectedRecording.replay.unavailableIntervals.length > 0)
+                          || Boolean(selectedRecording?.daily && selectedRecording.daily.gaps.length > 0)) && <button className="detail-trigger recording-coverage-trigger" type="button" aria-haspopup="dialog" onClick={() => setCoverageRecordingId(selectedRecording.id)}>{selectedRecording?.source !== "daily" && selectedRecording?.coverage === "partial" && dataSource?.getRecordingCoverage && clipIdentifier.test(selectedRecording.id) ? "부분 저장" : "누락 구간"}</button>}
                         {selectedRecording && (!selectedRecording.sample || selectedRecording.mediaStatus || selectedRecording.errorCode) && <RecordingStatusDetails
                           key={selectedKey} recording={selectedRecording} error={(detailState.source === dataSource && detailState.key === selectedKey ? detailState.error : undefined) ?? (playbackError?.key === selectedKey ? playbackError?.message : undefined)} pending={detailRequired && !detailReady} />}
                       </div>
@@ -573,8 +575,8 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
           </div>
         </div>
       </main>
-      {coverageRecordingId && dataSource && <DetailDialog id="recording-coverage-title" title="녹화 범위 상세" onClose={closeCoverage}>
-        <Suspense fallback={<p role="status">녹화 범위 확인 중</p>}><RecordingCoverageDetails key={coverageRecordingId} dataSource={dataSource} recordingId={coverageRecordingId} /></Suspense>
+      {coverageRecordingId && <DetailDialog id="recording-coverage-title" title="녹화 범위 상세" onClose={closeCoverage}>
+        <Suspense fallback={<p role="status">녹화 범위 확인 중</p>}><RecordingCoverageDetails key={coverageRecordingId} dataSource={dataSource} recordingId={coverageRecordingId} recording={selectedRecording?.id === coverageRecordingId ? selectedRecording : undefined} /></Suspense>
       </DetailDialog>}
       {deletion && <DetailDialog id="recording-delete-title" title="날짜 녹화 삭제" onClose={deletion.busy ? () => undefined : closeDeletion}>
         <p>{deletion.date} 날짜 녹화 영상 전체가 영구 삭제됩니다. 이 영상을 사용하는 모든 알림, 오류 및 수거 이벤트 구간도 재생할 수 없게 됩니다.</p>
