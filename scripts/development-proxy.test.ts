@@ -110,7 +110,7 @@ for (const relay of ["", "relay-host"]) {
     try {
       const sshArgsPath = join(fixture, "ssh-args");
       const rsyncArgsPath = join(fixture, "rsync-args");
-      await writeFile(join(fixture, "git"), "#!/usr/bin/env bash\ncase \"$*\" in *--absolute-git-dir*) printf '%s\\n' \"$DASHBOARD_TEST_GIT_DIRECTORY\" ;; *hash-object*) printf '%s\\n' fixture-target ;; esac\n", { mode: 0o755 });
+      await writeFile(join(fixture, "git"), "#!/usr/bin/env bash\ncase \"$*\" in *--absolute-git-dir*) printf '%s\\n' \"$DASHBOARD_TEST_GIT_DIRECTORY\" ;; *hash-object*) cat > /dev/null; printf '%s\\n' fixture-target ;; esac\n", { mode: 0o755 });
       await writeFile(join(fixture, "ssh"), "#!/usr/bin/env bash\nprintf '%s\\0' \"$@\" > \"$DASHBOARD_TEST_SSH_ARGS\"\n", { mode: 0o755 });
       await writeFile(join(fixture, "rsync"), "#!/usr/bin/env bash\nif [[ $1 == --help ]]; then printf '%s\\n' '--from0 --delete-missing-args'; exit 0; fi\nprintf '%s\\0' \"$@\" > \"$DASHBOARD_TEST_RSYNC_ARGS\"\n", { mode: 0o755 });
       const result = spawnSync("bash", [scriptPath, "sync"], {
