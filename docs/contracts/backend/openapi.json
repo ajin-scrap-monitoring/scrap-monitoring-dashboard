@@ -1,6 +1,357 @@
 {
   "components": {
     "schemas": {
+      "ActiveFillAlertPageV2": {
+        "properties": {
+          "computedAt": {
+            "format": "date-time",
+            "title": "Computedat",
+            "type": "string"
+          },
+          "coverage": {
+            "items": {
+              "$ref": "#/components/schemas/ActiveHealthCoverageV2"
+            },
+            "title": "Coverage",
+            "type": "array"
+          },
+          "evaluationState": {
+            "enum": [
+              "NORMAL",
+              "WARNING",
+              "CRITICAL",
+              "UNKNOWN",
+              "ERROR"
+            ],
+            "title": "Evaluationstate",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ActiveFillAlertV2"
+                },
+                {
+                  "$ref": "#/components/schemas/ActiveHealthAlertV2"
+                }
+              ]
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "pitId": {
+            "title": "Pitid",
+            "type": "string"
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoncodes",
+            "type": "array"
+          },
+          "scope": {
+            "default": "FILL_OPERATIONS",
+            "enum": [
+              "FILL_OPERATIONS",
+              "ALL"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pitId",
+          "computedAt",
+          "evaluationState"
+        ],
+        "title": "ActiveFillAlertPageV2",
+        "type": "object"
+      },
+      "ActiveFillAlertV2": {
+        "properties": {
+          "evaluatedAt": {
+            "format": "date-time",
+            "title": "Evaluatedat",
+            "type": "string"
+          },
+          "evaluationSource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "CURRENT_OBSERVATION",
+                  "RECENT_PERSISTED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluationsource"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "loadPercent": {
+            "maximum": 100,
+            "minimum": 0,
+            "title": "Loadpercent",
+            "type": "number"
+          },
+          "measuredAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measuredat"
+          },
+          "notificationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notificationid"
+          },
+          "severity": {
+            "enum": [
+              "warning",
+              "error"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "simulated": {
+            "title": "Simulated",
+            "type": "boolean"
+          },
+          "startBasis": {
+            "default": "UNKNOWN",
+            "enum": [
+              "SERVER_EVALUATION",
+              "UNKNOWN"
+            ],
+            "title": "Startbasis",
+            "type": "string"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "pre_collection_alert",
+              "collection_required"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "severity",
+          "title",
+          "evaluatedAt",
+          "loadPercent",
+          "simulated"
+        ],
+        "title": "ActiveFillAlertV2",
+        "type": "object"
+      },
+      "ActiveHealthAlertV2": {
+        "properties": {
+          "componentId": {
+            "title": "Componentid",
+            "type": "string"
+          },
+          "componentKind": {
+            "enum": [
+              "EDGE",
+              "LIDAR",
+              "MEASUREMENT"
+            ],
+            "title": "Componentkind",
+            "type": "string"
+          },
+          "evaluatedAt": {
+            "format": "date-time",
+            "title": "Evaluatedat",
+            "type": "string"
+          },
+          "evidenceSource": {
+            "enum": [
+              "EDGE_STATUS",
+              "STATUS_FRESHNESS",
+              "CURRENT_MEASUREMENT"
+            ],
+            "title": "Evidencesource",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "measuredAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measuredat"
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoncodes",
+            "type": "array"
+          },
+          "severity": {
+            "enum": [
+              "warning",
+              "error"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "simulated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Simulated"
+          },
+          "startBasis": {
+            "default": "UNKNOWN",
+            "enum": [
+              "SERVER_EVALUATION",
+              "UNKNOWN"
+            ],
+            "title": "Startbasis",
+            "type": "string"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "device_error",
+              "measurement_error"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "severity",
+          "title",
+          "componentKind",
+          "componentId",
+          "state",
+          "evaluatedAt",
+          "evidenceSource"
+        ],
+        "title": "ActiveHealthAlertV2",
+        "type": "object"
+      },
+      "ActiveHealthCoverageV2": {
+        "properties": {
+          "componentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Componentid"
+          },
+          "componentKind": {
+            "enum": [
+              "EDGE",
+              "LIDAR",
+              "MEASUREMENT",
+              "CAMERA"
+            ],
+            "title": "Componentkind",
+            "type": "string"
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoncodes",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "CHECKED",
+              "UNKNOWN",
+              "UNSUPPORTED"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "componentKind",
+          "state"
+        ],
+        "title": "ActiveHealthCoverageV2",
+        "type": "object"
+      },
       "Alert": {
         "description": "Active alert item displayed on dashboard.",
         "properties": {
@@ -53,6 +404,46 @@
           "occurredAt"
         ],
         "title": "Alert",
+        "type": "object"
+      },
+      "AlertLifecycle": {
+        "properties": {
+          "resolutionObservedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolutionobservedat"
+          },
+          "resolvedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolvedat"
+          },
+          "state": {
+            "default": "UNKNOWN",
+            "enum": [
+              "ACTIVE",
+              "RESOLVED",
+              "UNKNOWN"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "title": "AlertLifecycle",
         "type": "object"
       },
       "AlertSettings": {
@@ -145,6 +536,7 @@
           },
           "maximumRepeatCount": {
             "default": 3,
+            "maximum": 2147483647,
             "minimum": 1,
             "title": "Maximumrepeatcount",
             "type": "integer"
@@ -159,12 +551,14 @@
           },
           "repeatIntervalMinutes": {
             "default": 30,
+            "maximum": 2147483647,
             "minimum": 0,
             "title": "Repeatintervalminutes",
             "type": "integer"
           },
           "sendDelayMinutes": {
             "default": 0,
+            "maximum": 2147483647,
             "minimum": 0,
             "title": "Senddelayminutes",
             "type": "integer"
@@ -504,6 +898,18 @@
               }
             ]
           },
+          "event_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event At"
+          },
           "event_id": {
             "title": "Event Id",
             "type": "string"
@@ -641,6 +1047,91 @@
         "title": "Clock",
         "type": "object"
       },
+      "CollectionCriteria": {
+        "description": "Only retained original criteria; absent historic fields are never reconstructed.",
+        "properties": {
+          "detectionProfile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detectionprofile"
+          },
+          "detectionVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detectionversion"
+          },
+          "endPolicy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpolicy"
+          },
+          "heightBasis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heightbasis"
+          },
+          "matchesCurrentScope": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matchescurrentscope"
+          },
+          "scopeToken": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scopetoken"
+          },
+          "settleSeconds": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settleseconds"
+          }
+        },
+        "title": "CollectionCriteria",
+        "type": "object"
+      },
       "CollectionEventPage": {
         "properties": {
           "items": {
@@ -670,6 +1161,324 @@
           "offset"
         ],
         "title": "CollectionEventPage",
+        "type": "object"
+      },
+      "CollectionSummaryV2": {
+        "properties": {
+          "activitySource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "CONFIRMED_COMPLETION",
+                  "HEIGHT_SETTLED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activitysource"
+          },
+          "averageCollectionCycleSeconds": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Averagecollectioncycleseconds"
+          },
+          "averageDetectedCollectionCycleSeconds": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Averagedetectedcollectioncycleseconds"
+          },
+          "averageSettledCollectionCycleSeconds": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Averagesettledcollectioncycleseconds"
+          },
+          "completedCollectionsInWindow": {
+            "minimum": 0,
+            "title": "Completedcollectionsinwindow",
+            "type": "integer"
+          },
+          "computedAt": {
+            "format": "date-time",
+            "title": "Computedat",
+            "type": "string"
+          },
+          "cycleCount": {
+            "minimum": 0,
+            "title": "Cyclecount",
+            "type": "integer"
+          },
+          "detectedCollectionsInWindow": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Detectedcollectionsinwindow",
+            "type": "integer"
+          },
+          "detectionConfirmSeconds": {
+            "title": "Detectionconfirmseconds",
+            "type": "integer"
+          },
+          "detectionDropMeters": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detectiondropmeters"
+          },
+          "detectionEnabled": {
+            "default": false,
+            "title": "Detectionenabled",
+            "type": "boolean"
+          },
+          "detectionEndPolicy": {
+            "const": "NO_FURTHER_DROP",
+            "default": "NO_FURTHER_DROP",
+            "title": "Detectionendpolicy",
+            "type": "string"
+          },
+          "detectionHeightBasis": {
+            "default": "UPPER",
+            "enum": [
+              "UPPER",
+              "REPRESENTATIVE"
+            ],
+            "title": "Detectionheightbasis",
+            "type": "string"
+          },
+          "detectionProfile": {
+            "default": "FIELD",
+            "enum": [
+              "FIELD",
+              "SIMULATION"
+            ],
+            "title": "Detectionprofile",
+            "type": "string"
+          },
+          "detectionReasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Detectionreasoncodes",
+            "type": "array"
+          },
+          "detectionSettleSeconds": {
+            "title": "Detectionsettleseconds",
+            "type": "integer"
+          },
+          "detectionSimulated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detectionsimulated"
+          },
+          "detectionState": {
+            "anyOf": [
+              {
+                "enum": [
+                  "BASELINING",
+                  "IDLE",
+                  "CANDIDATE",
+                  "COLLECTING"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "DISABLED",
+                  "UNKNOWN"
+                ],
+                "type": "string"
+              }
+            ],
+            "default": "DISABLED",
+            "title": "Detectionstate"
+          },
+          "lastCollectionActivityAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastcollectionactivityat"
+          },
+          "lastCollectionAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastcollectionat"
+          },
+          "lastDetectedCollectionAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastdetectedcollectionat"
+          },
+          "lastSettledCollectionAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastsettledcollectionat"
+          },
+          "pitId": {
+            "title": "Pitid",
+            "type": "string"
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoncodes",
+            "type": "array"
+          },
+          "secondsSinceLastCollection": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secondssincelastcollection"
+          },
+          "secondsSinceLastCollectionActivity": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secondssincelastcollectionactivity"
+          },
+          "secondsSinceLastDetection": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secondssincelastdetection"
+          },
+          "secondsSinceLastSettlement": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secondssincelastsettlement"
+          },
+          "settledCollectionsInWindow": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Settledcollectionsinwindow",
+            "type": "integer"
+          },
+          "settledCycleCount": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Settledcyclecount",
+            "type": "integer"
+          },
+          "settledCycleReasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Settledcyclereasoncodes",
+            "type": "array"
+          },
+          "source": {
+            "const": "COLLECTION_LOG",
+            "default": "COLLECTION_LOG",
+            "title": "Source",
+            "type": "string"
+          },
+          "windowFrom": {
+            "format": "date-time",
+            "title": "Windowfrom",
+            "type": "string"
+          },
+          "windowTo": {
+            "format": "date-time",
+            "title": "Windowto",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detectionConfirmSeconds",
+          "detectionSettleSeconds",
+          "pitId",
+          "computedAt",
+          "windowFrom",
+          "windowTo",
+          "completedCollectionsInWindow",
+          "cycleCount"
+        ],
+        "title": "CollectionSummaryV2",
         "type": "object"
       },
       "CollectionThresholdSample": {
@@ -1102,6 +1911,325 @@
         "title": "EventPage",
         "type": "object"
       },
+      "EventPlaybackSummary": {
+        "properties": {
+          "playbackSeconds": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playbackseconds"
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoncodes",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "AVAILABLE",
+              "PARTIAL",
+              "PROCESSING",
+              "UNAVAILABLE",
+              "UNKNOWN"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "EventPlaybackSummary",
+        "type": "object"
+      },
+      "EventRecording": {
+        "properties": {
+          "category": {
+            "enum": [
+              "collection",
+              "alert",
+              "error"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "eventId": {
+            "title": "Eventid",
+            "type": "string"
+          },
+          "eventTo": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eventto"
+          },
+          "eventType": {
+            "title": "Eventtype",
+            "type": "string"
+          },
+          "occurredAt": {
+            "format": "date-time",
+            "title": "Occurredat",
+            "type": "string"
+          },
+          "pitAttribution": {
+            "default": "RECORDED",
+            "enum": [
+              "RECORDED",
+              "CURRENT_ASSIGNMENT"
+            ],
+            "title": "Pitattribution",
+            "type": "string"
+          },
+          "pitId": {
+            "title": "Pitid",
+            "type": "string"
+          },
+          "playback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EventPlaybackSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Opt-in list summary; null when include_playback is false"
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoncodes",
+            "type": "array"
+          },
+          "simulated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Simulated"
+          },
+          "stateAtOccurrence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stateatoccurrence"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "windowFrom": {
+            "format": "date-time",
+            "title": "Windowfrom",
+            "type": "string"
+          },
+          "windowKind": {
+            "enum": [
+              "COLLECTION_CYCLE",
+              "EVENT_CONTEXT"
+            ],
+            "title": "Windowkind",
+            "type": "string"
+          },
+          "windowState": {
+            "enum": [
+              "CLOSED",
+              "OPEN",
+              "UNKNOWN",
+              "POINT"
+            ],
+            "title": "Windowstate",
+            "type": "string"
+          },
+          "windowTo": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Windowto"
+          }
+        },
+        "required": [
+          "eventId",
+          "pitId",
+          "category",
+          "title",
+          "eventType",
+          "occurredAt",
+          "windowKind",
+          "windowState",
+          "windowFrom"
+        ],
+        "title": "EventRecording",
+        "type": "object"
+      },
+      "EventRecordingPage": {
+        "properties": {
+          "asOf": {
+            "format": "date-time",
+            "title": "Asof",
+            "type": "string"
+          },
+          "from": {
+            "format": "date-time",
+            "title": "From",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EventRecording"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageMetadata"
+          },
+          "to": {
+            "format": "date-time",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "from",
+          "to",
+          "asOf"
+        ],
+        "title": "EventRecordingPage",
+        "type": "object"
+      },
+      "EventRecordingReplay": {
+        "properties": {
+          "asOf": {
+            "format": "date-time",
+            "title": "Asof",
+            "type": "string"
+          },
+          "coveredSeconds": {
+            "default": 0,
+            "title": "Coveredseconds",
+            "type": "number"
+          },
+          "downloadPath": {
+            "title": "Downloadpath",
+            "type": "null"
+          },
+          "downloadReasonCode": {
+            "const": "EVENT_RANGE_EXPORT_UNSUPPORTED",
+            "default": "EVENT_RANGE_EXPORT_UNSUPPORTED",
+            "title": "Downloadreasoncode",
+            "type": "string"
+          },
+          "effectiveTo": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effectiveto"
+          },
+          "event": {
+            "$ref": "#/components/schemas/EventRecording"
+          },
+          "parts": {
+            "items": {
+              "$ref": "#/components/schemas/ReplayPart"
+            },
+            "title": "Parts",
+            "type": "array"
+          },
+          "playbackSeconds": {
+            "default": 0,
+            "title": "Playbackseconds",
+            "type": "number"
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoncodes",
+            "type": "array"
+          },
+          "requestedSeconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestedseconds"
+          },
+          "source": {
+            "const": "DAILY_RECORDING",
+            "default": "DAILY_RECORDING",
+            "title": "Source",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "AVAILABLE",
+              "PARTIAL",
+              "PROCESSING",
+              "UNAVAILABLE"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "unavailableIntervals": {
+            "items": {
+              "$ref": "#/components/schemas/UnavailableInterval"
+            },
+            "title": "Unavailableintervals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "event",
+          "state",
+          "asOf"
+        ],
+        "title": "EventRecordingReplay",
+        "type": "object"
+      },
       "Evidence": {
         "additionalProperties": false,
         "properties": {
@@ -1148,6 +2276,329 @@
           "method_version"
         ],
         "title": "FillEstimate",
+        "type": "object"
+      },
+      "FillForecastV2": {
+        "properties": {
+          "computedAt": {
+            "format": "date-time",
+            "title": "Computedat",
+            "type": "string"
+          },
+          "currentLoadPercent": {
+            "anyOf": [
+              {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentloadpercent"
+          },
+          "expectedThresholdAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedthresholdat"
+          },
+          "increasePercentPerMinute": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Increasepercentperminute"
+          },
+          "inputSource": {
+            "enum": [
+              "EDGE_STATE",
+              "HEIGHT_SECTIONS"
+            ],
+            "title": "Inputsource",
+            "type": "string"
+          },
+          "method": {
+            "const": "RECENT_LINEAR_TREND_V1",
+            "default": "RECENT_LINEAR_TREND_V1",
+            "title": "Method",
+            "type": "string"
+          },
+          "pitId": {
+            "title": "Pitid",
+            "type": "string"
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoncodes",
+            "type": "array"
+          },
+          "remainingSeconds": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remainingseconds"
+          },
+          "sampleCount": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Samplecount",
+            "type": "integer"
+          },
+          "simulated": {
+            "default": false,
+            "title": "Simulated",
+            "type": "boolean"
+          },
+          "state": {
+            "default": "UNAVAILABLE",
+            "enum": [
+              "AVAILABLE",
+              "REACHED",
+              "UNAVAILABLE"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "targetThresholdPercent": {
+            "title": "Targetthresholdpercent",
+            "type": "number"
+          },
+          "trendRSquared": {
+            "anyOf": [
+              {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trendrsquared"
+          },
+          "validUntil": {
+            "format": "date-time",
+            "title": "Validuntil",
+            "type": "string"
+          },
+          "windowFrom": {
+            "format": "date-time",
+            "title": "Windowfrom",
+            "type": "string"
+          },
+          "windowTo": {
+            "format": "date-time",
+            "title": "Windowto",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pitId",
+          "computedAt",
+          "validUntil",
+          "inputSource",
+          "targetThresholdPercent",
+          "windowFrom",
+          "windowTo"
+        ],
+        "title": "FillForecastV2",
+        "type": "object"
+      },
+      "FillObservation": {
+        "properties": {
+          "config_revision": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Config Revision",
+            "type": "string"
+          },
+          "data_state": {
+            "enum": [
+              "AVAILABLE",
+              "LIMITED",
+              "UNAVAILABLE",
+              "STALE",
+              "UNKNOWN",
+              "NO_DATA"
+            ],
+            "title": "Data State",
+            "type": "string"
+          },
+          "edge_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Edge Id",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "message_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Message Id",
+            "type": "string"
+          },
+          "method_version": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method Version"
+          },
+          "observation_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Observation Id",
+            "type": "string"
+          },
+          "observed_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed To"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "rule_version": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Version"
+          },
+          "scope_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Token"
+          },
+          "simulated": {
+            "default": false,
+            "title": "Simulated",
+            "type": "boolean"
+          },
+          "site_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Site Id",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "EDGE_STATE",
+              "HEIGHT_SECTIONS"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "time_basis": {
+            "default": "SOURCE_UTC",
+            "enum": [
+              "SOURCE_UTC",
+              "SIMULATION_SOURCE_UTC_UNVERIFIED"
+            ],
+            "title": "Time Basis",
+            "type": "string"
+          },
+          "value_percent": {
+            "anyOf": [
+              {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Percent"
+          }
+        },
+        "required": [
+          "source",
+          "site_id",
+          "edge_id",
+          "config_revision",
+          "message_id",
+          "observation_id",
+          "generated_at",
+          "received_at",
+          "observed_to",
+          "rule_version",
+          "method_version",
+          "data_state",
+          "reason_codes"
+        ],
+        "title": "FillObservation",
+        "type": "object"
+      },
+      "HTTPErrorResponse": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "HTTPErrorResponse",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1245,6 +2696,19 @@
             ],
             "title": "Assessmentid"
           },
+          "averagePercent": {
+            "anyOf": [
+              {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Averagepercent"
+          },
           "bucketEndAt": {
             "format": "date-time",
             "title": "Bucketendat",
@@ -1280,6 +2744,69 @@
             ],
             "title": "Generatedat"
           },
+          "inputSource": {
+            "default": "EDGE_STATE",
+            "enum": [
+              "EDGE_STATE",
+              "HEIGHT_SECTIONS",
+              "MIXED"
+            ],
+            "title": "Inputsource",
+            "type": "string"
+          },
+          "invalidSamples": {
+            "default": 0,
+            "title": "Invalidsamples",
+            "type": "integer"
+          },
+          "maximumPercent": {
+            "anyOf": [
+              {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximumpercent"
+          },
+          "methodVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Methodversion"
+          },
+          "minimumPercent": {
+            "anyOf": [
+              {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimumpercent"
+          },
+          "observationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observationid"
+          },
           "observedAt": {
             "anyOf": [
               {
@@ -1299,10 +2826,20 @@
             "title": "Reasoncodes",
             "type": "array"
           },
+          "simulated": {
+            "default": false,
+            "title": "Simulated",
+            "type": "boolean"
+          },
           "valid": {
             "default": false,
             "title": "Valid",
             "type": "boolean"
+          },
+          "validSamples": {
+            "default": 0,
+            "title": "Validsamples",
+            "type": "integer"
           },
           "valuePercent": {
             "anyOf": [
@@ -1316,6 +2853,15 @@
               }
             ],
             "title": "Valuepercent"
+          },
+          "valuePolicy": {
+            "default": "RAW_STATE",
+            "enum": [
+              "RAW_STATE",
+              "MEDIAN_MINUTE"
+            ],
+            "title": "Valuepolicy",
+            "type": "string"
           }
         },
         "required": [
@@ -1323,6 +2869,282 @@
           "bucketEndAt"
         ],
         "title": "HistorySampleV2",
+        "type": "object"
+      },
+      "LayoutFrame": {
+        "properties": {
+          "handedness": {
+            "const": "RIGHT_HANDED",
+            "default": "RIGHT_HANDED",
+            "title": "Handedness",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "originDescription": {
+            "title": "Origindescription",
+            "type": "string"
+          },
+          "unit": {
+            "const": "cm",
+            "default": "cm",
+            "title": "Unit",
+            "type": "string"
+          },
+          "verticalAxis": {
+            "const": "z",
+            "default": "z",
+            "title": "Verticalaxis",
+            "type": "string"
+          },
+          "xAxisDescription": {
+            "title": "Xaxisdescription",
+            "type": "string"
+          },
+          "yAxisDescription": {
+            "title": "Yaxisdescription",
+            "type": "string"
+          },
+          "zAxisDescription": {
+            "title": "Zaxisdescription",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "originDescription",
+          "xAxisDescription",
+          "yAxisDescription",
+          "zAxisDescription"
+        ],
+        "title": "LayoutFrame",
+        "type": "object"
+      },
+      "LayoutMeasurementLine": {
+        "properties": {
+          "a": {
+            "$ref": "#/components/schemas/LayoutPoint3"
+          },
+          "b": {
+            "$ref": "#/components/schemas/LayoutPoint3"
+          },
+          "kind": {
+            "const": "SCAN_PLANE_FLOOR_INTERSECTION",
+            "default": "SCAN_PLANE_FLOOR_INTERSECTION",
+            "title": "Kind",
+            "type": "string"
+          },
+          "lengthCm": {
+            "exclusiveMinimum": 0,
+            "title": "Lengthcm",
+            "type": "number"
+          }
+        },
+        "required": [
+          "a",
+          "b",
+          "lengthCm"
+        ],
+        "title": "LayoutMeasurementLine",
+        "type": "object"
+      },
+      "LayoutPoint2": {
+        "properties": {
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "LayoutPoint2",
+        "type": "object"
+      },
+      "LayoutPoint3": {
+        "properties": {
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          },
+          "z": {
+            "title": "Z",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "z"
+        ],
+        "title": "LayoutPoint3",
+        "type": "object"
+      },
+      "LayoutProfileMapping": {
+        "properties": {
+          "axis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "x",
+                  "y"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Axis"
+          },
+          "basis": {
+            "enum": [
+              "FLOOR_SECTION",
+              "FRAME_AXIS"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "maximumCm": {
+            "title": "Maximumcm",
+            "type": "number"
+          },
+          "minimumCm": {
+            "title": "Minimumcm",
+            "type": "number"
+          }
+        },
+        "required": [
+          "basis",
+          "minimumCm",
+          "maximumCm"
+        ],
+        "title": "LayoutProfileMapping",
+        "type": "object"
+      },
+      "LayoutRegion": {
+        "properties": {
+          "boundary": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutPoint2"
+            },
+            "maxItems": 64,
+            "minItems": 3,
+            "title": "Boundary",
+            "type": "array"
+          },
+          "floorZ": {
+            "title": "Floorz",
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "SIMULATION_BOUNDARY",
+              "HEIGHT_MEASUREMENT_REGION"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "topZ": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topz"
+          }
+        },
+        "required": [
+          "kind",
+          "boundary",
+          "floorZ"
+        ],
+        "title": "LayoutRegion",
+        "type": "object"
+      },
+      "LayoutSensor": {
+        "properties": {
+          "calibrationState": {
+            "default": "UNAVAILABLE",
+            "enum": [
+              "SIMULATION",
+              "VERIFIED",
+              "UNAVAILABLE"
+            ],
+            "title": "Calibrationstate",
+            "type": "string"
+          },
+          "calibrationVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calibrationversion"
+          },
+          "measurementLine": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LayoutMeasurementLine"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "position": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LayoutPoint3"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "profileMapping": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LayoutProfileMapping"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoncodes",
+            "type": "array"
+          },
+          "sensorId": {
+            "title": "Sensorid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sensorId"
+        ],
+        "title": "LayoutSensor",
         "type": "object"
       },
       "LidarProfile": {
@@ -1381,6 +3203,47 @@
         "title": "LidarProfile",
         "type": "object"
       },
+      "LidarProfilePageV2": {
+        "properties": {
+          "meanSectionFillPercent": {
+            "anyOf": [
+              {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meansectionfillpercent"
+          },
+          "meanSectionReasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Meansectionreasoncodes",
+            "type": "array"
+          },
+          "pitId": {
+            "title": "Pitid",
+            "type": "string"
+          },
+          "profiles": {
+            "items": {
+              "$ref": "#/components/schemas/LidarProfileV2"
+            },
+            "title": "Profiles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pitId",
+          "profiles"
+        ],
+        "title": "LidarProfilePageV2",
+        "type": "object"
+      },
       "LidarProfileSample": {
         "description": "Single surface measurement point along the LiDAR scan line.",
         "properties": {
@@ -1411,6 +3274,268 @@
           "positionRatio"
         ],
         "title": "LidarProfileSample",
+        "type": "object"
+      },
+      "LidarProfileSampleV2": {
+        "description": "One received or spatially grouped point; unavailable positions remain null.\n\nAngle metadata is present only for SENSOR_ANGLE samples. Keep dictionary semantics\nfor the projection/filter pipeline and omit absent keys from existing responses.",
+        "properties": {
+          "angleMdeg": {
+            "title": "Anglemdeg",
+            "type": "integer"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Height in cm",
+            "title": "Height"
+          },
+          "positionRatio": {
+            "anyOf": [
+              {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Positionratio"
+          },
+          "sourceIndex": {
+            "title": "Sourceindex",
+            "type": "integer"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "positionRatio",
+          "height",
+          "valid"
+        ],
+        "title": "LidarProfileSampleV2",
+        "type": "object"
+      },
+      "LidarProfileV2": {
+        "description": "No height is inferred from a reflection coordinate or an unverified floor distance.\n\nA verified, explicit frame/floor/region reference enables a separate height projection.",
+        "properties": {
+          "average": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average"
+          },
+          "calibrationState": {
+            "default": "UNVERIFIED",
+            "enum": [
+              "UNVERIFIED",
+              "VERIFIED",
+              "UNAVAILABLE",
+              "SIMULATION"
+            ],
+            "title": "Calibrationstate",
+            "type": "string"
+          },
+          "calibrationVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calibrationversion"
+          },
+          "configRevision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configrevision"
+          },
+          "coverageBasis": {
+            "default": "SPATIAL_BINS",
+            "enum": [
+              "SPATIAL_BINS",
+              "RECEIVED_POINTS"
+            ],
+            "title": "Coveragebasis",
+            "type": "string"
+          },
+          "coverageRatio": {
+            "default": 0,
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Coverageratio",
+            "type": "number"
+          },
+          "filteredAverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filteredaverage"
+          },
+          "maximum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum"
+          },
+          "measuredAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measuredat"
+          },
+          "minimum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum"
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoncodes",
+            "type": "array"
+          },
+          "referenceDepthCm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referencedepthcm"
+          },
+          "referenceDistanceCm": {
+            "title": "Referencedistancecm",
+            "type": "number"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/LidarProfileSampleV2"
+            },
+            "title": "Samples",
+            "type": "array"
+          },
+          "sectionFillPercent": {
+            "anyOf": [
+              {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sectionfillpercent"
+          },
+          "sectionLengthCm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sectionlengthcm"
+          },
+          "sensorId": {
+            "title": "Sensorid",
+            "type": "string"
+          },
+          "simulated": {
+            "default": false,
+            "title": "Simulated",
+            "type": "boolean"
+          },
+          "summaryValuePolicy": {
+            "default": "PROFILE_MEAN",
+            "enum": [
+              "PROFILE_MEAN",
+              "SCAN_MEAN_TEMPORAL_MEDIAN"
+            ],
+            "title": "Summaryvaluepolicy",
+            "type": "string"
+          },
+          "timeBasis": {
+            "default": "SOURCE_UTC",
+            "enum": [
+              "SOURCE_UTC",
+              "SIMULATION_SOURCE_UTC_UNVERIFIED"
+            ],
+            "title": "Timebasis",
+            "type": "string"
+          },
+          "unit": {
+            "const": "cm",
+            "default": "cm",
+            "title": "Unit",
+            "type": "string"
+          },
+          "valuePolicy": {
+            "default": "SPATIAL_BIN_MEDIAN",
+            "enum": [
+              "SPATIAL_BIN_MEDIAN",
+              "SPATIAL_TEMPORAL_MEDIAN",
+              "SENSOR_ANGLE"
+            ],
+            "title": "Valuepolicy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sensorId",
+          "referenceDistanceCm"
+        ],
+        "title": "LidarProfileV2",
         "type": "object"
       },
       "LiveVideo": {
@@ -1501,7 +3626,10 @@
               60,
               300,
               900,
-              3600
+              3600,
+              7200,
+              21600,
+              86400
             ],
             "title": "Bucketseconds",
             "type": "integer"
@@ -1616,6 +3744,155 @@
           "password"
         ],
         "title": "LoginRequest",
+        "type": "object"
+      },
+      "MeasurementLayoutV2": {
+        "properties": {
+          "bindingState": {
+            "default": "UNKNOWN",
+            "enum": [
+              "MATCHED",
+              "MISMATCH",
+              "UNKNOWN"
+            ],
+            "title": "Bindingstate",
+            "type": "string"
+          },
+          "computedAt": {
+            "format": "date-time",
+            "title": "Computedat",
+            "type": "string"
+          },
+          "configRevision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configrevision"
+          },
+          "configurationGeneratedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configurationgeneratedat"
+          },
+          "coordinateFrame": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LayoutFrame"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pitId": {
+            "title": "Pitid",
+            "type": "string"
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoncodes",
+            "type": "array"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LayoutRegion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sensors": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutSensor"
+            },
+            "maxItems": 2,
+            "title": "Sensors",
+            "type": "array"
+          },
+          "simulated": {
+            "default": false,
+            "title": "Simulated",
+            "type": "boolean"
+          },
+          "source": {
+            "default": "NONE",
+            "enum": [
+              "SIMULATION_REFERENCE",
+              "HEIGHT_REFERENCE",
+              "NONE"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "state": {
+            "default": "UNAVAILABLE",
+            "enum": [
+              "SIMULATION",
+              "PARTIAL",
+              "UNVERIFIED",
+              "UNAVAILABLE"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "unit": {
+            "const": "cm",
+            "default": "cm",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pitId",
+          "computedAt"
+        ],
+        "title": "MeasurementLayoutV2",
+        "type": "object"
+      },
+      "MediaErrorDetail": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "MediaErrorDetail",
+        "type": "object"
+      },
+      "MediaErrorResponse": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/MediaErrorDetail"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "MediaErrorResponse",
         "type": "object"
       },
       "MonitoringSnapshot": {
@@ -1748,6 +4025,16 @@
           },
           "deviceStatus": {
             "$ref": "#/components/schemas/src__app__schemas__edge_v2__DeviceStatus"
+          },
+          "fillObservation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FillObservation"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "measuredAt": {
             "anyOf": [
@@ -1926,6 +4213,26 @@
             "title": "Collectionthresholdpercent",
             "type": "number"
           },
+          "filterState": {
+            "default": "DISABLED",
+            "enum": [
+              "DISABLED",
+              "WARMING",
+              "READY",
+              "UNAVAILABLE"
+            ],
+            "title": "Filterstate",
+            "type": "string"
+          },
+          "inputSource": {
+            "default": "EDGE_STATE",
+            "enum": [
+              "EDGE_STATE",
+              "HEIGHT_SECTIONS"
+            ],
+            "title": "Inputsource",
+            "type": "string"
+          },
           "loadPercent": {
             "anyOf": [
               {
@@ -1939,9 +4246,27 @@
             ],
             "title": "Loadpercent"
           },
+          "rawLoadPercent": {
+            "anyOf": [
+              {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rawloadpercent"
+          },
           "recoveryThresholdPercent": {
             "title": "Recoverythresholdpercent",
             "type": "number"
+          },
+          "simulated": {
+            "default": false,
+            "title": "Simulated",
+            "type": "boolean"
           },
           "warningThresholdPercent": {
             "title": "Warningthresholdpercent",
@@ -2157,11 +4482,13 @@
               ],
               "type": "string"
             },
+            "maxItems": 2,
             "minItems": 1,
             "title": "Channels",
             "type": "array"
           },
           "email": {
+            "maxLength": 255,
             "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
             "title": "Email",
             "type": "string"
@@ -2180,11 +4507,13 @@
               ],
               "type": "string"
             },
+            "maxItems": 3,
             "minItems": 1,
             "title": "Eventtypes",
             "type": "array"
           },
           "name": {
+            "maxLength": 100,
             "minLength": 1,
             "title": "Name",
             "type": "string"
@@ -2192,6 +4521,7 @@
           "phone": {
             "anyOf": [
               {
+                "maxLength": 50,
                 "type": "string"
               },
               {
@@ -2210,6 +4540,7 @@
             "type": "string"
           },
           "team": {
+            "maxLength": 100,
             "minLength": 1,
             "title": "Team",
             "type": "string"
@@ -2247,6 +4578,7 @@
         "type": "object"
       },
       "NotificationRecipientPatch": {
+        "additionalProperties": false,
         "description": "Payload for partially updating a notification recipient.",
         "properties": {
           "channels": {
@@ -2259,6 +4591,8 @@
                   ],
                   "type": "string"
                 },
+                "maxItems": 2,
+                "minItems": 1,
                 "type": "array"
               },
               {
@@ -2270,6 +4604,7 @@
           "email": {
             "anyOf": [
               {
+                "maxLength": 255,
                 "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
                 "type": "string"
               },
@@ -2301,6 +4636,7 @@
                   ],
                   "type": "string"
                 },
+                "maxItems": 3,
                 "type": "array"
               },
               {
@@ -2312,6 +4648,8 @@
           "name": {
             "anyOf": [
               {
+                "maxLength": 100,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -2323,6 +4661,7 @@
           "phone": {
             "anyOf": [
               {
+                "maxLength": 50,
                 "type": "string"
               },
               {
@@ -2349,6 +4688,8 @@
           "team": {
             "anyOf": [
               {
+                "maxLength": 100,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -2389,6 +4730,21 @@
             ],
             "title": "Effectivestate",
             "type": "string"
+          },
+          "evaluationSource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "CURRENT_OBSERVATION",
+                  "RECENT_PERSISTED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluationsource"
           },
           "lastAlertAt": {
             "anyOf": [
@@ -2544,6 +4900,7 @@
           "name": {
             "anyOf": [
               {
+                "maxLength": 100,
                 "type": "string"
               },
               {
@@ -2683,6 +5040,52 @@
             ],
             "title": "Eventcategory",
             "type": "string"
+          },
+          "eventEndedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eventendedat"
+          },
+          "eventOccurredAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eventoccurredat"
+          },
+          "eventSimulated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eventsimulated"
+          },
+          "eventWindowCovered": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eventwindowcovered"
           },
           "frameRate": {
             "anyOf": [
@@ -2887,6 +5290,142 @@
           "retention_days"
         ],
         "title": "RecordingPolicy",
+        "type": "object"
+      },
+      "ReplayPart": {
+        "properties": {
+          "endSeconds": {
+            "exclusiveMinimum": 0,
+            "title": "Endseconds",
+            "type": "number"
+          },
+          "fromAt": {
+            "format": "date-time",
+            "title": "Fromat",
+            "type": "string"
+          },
+          "mapping": {
+            "default": "LINEAR",
+            "enum": [
+              "LINEAR",
+              "POINT_TIMESTAMP"
+            ],
+            "title": "Mapping",
+            "type": "string"
+          },
+          "playbackPath": {
+            "title": "Playbackpath",
+            "type": "string"
+          },
+          "recordingDate": {
+            "format": "date",
+            "title": "Recordingdate",
+            "type": "string"
+          },
+          "recordingId": {
+            "format": "uuid",
+            "title": "Recordingid",
+            "type": "string"
+          },
+          "relativeEndSeconds": {
+            "default": 0,
+            "description": "End on the event's zero-based playable timeline, excluding missing spans",
+            "minimum": 0,
+            "title": "Relativeendseconds",
+            "type": "number"
+          },
+          "relativeStartSeconds": {
+            "default": 0,
+            "description": "Start on the event's zero-based playable timeline, excluding missing spans",
+            "minimum": 0,
+            "title": "Relativestartseconds",
+            "type": "number"
+          },
+          "startSeconds": {
+            "minimum": 0,
+            "title": "Startseconds",
+            "type": "number"
+          },
+          "toAt": {
+            "format": "date-time",
+            "title": "Toat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recordingId",
+          "recordingDate",
+          "playbackPath",
+          "fromAt",
+          "toAt",
+          "startSeconds",
+          "endSeconds"
+        ],
+        "title": "ReplayPart",
+        "type": "object"
+      },
+      "RequestValidationErrorResponse": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/RequestValidationIssue"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "RequestValidationErrorResponse",
+        "type": "object"
+      },
+      "RequestValidationIssue": {
+        "properties": {
+          "ctx": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ctx"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Loc",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Msg",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "RequestValidationIssue",
         "type": "object"
       },
       "ScanReference": {
@@ -3297,6 +5836,43 @@
         "title": "TestNotificationRequest",
         "type": "object"
       },
+      "UnavailableInterval": {
+        "properties": {
+          "fromAt": {
+            "format": "date-time",
+            "title": "Fromat",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "GAP",
+              "UNCONFIRMED",
+              "FUTURE",
+              "MISSING",
+              "EXPIRED"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reasonCode": {
+            "title": "Reasoncode",
+            "type": "string"
+          },
+          "toAt": {
+            "format": "date-time",
+            "title": "Toat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fromAt",
+          "toAt",
+          "kind",
+          "reasonCode"
+        ],
+        "title": "UnavailableInterval",
+        "type": "object"
+      },
       "User": {
         "description": "Authenticated user profile.",
         "properties": {
@@ -3338,20 +5914,52 @@
       "V2Alert": {
         "properties": {
           "assessmentId": {
-            "title": "Assessmentid",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assessmentid"
           },
           "eventId": {
             "title": "Eventid",
             "type": "string"
           },
+          "inputSource": {
+            "default": "EDGE_STATE",
+            "enum": [
+              "EDGE_STATE",
+              "HEIGHT_SECTIONS"
+            ],
+            "title": "Inputsource",
+            "type": "string"
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/AlertLifecycle"
+          },
           "loadPercent": {
+            "maximum": 100,
+            "minimum": 0,
             "title": "Loadpercent",
             "type": "number"
           },
           "notificationId": {
             "title": "Notificationid",
             "type": "string"
+          },
+          "observationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observationid"
           },
           "observedAt": {
             "format": "date-time",
@@ -3369,6 +5977,11 @@
               }
             ],
             "title": "Readat"
+          },
+          "simulated": {
+            "default": false,
+            "title": "Simulated",
+            "type": "boolean"
           },
           "triggeredAt": {
             "format": "date-time",
@@ -3629,9 +6242,68 @@
             "title": "Category",
             "type": "string"
           },
+          "collectionCriteria": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionCriteria"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "collectionSource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "MANUAL_CONFIRMATION",
+                  "HEIGHT_SETTLED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collectionsource"
+          },
+          "confirmedCompletion": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmedcompletion"
+          },
           "detail": {
             "title": "Detail",
             "type": "string"
+          },
+          "detectionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detectionid"
+          },
+          "eventSource": {
+            "anyOf": [
+              {
+                "const": "EDGE_V2_TRANSITION",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eventsource"
           },
           "id": {
             "title": "Id",
@@ -3641,6 +6313,40 @@
             "format": "date-time",
             "title": "Occurredat",
             "type": "string"
+          },
+          "pitAttribution": {
+            "anyOf": [
+              {
+                "enum": [
+                  "RECORDED",
+                  "CURRENT_ASSIGNMENT"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pitattribution"
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoncodes",
+            "type": "array"
+          },
+          "recordingEventId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Event ID for GET /api/v2/recordings/events/{event_id}; null when no unambiguous reference exists. Does not guarantee available footage.",
+            "title": "Recordingeventid"
           },
           "recordingId": {
             "anyOf": [
@@ -3652,6 +6358,18 @@
               }
             ],
             "title": "Recordingid"
+          },
+          "resolutionObservedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolutionobservedat"
           },
           "resolvedAt": {
             "anyOf": [
@@ -3674,18 +6392,91 @@
             "title": "Severity",
             "type": "string"
           },
+          "simulated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Simulated"
+          },
+          "stateAtOccurrence": {
+            "anyOf": [
+              {
+                "enum": [
+                  "UNAVAILABLE",
+                  "RECOVERED",
+                  "PREPARING",
+                  "DEGRADED",
+                  "UNKNOWN"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stateatoccurrence"
+          },
           "status": {
             "enum": [
               "active",
               "resolved",
-              "completed"
+              "completed",
+              "unknown"
             ],
             "title": "Status",
             "type": "string"
           },
+          "statusBasis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "AT_OCCURRENCE",
+                  "CURRENT_EVALUATION",
+                  "PERSISTED_RESOLUTION",
+                  "UNVERIFIED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statusbasis"
+          },
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "transitionId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transitionid"
+          },
+          "transitionKind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "DEVICE_STATE_CHANGED",
+                  "MEASUREMENT_VALIDITY_CHANGED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transitionkind"
           },
           "type": {
             "enum": [
@@ -3795,6 +6586,8 @@
             "name": "pit_id",
             "required": true,
             "schema": {
+              "maxLength": 50,
+              "minLength": 1,
               "title": "Pit Id",
               "type": "string"
             }
@@ -3827,15 +6620,53 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Pit Config Api V1 Config Pits  Pit Id  Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Get pit configuration",
@@ -3852,6 +6683,8 @@
             "name": "pit_id",
             "required": true,
             "schema": {
+              "maxLength": 50,
+              "minLength": 1,
               "title": "Pit Id",
               "type": "string"
             }
@@ -3910,15 +6743,53 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Update Pit Config Api V1 Config Pits  Pit Id  Put"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Update pit configuration",
@@ -4010,6 +6881,22 @@
             }
           },
           {
+            "description": "Automatic collection criteria: current or all historical",
+            "in": "query",
+            "name": "collection_scope",
+            "required": false,
+            "schema": {
+              "default": "current",
+              "description": "Automatic collection criteria: current or all historical",
+              "enum": [
+                "current",
+                "all"
+              ],
+              "title": "Collection Scope",
+              "type": "string"
+            }
+          },
+          {
             "description": "Pit identifier",
             "in": "query",
             "name": "pit_id",
@@ -4037,11 +6924,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Operational Events Api V1 Events Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "List operational events",
@@ -4133,11 +7028,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Load History Api V1 History Load Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Get representative load percentage history",
@@ -4197,15 +7100,159 @@
           "204": {
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 404 Delete Media Clip Api V1 Media Clips  Clip Id  Delete"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Range Not Satisfiable"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Delete Media Clip Api V1 Media Clips  Clip Id  Delete"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 503 Delete Media Clip Api V1 Media Clips  Clip Id  Delete"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
           }
         },
         "summary": "Delete Media Clip",
@@ -4254,15 +7301,149 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 404 Get Media Clip Api V1 Media Clips  Clip Id  Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Range Not Satisfiable"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Media Clip Api V1 Media Clips  Clip Id  Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 503 Get Media Clip Api V1 Media Clips  Clip Id  Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
           }
         },
         "summary": "Get Media Clip",
@@ -4422,15 +7603,53 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Notification Recipients Api V1 Notification Recipients Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "List notification recipients",
@@ -4496,15 +7715,63 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Notification Recipient Api V1 Notification Recipients Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Create a notification recipient",
@@ -4599,15 +7866,83 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Update Notification Recipient Api V1 Notification Recipients  Recipientid  Patch"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Update a notification recipient",
@@ -4688,15 +8023,43 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Notifications Api V1 Notifications Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "List notifications for the current user",
@@ -4747,15 +8110,53 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Mark All Notifications Read Api V1 Notifications Read All Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Mark all current notifications as read",
@@ -4766,7 +8167,7 @@
     },
     "/api/v1/notifications/test": {
       "post": {
-        "description": "Queue an immediate test notification to a recipient.",
+        "description": "Queue an immediate test notification to a recipient.\n\nThe current implementation records the request without external delivery.",
         "operationId": "send_test_notification_api_v1_notifications_test_post",
         "parameters": [
           {
@@ -4827,18 +8228,66 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Send Test Notification Api V1 Notifications Test Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
-        "summary": "Queue a test notification",
+        "summary": "Record a test notification request",
         "tags": [
           "Administration"
         ]
@@ -4914,15 +8363,63 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Update Notification Api V1 Notifications  Notificationid  Patch"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Update the current user's notification state",
@@ -5053,15 +8550,149 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 404 List Recordings Api V1 Recordings Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Range Not Satisfiable"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Recordings Api V1 Recordings Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 503 List Recordings Api V1 Recordings Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
           }
         },
         "summary": "List recordings overlapping the requested interval",
@@ -5114,15 +8745,149 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 404 Get Recording Api V1 Recordings  Recordingid  Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Range Not Satisfiable"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Recording Api V1 Recordings  Recordingid  Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 503 Get Recording Api V1 Recordings  Recordingid  Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
           }
         },
         "summary": "Get recording metadata by identifier",
@@ -5173,15 +8938,53 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Delete Session Api V1 Session Delete"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Delete the current browser session",
@@ -5221,15 +9024,43 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Session Api V1 Session Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Get the current browser session",
@@ -5261,15 +9092,43 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Session Api V1 Session Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Create a browser session",
@@ -5325,15 +9184,53 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Alert Settings Api V1 Settings Alerts Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Get alert settings",
@@ -5429,20 +9326,191 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Replace Alert Settings Api V1 Settings Alerts Put"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Replace alert settings",
         "tags": [
           "Administration"
+        ]
+      }
+    },
+    "/api/v2/monitoring/active-alerts": {
+      "get": {
+        "operationId": "get_active_alerts_api_v2_monitoring_active_alerts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "FILL_OPERATIONS",
+              "enum": [
+                "FILL_OPERATIONS",
+                "ALL"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "default": "pit-01",
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Pit Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveFillAlertPageV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Active Alerts Api V2 Monitoring Active Alerts Get"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Active Alerts",
+        "tags": [
+          "Monitoring v2"
         ]
       }
     },
@@ -5514,15 +9582,53 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Alert History Api V2 Monitoring Alerts Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Alert History",
@@ -5599,15 +9705,53 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Collection History Api V2 Monitoring Collection Events Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Collection History",
@@ -5693,18 +9837,167 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Collection Revisions Api V2 Monitoring Collection Events  Assessment Id  Revisions Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Collection Revisions",
+        "tags": [
+          "Monitoring v2"
+        ]
+      }
+    },
+    "/api/v2/monitoring/collection-summary": {
+      "get": {
+        "operationId": "get_collection_summary_api_v2_monitoring_collection_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window_days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 365,
+              "minimum": 1,
+              "title": "Window Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "default": "pit-01",
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Pit Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionSummaryV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Collection Summary Api V2 Monitoring Collection Summary Get"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Collection Summary",
         "tags": [
           "Monitoring v2"
         ]
@@ -5752,18 +10045,254 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Events Api V2 Monitoring Events Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Events",
+        "tags": [
+          "Monitoring v2"
+        ]
+      }
+    },
+    "/api/v2/monitoring/fill-forecast": {
+      "get": {
+        "operationId": "get_fill_forecast_api_v2_monitoring_fill_forecast_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "default": "pit-01",
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Pit Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FillForecastV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Fill Forecast Api V2 Monitoring Fill Forecast Get"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Fill Forecast",
+        "tags": [
+          "Monitoring v2"
+        ]
+      }
+    },
+    "/api/v2/monitoring/layout": {
+      "get": {
+        "operationId": "get_measurement_layout_api_v2_monitoring_layout_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "default": "pit-01",
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Pit Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeasurementLayoutV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Measurement Layout Api V2 Monitoring Layout Get"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Measurement Layout",
         "tags": [
           "Monitoring v2"
         ]
@@ -5818,7 +10347,10 @@
                     60,
                     300,
                     900,
-                    3600
+                    3600,
+                    7200,
+                    21600,
+                    86400
                   ],
                   "type": "integer"
                 },
@@ -5869,18 +10401,155 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Load History Api V2 Monitoring Load History Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Get Load History",
+        "tags": [
+          "Monitoring v2"
+        ]
+      }
+    },
+    "/api/v2/monitoring/profiles": {
+      "get": {
+        "operationId": "profiles_api_v2_monitoring_profiles_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "default": "pit-01",
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Pit Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LidarProfilePageV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Profiles Api V2 Monitoring Profiles Get"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Profiles",
         "tags": [
           "Monitoring v2"
         ]
@@ -5930,15 +10599,53 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Snapshot Api V2 Monitoring Snapshot Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Snapshot",
@@ -6067,15 +10774,149 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 404 List Daily Recordings Api V2 Recordings Daily Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Range Not Satisfiable"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Daily Recordings Api V2 Recordings Daily Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 503 List Daily Recordings Api V2 Recordings Daily Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
           }
         },
         "summary": "List Daily Recordings",
@@ -6135,15 +10976,159 @@
           "204": {
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 404 Delete Daily Recording Api V2 Recordings Daily  Recording Id  Delete"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Range Not Satisfiable"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Delete Daily Recording Api V2 Recordings Daily  Recording Id  Delete"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 503 Delete Daily Recording Api V2 Recordings Daily  Recording Id  Delete"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
           }
         },
         "summary": "Delete Daily Recording",
@@ -6192,15 +11177,149 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 404 Get Daily Recording Api V2 Recordings Daily  Recording Id  Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Range Not Satisfiable"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Daily Recording Api V2 Recordings Daily  Recording Id  Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 503 Get Daily Recording Api V2 Recordings Daily  Recording Id  Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
           }
         },
         "summary": "Get Daily Recording",
@@ -6277,15 +11396,159 @@
             },
             "description": "Accepted"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 404 Prepare Daily Download Api V2 Recordings Daily  Recording Id  Exports Post"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Range Not Satisfiable"
+          },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Prepare Daily Download Api V2 Recordings Daily  Recording Id  Exports Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 503 Prepare Daily Download Api V2 Recordings Daily  Recording Id  Exports Post"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
           }
         },
         "summary": "Prepare Daily Download",
@@ -6293,8 +11556,471 @@
           "Daily Recordings"
         ]
       }
+    },
+    "/api/v2/recordings/events": {
+      "get": {
+        "operationId": "list_events_api_v2_recordings_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 50,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pit Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "collection",
+                "alert",
+                "error"
+              ],
+              "title": "Category",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_seconds",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 300,
+              "minimum": 0,
+              "title": "Before Seconds",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_seconds",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 300,
+              "minimum": 0,
+              "title": "After Seconds",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_playback",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Playback",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventRecordingPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 404 List Events Api V2 Recordings Events Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Events Api V2 Recordings Events Get"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 503 List Events Api V2 Recordings Events Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Events",
+        "tags": [
+          "Event Recordings"
+        ]
+      }
+    },
+    "/api/v2/recordings/events/{event_id}": {
+      "get": {
+        "operationId": "replay_event_api_v2_recordings_events__event_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "pattern": "^(?:evt-auto-col-start|evt-alt|evt-col|evt-v2-transition|evt-err)-[1-9][0-9]{0,18}$",
+              "title": "Event Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 50,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pit Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_seconds",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 300,
+              "minimum": 0,
+              "title": "Before Seconds",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_seconds",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 300,
+              "minimum": 0,
+              "title": "After Seconds",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventRecordingReplay"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 404 Replay Event Api V2 Recordings Events  Event Id  Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Range Not Satisfiable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Replay Event Api V2 Recordings Events  Event Id  Get"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 503 Replay Event Api V2 Recordings Events  Event Id  Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Replay Event",
+        "tags": [
+          "Event Recordings"
+        ]
+      }
     }
   },
   "x-source-repository": "https://github.com/ajin-scrap-monitoring/scrap-monitoring-backend",
-  "x-source-revision": "41c24d58066190ce4a673ee39b8e0c8bb7ad2553"
+  "x-source-revision": "2366bc64940f3c9beb3470d7c8a760741d056fb0"
 }

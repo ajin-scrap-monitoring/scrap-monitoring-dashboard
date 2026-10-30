@@ -1,10 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-import type { components } from "../src/generated/backend-contract.js";
 import { eventFixture, eventPageFixture } from "../src/test/api-contract-fixtures.js";
-import { mediaRecordingFixture, monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
+import { monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
 
-import { installBackendApi } from "./backend-api.js";
+import { historyV2, installBackendApi, syntheticEventReplay } from "./backend-api.js";
 
 test("알림 500은 현황과 과거 그래프를 유지하고 수동 재조회 없이 snapshot 수신으로 복구한다", async ({ page }) => {
   const initial = monitoringV2StateFixture("FRESH", 0);
@@ -38,78 +37,79 @@ test("알림 500은 현황과 과거 그래프를 유지하고 수동 재조회 
   expect(attempts).toBeGreaterThanOrEqual(2);
 });
 
-test("30일과 90일 조회는 기존 운영 기록을 유지하고 v2 그래프만 범위 미지원으로 표시한다", async ({ page }) => {
+test("30일과 90일 조회는 v2 그래프와 운영 기록을 함께 표시하고 bucket_seconds를 보내지 않는다", async ({ page }) => {
   const api = await installBackendApi(page);
   const eventQueries: URL[] = [];
   await page.route("**/api/v1/events?*", route => {
     const url = new URL(route.request().url());
-    if (url.searchParams.get("pageSize") === "100") eventQueries.push(url);
+    if (url.searchParams.get("pageSize") === "8") eventQueries.push(url);
     return url.searchParams.get("category") === "collection" ? route.fallback() : route.fulfill({ json: { ...eventPageFixture, items: [{ ...eventFixture, occurredAt: "2026-10-12T00:00:00Z", recordingId: null }] } });
   });
+  api.setLoadHistory(url => url.searchParams.get("from")?.startsWith("2026-07-") ? { status: 200, delayMs: 800, body: historyV2(url, monitoringV2StateFixture("UNAVAILABLE")) } : undefined);
   await page.goto("/history?source=api");
   await expect(page.locator(".history-chart")).toBeVisible();
-  const requested = api.requests.filter(url => url.pathname === "/api/v2/monitoring/load-history").length;
   for (const days of [30, 90]) {
+    const before = api.requests.filter(url => url.pathname === "/api/v2/monitoring/load-history").length;
     await page.getByRole("button", { name: `최근 ${days}일`, exact: true }).click();
     await page.getByRole("button", { name: "조회", exact: true }).click();
+    if (days === 90) await expect(page.locator("#history-query-status")).toContainText("조회 중입니다.");
     await expect(page.getByRole("button", { name: "조회", exact: true })).toBeEnabled();
-    await expect(page.locator(".history-chart")).toContainText("최대 7일");
+    await expect(page.locator("#history-query-status")).toHaveCount(0);
+    await expect(page.locator(".history-chart")).not.toContainText("최대 7일");
+    await expect(page.locator(".history-load-line").first()).toBeVisible();
     await expect(page.locator(".history-events")).toContainText(eventFixture.title);
-    expect(api.requests.filter(url => url.pathname === "/api/v2/monitoring/load-history")).toHaveLength(requested);
+    const requested = api.requests.filter(url => url.pathname === "/api/v2/monitoring/load-history").slice(before);
+    expect(requested).toHaveLength(1);
+    expect(requested[0].searchParams.has("bucket_seconds")).toBe(false);
+    expect(Date.parse(requested[0].searchParams.get("to")!) - Date.parse(requested[0].searchParams.get("from")!)).toBe(days * 86_400_000);
     const query = eventQueries.at(-1)!;
     expect(Date.parse(query.searchParams.get("to")!) - Date.parse(query.searchParams.get("from")!)).toBe(days * 86_400_000);
   }
   await expect(page.locator(".history-event-target")).toHaveCount(0);
 });
 
-test("녹화 범위 상세는 선택 시에만 조회하고 카드와 다운로드 위치를 유지한다", async ({ page }) => {
+test("90일을 넘는 기간은 요청 전에 안내하고 요청하지 않는다", async ({ page }) => {
   const api = await installBackendApi(page);
-  const id = "550e8400-e29b-41d4-a716-446655440000";
-  api.setRecordings([{ ...mediaRecordingFixture, id }]);
-  const detail = {
-    clip_id: id, camera_id: "camera-main", event_id: "evt-alt-1", status: "ready", accepted_at: "2026-09-09T00:00:30+09:00",
-    requested_start_at: "2026-09-09T00:00:00+09:00", requested_end_at: "2026-09-09T00:00:30+09:00",
-    actual_start_at: "2026-09-09T00:00:05+09:00", actual_end_at: "2026-09-09T00:00:25+09:00",
-    coverage: "partial", gaps: [{ start_at: "2026-09-09T00:00:00+09:00", end_at: "2026-09-09T00:00:05+09:00" }],
-    recording_policy: { pre_roll_seconds: 10, post_roll_seconds: 20, retention_days: 7 },
-    completed_at: "2026-09-09T00:01:00+09:00", expires_at: "2026-09-16T00:01:00+09:00", deleted_at: null, content_path: `/api/v1/clips/${id}/content`, error: null,
-  } satisfies components["schemas"]["ClipDetail"];
-  let coverageRequests = 0;
-  await page.route(`**/api/v1/media/clips/${id}`, route => { coverageRequests += 1; return route.fulfill({ json: detail }); });
-  await page.goto(`/recordings?source=api&recordingId=${id}`);
-  const opener = page.getByRole("button", { name: "부분 저장", exact: true });
-  await expect(opener).toBeVisible();
-  expect(coverageRequests).toBe(0);
-  await page.evaluate(() => document.fonts.ready);
-  await opener.scrollIntoViewIfNeeded();
-  const geometry = () => page.locator(".recordings-main .card, .recording-frame").evaluateAll(cards => cards.map(card => {
-    const { x, y, width, height } = card.getBoundingClientRect();
-    return { x, y, width, height };
-  }));
-  const before = await geometry();
-  await opener.focus();
-  await page.keyboard.press("Enter");
-  const dialog = page.getByRole("dialog", { name: "녹화 범위 상세", exact: true });
-  await expect(dialog.locator("dl > div").filter({ hasText: "요청 시작" })).toContainText(detail.requested_start_at);
-  await expect(dialog.locator("dl > div").filter({ hasText: "확보 시작" })).toContainText(detail.actual_start_at);
-  await expect(dialog).toContainText("구간별 누락 원인은 API에서 제공하지 않습니다.");
-  expect(coverageRequests).toBe(1);
-  expect(await geometry()).toEqual(before);
-  await page.keyboard.press("Escape");
-  await expect(dialog).toHaveCount(0);
-  await expect(opener).toBeFocused();
-  expect(await geometry()).toEqual(before);
+  await page.goto("/history?source=api");
+  await expect(page.locator(".history-chart")).toBeVisible();
+  await page.getByRole("button", { name: "최근 90일", exact: true }).click();
+  await page.getByRole("textbox", { name: "시작 시각", exact: true }).fill("2000-01-01T00:00");
+  const before = api.requests.filter(url => url.pathname === "/api/v2/monitoring/load-history").length;
+  await page.getByRole("button", { name: "조회", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("최대 90일");
+  expect(api.requests.filter(url => url.pathname === "/api/v2/monitoring/load-history")).toHaveLength(before);
 });
+
+for (const [status, code, guidance] of [
+  [503, "HISTORY_QUERY_TIMEOUT", "기간을 줄여 다시 조회"],
+  [422, "HISTORY_TOO_MANY_POINTS", "구간 수가 응답 한도"],
+  [422, "HISTORY_FUTURE_RANGE", "종료 시각이 현재보다 미래"],
+  [422, "HISTORY_RANGE_MUST_BE_WITHIN_90_DAYS", "최대 90일"],
+] as const) {
+  test(`적재율 이력 ${status} ${code}는 빈 그래프로 대체하지 않고 안내하며 자동 재시도하지 않는다`, async ({ page }) => {
+    const api = await installBackendApi(page);
+    api.setLoadHistory(url => Date.parse(url.searchParams.get("to") ?? "") - Date.parse(url.searchParams.get("from") ?? "") > 8 * 86_400_000 ? { status, body: { detail: code } } : undefined);
+    await page.goto("/history?source=api");
+    await expect(page.locator(".history-load-line").first()).toBeVisible();
+    await page.getByRole("button", { name: "최근 30일", exact: true }).click();
+    await page.getByRole("button", { name: "조회", exact: true }).click();
+    await expect(page.locator(".history-chart")).toContainText(guidance);
+    await expect(page.locator(".history-load-line")).toHaveCount(0);
+    const failed = api.requests.filter(url => url.pathname === "/api/v2/monitoring/load-history").length;
+    await page.waitForTimeout(1500);
+    expect(api.requests.filter(url => url.pathname === "/api/v2/monitoring/load-history")).toHaveLength(failed);
+  });
+}
 
 test("현재 분의 녹화는 목록에 유지하고 현황 전용 추이는 요청하지 않는다", async ({ page }) => {
   const initial = { ...monitoringV2StateFixture("FRESH", 0), serverTime: "2026-10-15T12:34:50+09:00" };
   const api = await installBackendApi(page, { initial });
-  api.setRecordings([{ ...mediaRecordingFixture, startedAt: "2026-10-15T12:34:10+09:00", endedAt: "2026-10-15T12:34:40+09:00" }]);
+  api.setEventReplays([syntheticEventReplay({}, { windowFrom: "2026-10-15T03:34:10Z", windowTo: "2026-10-15T03:34:40Z", occurredAt: "2026-10-15T03:34:10Z" })]);
   await page.goto("/recordings?source=api&recordingSource=event");
   await expect(page.locator(".recordings-list .recording-item")).toHaveCount(1);
   await expect(page.getByRole("textbox", { name: "종료 시각", exact: true })).toHaveValue("2026-10-15 12:35");
   const requests = api.requests.filter(url => url.pathname === "/api/v2/monitoring/load-history");
   expect(requests).toHaveLength(0);
-  const recordingRequest = api.requests.find(url => url.pathname === "/api/v1/recordings");
+  const recordingRequest = api.requests.find(url => url.pathname === "/api/v2/recordings/events");
   expect(recordingRequest?.searchParams.get("to")).toBe("2026-10-15T12:35:00+09:00");
 });

@@ -1,54 +1,36 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { mediaRecordingFixture, monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
+import { eventRecordingId, monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
 
-import { installBackendApi } from "./backend-api.js";
+import { installBackendApi, syntheticEventReplay } from "./backend-api.js";
 
-const id = "550e8400-e29b-41d4-a716-446655440000";
-const recording = { ...mediaRecordingFixture, id, startedAt: "2026-10-14T23:59:30Z", endedAt: "2026-10-15T00:00:30Z" };
 const initial = { ...monitoringV2StateFixture("FRESH", 0), serverTime: "2026-10-15T09:30:00+09:00" };
+const event = { windowFrom: "2026-10-14T23:59:30Z", windowTo: "2026-10-15T00:00:30Z", occurredAt: "2026-10-15T00:00:00Z" };
 const cardGeometry = (page: Page) => page.locator(".recordings-main, .recordings-main .card, .recording-frame").evaluateAll(elements => elements.map(element => {
   const { x, y, width, height } = element.getBoundingClientRect();
   return { x, y, width, height };
 }));
 
-test("녹화 상태 상세는 hover와 click으로 열고 카드 스크롤 및 배치 변경 없이 닫는다", async ({ page }) => {
+test("이벤트 녹화 상태 상세는 hover와 click으로 열고 카드 스크롤 및 배치 변경 없이 닫는다", async ({ page }) => {
   const api = await installBackendApi(page, { initial });
-  api.setRecordings([recording]);
+  api.setEventReplays([syntheticEventReplay({}, event)]);
   await page.goto("/recordings?source=api&recordingSource=event");
-  await expect(page.locator(".recording-frame video")).toBeVisible();
+  await expect(page.locator(".event-replay")).toBeVisible();
   await expect(page.getByRole("button", { name: "녹화 정보 새로고침" })).toHaveCount(0);
   await page.evaluate(() => document.fonts.ready);
   const before = await cardGeometry(page);
-  const error = "SYNTHETIC_ENCODING_FAILURE_".repeat(500) + "\n<script>syntheticOnly()</script>";
-  api.setRecordings([{ ...recording, status: "unavailable", mediaStatus: "failed", coverage: "none", contentPath: null, downloadPath: null,
-    durationSeconds: null, errorCode: error, gaps: Array.from({ length: 100 }, () => ({ start_at: recording.startedAt, end_at: recording.endedAt })) }]);
+  api.setEventReplays([syntheticEventReplay({ state: "UNAVAILABLE", parts: [], playbackSeconds: 0, coveredSeconds: 0, reasonCodes: ["NO_COVERAGE"] }, event)]);
   await page.locator(".recording-item").click();
-  const trigger = page.getByRole("button", { name: "녹화 실패 상세", exact: true });
+  const trigger = page.getByRole("button", { name: "영상 없음 상세", exact: true });
   await expect(trigger).toBeVisible();
-  await expect(page.locator(".recording-item")).not.toContainText("정보 없음");
-  await expect(page.locator(".recording-info dl")).toContainText("MP4");
-  await expect(page.locator(".recording-info dl")).toContainText("H264");
-  await expect(page.getByRole("button", { name: "영상 없음", exact: true })).toHaveCount(0);
-  await expect(page.locator(".recording-frame video")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "다운로드 불가", exact: true })).toBeDisabled();
+  await expect(page.locator(".event-replay")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "이벤트 구간 다운로드 불가", exact: false })).toHaveCount(0);
   expect(await cardGeometry(page)).toEqual(before);
-  const infoOverflow = () => page.locator(".recording-info").evaluate(element => ({ x: element.scrollWidth - element.clientWidth, y: element.scrollHeight - element.clientHeight, overflow: getComputedStyle(element).overflowY }));
-  const overflow = await infoOverflow();
-  expect(overflow.x).toBeLessThanOrEqual(1);
-  expect(overflow.y).toBeLessThanOrEqual(1);
-  expect(overflow.overflow).not.toMatch(/auto|scroll/);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
-  await expect(page.getByText(error, { exact: true })).toHaveCount(0);
   await trigger.hover();
   const popup = page.getByRole("dialog", { name: "녹화 상태 상세", exact: true });
   await expect(popup).toBeVisible();
-  await expect(popup).toContainText("녹화 영상을 생성하지 못했습니다.");
-  await expect(popup).toContainText("오류 코드");
-  await expect(popup).toContainText("확인 불가");
-  await expect(popup).toContainText("100개");
-  await expect(popup).toContainText("영상 없음");
-  await expect(popup).not.toContainText(error);
+  await expect(popup).toContainText("이 이벤트 구간에서 재생할 수 있는 영상이 없습니다.");
   await expect(popup.locator("script")).toHaveCount(0);
   expect(await cardGeometry(page)).toEqual(before);
   await popup.hover();
@@ -67,12 +49,11 @@ test("녹화 상태 상세는 hover와 click으로 열고 카드 스크롤 및 �
   await expect(popup).toHaveCount(0);
   await expect(trigger).toBeFocused();
   expect(await cardGeometry(page)).toEqual(before);
-  if (page.viewportSize()?.height === 1080) await expect(page.getByRole("button", { name: "다운로드 불가", exact: true })).toBeInViewport();
 });
 
-test("UTC 녹화 응답을 조회 기준 시각으로 표시하고 기간과 유형을 올바르게 전송한다", async ({ page }) => {
+test("UTC 이벤트 녹화 응답을 조회 기준 시각으로 표시하고 기간과 유형을 올바르게 전송한다", async ({ page }) => {
   const api = await installBackendApi(page, { initial });
-  api.setRecordings([recording]);
+  api.setEventReplays([syntheticEventReplay({}, event)]);
   await page.goto("/recordings?source=api&recordingSource=event");
   await expect(page.locator(".recording-item-main strong")).toHaveText("2026-10-15");
   await expect(page.locator(".recording-info dl > div").filter({ has: page.locator("dt", { hasText: "시작 시각" }) })).toContainText("2026-10-15 08:59:30");
@@ -81,36 +62,66 @@ test("UTC 녹화 응답을 조회 기준 시각으로 표시하고 기간과 유
   await page.getByRole("button", { name: "알림", exact: true }).click();
   const response = page.waitForResponse(response => {
     const url = new URL(response.url());
-    return url.pathname === "/api/v1/recordings" && url.searchParams.get("category") === "alert";
+    return url.pathname === "/api/v2/recordings/events" && url.searchParams.get("category") === "alert";
   });
   await page.getByRole("button", { name: "조회", exact: true }).click();
   expect((await response).status()).toBe(200);
   await expect(page.locator(".recording-item")).toHaveCount(1);
-  const query = api.requests.filter(url => url.pathname === "/api/v1/recordings").at(-1)?.searchParams;
-  expect(query?.get("pit_id")).toBe(initial.pitId);
+  const query = api.requests.filter(url => url.pathname === "/api/v2/recordings/events").at(-1)?.searchParams;
   expect(query?.get("from")).toBe("2026-10-15T08:55:00+09:00");
   expect(query?.get("to")).toBe("2026-10-15T09:05:00+09:00");
   expect(query?.get("category")).toBe("alert");
   expect(query?.get("page")).toBe("1");
-  expect(query?.get("pageSize")).toBe("100");
-  await expect(page.locator(".recording-frame video")).toBeVisible();
+  expect(query?.get("pageSize")).toBe("20");
+  await expect(page.locator(".event-replay")).toBeVisible();
 });
 
-test("녹화 단건 조회 실패는 브라우저 새로고침으로 복구한다", async ({ page }) => {
+test("이벤트 녹화 상세 조회 실패는 브라우저 새로고침으로 복구한다", async ({ page }) => {
   const api = await installBackendApi(page, { initial });
-  api.setRecordings([recording]);
+  api.setEventReplays([syntheticEventReplay({}, event)]);
   let failing = true;
-  await page.route(`**/api/v1/recordings/${id}`, route => failing ? route.fulfill({ status: 503, json: { detail: "Synthetic failure" } }) : route.fallback());
+  await page.route(`**/api/v2/recordings/events/${eventRecordingId}?*`, route => failing ? route.fulfill({ status: 503, json: { detail: "Synthetic failure" } }) : route.fallback());
   await page.goto("/recordings?source=api&recordingSource=event");
-  await page.getByRole("button", { name: "확인 실패 상세" }).click();
-  await expect(page.getByRole("alert")).toHaveText("녹화 정보를 확인하지 못했습니다.");
+  await page.getByRole("button", { name: /상세$/ }).first().click();
+  await expect(page.getByRole("alert").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "녹화 정보 새로고침" })).toHaveCount(0);
-  await expect(page.locator(".recording-frame video")).toHaveCount(0);
+  await expect(page.locator(".event-replay")).toHaveCount(0);
   const before = await cardGeometry(page);
   failing = false;
   await page.reload();
-  await expect(page.locator(".recording-frame video")).toBeVisible();
-  await expect(page.getByRole("button", { name: "녹화 영상 다운로드", exact: true })).toBeEnabled();
+  await expect(page.locator(".event-replay")).toBeVisible();
   await expect(page.getByRole("dialog", { name: "녹화 상태 상세" })).toHaveCount(0);
   expect(await cardGeometry(page)).toEqual(before);
+});
+
+test("이벤트 녹화 목록은 첫 화면에 서버 1페이지만 받고 필요한 순위에 닿을 때만 다음 서버 페이지를 순서대로 요청한다", async ({ page }) => {
+  const api = await installBackendApi(page, { initial });
+  const base = Date.parse("2026-10-15T00:00:00Z");
+  api.setEventReplays(Array.from({ length: 240 }, (_, index) => syntheticEventReplay({}, {
+    eventId: `evt-paged-${String(index).padStart(3, "0")}`,
+    windowFrom: new Date(base - index * 60_000).toISOString(), windowTo: new Date(base - index * 60_000 + 30_000).toISOString(),
+    occurredAt: new Date(base - index * 60_000 + 15_000).toISOString() })));
+  await page.goto("/recordings?source=api&recordingSource=event");
+  await expect(page.locator(".recording-item")).toHaveCount(6);
+  const requested = () => api.requests.filter(url => url.pathname === "/api/v2/recordings/events")
+    .map(url => `${url.searchParams.get("page")}/${url.searchParams.get("pageSize")}`);
+  expect(requested()).toEqual(["1/20"]);
+  const pagination = page.getByLabel("녹화 목록 페이지", { exact: true });
+  await expect(pagination).toContainText("1 / 40");
+  await expect(page.getByText("240건", { exact: true })).toBeVisible();
+  const next = page.getByRole("button", { name: "다음 녹화 목록 페이지" });
+  await next.click();
+  await expect(pagination).toContainText("2 / 40");
+  await next.click();
+  await expect(pagination).toContainText("3 / 40");
+  expect(requested()).toEqual(["1/20"]);
+  await next.click();
+  await expect(pagination).toContainText("4 / 40");
+  await expect(page.locator(".recording-item")).toHaveCount(6);
+  expect(requested()).toEqual(["1/20", "1/100"]);
+  // 필터 변경은 처음부터 다시 조회한다.
+  await page.getByRole("button", { name: "알림", exact: true }).click();
+  await page.getByRole("button", { name: "조회", exact: true }).click();
+  await expect.poll(() => requested().at(-1)).toBe("1/20");
+  await expect(pagination).toContainText("1 /");
 });

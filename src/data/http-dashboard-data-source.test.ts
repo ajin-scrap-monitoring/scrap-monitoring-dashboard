@@ -14,7 +14,7 @@ import {
 
 import { ApiError, createHttpDashboardDataSource } from "./http-dashboard-data-source";
 import type { DashboardData } from "../domain/dashboard";
-import { monitoringV2StateFixture } from "../test/backend-contract-fixtures";
+import { collectionSummaryFixture, eventRecordingFixture, eventRecordingId, eventRecordingPageFixture, eventReplayFixture, monitoringV2StateFixture } from "../test/backend-contract-fixtures";
 import { dailyRecordingFixture, dailyRecordingId } from "../test/daily-recording-fixtures";
 
 type RecordedRequest = { init?: RequestInit; url: URL };
@@ -31,7 +31,7 @@ test("현재 분의 녹화 조회 종료를 올림하고 현황 전용 추이는
       if (url.pathname === "/api/v1/session") return jsonResponse(sessionFixture);
       if (url.pathname === "/api/v2/monitoring/snapshot") return jsonResponse(snapshot);
       if (url.pathname === "/api/v1/notifications") return jsonResponse(notificationPageFixture);
-      if (url.pathname === "/api/v1/recordings") return jsonResponse({ ...recordingPageFixture, items: [{ ...recordingPageFixture.items[0], startedAt: "2026-10-15T12:34:10+09:00", endedAt: "2026-10-15T12:34:40+09:00" }] });
+      if (url.pathname === "/api/v2/recordings/events") return jsonResponse(eventRecordingPageFixture([eventRecordingFixture({ windowFrom: "2026-10-15T03:34:10Z", windowTo: "2026-10-15T03:34:40Z" })]));
       if (url.pathname === "/api/v1/events") return jsonResponse({ ...eventPageFixture, items: [] });
       return jsonResponse({ detail: "Synthetic history failure" }, 503);
     },
@@ -39,8 +39,108 @@ test("현재 분의 녹화 조회 종료를 올림하고 현황 전용 추이는
   const data = await source.getDashboardData();
   expect(data.recordings).toHaveLength(1);
   expect(data.history.endsAt).toBe("2026-10-15T12:35");
-  expect(requests.find(url => url.pathname === "/api/v1/recordings")?.searchParams.get("to")).toBe("2026-10-15T12:35:00+09:00");
+  expect(requests.find(url => url.pathname === "/api/v2/recordings/events")?.searchParams.get("to")).toBe("2026-10-15T12:35:00+09:00");
   expect(requests.some(url => url.pathname === "/api/v2/monitoring/load-history")).toBe(false);
+});
+
+describe("표시 시간대 Asia/Seoul 고정", () => {
+  test("서버 응답이 UTC여도 화면 표시와 조회 기간을 한국 표준시로 해석하고 요청은 offset 포함 ISO 8601을 유지한다", async () => {
+    const requests: URL[] = [];
+    const snapshot = { ...monitoringV2StateFixture("FRESH", 10), serverTime: "2026-10-13T00:00:10Z", measuredAt: "2026-10-13T00:00:05Z" };
+    const base = createV2ContractFetch(url => url.pathname === "/api/v2/monitoring/snapshot" ? jsonResponse(snapshot) : undefined);
+    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", route: () => "/history",
+      fetchImplementation: (input, init) => { requests.push(inputUrl(input)); return base(input, init); } });
+    const data = await source.getDashboardData();
+    expect(data.lastMeasuredAt).toBe("09:00:05");
+    expect(data.history.endsAt).toBe("2026-10-13T09:00");
+    expect(data.history.startsAt).toBe("2026-10-06T09:00");
+    expect(data.history.loadState?.status).toBe("loading");
+    expect(requests.some((url) => url.pathname === "/api/v2/monitoring/load-history" || url.pathname === "/api/v1/events")).toBe(false);
+    const first = await source.queryHistory?.({ from: data.history.startsAt, to: data.history.endsAt });
+    const history = requests.filter((url) => url.pathname === "/api/v2/monitoring/load-history").at(-1)!;
+    expect(history.searchParams.get("to")).toBe("2026-10-13T09:00:00+09:00");
+    expect(history.searchParams.get("from")).toBe("2026-10-06T09:00:00+09:00");
+    expect(first?.loadSamples.length).toBeGreaterThan(0);
+    const queried = await source.queryHistory?.({ from: "2026-10-12T09:00", to: "2026-10-13T09:00" });
+    const query = requests.filter((url) => url.pathname === "/api/v2/monitoring/load-history").at(-1)!;
+    expect([query.searchParams.get("from"), query.searchParams.get("to")]).toEqual(["2026-10-12T09:00:00+09:00", "2026-10-13T09:00:00+09:00"]);
+    expect(queried?.startsAt).toBe("2026-10-12T09:00");
+  });
+
+  test("이벤트 시각은 UTC와 다른 offset 모두 한국 표준시로 한 번만 변환한다", async () => {
+    const base = createContractFetch();
+    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v1", fetchImplementation: (input, init) => {
+      if (inputUrl(input).pathname === "/api/v1/events") {
+        return jsonResponse({ ...eventPageFixture, items: [
+          { ...eventPageFixture.items[0], id: "utc", occurredAt: "2026-10-13T00:30:00Z" },
+          { ...eventPageFixture.items[0], id: "seoul", occurredAt: "2026-10-13T09:30:00+09:00" },
+          { ...eventPageFixture.items[0], id: "west", occurredAt: "2026-10-12T19:30:00-05:00" },
+        ] });
+      }
+      return base.implementation(input, init);
+    } });
+    const page = await source.queryHistoryEvents?.({ from: "2026-10-12T00:00", to: "2026-10-14T00:00", page: 0, pageSize: 8 });
+    expect(page?.events.map((event) => event.time)).toEqual(["2026-10-13 09:30", "2026-10-13 09:30", "2026-10-13 09:30"]);
+  });
+});
+
+describe("이벤트 녹화 목록의 재생 요약", () => {
+  test("include_playback=true로 요청하고 항목의 playback을 상태와 길이에 반영하며 상세는 일괄 호출하지 않는다", async () => {
+    const { source, requests } = dailySource({ search: "?recordingSource=event", override: url => url.pathname === "/api/v2/recordings/events"
+      ? jsonResponse(eventRecordingPageFixture([
+        eventRecordingFixture({ eventId: "evt-a", playback: { state: "PARTIAL", playbackSeconds: 25, reasonCodes: [] } }),
+        eventRecordingFixture({ eventId: "evt-b", playback: { state: "UNKNOWN", playbackSeconds: null, reasonCodes: ["MEDIA_UNAVAILABLE"] } }),
+        eventRecordingFixture({ eventId: "evt-c", playback: null }),
+      ])) : undefined });
+    const data = await source.getDashboardData();
+    const listRequest = requests.find(({ url }) => url.pathname === "/api/v2/recordings/events")!;
+    expect(listRequest.url.searchParams.get("include_playback")).toBe("true");
+    expect(data.recordings.map((item) => [item.id, item.playbackSummary?.state ?? null, item.duration])).toEqual([
+      ["evt-a", "PARTIAL", "0:25"], ["evt-b", "UNKNOWN", "정보 없음"], ["evt-c", null, "정보 없음"],
+    ]);
+    expect(requests.filter(({ url }) => url.pathname.startsWith("/api/v2/recordings/events/"))).toHaveLength(0);
+  });
+});
+
+describe("서버 페이지 단위 조회", () => {
+  test("녹화 이벤트 목록은 첫 화면에 서버 1페이지(20건)만 요청하고 전체 건수는 totalItems를 쓴다", async () => {
+    const page = (request: URL) => {
+      const [number, size] = [Number(request.searchParams.get("page")), Number(request.searchParams.get("pageSize"))];
+      const items = Array.from({ length: size }, (_, index) => eventRecordingFixture({ eventId: `evt-${number}-${size}-${index}`, windowFrom: new Date(Date.parse("2026-10-12T00:00:00Z") - ((number - 1) * size + index) * 60_000).toISOString(), windowTo: null }));
+      return { ...eventRecordingPageFixture(items), page: { page: number, pageSize: size, totalItems: 1393, totalPages: Math.ceil(1393 / size) } };
+    };
+    const { source, requests } = dailySource({ search: "?recordingSource=event", override: url => url.pathname === "/api/v2/recordings/events" ? jsonResponse(page(url)) : undefined });
+    const data = await source.getDashboardData();
+    const listCalls = () => requests.filter(({ url }) => url.pathname === "/api/v2/recordings/events").map(({ url }) => `${url.searchParams.get("page")}/${url.searchParams.get("pageSize")}`);
+    expect(listCalls()).toEqual(["1/20"]);
+    expect(data.recordings).toHaveLength(20);
+    expect(data.recordingsTotal).toBe(1393);
+    expect(data.recordingsList).toBeDefined();
+    await data.recordingsList!.ensure(12);
+    expect(listCalls()).toEqual(["1/20"]);
+    const next = await data.recordingsList!.ensure(150);
+    expect(listCalls().slice(0, 3)).toEqual(["1/20", "1/100", "2/100"]);
+    expect(next.total).toBe(1393);
+    expect(next.items.length).toBeGreaterThanOrEqual(150);
+  });
+
+  test("이력 이벤트는 표의 페이지 번호와 크기, 유형, 기간과 collection_scope를 서버에 전달한다", async () => {
+    const requests: URL[] = [];
+    const base = createContractFetch();
+    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v1", fetchImplementation: (input, init) => {
+      const url = inputUrl(input);
+      if (url.pathname === "/api/v1/events") {
+        requests.push(url);
+        return jsonResponse({ items: [eventPageFixture.items[0]], page: { page: 4, pageSize: 8, totalItems: 1811, totalPages: 227 } });
+      }
+      return base.implementation(input, init);
+    } });
+    const result = await source.queryHistoryEvents!({ eventCategory: "alert", from: "2026-09-03T00:00", to: "2026-09-10T00:00", page: 3, pageSize: 8 });
+    expect(requests).toHaveLength(1);
+    expect(Object.fromEntries(requests[0].searchParams)).toMatchObject({ page: "4", pageSize: "8", category: "alert", collection_scope: "all",
+      from: "2026-09-03T00:00:00+09:00", to: "2026-09-10T00:00:00+09:00" });
+    expect([result.totalItems, result.totalPages, result.page]).toEqual([1811, 227, 3]);
+  });
 });
 
 function jsonResponse(value: unknown, status = 200) {
@@ -74,6 +174,8 @@ function createContractFetch({ authenticated = true }: { authenticated?: boolean
     if (url.pathname.startsWith("/api/v1/notifications/") && method === "PATCH") return jsonResponse(notificationPageFixture.items[0]);
     if (url.pathname === "/api/v1/history/load") return jsonResponse(loadHistoryFixture);
     if (url.pathname === "/api/v1/events") return jsonResponse(eventPageFixture);
+    if (url.pathname === "/api/v2/recordings/events") return jsonResponse(eventRecordingPageFixture());
+    if (url.pathname === `/api/v2/recordings/events/${eventRecordingId}`) return jsonResponse(eventReplayFixture());
     if (url.pathname === "/api/v1/recordings") return jsonResponse(recordingPageFixture);
     if (url.pathname === `/api/v1/recordings/${recordingPageFixture.items[0].id}`) return jsonResponse(recordingPageFixture.items[0]);
     if (url.pathname === "/api/v1/settings/alerts" && method === "GET") return jsonResponse(alertSettingsFixture);
@@ -115,7 +217,7 @@ test.each(["proposal", "backend"] as const)("%s의 촬영 시각은 확인한 �
   expect(data.monitoring.videoCapturedAt).toBe(apiContract === "proposal" ? monitoringFixture.video.capturedAt : null);
 });
 
-test.each(["proposal", "backend"] as const)("%s v1 이력은 최초 조회와 재조회에서 서버 제목과 내용을 별도로 보존한다", async (apiContract) => {
+test.each(["proposal", "backend"] as const)("%s v1 이력 이벤트는 서버 제목과 내용을 별도로 보존한다", async (apiContract) => {
   const base = createContractFetch();
   const event = { ...eventPageFixture.items[0], title: "서버 이벤트 제목", detail: "서버가 제공한 상세 설명입니다." };
   const source = createHttpDashboardDataSource({ apiContract, monitoringVersion: "v1", route: () => "/history",
@@ -123,10 +225,9 @@ test.each(["proposal", "backend"] as const)("%s v1 이력은 최초 조회와 �
       ? jsonResponse({ ...eventPageFixture, items: [event] }) : base.implementation(input, init),
   });
   const initial = await source.getDashboardData();
-  const queried = await source.queryHistory!({ from: "2026-09-03T00:00", to: "2026-09-10T00:00" });
-  for (const history of [initial.history, queried]) {
-    expect(history.events[0]).toMatchObject({ title: event.title, detail: event.detail, content: event.detail });
-  }
+  expect(initial.history.eventsState?.status).toBe("loading");
+  const page = await source.queryHistoryEvents!({ from: "2026-09-03T00:00", to: "2026-09-10T00:00", page: 0, pageSize: 8 });
+  expect(page.events[0]).toMatchObject({ title: event.title, detail: event.detail, content: event.detail });
 });
 
 test("v2 수신 오류는 장비의 현재 표시만 무효화하며 재수신 때 같은 보고 상태를 복원한다", async () => {
@@ -169,7 +270,9 @@ function v2HistoryResponse(url: URL) {
   const to = url.searchParams.get("to")!;
   const start = Date.parse(from);
   const end = Date.parse(to);
-  const interval = 3_600_000;
+  // Backend와 같이 응답 상한 1,441 구간을 만족하는 가장 작은 간격을 고른다.
+  const bucketSeconds = [3600, 7200, 21600, 86400].find((seconds) => Math.ceil(end / (seconds * 1000)) - Math.floor(start / (seconds * 1000)) <= 1441) ?? 86400;
+  const interval = bucketSeconds * 1000;
   const samples = [];
   for (let time = Math.floor(start / interval) * interval; time < end; time += interval) {
     const bucketStartAt = new Date(Math.max(start, time)).toISOString();
@@ -178,7 +281,7 @@ function v2HistoryResponse(url: URL) {
       valuePercent: 0, valid: true, dataState: "AVAILABLE", reasonCodes: [] });
   }
   const snapshot = monitoringV2StateFixture("FRESH", 72);
-  return { schemaVersion: "2", pitId: "pit-01", source: snapshot.source, from, to, bucketSeconds: 3600,
+  return { schemaVersion: "2", pitId: "pit-01", source: snapshot.source, from, to, bucketSeconds,
     selectionPolicy: "LATEST_STATE_PER_BUCKET", samples };
 }
 
@@ -190,7 +293,7 @@ function createV2ContractFetch(override?: (url: URL, init?: RequestInit) => Prom
     if (overridden) return overridden;
     if (url.pathname === "/api/v2/monitoring/snapshot") return jsonResponse(monitoringV2StateFixture("FRESH", 72));
     if (url.pathname === "/api/v2/monitoring/load-history") return jsonResponse(v2HistoryResponse(url));
-    if (url.pathname === "/api/v1/events" && url.searchParams.get("pageSize") === "1") return jsonResponse({ ...eventPageFixture, items: [] });
+    if (url.pathname === "/api/v2/monitoring/collection-summary") return jsonResponse(collectionSummaryFixture());
     return base.implementation(input, init);
   });
 }
@@ -253,7 +356,8 @@ describe("화면별 조회 범위와 요청 대기 제한", () => {
     const unsubscribe = source.subscribe!(() => undefined);
     const count = () => fetchImplementation.mock.calls.map(([input]) => inputUrl(input));
     const initial = count().length;
-    expect(count().filter(url => url.pathname === "/api/v2/monitoring/load-history")).toHaveLength(route === "/history" ? 1 : 0);
+    expect(count().filter(url => url.pathname === "/api/v2/monitoring/load-history")).toHaveLength(0);
+    expect(count().some(url => url.pathname === "/api/v1/events")).toBe(false);
     expect(count().some(url => url.pathname === "/api/v1/events" && url.searchParams.get("pageSize") === "1")).toBe(false);
     for (let i = 0; i < 5; i += 1) stream.emit("monitoring.snapshot", monitoringV2StateFixture("FRESH", 72));
     await vi.advanceTimersByTimeAsync(120_000);
@@ -265,13 +369,13 @@ describe("화면별 조회 범위와 요청 대기 제한", () => {
   test.each([false, true])("최근 완료 조회는 초기 요청과 실패(%s)를 포함해 1분 간격을 유지한다", async failed => {
     vi.useFakeTimers();
     const stream = new FakeEventSource();
-    const fetchImplementation = createV2ContractFetch(url => url.pathname === "/api/v1/events"
-      ? failed ? jsonResponse({}, 503) : jsonResponse({ ...eventPageFixture, items: [] }) : undefined);
+    const fetchImplementation = createV2ContractFetch(url => url.pathname === "/api/v2/monitoring/collection-summary"
+      ? failed ? jsonResponse({}, 503) : jsonResponse(collectionSummaryFixture()) : undefined);
     const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", route: () => "/",
       fetchImplementation, eventSourceFactory: () => stream as unknown as EventSource });
     await source.getDashboardData();
     const unsubscribe = source.subscribe!(() => undefined);
-    const count = () => fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v1/events").length;
+    const count = () => fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v2/monitoring/collection-summary").length;
     for (let i = 0; i < 20; i += 1) stream.emit("monitoring.snapshot", monitoringV2StateFixture("FRESH", 72));
     await vi.advanceTimersByTimeAsync(59_999);
     expect(count()).toBe(1);
@@ -385,13 +489,36 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
     expect(parameters.get("limit")).toBe("100");
   });
 
-  test.each(["?recordingSource=event", "?recordingId=recording-contract-1"])("명시적인 이벤트 진입 %s는 v1 목록 및 단건을 유지한다", async (search) => {
+  test("전체 조회는 같은 ID도 source로 구분하고 서로 다른 시간대의 실제 시작 시각으로 정렬한다", async () => {
+    const { source, requests } = dailySource({ route: "/", override: url => url.pathname === "/api/v2/recordings/events"
+      ? jsonResponse(eventRecordingPageFixture([eventRecordingFixture({ eventId: dailyRecordingId, windowFrom: "2026-10-11T23:00:00Z", windowTo: "2026-10-11T23:01:00Z" })])) : undefined });
+    await source.getDashboardData();
+    const signal = new AbortController().signal;
+    const items = await source.queryRecordings?.({ from: "2026-10-11T00:00", to: "2026-10-13T00:00", recordingSource: "all" }, signal);
+    expect(items?.map(item => ({ id: item.id, source: item.source }))).toEqual([
+      { id: dailyRecordingId, source: "event" }, { id: dailyRecordingId, source: "daily" },
+    ]);
+    const queries = requests.filter(({ url }) => ["/api/v2/recordings/events", "/api/v2/recordings/daily"].includes(url.pathname));
+    expect(queries).toHaveLength(2);
+    expect(queries.every(({ init }) => init?.signal && !init.signal.aborted)).toBe(true);
+    expect(queries.every(({ url }) => !url.searchParams.has("category"))).toBe(true);
+  });
+
+  test.each(["/api/v2/recordings/events", "/api/v2/recordings/daily"])("전체 조회의 %s 실패는 부분 결과를 반환하지 않는다", async path => {
+    const { source } = dailySource({ route: "/", override: url => url.pathname === path
+      ? jsonResponse({ detail: "Synthetic query failure" }, 503) : undefined });
+    await source.getDashboardData();
+    await expect(source.queryRecordings?.({ from: "2026-10-11T00:00", to: "2026-10-13T00:00", recordingSource: "all" })).rejects.toMatchObject({ status: 503 });
+  });
+
+  test.each([["?recordingSource=event"], [`?recordingId=${eventRecordingId}`]])("명시적인 이벤트 진입 %s는 v2 이벤트 목록 및 단건을 사용한다", async (search) => {
     const { source, requests } = dailySource({ search });
     const data = await source.getDashboardData();
     expect(data.recordingsSource).toBe("event");
-    expect(data.recordings[0]).toMatchObject({ source: "event", type: "알림" });
-    expect(requests.some(({ url }) => url.pathname.startsWith("/api/v2/recordings/daily"))).toBe(false);
-    expect(requests.some(({ url }) => url.pathname.startsWith("/api/v1/recordings"))).toBe(true);
+    expect(data.recordings[0]).toMatchObject({ source: "event", type: "알림", id: eventRecordingId });
+    expect(requests.some(({ url }) => url.pathname.startsWith("/api/v2/recordings/daily"))).toBe(search.includes("recordingId"));
+    expect(requests.some(({ url }) => url.pathname.startsWith("/api/v1/recordings"))).toBe(false);
+    expect(requests.some(({ url }) => url.pathname.startsWith("/api/v2/recordings/events"))).toBe(true);
   });
 
   test("한국 날짜 inclusive 조회 종료를 exclusive 날짜로 변환하고 opaque cursor를 그대로 전달한다", async () => {
@@ -485,7 +612,7 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
     const { source, requests } = dailySource({ route: "/" });
     await source.getDashboardData();
     expect(await source.getRecording?.(dailyRecordingId, undefined, "daily")).toMatchObject({ source: "daily", id: dailyRecordingId });
-    expect(await source.getRecording?.("recording-contract-1")).toMatchObject({ source: "event" });
+    expect(await source.getRecording?.(eventRecordingId)).toMatchObject({ source: "event" });
     const count = requests.length;
     await expect(source.getRecording?.("../invalid", undefined, "daily")).rejects.toThrow("UUID");
     expect(requests).toHaveLength(count);
@@ -555,6 +682,37 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
     expect(requests.some(({ init }) => init?.method === "POST")).toBe(false);
   });
 
+  test("날짜 녹화 삭제는 CSRF와 DELETE로 요청하고 204를 삭제 완료로 처리한다", async () => {
+    const { source, requests } = dailySource({ route: "/", override: (url, init) => url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}` && init?.method === "DELETE"
+      ? Promise.resolve(new Response(null, { status: 204 })) : undefined });
+    await source.getDashboardData();
+    expect(await source.deleteDailyRecording?.(dailyRecordingId)).toEqual({ outcome: "deleted" });
+    const request = requests.find(({ init }) => init?.method === "DELETE");
+    expect(request?.url.pathname).toBe(`/api/v2/recordings/daily/${dailyRecordingId}`);
+    expect(new Headers(request?.init?.headers).get("X-CSRF-Token")).toBeTruthy();
+  });
+
+  test("삭제가 503이어도 재조회에서 이미 없으면 삭제 반영으로 구분하고 남아 있으면 오류를 유지한다", async () => {
+    let remaining = false;
+    const { source } = dailySource({ route: "/", override: (url, init) => {
+      if (url.pathname !== `/api/v2/recordings/daily/${dailyRecordingId}`) return undefined;
+      if (init?.method === "DELETE") return jsonResponse({ detail: "cleanup failed" }, 503);
+      return remaining ? jsonResponse(dailyRecordingFixture) : jsonResponse({ detail: "not found" }, 404);
+    } });
+    await source.getDashboardData();
+    expect(await source.deleteDailyRecording?.(dailyRecordingId)).toEqual({ outcome: "reflected" });
+    remaining = true;
+    await expect(source.deleteDailyRecording?.(dailyRecordingId)).rejects.toMatchObject({ status: 503 });
+  });
+
+  test("삭제 409는 재시도 없이 그대로 전달한다", async () => {
+    const { source, requests } = dailySource({ route: "/", override: (url, init) => url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}` && init?.method === "DELETE"
+      ? jsonResponse({ detail: "recording" }, 409) : undefined });
+    await source.getDashboardData();
+    await expect(source.deleteDailyRecording?.(dailyRecordingId)).rejects.toMatchObject({ status: 409 });
+    expect(requests.filter(({ init }) => init?.method === "DELETE")).toHaveLength(1);
+  });
+
   test("v1과 proposal은 날짜 녹화 지원 또는 export 준비 기능을 제공하지 않는다", () => {
     for (const options of [{ apiContract: "backend", monitoringVersion: "v1" }, { apiContract: "proposal", monitoringVersion: "v2" }] as const) {
       const source = createHttpDashboardDataSource(options);
@@ -567,7 +725,7 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
 test("Backend 녹화 metadata 생략은 정보 없음과 접근 불가로 표시한다", async () => {
   const recording = { ...recordingPageFixture.items[0], videoCodec: undefined, containerFormat: undefined,
     status: undefined, frameRate: undefined, heightPixels: undefined, widthPixels: undefined };
-  const source = createHttpDashboardDataSource({ apiContract: "backend", fetchImplementation: () => jsonResponse(recording) });
+  const source = createHttpDashboardDataSource({ apiContract: "proposal", fetchImplementation: () => jsonResponse(recording) });
   const result = await source.getRecording?.(recording.id);
   expect(result).toMatchObject({ codec: "정보 없음", format: "정보 없음", status: "unavailable", frameRate: null, height: null, width: null });
   expect(result?.contentUrl).toBeUndefined();
@@ -576,14 +734,14 @@ test("Backend 녹화 metadata 생략은 정보 없음과 접근 불가로 표시
 
 test.each([undefined, null, ""])("녹화 형식과 codec 누락값 %s를 생성하지 않는다", async (missing) => {
   const recording = { ...recordingPageFixture.items[0], videoCodec: missing, containerFormat: missing };
-  const source = createHttpDashboardDataSource({ apiContract: "backend", fetchImplementation: () => jsonResponse(recording) });
+  const source = createHttpDashboardDataSource({ apiContract: "proposal", fetchImplementation: () => jsonResponse(recording) });
   expect(await source.getRecording?.(recording.id)).toMatchObject({ codec: "정보 없음", format: "정보 없음" });
 });
 
 test("녹화 실패여도 Backend가 제공한 metadata는 보존한다", async () => {
   const recording = { ...recordingPageFixture.items[0], status: "unavailable", mediaStatus: "failed", videoCodec: "h264", containerFormat: "mp4",
     durationSeconds: 0, sizeBytes: 0, retainedUntil: null };
-  const source = createHttpDashboardDataSource({ apiContract: "backend", fetchImplementation: () => jsonResponse(recording) });
+  const source = createHttpDashboardDataSource({ apiContract: "proposal", fetchImplementation: () => jsonResponse(recording) });
   expect(await source.getRecording?.(recording.id)).toMatchObject({ codec: "H264", format: "MP4", duration: "00:00:00", size: "0 B", retentionEndsAt: "정보 없음" });
 });
 
@@ -597,7 +755,7 @@ test("녹화 목록과 단건의 UTC 시각은 조회 기준 offset으로 변환
     if (url.pathname === "/api/v1/recordings") return jsonResponse({ ...recordingPageFixture, items: [recording] });
     if (url.pathname.startsWith("/api/v1/recordings/")) return jsonResponse(recording);
   });
-  const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", route: () => "/recordings", locationSearch: () => "?recordingSource=event", fetchImplementation });
+  const source = createHttpDashboardDataSource({ apiContract: "proposal", monitoringVersion: "v2", route: () => "/recordings", locationSearch: () => "?recordingSource=event", fetchImplementation });
   const data = await source.getDashboardData();
   expect(data.recordings[0]).toMatchObject({ date: "2026-10-15", start: "2026-10-15 08:59:30", end: "2026-10-15 09:00:30", time: "08:59 - 09:00",
     retentionStartsAt: "2026-10-15 09:01:00", retentionEndsAt: "정보 없음", duration: "정보 없음", status: "unavailable", errorCode: "NO_FRAMES_AVAILABLE",
@@ -822,16 +980,16 @@ describe("보조 조회의 오류 경계", () => {
   });
 
   test("녹화 목록 오류는 snapshot과 별도 상태로 남기며 최근 완료는 조회하지 않는다", async () => {
-    const fetchImplementation = createV2ContractFetch((url) => ["/api/v1/events", "/api/v2/recordings/daily"].includes(url.pathname) ? jsonResponse({}, 500) : undefined);
+    const fetchImplementation = createV2ContractFetch((url) => ["/api/v2/monitoring/collection-summary", "/api/v2/recordings/daily"].includes(url.pathname) ? jsonResponse({}, 500) : undefined);
     const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation, route: () => "/recordings" });
     const data = await source.getDashboardData();
     expect(data.monitoring.summary.loadPercent).toBe(72);
-    expect(fetchImplementation.mock.calls.some(([input]) => inputUrl(input).pathname === "/api/v1/events")).toBe(false);
+    expect(fetchImplementation.mock.calls.some(([input]) => inputUrl(input).pathname === "/api/v2/monitoring/collection-summary")).toBe(false);
     expect(data.recordingsState).toMatchObject({ status: "error", httpStatus: 500 });
   });
 
   test.each([401, 403])("최근 완료 조회 권한 오류 %i는 초기화를 거부한다", async (status) => {
-    const fetchImplementation = createV2ContractFetch((url) => url.pathname === "/api/v1/events" ? jsonResponse({}, status) : undefined);
+    const fetchImplementation = createV2ContractFetch((url) => url.pathname === "/api/v2/monitoring/collection-summary" ? jsonResponse({}, status) : undefined);
     const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation, onSessionExpired: () => undefined });
     await expect(source.getDashboardData()).rejects.toMatchObject({ status });
   });
@@ -898,20 +1056,102 @@ describe("v2 추이와 기존 이력의 독립 조회", () => {
       ? jsonResponse({}, 500) : undefined);
     const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation, route: () => "/history" });
     const data = await source.getDashboardData();
-    expect(data.history[area === "load" ? "loadState" : "eventsState"]?.status).toBe("error");
-    expect(area === "load" ? data.history.events.length : data.history.loadSamples.length).toBeGreaterThan(0);
+    expect(data.history.loadState?.status).toBe("loading");
+    expect(data.history.eventsState?.status).toBe("loading");
     expect(data.monitoring.summary.loadPercent).toBe(72);
+    const query = { from: "2026-10-12T09:00", to: "2026-10-13T09:00" };
+    const [load, events] = await Promise.allSettled([source.queryHistory!(query), source.queryHistoryEvents!({ ...query, page: 0, pageSize: 8 })]);
+    if (area === "load") {
+      expect(load.status === "fulfilled" && load.value.loadState?.status).toBe("error");
+      expect(events.status === "fulfilled" && events.value.events.length).toBeGreaterThan(0);
+    } else {
+      expect(load.status === "fulfilled" && load.value.loadSamples.length).toBeGreaterThan(0);
+      expect(events.status).toBe("rejected");
+    }
   });
 
-  test("30일 선택은 기존 운영 이력을 조회하고 v2 추이만 미지원으로 구분한다", async () => {
+  const loadHistoryCalls = (fetchImplementation: ReturnType<typeof createV2ContractFetch>) => fetchImplementation.mock.calls
+    .map(([input]) => inputUrl(input)).filter((url) => url.pathname === "/api/v2/monitoring/load-history");
+
+  test.each([
+    ["30일", "2026-09-13T00:30:00Z", "2026-10-13T00:30:00Z", 721],
+    ["90일", "2026-07-15T00:30:00Z", "2026-10-13T00:30:00Z", 1081],
+  ])("%s 조회는 bucket_seconds를 보내지 않고 응답 bucketSeconds와 구간 수를 사용한다", async (_name, from, to, count) => {
     const fetchImplementation = createV2ContractFetch();
     const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
     await source.getDashboardData();
-    const before = fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v2/monitoring/load-history").length;
-    const history = await source.queryHistory?.({ from: "2026-09-13T00:00:00Z", to: "2026-10-13T00:00:00Z" });
-    expect(history?.loadState?.status).toBe("unsupported");
-    expect(history?.events.length).toBeGreaterThan(0);
-    expect(fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v2/monitoring/load-history")).toHaveLength(before);
+    const before = loadHistoryCalls(fetchImplementation).length;
+    const history = await source.queryHistory?.({ from, to });
+    expect(history?.loadState).toMatchObject({ status: "ready" });
+    expect(history?.loadSamples).toHaveLength(count);
+    expect(history?.events).toEqual([]);
+    const requested = loadHistoryCalls(fetchImplementation).slice(before);
+    expect(requested).toHaveLength(1);
+    expect(requested[0].searchParams.has("bucket_seconds")).toBe(false);
+    expect(Date.parse(requested[0].searchParams.get("to")!) - Date.parse(requested[0].searchParams.get("from")!)).toBe(Date.parse(to) - Date.parse(from));
+  });
+
+  test("90일을 넘는 기간은 요청 없이 기간 안내로 구분한다", async () => {
+    const fetchImplementation = createV2ContractFetch();
+    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+    await source.getDashboardData();
+    const before = loadHistoryCalls(fetchImplementation).length;
+    const history = await source.queryHistory?.({ from: "2026-07-13T23:59:00Z", to: "2026-10-13T00:00:00Z" });
+    expect(history?.loadState).toMatchObject({ status: "error", code: "HISTORY_RANGE_MUST_BE_WITHIN_90_DAYS", httpStatus: 422 });
+    expect(history?.loadState?.message).toContain("최대 90일");
+    expect(history?.loadSamples).toEqual([]);
+    expect(loadHistoryCalls(fetchImplementation)).toHaveLength(before);
+  });
+
+  test.each([
+    ["HISTORY_RANGE_MUST_BE_WITHIN_90_DAYS", "최대 90일"],
+    ["HISTORY_TOO_MANY_POINTS", "구간 수"],
+    ["HISTORY_FUTURE_RANGE", "미래"],
+    ["HISTORY_TIMEZONE_REQUIRED", "시간대"],
+    ["HISTORY_TIME_OUT_OF_RANGE", "범위"],
+  ])("422 %s는 코드별 안내를 표시하고 빈 그래프로 대체하지 않는다", async (code, guidance) => {
+    const fetchImplementation = createV2ContractFetch((url) => url.pathname === "/api/v2/monitoring/load-history" && url.searchParams.get("from") === "2026-09-13T09:00:00+09:00"
+      ? jsonResponse({ detail: code }, 422) : undefined);
+    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+    await source.getDashboardData();
+    const history = await source.queryHistory?.({ from: "2026-09-13T09:00", to: "2026-10-13T09:00" });
+    expect(history?.loadState).toMatchObject({ status: "error", code, httpStatus: 422 });
+    expect(history?.loadState?.message).toContain(guidance);
+    expect(history?.loadSamples).toEqual([]);
+  });
+
+  test("503 HISTORY_QUERY_TIMEOUT은 기간 축소를 안내하고 자동으로 다시 요청하지 않는다", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchImplementation = createV2ContractFetch((url) => url.searchParams.get("from") === "2026-07-15T09:00:00+09:00" ? jsonResponse({ detail: "HISTORY_QUERY_TIMEOUT" }, 503) : undefined);
+      const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+      await source.getDashboardData();
+      const before = loadHistoryCalls(fetchImplementation).length;
+      const history = await source.queryHistory?.({ from: "2026-07-15T09:00", to: "2026-10-13T09:00" });
+      expect(history?.loadState).toMatchObject({ status: "error", code: "HISTORY_QUERY_TIMEOUT", httpStatus: 503, stale: false });
+      expect(history?.loadState?.message).toContain("기간을 줄여");
+      expect(history?.loadSamples).toEqual([]);
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(loadHistoryCalls(fetchImplementation)).toHaveLength(before + 1);
+    } finally { vi.useRealTimers(); }
+  });
+
+  test("90일 조회는 기본 10초가 아닌 긴 응답 대기 제한을 사용하고 초과하면 기간 축소를 안내한다", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchImplementation = createV2ContractFetch((url, init) => url.pathname === "/api/v2/monitoring/load-history" && url.searchParams.get("from") === "2026-07-15T09:00:00+09:00"
+        ? new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted")))) : undefined);
+      const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+      await source.getDashboardData();
+      let settled = false;
+      const pending = source.queryHistory?.({ from: "2026-07-15T09:00", to: "2026-10-13T09:00" }).then((value) => { settled = true; return value; });
+      await vi.advanceTimersByTimeAsync(12_000);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(14_000);
+      const history = await pending;
+      expect(history?.loadState).toMatchObject({ status: "error", code: "HISTORY_CLIENT_TIMEOUT" });
+      expect(history?.loadState?.message).toContain("기간을 줄여");
+    } finally { vi.useRealTimers(); }
   });
 
   test("SSE마다 추이를 다시 조회하지 않고 1분 timer와 구독 회수를 사용한다", async () => {
@@ -1026,8 +1266,68 @@ describe("HTTP 대시보드 데이터 소스", () => {
       ? jsonResponse({ ...eventPageFixture, items: [{ ...eventPageFixture.items[0], severity: "error", status: "resolved" }] })
       : base.implementation(input, init));
     const source = createHttpDashboardDataSource({ fetchImplementation: implementation, apiContract: "backend" });
-    const history = await source.queryHistory?.({ eventCategory: "alert", from: "2026-09-03T00:00", to: "2026-09-10T00:00" });
-    expect(history?.events[0]).toMatchObject({ status: null, tone: "error", type: "알림" });
+    const page = await source.queryHistoryEvents?.({ eventCategory: "alert", from: "2026-09-03T00:00", to: "2026-09-10T00:00", page: 0, pageSize: 8 });
+    expect(page?.events[0]).toMatchObject({ status: null, tone: "error", type: "알림" });
+  });
+
+  describe("Backend 이력의 상태 근거", () => {
+    const historyOf = async (item: Record<string, unknown>) => {
+      const base = createContractFetch();
+      const requests: URL[] = [];
+      const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v1", fetchImplementation: (input, init) => {
+        const url = inputUrl(input);
+        if (url.pathname === "/api/v1/events") {
+          requests.push(url);
+          return jsonResponse({ ...eventPageFixture, items: [{ ...eventPageFixture.items[0], ...item }] });
+        }
+        return base.implementation(input, init);
+      } });
+      const page = await source.queryHistoryEvents?.({ from: "2026-09-03T00:00", to: "2026-09-10T00:00", page: 0, pageSize: 8 });
+      return { event: page!.events[0], requests };
+    };
+    test("이력 조회는 collection_scope=all로 이전 감지 기준의 종료까지 요청하고 표시할 페이지만 요청한다", async () => {
+      const { requests } = await historyOf({});
+      expect(requests).toHaveLength(1);
+      expect(requests.every((url) => url.searchParams.get("collection_scope") === "all")).toBe(true);
+      expect([requests[0].searchParams.get("page"), requests[0].searchParams.get("pageSize")]).toEqual(["1", "8"]);
+    });
+    test("관련 녹화는 recordingEventId로만 연결하고 이력 id나 recordingId로 만들지 않는다", async () => {
+      expect((await historyOf({ id: "evt-alert-1", recordingEventId: "evt-alert-rec-1", recordingId: "legacy-recording" })).event.recordingId).toBe("evt-alert-rec-1");
+      expect((await historyOf({ id: "evt-alert-1", recordingEventId: null, recordingId: "legacy-recording" })).event.recordingId).toBeNull();
+      expect((await historyOf({ id: "evt-alert-1" })).event.recordingId).toBeNull();
+      expect((await historyOf({ id: "evt-auto-col-1700000000", category: "collection", recordingEventId: "evt-auto-col-start-1699999000" })).event.recordingId).toBe("evt-auto-col-start-1699999000");
+      expect((await historyOf({ id: "evt-alert-1", recordingEventId: "../etc/passwd" })).event.recordingId).toBeNull();
+    });
+    test("자동 수거 종료는 작업자 완료 확인과 구분해 표시하고 이전 감지 기준을 알린다", async () => {
+      const { event } = await historyOf({ category: "collection", type: "collection_completed", status: "completed",
+        collectionSource: "HEIGHT_SETTLED", confirmedCompletion: false, collectionCriteria: { matchesCurrentScope: false } });
+      expect(event.status).toBe("종료 감지");
+      expect(event.extraFields).toEqual(expect.arrayContaining([["수거 확인", expect.any(String)], ["감지 기준", expect.any(String)]]));
+      expect((await historyOf({ category: "collection", type: "collection_completed", status: "completed",
+        collectionSource: "MANUAL_CONFIRMATION", confirmedCompletion: true })).event.status).toBe("완료");
+    });
+    test.each([
+      ["active", "CURRENT_EVALUATION", "활성"], ["resolved", "PERSISTED_RESOLUTION", "해제"], ["unknown", "UNVERIFIED", "확인 불가"],
+      ["resolved", null, null], ["resolved", "UNVERIFIED", null],
+    ])("경보 status=%s basis=%s는 %s로 표시한다", async (status, statusBasis, label) => {
+      const { event } = await historyOf({ category: "alert", type: "collection_required", status, statusBasis,
+        resolvedAt: "2026-09-03T01:00:00Z", resolutionObservedAt: "2026-09-03T00:59:50Z" });
+      expect(event.status).toBe(label);
+      const resolved = status === "resolved" && statusBasis === "PERSISTED_RESOLUTION";
+      expect(event.extraFields?.some(([name]) => name === "해제 시각")).toBe(resolved);
+    });
+    test.each([["UNAVAILABLE", "사용 불가"], ["RECOVERED", "복구"], ["PREPARING", "준비 중"], ["DEGRADED", "성능 저하"], ["UNKNOWN", "확인 불가"]])(
+      "오류의 기록 당시 상태 %s는 %s로 표시하고 현재 상태가 아님을 알린다", async (stateAtOccurrence, label) => {
+        const { event } = await historyOf({ category: "error", type: "device_error", status: "resolved", statusBasis: "AT_OCCURRENCE", stateAtOccurrence });
+        expect(event.status).toBe(label);
+        expect(event.extraFields).toEqual(expect.arrayContaining([["상태 기준", expect.stringContaining("현재 장치 상태가 아닙니다")]]));
+      });
+    test("상태 근거가 없는 오류와 출처 정보는 상태를 만들지 않고 보존한다", async () => {
+      const { event } = await historyOf({ category: "error", type: "measurement_error", status: "resolved", simulated: true,
+        pitAttribution: "CURRENT_ASSIGNMENT", reasonCodes: ["FILTER_WARMING"] });
+      expect(event.status).toBeNull();
+      expect(event.extraFields).toEqual([["출처", "시뮬레이션"], ["피트 연결", expect.any(String)], ["사유 코드", "FILTER_WARMING"]]);
+    });
   });
 
   test.each(["completed", "occurred"] as const)("Backend 수거 이벤트의 %s 상태는 실제 완료 기록에만 표시한다", async (status) => {
@@ -1036,8 +1336,8 @@ describe("HTTP 대시보드 데이터 소스", () => {
       ? jsonResponse({ ...eventPageFixture, items: [{ ...eventPageFixture.items[0], category: "collection", type: "collection_completed", status }] })
       : base.implementation(input, init),
     });
-    const history = await source.queryHistory?.({ from: "2026-09-03T00:00", to: "2026-09-10T00:00" });
-    expect(history?.events[0]).toMatchObject({ status: status === "completed" ? "완료" : null, type: "수거" });
+    const page = await source.queryHistoryEvents?.({ from: "2026-09-03T00:00", to: "2026-09-10T00:00", page: 0, pageSize: 8 });
+    expect(page?.events[0]).toMatchObject({ status: status === "completed" ? "완료" : null, type: "수거" });
   });
 
   test("이력의 시간, 유형, 임계율 변경과 분 단위 이벤트 위치를 보존한다", async () => {
@@ -1054,10 +1354,9 @@ describe("HTTP 대시보드 데이터 소스", () => {
       expect.objectContaining({ label: "오류", value: 61 }),
     ]));
     expect(history?.thresholds).toHaveLength(2);
-    expect(history?.events[0]).toMatchObject({ recordingId: "recording-contract-1", status: "해제", type: "알림" });
-    const initialHistoryRequest = requests.find(({ url }) => url.pathname === "/api/v1/history/load");
-    expect(initialHistoryRequest?.url.searchParams.get("from")).toBe("2026-09-03T10:24:20+09:00");
-    expect(initialHistoryRequest?.url.searchParams.get("to")).toBe("2026-09-10T10:24:20+09:00");
+    const eventsPage = await source.queryHistoryEvents?.({ eventCategory: "alert", from: "2026-09-03T00:00", to: "2026-09-10T00:00", page: 0, pageSize: 8 });
+    expect(eventsPage?.events[0]).toMatchObject({ recordingId: "recording-contract-1", status: "해제", type: "알림" });
+    expect(requests.filter(({ url }) => url.pathname === "/api/v1/history/load")).toHaveLength(1);
     const historyRequest = requests.filter(({ url }) => url.pathname === "/api/v1/history/load").at(-1);
     expect(historyRequest?.url.searchParams.get("eventCategory")).toBe("alert");
     expect(historyRequest?.url.searchParams.get("from")).toBe("2026-09-03T00:00:00+09:00");

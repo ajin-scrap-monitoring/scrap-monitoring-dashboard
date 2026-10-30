@@ -121,6 +121,7 @@ export function monitoringV2Data(snapshot: unknown, pitId: string): DashboardDat
     videoStreamId: "",
     videoCapturedAt: null,
     v2: {
+      ...(snapshot.summary.simulated === true && { simulated: true }),
       serverTime: snapshot.serverTime,
       dataState: snapshot.dataState,
       snapshotId: snapshot.snapshotId,

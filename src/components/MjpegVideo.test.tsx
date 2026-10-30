@@ -96,19 +96,19 @@ test("URL 변경과 종료 뒤 이전 frame이나 오류를 적용하지 않는�
   expect(vi.getTimerCount()).toBe(0);
 });
 
-test("자동 재연결을 제한하고 수동 재시도로 연결을 새로 시작한다", async () => {
+test("250ms, 500ms와 1000ms 간격으로 자동 재연결하며 이후에도 1초 상한을 유지한다", async () => {
   render(<MjpegVideo alt="live" url="/live" />);
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
     await act(() => { reads[attempt].reject(new Error("stream ended")); return Promise.resolve(); });
-    if (attempt < 3) {
-      await act(() => vi.advanceTimersByTimeAsync((attempt + 1) * 1000));
-      expect(reads).toHaveLength(attempt + 2);
-    }
+    await act(() => vi.advanceTimersByTimeAsync([250, 500, 1000][Math.min(attempt, 2)] - 1));
+    expect(reads).toHaveLength(attempt + 1);
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(reads).toHaveLength(attempt + 2);
   }
-  expect(screen.getByText("영상 연결 불가")).toBeVisible();
+  expect(screen.getByText("영상 연결 중")).toBeVisible();
+  expect(screen.queryByText("영상 연결 불가")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "영상 다시 연결" })).not.toBeInTheDocument();
   expect(vi.getTimerCount()).toBe(0);
-  fireEvent.click(screen.getByRole("button", { name: "영상 다시 연결" }));
-  expect(reads).toHaveLength(5);
   frame();
   fireEvent.load(screen.getByAltText("live"));
   expect(screen.getByText("LIVE")).toBeVisible();
@@ -148,7 +148,7 @@ test("JPEG decode 실패는 연결을 취소하고 재연결 후 정상 frame으
   frame(0);
   expect(createObjectURL).toHaveBeenCalledOnce();
   await act(() => { reads[0].reject(new DOMException("aborted", "AbortError")); return Promise.resolve(); });
-  await act(() => vi.advanceTimersByTimeAsync(1000));
+  await act(() => vi.advanceTimersByTimeAsync(250));
   expect(reads).toHaveLength(2);
   frame();
   fireEvent.load(screen.getByAltText("live"));
@@ -168,11 +168,11 @@ test("StrictMode에서도 활성 연결은 하나이며 cleanup한 연결은 재
   expect(reads.every(({ options }) => options.signal.aborted)).toBe(true);
 });
 
-test("마지막 자동 재연결이 진행 중이면 실패 표시와 수동 재시도를 노출하지 않는다", async () => {
+test("정상 frame 복구는 연결을 유지하며 다음 수신 중단의 재시도 간격을 250ms로 초기화한다", async () => {
   render(<MjpegVideo alt="live" url="/live" />);
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await act(() => { reads[attempt].reject(new Error("stream ended")); return Promise.resolve(); });
-    await act(() => vi.advanceTimersByTimeAsync((attempt + 1) * 1000));
+    await act(() => vi.advanceTimersByTimeAsync([250, 500, 1000][attempt]));
   }
   expect(reads).toHaveLength(4);
   expect(screen.getByText("영상 연결 중")).toBeVisible();
@@ -180,7 +180,12 @@ test("마지막 자동 재연결이 진행 중이면 실패 표시와 수동 재
   frame();
   fireEvent.load(screen.getByAltText("live"));
   expect(screen.getByText("LIVE")).toBeVisible();
+  expect(reads).toHaveLength(4);
   await act(() => { reads[3].reject(new Error("final failure")); return Promise.resolve(); });
-  expect(screen.getByText("영상 연결 불가")).toBeVisible();
-  expect(screen.getByRole("button", { name: "영상 다시 연결" })).toBeVisible();
+  expect(screen.getByText("영상 연결 중")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "영상 다시 연결" })).not.toBeInTheDocument();
+  await act(() => vi.advanceTimersByTimeAsync(249));
+  expect(reads).toHaveLength(4);
+  await act(() => vi.advanceTimersByTimeAsync(1));
+  expect(reads).toHaveLength(5);
 });

@@ -3,6 +3,7 @@ import { clearAuthentication, hasAuthenticationSession, setAuthenticated } from 
 import { dateTimeValue } from "../date-range";
 
 import type { DashboardDataRequestOptions, DashboardDataSource, DateRangeQuery } from "./dashboard-data-source";
+import { createRecordingList } from "./recording-list";
 
 export type MockScenario = DashboardStatus | "empty-lists" | "live-update" | "operation-cycle" | "loading" | "request-error";
 
@@ -356,6 +357,17 @@ export function createMockDashboardDataSource(scenario: MockScenario = "normal")
       });
       return history;
     },
+    queryHistoryEvents: async (query, signal) => {
+      await Promise.resolve();
+      if (signal?.aborted) throw new DOMException("Synthetic request aborted.", "AbortError");
+      const events = currentData.history.events.filter((event) => inRange(event.time, query) && eventMatches(event.type, query.eventCategory));
+      return {
+        events: structuredClone(events.slice(query.page * query.pageSize, (query.page + 1) * query.pageSize)),
+        totalItems: events.length,
+        totalPages: Math.max(1, Math.ceil(events.length / query.pageSize)),
+        page: query.page,
+      };
+    },
     queryRecordings: async (query, signal) => {
       await Promise.resolve();
       if (signal?.aborted) throw new DOMException("Synthetic request aborted.", "AbortError");
@@ -363,6 +375,16 @@ export function createMockDashboardDataSource(scenario: MockScenario = "normal")
         && dateTimeValue(recording.start) <= dateTimeValue(query.to)
         && dateTimeValue(recording.end) >= dateTimeValue(query.from)));
     },
+    openRecordingList: (query) => createRecordingList({
+      loadDaily: async (signal) => {
+        await Promise.resolve();
+        if (signal?.aborted) throw new DOMException("Synthetic request aborted.", "AbortError");
+        return structuredClone(currentData.recordings.filter((recording) => recording.type !== "날짜 녹화" && eventMatches(recording.type, query.eventCategory)
+          && dateTimeValue(recording.start) <= dateTimeValue(query.to)
+          && dateTimeValue(recording.end) >= dateTimeValue(query.from)));
+      },
+      startOf: (recording) => dateTimeValue(recording.start),
+    }),
     replaceAlertSettings: (settings) => {
       currentData.admin.alertSettings = { ...structuredClone(settings), version: `"settings-v${Number(settings.version.replace(/\D/g, "") || "1") + 1}"` };
       currentData.admin.preCollectionAlert = structuredClone(currentData.admin.alertSettings.preCollectionAlert);

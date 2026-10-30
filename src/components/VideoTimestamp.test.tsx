@@ -10,7 +10,7 @@ test("실제 촬영 시각이 있으면 영상 수신 시각보다 우선한다"
   render(<VideoTimestamp capturedAt={capturedAt} receivedAt={receivedAt} />);
   const time = screen.getByText(/^촬영 /);
   expect(time).toHaveAttribute("datetime", new Date(capturedAt).toISOString());
-  expect(time).toHaveTextContent(new Date(capturedAt).toTimeString().slice(0, 8));
+  expect(time).toHaveTextContent("09:00:01");
   expect(screen.queryByText(/^영상 수신 /)).not.toBeInTheDocument();
 });
 
@@ -18,7 +18,7 @@ test.each([undefined, null, "", "invalid-time"])("촬영 시각 %s은 마지막 
   render(<VideoTimestamp capturedAt={value} receivedAt={receivedAt} />);
   const time = screen.getByText(/^영상 수신 /);
   expect(time).toHaveAttribute("datetime", receivedAt);
-  expect(time).toHaveTextContent(new Date(receivedAt).toTimeString().slice(0, 8));
+  expect(time).toHaveTextContent("09:00:02");
   expect(screen.queryByText(/^촬영 /)).not.toBeInTheDocument();
 });
 

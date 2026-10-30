@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { inspectBrowser, inspectionCredentials, inspectionOptions, inspectionRequestAllowed, summarizeRecordingResponse } from "./browser-inspection.ts";
+import { inspectBrowser, inspectionCredentials, inspectionOptions, inspectionRequestAllowed, summarizeEventRecordingResponse, summarizeRecordingResponse } from "./browser-inspection.ts";
 
 void test("browser inspection defaults to the FHD API recordings screen", () => {
   const options = inspectionOptions([]);
@@ -50,6 +50,29 @@ void test("recording diagnostics report contract checks without identifiers, tim
   assert.equal(result.items[0].validInterval, true);
   assert.equal(result.items[0].errorCode, "unrecognized");
   assert.doesNotMatch(JSON.stringify(result), /private-|2026-10|private raw/);
+});
+
+void test("event recording diagnostics report contract checks without identifiers or timestamps", () => {
+  const list = summarizeEventRecordingResponse(new URL("http://localhost/api/v2/recordings/events?pit_id=private-pit&from=2026-10-15T00:00:00%2B09:00&to=2026-10-16T00:00:00%2B09:00&category=alert&page=1&pageSize=100"), 200, {
+    items: [{ eventId: "private-event", windowFrom: "2026-10-15T00:00:00Z", windowTo: null, windowState: "OPEN" }],
+  });
+  assert.equal(list.query.explicitTimeOffsets, true);
+  assert.equal(list.items[0].validWindow, true);
+  assert.equal(list.items[0].windowState, "OPEN");
+  assert.equal((list.items[0] as { playbackState?: unknown }).playbackState, null);
+  const playback = summarizeEventRecordingResponse(new URL("http://localhost/api/v2/recordings/events?pit_id=private-pit&include_playback=true"), 200, {
+    items: [{ eventId: "a", windowFrom: "2026-10-15T00:00:00Z", windowTo: null, windowState: "POINT", playback: { state: "UNKNOWN", playbackSeconds: null, reasonCodes: ["private raw"] } },
+      { eventId: "b", windowFrom: "2026-10-15T00:00:00Z", windowTo: null, windowState: "POINT", playback: { state: "private-state", playbackSeconds: 0 } }],
+  });
+  assert.deepEqual(playback.items.map(item => { const entry = item as { playbackState?: unknown; playbackSecondsKnown?: unknown }; return [entry.playbackState, entry.playbackSecondsKnown]; }), [["UNKNOWN", false], ["unrecognized", true]]);
+  assert.doesNotMatch(JSON.stringify(playback), /private/);
+  const detail = summarizeEventRecordingResponse(new URL("http://localhost/api/v2/recordings/events/private-event?pit_id=private-pit"), 200, {
+    event: { eventId: "private-event", windowFrom: "2026-10-15T00:00:00Z", windowTo: "2026-10-15T00:01:00Z", windowState: "CLOSED" },
+    state: "PARTIAL", parts: [{}, {}], unavailableIntervals: [{}], playbackSeconds: 30, downloadPath: null,
+  });
+  assert.equal(detail.endpoint, "/api/v2/recordings/events/{id}");
+  assert.deepEqual(detail.items[0], { validIdentifier: true, validWindow: true, windowState: "CLOSED", replayState: "PARTIAL", partCount: 2, unavailableIntervalCount: 1, playbackSecondsKnown: true, hasDownload: false });
+  assert.doesNotMatch(JSON.stringify([list, detail]), /private-|2026-10/);
 });
 
 void test("remote browser help does not connect and unsafe SSH arguments are rejected", () => {

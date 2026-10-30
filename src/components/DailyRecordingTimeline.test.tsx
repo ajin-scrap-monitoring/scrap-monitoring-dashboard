@@ -78,8 +78,26 @@ test("재생 준비 중에는 확보된 범위를 표시하되 seek를 제공하
   expect(screen.getByRole("img", { name: "확보 구간 00:00:00 ~ 00:30:00" })).toBeInTheDocument();
 });
 
-test("많은 확보 및 누락 구간도 시각을 반복 파싱하지 않고 모두 유지한다", () => {
-  const count = 600;
+test("종료된 날짜의 시간축을 재사용해도 보관 만료 시각 이후에는 재생을 차단한다", () => {
+  const end = Date.parse(item.windowEndsAt);
+  const recording: DailyRecording = { ...item, status: "closed", expiresAt: new Date(end + 1000).toISOString() };
+  const onSeek = vi.fn();
+  const view = render(<DailyRecordingTimeline recording={recording} now={end} onSeek={onSeek} />);
+  expect(screen.getAllByRole("button").length).toBeGreaterThan(0);
+  view.rerender(<DailyRecordingTimeline recording={recording} now={end + 1000} onSeek={onSeek} />);
+  expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  expect(screen.getByRole("img", { name: "재생 불가 구간 00:00:00 ~ 24:00:00" })).toBeInTheDocument();
+});
+
+test("조회 날짜가 아직 시작되지 않았으면 시작 경계의 관측점을 확보 시점으로 앞당기지 않는다", () => {
+  const recording: DailyRecording = { ...item, availableIntervals: [{ startsAt: item.windowStartsAt, endsAt: item.windowStartsAt, playbackStartsAtSeconds: 0, playbackEndsAtSeconds: 2 }], gaps: [], recordedSeconds: 2 };
+  render(<DailyRecordingTimeline recording={recording} now={Date.parse(item.windowStartsAt) - 1000} onSeek={vi.fn()} />);
+  expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  expect(screen.getByRole("img", { name: "아직 도래하지 않은 구간 00:00:00 ~ 24:00:00" })).toBeInTheDocument();
+});
+
+test("많은 확보 및 누락 구간은 모든 경계를 유지하면서 표시 요소 수를 제한한다", () => {
+  const count = 8000;
   const start = Date.parse(item.windowStartsAt);
   const at = (seconds: number) => new Date(start + seconds * 1000).toISOString();
   const recording: DailyRecording = { ...item, status: "closed", coverage: "partial", coverageAsOfAt: item.windowEndsAt,
@@ -88,9 +106,54 @@ test("많은 확보 및 누락 구간도 시각을 반복 파싱하지 않고 �
     recordedSeconds: count, playableUntilAt: at((count - 1) * 3 + 1) };
   const parse = vi.spyOn(Date, "parse");
   try {
-    const view = render(<DailyRecordingTimeline recording={recording} now={Date.parse(item.windowEndsAt)} onSeek={vi.fn()} />);
-    expect(view.container.querySelectorAll(".daily-recording-timeline-track .daily-recording-range-available")).toHaveLength(count);
-    expect(view.container.querySelectorAll(".daily-recording-timeline-track .daily-recording-range-gap")).toHaveLength(count);
+    const onSeek = vi.fn();
+    const view = render(<DailyRecordingTimeline recording={recording} now={Date.parse(item.windowEndsAt)} onSeek={onSeek} />);
+    expect(view.container.querySelector("path.daily-recording-range-available")?.getAttribute("d")?.match(/M/g)).toHaveLength(count);
+    expect(view.container.querySelector("path.daily-recording-range-gap")?.getAttribute("d")?.match(/M/g)).toHaveLength(count);
+    expect(view.container.querySelectorAll("*").length).toBeLessThan(100);
     expect(parse.mock.calls.length).toBeLessThan(count * 8 + 100);
+    const seek = screen.getByRole("button", { name: /방향키로 확보 구간 선택/ });
+    vi.spyOn(seek, "getBoundingClientRect").mockReturnValue({ left: 20, width: 1000 } as DOMRect);
+    fireEvent.click(seek, { detail: 1, clientX: 20 + 3.5 / 86400 * 1000 });
+    expect(onSeek).toHaveBeenLastCalledWith(1.5);
+    onSeek.mockClear();
+    fireEvent.mouseMove(seek, { clientX: 20 + 1.5 / 86400 * 1000 });
+    expect(seek).toHaveAttribute("title", "누락 구간 00:00:01 ~ 00:00:03");
+    fireEvent.click(seek, { detail: 1, clientX: 20 + 1.5 / 86400 * 1000 });
+    expect(onSeek).not.toHaveBeenCalled();
+    fireEvent.keyDown(seek, { key: "End" });
+    fireEvent.click(seek);
+    expect(onSeek).toHaveBeenLastCalledWith(count - 1);
+    fireEvent.keyDown(seek, { key: "Home" });
+    fireEvent.keyDown(seek, { key: "ArrowRight" });
+    fireEvent.click(seek);
+    expect(onSeek).toHaveBeenLastCalledWith(1);
+    parse.mockClear();
+    view.rerender(<DailyRecordingTimeline recording={recording} now={Date.parse(item.windowEndsAt)} onSeek={onSeek} />);
+    expect(parse.mock.calls.length).toBeLessThan(10);
+    view.rerender(<DailyRecordingTimeline recording={recording} now={Date.parse(item.windowEndsAt) + 10_000} onSeek={onSeek} />);
+    expect(parse.mock.calls.length).toBeLessThan(20);
+    view.rerender(<DailyRecordingTimeline recording={{ ...recording, playbackState: "pending" }} now={Date.parse(item.windowEndsAt)} onSeek={onSeek} />);
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    const drawing = screen.getByRole("img", { name: "녹화 범위의 확보 및 누락 구간" });
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({ left: 20, width: 1000 } as DOMRect);
+    fireEvent.mouseMove(drawing, { clientX: 20 + 1.5 / 86400 * 1000 });
+    expect(drawing.querySelector("title")).toHaveTextContent("누락 구간 00:00:01 ~ 00:00:03");
   } finally { parse.mockRestore(); }
+});
+
+test("많은 관측점도 확보된 시간으로 늘리지 않고 pointer와 키보드 재생에 연결한다", () => {
+  const start = Date.parse(item.windowStartsAt);
+  const intervals = Array.from({ length: 300 }, (_, index) => ({ startsAt: new Date(start + index * 100_000).toISOString(), endsAt: new Date(start + index * 100_000).toISOString(), playbackStartsAtSeconds: index, playbackEndsAtSeconds: index + 1 }));
+  const recording: DailyRecording = { ...item, status: "closed", availableIntervals: intervals, gaps: [], coverageAsOfAt: item.windowEndsAt, recordedSeconds: 300 };
+  const onSeek = vi.fn();
+  const view = render(<DailyRecordingTimeline recording={recording} now={Date.parse(item.windowEndsAt)} onSeek={onSeek} />);
+  expect(view.container.querySelector("path.daily-recording-range-available")).toBeNull();
+  const seek = screen.getByRole("button", { name: /^확보 시점/ });
+  fireEvent.keyDown(seek, { key: "End" });
+  fireEvent.click(seek);
+  expect(onSeek).toHaveBeenLastCalledWith(299);
+  vi.spyOn(seek, "getBoundingClientRect").mockReturnValue({ left: 0, width: 1000 } as DOMRect);
+  fireEvent.click(seek, { detail: 1, clientX: 100 / 86400 * 1000 + 1 });
+  expect(onSeek).toHaveBeenLastCalledWith(1);
 });

@@ -67,11 +67,11 @@ chmod 644 runtime-config.json
 ```
 
 배포 mount 경로, JSON schema와 오류 처리는
-[`docs/implementation.md`](docs/implementation.md#runtime-설정)를 따른다.
+[`docs/implementation.md`](docs/deployment.md#runtime-설정)를 따른다.
 synthetic 빠른 시작에는 이 파일이 필요하지 않다.
 버전, synthetic 포함 여부, API 버전과 영상 모드의 `VITE_*` 값은 정적 빌드 때 적용한다.
 실행 중인 컨테이너의 환경변수로 이미 생성된 브라우저용 정적 파일을 변경할 수 없다. 전체 설정 경계는
-[`docs/implementation.md`](docs/implementation.md)를 따른다.
+[배포 문서](docs/deployment.md)를 따른다.
 
 ## 빠른 시작
 
@@ -114,7 +114,7 @@ sudo docker compose up --build development
 ```
 
 기존 서비스가 실행 중인 서버에서의 source 동기화, API 연결과 SSH 접속은
-[원격 개발 컨테이너](docs/implementation.md#원격-개발-컨테이너)를 따른다.
+[원격 개발 컨테이너](docs/development.md#원격-개발-컨테이너)를 따른다.
 
 ### 전체 검증
 
@@ -128,8 +128,8 @@ sudo docker compose build verification
 sudo docker compose run --rm verification
 ```
 
-개발 컨테이너와 검증 범위의 전체 내용은
-[`docs/implementation.md`](docs/implementation.md)를 따른다.
+개발 컨테이너는 [개발 환경](docs/development.md), 검사 범위는
+[검증 기준](docs/testing.md)을 따른다.
 
 ### Production 이미지 검증
 
@@ -168,26 +168,30 @@ sudo docker compose down --volumes
 두 통합 검증 스크립트는 정상 종료, 실패와 `Ctrl+C` 시 실행별 자원을 정리한다.
 SIGKILL 등으로 정리하지 못한 실행은 출력된 `Recovery command`로 회수한다.
 검증 로그와 산출물은 Git 추적 대상이 아니며 저장 위치와 recovery 절차는
-[`docs/implementation.md`](docs/implementation.md#개발과-검증-컨테이너)를 따른다.
+[`docs/implementation.md`](docs/development.md#개발과-검증-컨테이너)를 따른다.
 
 ## 배포
 
 `vMAJOR.MINOR.PATCH` Git tag는 Public GitHub Container Registry (GHCR) 이미지 게시를
 시작한다. 배포 환경은 image digest를 사용한다. 배포 경계와 운영 절차는
-[`docs/implementation.md`](docs/implementation.md)를 따른다.
+[배포 문서](docs/deployment.md)를 따른다.
 
 ## 문서
 
 | 문서 | 역할 |
 | --- | --- |
-| [`.agents/AGENTS.md`](.agents/AGENTS.md) | Repository 작업 지침과 문서 확인 순서 |
-| [`docs/project-spec.md`](docs/project-spec.md) | 제품 목적, 범위와 외부 경계 |
-| [`docs/implementation.md`](docs/implementation.md) | 현재 구현, 실행, 검증과 이미지 책임 |
-| [`docs/development-workflow.md`](docs/development-workflow.md) | 작업 단위와 단계별 완료 조건 |
-| [`docs/api-integration-plan.md`](docs/api-integration-plan.md) | 기존 디자인을 유지하는 Backend 및 Media API 연동 계획 |
-| [`docs/contracts/README.md`](docs/contracts/README.md) | 외부 연동 계약 항목과 확정 절차 |
-| [`docs/contracts/backend/README.md`](docs/contracts/backend/README.md) | 실제 서비스 계약 snapshot과 통합 검증 경계 |
-| [`docs/contracts/backend/frontend-mapping.md`](docs/contracts/backend/frontend-mapping.md) | 기존 화면과 Backend 정보의 매핑 및 추가 계약 평가 |
+| [`docs/README.md`](docs/README.md) | 새 세션의 문서 진입점과 작업별 읽기 경로 |
+| [`.agents/AGENTS.md`](.agents/AGENTS.md) | Repository 작업 경계와 권한 및 인계 지침 |
+| [`docs/project-spec.md`](docs/project-spec.md) | 제품 목적, 기존 화면과 데이터 의미의 유지 조건 |
+| [`docs/implementation.md`](docs/implementation.md) | 채택한 기술과 현재 클라이언트 구현 |
+| [`docs/development.md`](docs/development.md) | 개발 컨테이너, source 동기화와 원격 화면 확인 |
+| [`docs/testing.md`](docs/testing.md) | 검사 계층, 빌드 예산, 통합 자원 회수와 리뷰 |
+| [`docs/deployment.md`](docs/deployment.md) | 이미지 책임, runtime 설정, Nginx와 TLS |
+| [`docs/development-workflow.md`](docs/development-workflow.md) | 작업 시작, 로컬 진행과 원격 반영 및 완료 조건 |
+| [`docs/navigation-performance-plan.md`](docs/navigation-performance-plan.md) | 미착수 화면 전환 및 성능 개선 계획 |
+| [`docs/contracts/README.md`](docs/contracts/README.md) | 외부 계약의 확인 순서와 정본 선택 |
+| [`docs/contracts/backend/README.md`](docs/contracts/backend/README.md) | 고정한 실제 서비스 계약과 통합 검증 경계 |
+| [`docs/contracts/backend/frontend-mapping.md`](docs/contracts/backend/frontend-mapping.md) | 화면 매핑, 의도적 비표시와 외부 미구현 및 요청 책임 |
 
 ## 이용 조건
 

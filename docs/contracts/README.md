@@ -3,7 +3,10 @@
 ## 목적
 
 이 문서는 대시보드와 외부 서비스 사이에서 확정해야 하는 계약 항목, 결정 순서와 완료
-조건의 정본이다. 실제 작업 진행 상태와 검토 요청은 GitHub Issue와 Pull Request (PR)에서
+조건의 정본이다. 현재 계약은 [실제 서비스 계약](backend/README.md), 데이터 변환과
+미구현 요청은 [화면 매핑](backend/frontend-mapping.md)에서 먼저 확인한다. 아래 결정
+절차는 새 계약이나 계약 변경에 적용하며 확정한 항목을 매 세션마다 다시 결정하지 않는다.
+작업 진행 상태와 검토 요청은 현재 요청 또는 승인된 GitHub Issue와 Pull Request (PR)에서
 관리한다.
 
 실제 제공 정보와 기존 화면 항목의 변환, 사용 불가 정보 및 추가 계약의 평가는
@@ -13,16 +16,16 @@
 따른다.
 
 Dashboard의 runtime 설정은 `runtime-config.schema.json`을 따른다. 제공 경로와 mount 및
-오류 처리 절차는 `../implementation.md`의 `Runtime 설정`에 기록한다.
+오류 처리 절차는 [Runtime 설정](../deployment.md#runtime-설정)을 따른다.
 이 계약은 내부 service 간 공유 token 제거를 정의하지 않는다.
 
 제품 범위와 외부 경계는 `docs/project-spec.md`, 현재 구현과 채택한 기술은
 `docs/implementation.md`, 개발 단계는 `docs/development-workflow.md`를 따른다. 확정한 계약
 산출물은 이 디렉토리에 추가한다.
 
-현재 실행한 Backend, Camera Media Service와 Edge Platform의 계약 snapshot 및 검증 경계는
+고정한 Backend, Camera Media Service와 Edge Platform의 계약 snapshot 및 검증 경계는
 `backend/README.md`를 따른다. 운영 정책과 전체 시스템 계약의 승인은 이 snapshot과 별도로
-관리한다.
+관리하며 현재 배포 revision을 manifest와 같다고 전제하지 않는다.
 
 프론트엔드 관점의 v1 계약 제안은 `proposal/README.md`, 화면별 매핑은
 `proposal/frontend-mapping.md`에서 확인한다. 제안에 포함된 경로, 인증 방식, 필드와 상태
@@ -183,14 +186,14 @@ signaling 요청만 FastAPI로 전달하며 WebRTC 미디어 패킷은 Nginx와 
 - LiDAR 1과 LiDAR 2의 평균, 최솟값과 최댓값
 - 측정값 유효성 또는 결측 상태
 - 카메라, LiDAR와 edge 장비 상태
-- 활성 알림 목록과 읽음 상태
+- 알림별 활성 및 해제 상태와 사용자별 읽음 상태의 구분
 - 최근 수거 후 경과와 평균 수거 주기
 - 임계율 예상 도달 시각과 남은 시간
 
 ### 이력
 
 - 대표 적재율 시계열과 표본 간격
-- 수거 임계율 변경 이력 반영 방식
+- 현재 임계율 기준선과 과거 적용 임계율의 구분
 - 알림, 오류, 수거 필요와 수거 완료 이벤트
 - 이벤트 발생 시각, 유형, 상태와 내용
 - 기간 및 이벤트 유형 필터
@@ -208,7 +211,7 @@ signaling 요청만 FastAPI로 전달하며 WebRTC 미디어 패킷은 Nginx와 
 ### 관리자 설정
 
 - 수거 임계율과 사전 알림 기준
-- 반복 알림 제한과 발송 내용
+- 알림 정책의 저장과 실제 발송 적용 범위
 - 알림 채널과 이벤트 유형별 정책
 - 알림 대상의 이름, 소속, 연락처와 개인별 수신 설정
 - 설정 버전과 마지막 변경 정보
@@ -222,7 +225,7 @@ signaling 요청만 FastAPI로 전달하며 WebRTC 미디어 패킷은 Nginx와 
 - 모든 endpoint의 입력, 성공 응답, 오류 응답, 인증과 권한 정의
 - 단위, 시각, 결측, 유효성, 열거형과 페이지 이동 규칙 정의
 - 실시간 이벤트의 순서, 중복, 재연결과 재동기화 규칙 정의
-- WebRTC signaling과 미디어 전송 경계 정의
+- 선택한 영상 방식의 제어와 미디어 전송 경계 정의
 - 관리자 변경의 동시성 충돌과 멱등성 규칙 정의
 - Nginx와 배포 Repository가 주입할 환경별 값 정의
 - 공개 가능한 예제 payload와 계약 검사 작성

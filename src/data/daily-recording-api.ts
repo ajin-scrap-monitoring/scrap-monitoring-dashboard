@@ -2,10 +2,11 @@ import type { components, paths } from "../generated/backend-contract";
 import type { Recording } from "../domain/dashboard";
 import type { DateRangeQuery } from "./dashboard-data-source";
 import { dailyRecording, dailyRecordingAvailability, dailyRecordingIdentifier, dailyRecordingPage, type DailyRecording } from "./daily-recordings";
-import { timestamp } from "./contract-values";
+import { missingValue, pathWithId, timestamp, wallClock } from "./contract-values";
+import { byteSize, clockDuration } from "./recording-values";
 
 type DailyApiError = Error & { status: number; code?: string };
-type DailyRecordingApiOptions = {
+export type DailyRecordingApiOptions = {
   ApiError: new (status: number, message: string, code?: string) => DailyApiError;
   cameraId: string;
   isAuthenticated: () => boolean;
@@ -19,35 +20,12 @@ const dailyPaths = {
   exports: "/api/v2/recordings/daily/{recording_id}/exports",
 } as const satisfies Record<string, keyof paths>;
 
-const missingValue = "정보 없음";
-
-function pathWithId(path: string, id: string) {
-  return path.replace("{recording_id}", encodeURIComponent(id));
-}
-
-function koreanWallClock(value: string) {
-  return new Date(Date.parse(value) + 9 * 3_600_000).toISOString().slice(0, 19).replace("T", " ");
-}
-
-function clockDuration(seconds: number) {
-  return [Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60), Math.floor(seconds % 60)]
-    .map(value => String(value).padStart(2, "0")).join(":");
-}
-
-function byteSize(bytes: number | null) {
-  if (bytes === null) return missingValue;
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-}
-
 function mapDailyRecording(daily: DailyRecording, now: number): Recording {
   const availability = dailyRecordingAvailability(daily, now);
   return {
     source: "daily", daily, id: daily.id, date: daily.recordingDate, type: "날짜 녹화",
     detail: `${daily.recordingDate} 날짜 녹화`, sample: false,
-    start: koreanWallClock(daily.windowStartsAt), end: koreanWallClock(daily.windowEndsAt),
+    start: wallClock(daily.windowStartsAt, true), end: wallClock(daily.windowEndsAt, true),
     time: "00:00 - 24:00", duration: clockDuration(daily.recordedSeconds),
     contentUrl: availability.playbackReady ? daily.playbackPath ?? undefined : undefined,
     downloadUrl: availability.downloadReady ? daily.downloadPath ?? undefined : undefined,
@@ -55,9 +33,9 @@ function mapDailyRecording(daily: DailyRecording, now: number): Recording {
       : daily.status === "recording" || daily.status === "finalizing" || (daily.status !== "failed" && daily.playbackState === "pending") ? "processing" : "unavailable",
     tone: daily.status === "failed" || daily.exportState === "failed" ? "error" : daily.hasGaps ? "warning" : "complete",
     codec: missingValue, format: missingValue, frameRate: null, height: null, width: null,
-    retentionStartsAt: missingValue, retentionEndsAt: daily.expiresAt === null ? missingValue : koreanWallClock(daily.expiresAt),
+    retentionStartsAt: missingValue, retentionEndsAt: daily.expiresAt === null ? missingValue : wallClock(daily.expiresAt, true),
     size: byteSize(daily.sizeBytes), mediaStatus: daily.status, coverage: daily.coverage,
-    gaps: daily.gaps.map(gap => ({ start: koreanWallClock(gap.startsAt), end: koreanWallClock(gap.endsAt) })),
+    gaps: daily.gaps.map(gap => ({ start: wallClock(gap.startsAt, true), end: wallClock(gap.endsAt, true) })),
     errorCode: daily.error?.code ?? null,
   };
 }
@@ -120,6 +98,11 @@ export function createDailyRecordingApi({ ApiError, cameraId, isAuthenticated, r
       return recordings;
     },
     getRecording: async (recordingId: string, signal?: AbortSignal) => mapDailyRecording(await getDailyRecording(recordingId, signal), serverNow()),
+    deleteRecording: async (recordingId: string, signal?: AbortSignal) => {
+      if (!isAuthenticated()) throw new ApiError(401, "날짜 녹화 삭제에는 로그인이 필요합니다.");
+      if (!dailyRecordingIdentifier.test(recordingId)) throw new Error("Daily recording requires a UUID identifier.");
+      await dailyRequest<undefined>(pathWithId(dailyPaths.detail, recordingId), { method: "DELETE", signal });
+    },
     prepareExport: async (recordingId: string, signal?: AbortSignal) => {
       if (!isAuthenticated()) throw new ApiError(401, "다운로드 준비에는 로그인이 필요합니다.");
       const latest = await getDailyRecording(recordingId, signal);

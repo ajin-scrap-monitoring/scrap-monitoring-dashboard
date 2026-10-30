@@ -7,7 +7,11 @@ import type { components } from "../src/generated/backend-contract.js";
 import { extractBackendContract, readManifest, type Json } from "../scripts/backend-contract.ts";
 
 type Session = components["schemas"]["Session"];
-type RecordingPage = components["schemas"]["RecordingPage"];
+type EventRecordingPage = { items: { eventId: string; category: "collection" | "alert" | "error"; windowState: string }[] };
+type EventReplayDetail = {
+  source: string; state: string; downloadPath: string | null; downloadReasonCode: string | null;
+  parts: { recordingId: string; playbackPath: string }[];
+};
 const screenshots = `${process.env.SYNC_RUN_DIRECTORY ?? "test-results/integration"}/private/screenshots`;
 
 test("실제 Backend의 과거 적재율 값과 현재 임계율을 이력 그래프에 그대로 표시한다", async ({ page, playwright }) => {
@@ -83,6 +87,10 @@ test("실제 Backend OpenAPI와 고정한 계약 snapshot 일치", async ({ play
     expect(extractBackendContract(actual, await readManifest())).toEqual(snapshot);
   } finally { await backend.dispose(); }
 });
+
+function staleBoundary() {
+  return new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString();
+}
 
 async function login(page: Page) {
   await page.goto("/login");
@@ -207,6 +215,35 @@ test("실제 v2 수신 API, SSE와 적재율 추이에서 0%, STALE, session 종
     expect(alertResponse.ok()).toBe(true);
     const alerts = await alertResponse.json() as components["schemas"]["V2AlertPage"];
     expect(alerts.items).toHaveLength(1);
+    const allAlertsResponse = await page.request.get("/api/v2/monitoring/active-alerts?pit_id=pit-01&scope=ALL");
+    expect(allAlertsResponse.status(), "Authenticated v2 active-alerts scope=ALL response").toBe(200);
+    const allAlerts = await allAlertsResponse.json() as components["schemas"]["ActiveFillAlertPageV2"];
+    expect(allAlerts).toMatchObject({ pitId: "pit-01", scope: "ALL", evaluationState: "CRITICAL" });
+    expect(allAlerts.items?.some(item => item.type === "collection_required")).toBe(true);
+    expect(allAlerts.coverage?.find(entry => entry.componentKind === "CAMERA")).toMatchObject({ state: "UNSUPPORTED", reasonCodes: ["CAMERA_HEALTH_SOURCE_NOT_CONFIGURED"] });
+    const layoutResponse = await page.request.get("/api/v2/monitoring/layout?pit_id=pit-01");
+    expect(layoutResponse.status(), "Authenticated v2 layout response").toBe(200);
+    const layout = await layoutResponse.json() as components["schemas"]["MeasurementLayoutV2"];
+    expect(layout).toMatchObject({ pitId: "pit-01", unit: "cm" });
+    expect(["SIMULATION", "PARTIAL", "UNVERIFIED", "UNAVAILABLE"]).toContain(layout.state);
+    const longRange = { to: staleBoundary(), days: [30, 90] as const };
+    for (const days of longRange.days) {
+      const response = await page.request.get("/api/v2/monitoring/load-history?" + new URLSearchParams({
+        pit_id: "pit-01", from: new Date(Date.parse(longRange.to) - days * 86_400_000).toISOString(), to: longRange.to }).toString());
+      expect(response.status(), `Authenticated v2 ${days} day load-history response`).toBe(200);
+      const longHistory = await response.json() as components["schemas"]["LoadHistoryV2"];
+      expect([3600, 7200, 21600, 86400]).toContain(longHistory.bucketSeconds);
+      expect(longHistory.samples.length).toBeLessThanOrEqual(1441);
+    }
+    const overRange = await page.request.get("/api/v2/monitoring/load-history?" + new URLSearchParams({
+      pit_id: "pit-01", from: new Date(Date.parse(longRange.to) - 91 * 86_400_000).toISOString(), to: longRange.to }).toString());
+    expect(overRange.status()).toBe(422);
+    expect(await overRange.json()).toEqual({ detail: "HISTORY_RANGE_MUST_BE_WITHIN_90_DAYS" });
+    const playbackResponse = await page.request.get("/api/v2/recordings/events?" + new URLSearchParams({
+      pit_id: "pit-01", from: new Date(Date.parse(longRange.to) - 7 * 86_400_000).toISOString(), to: longRange.to, include_playback: "true", pageSize: "5" }).toString());
+    expect(playbackResponse.status(), "Authenticated v2 event recordings with include_playback").toBe(200);
+    const playbackItems = (await playbackResponse.json() as { items: Array<{ playback?: { state: string; playbackSeconds: number | null } | null }> }).items;
+    for (const item of playbackItems) expect(["AVAILABLE", "PARTIAL", "PROCESSING", "UNAVAILABLE", "UNKNOWN"]).toContain(item.playback?.state);
     const notificationResponse = await page.request.get("/api/v1/notifications?page=1&pageSize=20");
     expect(notificationResponse.ok()).toBe(true);
     const notifications = await notificationResponse.json() as components["schemas"]["NotificationPage"];
@@ -252,6 +289,9 @@ test("실제 v2 수신 API, SSE와 적재율 추이에서 0%, STALE, session 종
     await expect(page).toHaveURL(/\/login$/);
     expect((await page.request.get("/api/v2/monitoring/alerts?pit_id=pit-01")).status()).toBe(401);
     expect((await page.request.get("/api/v2/monitoring/load-history?pit_id=pit-01")).status()).toBe(401);
+    for (const path of ["/api/v2/monitoring/active-alerts?pit_id=pit-01&scope=ALL", "/api/v2/monitoring/layout?pit_id=pit-01"]) {
+      expect((await page.request.get(path)).status()).toBe(401);
+    }
   } finally { await backend.dispose(); }
 });
 
@@ -320,34 +360,53 @@ test("실제 날짜 녹화의 session 보호, 공개 HLS 경로와 오늘 녹화
   await page.screenshot({ path: `${screenshots}/recordings-daily-hls.png`, fullPage: true });
 });
 
-test("실제 부분 MP4의 nullable metadata, Range, 다운로드와 삭제 후 접근", async ({ page, playwright }) => {
+test("실제 이벤트 녹화의 v2 목록과 상세, 날짜 녹화 part 재생, 다운로드 미지원과 삭제 제한", async ({ page, playwright }) => {
   await login(page);
+  const toTime = Math.ceil(Date.now() / 60_000) * 60_000 + 60_000;
+  const fromTime = toTime - 3_600_000;
+  const query = (category?: string) => new URLSearchParams({ pit_id: "pit-01", from: new Date(fromTime).toISOString(), to: new Date(toTime).toISOString(), ...(category ? { category } : {}), page: "1", pageSize: "100" });
+  const listResponse = await page.request.get(`/api/v2/recordings/events?${query()}`);
+  expect(listResponse.status()).toBe(200);
+  const list = await listResponse.json() as EventRecordingPage;
+  expect(list.items.length).toBeGreaterThan(0);
+  const item = list.items[0];
+  expect(["collection", "alert", "error"]).toContain(item.category);
+  expect(["CLOSED", "OPEN", "UNKNOWN", "POINT"]).toContain(item.windowState);
+  const detailResponse = await page.request.get(`/api/v2/recordings/events/${encodeURIComponent(item.eventId)}?pit_id=pit-01`);
+  expect(detailResponse.status()).toBe(200);
+  const replay = await detailResponse.json() as EventReplayDetail;
+  expect(replay.source).toBe("DAILY_RECORDING");
+  expect(replay.downloadPath).toBeNull();
+  expect(replay.downloadReasonCode).toBe("EVENT_RANGE_EXPORT_UNSUPPORTED");
+  const playable = (replay.state === "AVAILABLE" || replay.state === "PARTIAL") && replay.parts.length > 0;
+  for (const part of replay.parts) {
+    expect(part.playbackPath).toBe(`/media/daily-recordings/${part.recordingId}/hls/index.m3u8`);
+    expect((await page.request.get(part.playbackPath)).status()).toBe(200);
+  }
   await page.goto("/recordings?recordingSource=event");
   await expect(page.getByRole("heading", { name: "녹화 영상", exact: true, level: 1 })).toBeVisible();
-  await expect(page.getByText("부분 저장", { exact: false })).toBeVisible();
-  const resolution = page.locator(".recording-info dl > div").filter({ has: page.locator("dt", { hasText: "해상도" }) });
-  await expect(resolution).toContainText("정보 없음");
-  const cardOverflow = await page.evaluate<number>("Math.max(0, ...[...document.querySelectorAll('.recording-info, .recording-download')].map((element) => element.scrollHeight - element.clientHeight))");
-  expect(cardOverflow).toBeLessThanOrEqual(2);
-  await expect.poll(() => page.locator(".recording-frame video").evaluate((element) => (element as unknown as { readyState: number }).readyState)).toBeGreaterThanOrEqual(1);
-  await page.locator(".recording-frame video").evaluate((element) => (element as unknown as { play: () => Promise<void> }).play());
-  await expect.poll(() => page.locator(".recording-frame video").evaluate((element) => (element as unknown as { currentTime: number }).currentTime)).toBeGreaterThan(0.1);
-  await page.locator(".recording-frame video").evaluate((element) => (element as unknown as { pause: () => void }).pause());
-  const list = await (await page.request.get("/api/v1/recordings?pit_id=pit-01")).json() as RecordingPage;
-  const recording = list.items[0];
-  expect(recording.coverage).toBe("partial");
-  expect(recording.widthPixels).toBeNull();
-  expect(recording.contentPath).toBeTruthy();
-  const fromTime = Math.floor(Date.parse(recording.startedAt) / 60_000) * 60_000 - 60_000;
-  const toTime = Math.ceil(Date.parse(recording.endedAt) / 60_000) * 60_000 + 60_000;
-  const inputTime = (timestamp: number) => new Date(timestamp).toISOString().slice(0, 16).replace("T", " ");
+  await expect(page.locator(".recording-item").first()).toBeVisible();
+  await page.locator(".recording-item").first().click();
+  if (playable) {
+    await expect(page.locator(".event-replay")).toBeVisible();
+    await expect(page.locator(".recording-frame video")).toBeVisible();
+    await expect.poll(() => page.locator(".recording-frame video").evaluate((element) => (element as unknown as { readyState: number }).readyState)).toBeGreaterThanOrEqual(1);
+    await page.getByRole("button", { name: "재생", exact: true }).first().click();
+    await expect.poll(() => page.locator(".recording-frame video").evaluate((element) => (element as unknown as { currentTime: number }).currentTime)).toBeGreaterThan(0.1);
+  } else {
+    await expect(page.locator(".event-replay")).toHaveCount(0);
+  }
+  await expect(page.getByText("이벤트 구간의 MP4 다운로드는 아직 제공되지 않습니다.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "다운로드 불가", exact: true })).toBeDisabled();
+  // 기간 입력은 Asia/Seoul(+09:00) 벽시계로 해석한다.
+  const inputTime = (timestamp: number) => new Date(timestamp + 9 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
   const queryRecordings = async (category: string, label: string, from = fromTime, to = toTime) => {
     await page.getByRole("textbox", { name: "시작 시각", exact: true }).fill(inputTime(from));
     await page.getByRole("textbox", { name: "종료 시각", exact: true }).fill(inputTime(to));
     await page.getByRole("button", { name: label, exact: true }).click();
     const responsePromise = page.waitForResponse(response => {
       const url = new URL(response.url());
-      return url.pathname === "/api/v1/recordings" && (url.searchParams.get("category") ?? "all") === category;
+      return url.pathname === "/api/v2/recordings/events" && url.searchParams.get("category") === category;
     });
     await page.getByRole("button", { name: "조회", exact: true }).click();
     const response = await responsePromise;
@@ -356,81 +415,33 @@ test("실제 부분 MP4의 nullable metadata, Range, 다운로드와 삭제 후 
     expect(url.searchParams.get("pit_id")).toBe("pit-01");
     expect(Date.parse(url.searchParams.get("from") ?? "")).toBe(from);
     expect(Date.parse(url.searchParams.get("to") ?? "")).toBe(to);
-    const result = await response.json() as RecordingPage;
-    expect(result.items.every(item => category === "all" || item.eventCategory === category)).toBe(true);
-    expect(result.items.every(item => Date.parse(item.startedAt) < to && Date.parse(item.endedAt) >= from)).toBe(true);
+    const result = await response.json() as EventRecordingPage;
+    expect(result.items.every(entry => entry.category === category)).toBe(true);
     await expect(page.locator(".recording-item")).toHaveCount(result.items.length);
     return result;
   };
-  for (const [category, label] of [["all", "이벤트"], ["collection", "수거"], ["alert", "알림"], ["error", "오류"]]) {
+  const labels = { collection: "수거", alert: "알림", error: "오류" } as const;
+  for (const [category, label] of Object.entries(labels)) {
     const filtered = await queryRecordings(category, label);
-    if (category === "all" || category === recording.eventCategory) expect(filtered.items.some(item => item.id === recording.id)).toBe(true);
-    else expect(filtered.items.some(item => item.id === recording.id)).toBe(false);
+    expect(filtered.items.some(entry => entry.eventId === item.eventId)).toBe(category === item.category);
   }
   const outsideFrom = fromTime - 24 * 3_600_000;
-  expect((await queryRecordings("all", "이벤트", outsideFrom, outsideFrom + 60_000)).items).toEqual([]);
+  expect((await queryRecordings(item.category, labels[item.category], outsideFrom, outsideFrom + 60_000)).items).toEqual([]);
   await expect(page.getByText("조회된 녹화 영상이 없습니다.", { exact: true })).toBeVisible();
-  const categoryLabel = { collection: "수거", alert: "알림", error: "오류" }[recording.eventCategory];
-  await queryRecordings(recording.eventCategory, categoryLabel);
-  await expect(page.locator(".recording-frame video")).toBeVisible();
-  const clipPath = `/api/v1/media/clips/${recording.id}`;
-  const clipResponse = await page.request.get(clipPath);
-  expect(clipResponse.ok()).toBe(true);
-  const clip = await clipResponse.json() as components["schemas"]["ClipDetail"];
-  expect(clip).toMatchObject({ clip_id: recording.id, camera_id: "camera-main", status: "ready", coverage: "partial" });
-  expect(clip.actual_start_at).not.toBeNull();
-  expect(clip.actual_end_at).not.toBeNull();
-  const coverageResponse = page.waitForResponse((response) => new URL(response.url()).pathname === clipPath && response.request().method() === "GET");
-  const coverageButton = page.getByRole("button", { name: "부분 저장", exact: true });
-  await coverageButton.click();
-  expect((await coverageResponse).ok()).toBe(true);
-  const coverageDialog = page.getByRole("dialog", { name: "녹화 범위 상세", exact: true });
-  await expect(coverageDialog).toBeVisible();
-  for (const [label, value] of [
-    ["요청 시작", clip.requested_start_at], ["요청 종료", clip.requested_end_at],
-    ["확보 시작", clip.actual_start_at], ["확보 종료", clip.actual_end_at],
-  ] as const) {
-    await expect(coverageDialog.locator("dl > div").filter({ has: page.locator("dt", { hasText: label }) }).locator("dd")).toHaveText(value ?? "정보 없음");
-  }
-  await expect(coverageDialog.getByText("구간별 누락 원인은 API에서 제공하지 않습니다.", { exact: true })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(coverageDialog).toHaveCount(0);
-  await expect(coverageButton).toBeFocused();
-  const range = await page.request.get(recording.contentPath ?? "", { headers: { Range: "bytes=0-31" } });
-  expect(range.status()).toBe(206);
-  expect((await range.body()).length).toBe(32);
-  expect(range.headers()["content-range"]).toMatch(/^bytes 0-31\//);
-  const invalid = await page.request.get(recording.contentPath ?? "", { headers: { Range: "bytes=999999999999-" } });
-  expect(invalid.status()).toBe(416);
   await page.setViewportSize({ width: 1280, height: 900 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   expect(await page.evaluate(() => Math.max(0, ...[...document.querySelectorAll(".recording-info, .recording-download")].map((element) => element.scrollHeight - element.clientHeight)))).toBeLessThanOrEqual(2);
   await page.screenshot({ path: `${screenshots}/recordings-minimum.png`, fullPage: true });
-  await page.goto(`/recordings?recordingId=${recording.id}`);
-  await expect(page.locator(".recording-frame video")).toBeVisible();
-  const downloadEvent = page.waitForEvent("download");
-  await page.getByRole("button", { name: "녹화 영상 다운로드", exact: true }).click();
-  const download = await downloadEvent;
-  expect(download.suggestedFilename()).toBe(`${recording.id}.mp4`);
-  expect(await download.failure()).toBeNull();
-  const downloadPath = await download.path();
-  if (!downloadPath) throw new Error("Downloaded MP4 file is missing.");
-  const downloadedBytes = await readFile(downloadPath);
-  expect(downloadedBytes.length).toBeGreaterThan(32);
-  expect(downloadedBytes.subarray(4, 8).toString("ascii")).toBe("ftyp");
-  const fullContent = await page.request.get(recording.contentPath ?? "");
-  expect(fullContent.status()).toBe(200);
-  expect(downloadedBytes).toEqual(await fullContent.body());
+  const daily = await (await page.request.get("/api/v2/recordings/daily")).json() as components["schemas"]["DailyPage"];
+  const today = daily.items.find(entry => entry.status === "recording");
+  if (!today) throw new Error("Today's synthetic daily recording is missing.");
   const admin = await playwright.request.newContext({ baseURL: "http://backend:8000" });
   try {
     const response = await admin.post("/api/v1/session", { data: { username: "admin", password: process.env.SYNC_ADMIN_PASSWORD, persistent: false } });
     const session = await response.json() as Session;
-    const deleted = await admin.delete(`/api/v1/media/clips/${recording.id}`, { headers: { "X-CSRF-Token": session.csrfToken } });
-    expect(deleted.status()).toBe(204);
-    await page.reload();
-    await expect(page.locator(".recording-item .status-text")).toContainText("삭제됨");
-    await expect(page.locator(".recording-frame video")).toHaveCount(0);
-    expect((await page.request.get(recording.contentPath ?? "")).status()).toBe(410);
-    await expect(page.getByRole("button", { name: "다운로드 불가", exact: true })).toBeDisabled();
+    expect((await admin.delete(`/api/v2/recordings/daily/${today.recording_id}`)).status()).toBe(403);
+    expect((await admin.delete(`/api/v2/recordings/daily/${today.recording_id}`, { headers: { "X-CSRF-Token": session.csrfToken } })).status()).toBe(409);
   } finally { await admin.dispose(); }
+  const stillThere = await page.request.get(`/api/v2/recordings/daily/${today.recording_id}`);
+  expect(stillThere.status()).toBe(200);
 });

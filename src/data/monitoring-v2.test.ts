@@ -2,8 +2,8 @@ import { describe, expect, test, vi } from "vitest";
 
 import type { DashboardData } from "../domain/dashboard";
 import type { components } from "../generated/backend-contract";
-import { alertSettingsFixture, recipientPageFixture, sessionFixture, notificationPageFixture, recordingPageFixture } from "../test/api-contract-fixtures";
-import { mediaRecordingFixture, monitoringV2Fixture, monitoringV2StateFixture } from "../test/backend-contract-fixtures";
+import { alertSettingsFixture, recipientPageFixture, sessionFixture, notificationPageFixture } from "../test/api-contract-fixtures";
+import { activeAlertsFixture, activeCoverageFixture, activeHealthAlertFixture, collectionSummaryFixture, eventRecordingFixture, eventRecordingPageFixture, eventReplayFixture, fillForecastFixture, lidarProfilesFixture, monitoringV2Fixture, monitoringV2StateFixture } from "../test/backend-contract-fixtures";
 
 import { ApiError, createHttpDashboardDataSource } from "./http-dashboard-data-source";
 import { monitoringV2Data, type ApiMonitoringSnapshotV2 } from "./monitoring-v2";
@@ -14,7 +14,7 @@ function inputUrl(input: RequestInfo | URL) {
   return new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, "https://dashboard.example");
 }
 
-function contract({ authenticated = true, snapshot = monitoringV2Fixture, completionEvents = [], loadHistory }: { authenticated?: boolean; snapshot?: ApiMonitoringSnapshotV2; completionEvents?: unknown; loadHistory?: (url: URL) => unknown } = {}) {
+function contract({ authenticated = true, snapshot = monitoringV2Fixture, collectionSummary = collectionSummaryFixture(), fillForecast = fillForecastFixture(), profiles = lidarProfilesFixture(), activeAlerts = activeAlertsFixture({ evaluationState: "NORMAL", items: [] }), loadHistory }: { authenticated?: boolean; snapshot?: ApiMonitoringSnapshotV2; collectionSummary?: unknown; fillForecast?: unknown; profiles?: unknown; activeAlerts?: unknown; loadHistory?: (url: URL) => unknown } = {}) {
   const urls: URL[] = [];
   const fetchImplementation = vi.fn((input: RequestInfo | URL) => {
     const url = inputUrl(input);
@@ -23,8 +23,12 @@ function contract({ authenticated = true, snapshot = monitoringV2Fixture, comple
     if (url.pathname === "/api/v2/monitoring/snapshot") return Promise.resolve(json(snapshot));
     if (url.pathname === "/api/v2/monitoring/load-history" && loadHistory) return Promise.resolve(json(loadHistory(url)));
     if (url.pathname === "/api/v1/notifications") return Promise.resolve(json(notificationPageFixture));
-    if (url.pathname === "/api/v1/events") return Promise.resolve(json({ items: completionEvents, page: { page: 1, pageSize: 1, totalPages: 1, totalItems: 1 } }));
-    if (url.pathname === "/api/v1/recordings") return Promise.resolve(json({ ...recordingPageFixture, items: [mediaRecordingFixture] }));
+    if (url.pathname === "/api/v2/monitoring/collection-summary") return Promise.resolve(json(collectionSummary));
+    if (url.pathname === "/api/v2/monitoring/fill-forecast") return Promise.resolve(json(fillForecast));
+    if (url.pathname === "/api/v2/monitoring/profiles") return Promise.resolve(json(profiles));
+    if (url.pathname === "/api/v2/monitoring/active-alerts") return Promise.resolve(json(activeAlerts));
+    if (url.pathname === "/api/v2/recordings/events") return Promise.resolve(json(eventRecordingPageFixture()));
+    if (url.pathname === `/api/v2/recordings/events/${eventRecordingFixture().eventId}`) return Promise.resolve(json(eventReplayFixture()));
     if (url.pathname === "/api/v1/settings/alerts") return Promise.resolve(json(alertSettingsFixture));
     if (url.pathname === "/api/v1/notification-recipients") return Promise.resolve(json(recipientPageFixture));
     throw new Error(`Unexpected path ${url.pathname}`);
@@ -216,13 +220,6 @@ describe("Backend v2 모니터링", () => {
     expect(result.lastMeasuredAt).toBe("정보 없음");
     expect(result.monitoring.v2?.measuredAt).toBeNull();
   });
-  test.each(["collecting", "processing", "failed", "deleted", "expired", "unexpected"])("녹화 mediaStatus %s에 과거 영상 경로를 노출하지 않는다", async (mediaStatus) => {
-    const api = contract();
-    api.fetchImplementation.mockResolvedValueOnce(json({ ...recordingPageFixture, items: [{ ...mediaRecordingFixture, status: "available", mediaStatus }] }));
-    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
-    const result = await source.queryRecordings?.({ from: "2026-09-01T00:00", to: "2026-10-01T00:00" });
-    expect(result?.[0]).toMatchObject({ mediaStatus, status: "unavailable", contentUrl: undefined, downloadUrl: undefined });
-  });
   test.each([-1, 101, Number.NaN, Number.POSITIVE_INFINITY, null])("유효하지 않은 적재율 %s를 0으로 보충하지 않는다", (value) => {
     expect(monitoringV2Data({ ...monitoringV2Fixture, dataState: "FRESH", summary: { ...monitoringV2Fixture.summary, loadPercent: value } }, "pit-01").summary.loadPercent).toBeNull();
   });
@@ -233,32 +230,185 @@ describe("Backend v2 모니터링", () => {
   ])("누락되거나 다른 계약의 snapshot을 거부한다: %j", (invalid) => {
     expect(() => monitoringV2Data({ ...monitoringV2Fixture, ...invalid }, "pit-01")).toThrow();
   });
-  test("실제 완료 기록과 서버 시각으로 수거 후 경과를 계산하고 v1 모니터링 값을 조회하지 않는다", async () => {
-    const api = contract({ completionEvents: [{ type: "collection_completed", status: "completed", category: "collection", occurredAt: "2026-10-12T22:00:10Z" }] });
+  test("수거 요약의 최근 수거 시각과 서버 시각으로 경과를 계산하고 v1 모니터링 값을 조회하지 않는다", async () => {
+    const api = contract({ collectionSummary: collectionSummaryFixture({ lastCollectionActivityAt: "2026-10-12T22:00:10Z", averageSettledCollectionCycleSeconds: 90_000, settledCycleCount: 2, settledCollectionsInWindow: 3, settledCycleReasonCodes: [] }) });
     const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
     const result = await source.getDashboardData();
     expect(result.monitoring.summary.timeSinceCollection).toBe("2시간 0분");
-    expect(result.monitoring.summary.averageCollectionCycle).toBe("정보 없음");
-    const request = api.urls.find((url) => url.pathname === "/api/v1/events");
+    expect(result.monitoring.summary.averageCollectionCycle).toBe("25시간 0분");
+    const request = api.urls.find((url) => url.pathname === "/api/v2/monitoring/collection-summary");
     expect(request?.searchParams.get("pit_id")).toBe("pit-01");
-    expect(request?.searchParams.get("pageSize")).toBe("1");
-    expect(request?.searchParams.get("category")).toBe("collection");
+    expect(api.urls.some((url) => url.pathname === "/api/v1/events")).toBe(false);
     expect(api.urls.some((url) => url.pathname === "/api/v1/monitoring/snapshot")).toBe(false);
   });
+  describe("LiDAR 높이 곡선", () => {
+    const monitoringOf = async (profiles: unknown, snapshot = monitoringV2StateFixture("FRESH", 72)) => {
+      const api = contract({ profiles, snapshot });
+      const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
+      return (await source.getDashboardData()).monitoring;
+    };
+    test("sensorId로 LiDAR 1과 2를 연결하고 cm를 m로 한 번만 변환한다", async () => {
+      const [first, second] = (await monitoringOf(lidarProfilesFixture())).lidarProfiles;
+      expect(first).toMatchObject({ label: "LiDAR 1", average: "3.00 m", minimum: "1.00 m", maximum: "5.00 m" });
+      expect(first.samples.map((sample) => sample.height)).toEqual([1, 3, 2, 5, 4]);
+      expect(second).toMatchObject({ label: "LiDAR 2", average: "2.50 m" });
+    });
+    test("높이 또는 위치가 null이거나 valid=false인 점은 선을 끊는 null로 둔다", async () => {
+      const fixture = lidarProfilesFixture();
+      Object.assign(fixture.profiles[1].samples[1], { valid: false, height: 300 });
+      Object.assign(fixture.profiles[1].samples[2], { positionRatio: null });
+      const [first, second] = (await monitoringOf(fixture)).lidarProfiles;
+      expect(first.samples.map((sample) => sample.height)).toEqual([1, null, null, 5, 4]);
+      expect(second.samples.map((sample) => sample.height)).toEqual([1, null, 5]);
+    });
+    test("시간 중앙값 정책의 대표 높이는 filteredAverage이며 없으면 평균으로 대체하지 않는다", async () => {
+      const fixture = lidarProfilesFixture();
+      Object.assign(fixture.profiles[1], { summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN", filteredAverage: null });
+      expect((await monitoringOf(fixture)).lidarProfiles[0].average).toBe("-");
+      fixture.profiles[1].filteredAverage = 320 as unknown as null;
+      expect((await monitoringOf(fixture)).lidarProfiles[0].average).toBe("3.20 m");
+    });
+    test("센서가 없으면 해당 slot은 빈 곡선이며 FRESH가 아니거나 계약 오류이면 숨긴다", async () => {
+      const missing = lidarProfilesFixture();
+      missing.profiles.pop();
+      expect((await monitoringOf(missing)).lidarProfiles[0].samples).toEqual([]);
+      expect((await monitoringOf(lidarProfilesFixture(), monitoringV2StateFixture("STALE", 72))).lidarProfiles).toEqual([]);
+      expect((await monitoringOf({ profiles: "invalid" })).lidarProfiles).toEqual([]);
+    });
+    test("시뮬레이션과 보정 상태를 보존한다", async () => {
+      const fixture = lidarProfilesFixture();
+      Object.assign(fixture.profiles[1], { simulated: true, calibrationState: "UNVERIFIED", reasonCodes: ["HEIGHT_REFERENCE_UNVERIFIED"] });
+      expect((await monitoringOf(fixture)).lidarProfiles[0]).toMatchObject({ simulated: true, calibrationState: "UNVERIFIED", reasonCodes: ["HEIGHT_REFERENCE_UNVERIFIED"] });
+    });
+  });
+  describe("현재 활성 경보", () => {
+    const operations = (effectiveState: "NORMAL" | "WARNING" | "CRITICAL" | "UNKNOWN" | "ERROR") => ({
+      ...monitoringV2StateFixture("FRESH", 91.5),
+      operations: { effectiveState, lastKnownState: null, lastEvaluatedAt: null, lastAlertAt: null, notificationId: null },
+    });
+    const monitoringOf = async (activeAlerts: unknown, snapshot: ApiMonitoringSnapshotV2) => {
+      const api = contract({ activeAlerts, snapshot });
+      const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
+      return (await source.getDashboardData()).monitoring;
+    };
+    test("CRITICAL 항목을 서버 제목과 적재율로 표시한다", async () => {
+      const monitoring = await monitoringOf(activeAlertsFixture(), operations("CRITICAL"));
+      expect(monitoring.alerts).toHaveLength(1);
+      expect(monitoring.alerts[0]).toMatchObject({ id: "fill-critical:pit-01", level: "error", title: "수거 필요", detail: "적재율 91.5%" });
+      expect(monitoring.alerts[0].time).toMatch(/^\d{2}:\d{2}$/);
+      expect(monitoring.activeAlertsState?.evaluationState).toBe("CRITICAL");
+    });
+    test("snapshot의 경보 평가와 다르면 이전 적재율 항목을 표시하지 않고 판정 불가로 구분한다", async () => {
+      const monitoring = await monitoringOf(activeAlertsFixture(), operations("NORMAL"));
+      expect(monitoring.alerts).toEqual([]);
+      expect(monitoring.activeAlertsState).toEqual({ evaluationState: "UNKNOWN", reasonCodes: [], coverage: [] });
+    });
+    test.each(["NORMAL", "WARNING", "UNKNOWN", "ERROR"] as const)("%s의 빈 목록은 평가 상태와 함께 보존한다", async (evaluationState) => {
+      const monitoring = await monitoringOf(activeAlertsFixture({ evaluationState, items: [], reasonCodes: ["ALERT_NOTE"] }), operations(evaluationState));
+      expect(monitoring.alerts).toEqual([]);
+      expect(monitoring.activeAlertsState).toEqual({ evaluationState, reasonCodes: ["ALERT_NOTE"], coverage: [] });
+    });
+    test("요청은 scope=ALL과 pit_id를 사용한다", async () => {
+      const api = contract({ activeAlerts: activeAlertsFixture() });
+      const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
+      await source.getDashboardData();
+      const url = api.urls.find((candidate) => candidate.pathname === "/api/v2/monitoring/active-alerts");
+      expect(Object.fromEntries(url!.searchParams)).toEqual({ scope: "ALL", pit_id: "pit-01" });
+    });
+    describe("장비와 측정 항목", () => {
+      const health = (overrides: Record<string, unknown> = {}) => activeHealthAlertFixture(overrides);
+      test("적재율 항목과 장비 항목을 합집합으로 표시하고 서버 최초 확인 시각을 표시용으로 변환한다", async () => {
+        const monitoring = await monitoringOf(activeAlertsFixture({ items: [activeAlertsFixture().items[0], health(), health({ id: "m", type: "measurement_error", componentKind: "MEASUREMENT", componentId: "pit-01", state: "UNAVAILABLE", evidenceSource: "CURRENT_MEASUREMENT", measuredAt: null, startedAt: null, startBasis: "UNKNOWN", simulated: true })] }), operations("CRITICAL"));
+        expect(monitoring.alerts.map((alert) => alert.id)).toEqual(["fill-critical:pit-01", "health:edge:pit-01:edge-01", "m"]);
+        expect(monitoring.alerts[0]).toMatchObject({ startedAt: null });
+        expect(monitoring.alerts[0].health).toBeUndefined();
+        expect(monitoring.alerts[1]).toMatchObject({ level: "warning", title: "Edge 장치 상태 이상", startedAt: "2026-10-13 08:47", time: "09:00",
+          health: { componentKind: "EDGE", componentName: "엣지 장비", state: "DEGRADED", evidenceSource: "EDGE_STATUS", simulated: null } });
+        expect(monitoring.alerts[2]).toMatchObject({ startedAt: null, health: { componentKind: "MEASUREMENT", simulated: true } });
+      });
+      test("startBasis가 UNKNOWN이면 startedAt이 있어도 시작 정보로 쓰지 않고 evaluatedAt으로 채우지 않는다", async () => {
+        const monitoring = await monitoringOf(activeAlertsFixture({ evaluationState: "NORMAL", items: [health({ startBasis: "UNKNOWN", startedAt: "2026-10-12T23:47:42Z" }), health({ id: "n", startedAt: null, startBasis: "SERVER_EVALUATION" })] }), operations("NORMAL"));
+        expect(monitoring.alerts.map((alert) => alert.startedAt)).toEqual([null, null]);
+      });
+      test.each(["UNKNOWN", "ERROR"] as const)("적재율 평가가 %s여도 장비 항목과 coverage는 유지한다", async (evaluationState) => {
+        const monitoring = await monitoringOf(activeAlertsFixture({ evaluationState, items: [health()], coverage: activeCoverageFixture() }), operations(evaluationState));
+        expect(monitoring.alerts.map((alert) => alert.id)).toEqual(["health:edge:pit-01:edge-01"]);
+        expect(monitoring.activeAlertsState).toMatchObject({ evaluationState });
+        expect(monitoring.activeAlertsState?.coverage.map((entry) => `${entry.componentKind}:${entry.state}`)).toEqual(["CAMERA:UNSUPPORTED", "EDGE:CHECKED", "LIDAR:CHECKED", "LIDAR:UNKNOWN", "MEASUREMENT:CHECKED"]);
+        expect(monitoring.activeAlertsState?.coverage[3]).toMatchObject({ componentName: "LiDAR 2", reasonCodes: ["LIDAR_STATUS_NOT_REPORTED"] });
+      });
+      test("측정이 FRESH가 아니어도 장비 항목은 표시하고 적재율 항목은 숨긴다", async () => {
+        const stale = { ...monitoringV2StateFixture("STALE", 91.5), operations: { effectiveState: "CRITICAL" as const, lastKnownState: null, lastEvaluatedAt: null, lastAlertAt: null, notificationId: null } };
+        const monitoring = await monitoringOf(activeAlertsFixture({ items: [activeAlertsFixture().items[0], health()] }), stale);
+        expect(monitoring.alerts.map((alert) => alert.id)).toEqual(["health:edge:pit-01:edge-01"]);
+        expect(monitoring.activeAlertsState?.evaluationState).toBe("UNKNOWN");
+      });
+      test.each([
+        ["알 수 없는 type", { type: "camera_error" }],
+        ["알 수 없는 componentKind", { componentKind: "CAMERA" }],
+        ["알 수 없는 evidenceSource", { evidenceSource: "GUESS" }],
+        ["잘못된 startBasis", { startBasis: "PHYSICAL_FAILURE" }],
+      ])("%s는 계약 오류로 처리한다", async (_name, overrides) => {
+        const monitoring = await monitoringOf(activeAlertsFixture({ items: [health(overrides)] }), operations("CRITICAL"));
+        expect(monitoring.activeAlertsState).toBeNull();
+      });
+    });
+    test("계약 오류나 다른 scope는 정보 없음으로 처리한다", async () => {
+      expect((await monitoringOf(activeAlertsFixture({ scope: "FILL_OPERATIONS" }), operations("CRITICAL"))).activeAlertsState).toBeNull();
+      expect((await monitoringOf({ items: [] }, operations("CRITICAL"))).alerts).toEqual([]);
+    });
+  });
+  describe("예상 도달", () => {
+    const summaryOf = async (fillForecast: unknown, snapshot = monitoringV2StateFixture("FRESH", 72)) => {
+      const api = contract({ fillForecast, snapshot });
+      const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
+      return (await source.getDashboardData()).monitoring.summary;
+    };
+    const available = { state: "AVAILABLE", expectedThresholdAt: "2026-10-13T02:30:00Z", remainingSeconds: 9000, reasonCodes: [] };
+    test("AVAILABLE는 서버 시각 기준 남은 시간을 표시한다", async () => {
+      const summary = await summaryOf(fillForecastFixture({ ...available, validUntil: "2026-10-13T00:05:00Z" }));
+      expect(summary.remainingTime).toBe("2시간 29분");
+      expect(summary.expectedArrivalAt).toMatch(/^10월 13일 \d{2}:30$/);
+    });
+    test("REACHED는 임계율 도달과 유효한 0을 보존한다", async () => {
+      const summary = await summaryOf(fillForecastFixture({ state: "REACHED", expectedThresholdAt: null, remainingSeconds: 0, reasonCodes: [] }));
+      expect(summary).toMatchObject({ expectedArrivalAt: "임계율 도달", remainingTime: "0시간 0분" });
+    });
+    test.each([
+      ["UNAVAILABLE", fillForecastFixture()],
+      ["유효 기한 만료", fillForecastFixture({ ...available, validUntil: "2026-10-12T23:59:59Z" })],
+      ["잘못된 계약", { items: [] }],
+    ])("%s이면 예측 시각을 만들지 않는다", async (_name, fillForecast) => {
+      expect(await summaryOf(fillForecast)).toMatchObject({ expectedArrivalAt: "정보 없음", remainingTime: "정보 없음" });
+    });
+    test("측정이 FRESH가 아니면 이전 예측을 숨긴다", async () => {
+      const summary = await summaryOf(fillForecastFixture({ ...available, validUntil: "2026-10-13T00:05:00Z" }), monitoringV2StateFixture("STALE", 72));
+      expect(summary).toMatchObject({ expectedArrivalAt: "정보 없음", remainingTime: "정보 없음" });
+    });
+  });
+  test("수거 기록이 없으면 경과는 정보 없음, 평균 주기는 자료 부족으로 구분한다", async () => {
+    const api = contract();
+    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
+    const { summary } = (await source.getDashboardData()).monitoring;
+    expect(summary.timeSinceCollection).toBe("정보 없음");
+    expect(summary.averageCollectionCycle).toBe("자료 부족");
+  });
   test.each([
-    [{ type: "collection_required", status: "completed", category: "alert", occurredAt: "2026-10-12T22:00:10Z" }],
-    [{ type: "collection_completed", status: "completed", category: "collection", occurredAt: "invalid" }],
-    [{ type: "collection_completed", status: "completed", category: "collection", occurredAt: "2026-10-12T22:00:10" }],
-    { items: [] },
-  ])("잘못된 수거 완료 계약 %j는 해당 지표만 정보 없음으로 처리한다", async (completionEvents) => {
-    const api = contract({ completionEvents, snapshot: monitoringV2StateFixture("FRESH", 72.5) });
+    [collectionSummaryFixture({ pitId: "other-pit" })],
+    [collectionSummaryFixture({ lastCollectionActivityAt: "invalid" })],
+    [collectionSummaryFixture({ lastCollectionActivityAt: "2026-10-12T22:00:10" })],
+    [collectionSummaryFixture({ averageSettledCollectionCycleSeconds: -1, settledCycleCount: 1 })],
+    [collectionSummaryFixture({ averageSettledCollectionCycleSeconds: 60, settledCycleCount: 0 })],
+    [{ items: [] }],
+  ])("잘못된 수거 요약 계약 %j는 해당 지표만 정보 없음으로 처리한다", async (collectionSummary) => {
+    const api = contract({ collectionSummary, snapshot: monitoringV2StateFixture("FRESH", 72.5) });
     const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
     const data = await source.getDashboardData();
     expect(data.monitoring.summary.timeSinceCollection).toBe("정보 없음");
     expect(data.monitoring.summary.loadPercent).toBe(72.5);
   });
   test("완료 시각이 서버보다 미래이면 음수 또는 0 경과 시간으로 보충하지 않는다", async () => {
-    const api = contract({ completionEvents: [{ type: "collection_completed", status: "completed", category: "collection", occurredAt: "2026-10-14T00:00:00Z" }] });
+    const api = contract({ collectionSummary: collectionSummaryFixture({ lastCollectionActivityAt: "2026-10-14T00:00:00Z" }) });
     const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
     expect((await source.getDashboardData()).monitoring.summary.timeSinceCollection).toBe("정보 없음");
   });
@@ -422,11 +572,11 @@ describe("Backend v2 모니터링", () => {
   test("실패한 완료 기록 재조회는 다음 1분 주기에 복구하고 snapshot으로 중복하지 않는다", async () => {
     vi.useFakeTimers();
     try {
-      const api = contract({ completionEvents: [{ type: "collection_completed", status: "completed", category: "collection", occurredAt: "2026-10-12T22:00:10Z" }] });
+      const api = contract({ collectionSummary: collectionSummaryFixture({ lastCollectionActivityAt: "2026-10-12T22:00:10Z", averageSettledCollectionCycleSeconds: 90_000, settledCycleCount: 2, settledCollectionsInWindow: 3, settledCycleReasonCodes: [] }) });
       const stream = new Stream();
       let pending = false;
       let rejectCollection: (error: Error) => void = () => undefined;
-      const source = createHttpDashboardDataSource({ fetchImplementation: input => pending && inputUrl(input).pathname === "/api/v1/events"
+      const source = createHttpDashboardDataSource({ fetchImplementation: input => pending && inputUrl(input).pathname === "/api/v2/monitoring/collection-summary"
         ? new Promise<Response>((_resolve, reject) => { rejectCollection = reject; }) : api.fetchImplementation(input),
         monitoringVersion: "v2", apiContract: "backend", eventSourceFactory: () => stream as unknown as EventSource });
       await source.getDashboardData();
@@ -441,7 +591,7 @@ describe("Backend v2 모니터링", () => {
       expect(listener.mock.lastCall?.[0].monitoring.completedCollectionState?.status).toBe("error");
       pending = false;
       await vi.advanceTimersByTimeAsync(60_000);
-      expect(api.fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v1/events")).toHaveLength(2);
+      expect(api.fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v2/monitoring/collection-summary")).toHaveLength(2);
       expect(listener.mock.lastCall?.[0].monitoring.completedCollectionState?.status).toBe("ready");
       expect(listener.mock.lastCall?.[0].monitoring.summary.timeSinceCollection).toBe("2시간 0분");
       unsubscribe?.();
@@ -650,13 +800,65 @@ describe("Backend v2 모니터링", () => {
     expect(onSessionExpired).toHaveBeenCalledOnce();
     unsubscribe?.();
   });
-  test("녹화 null metadata와 부분 저장을 유지하고 category와 pit_id를 전송한다", async () => {
+  test("이벤트 녹화 목록은 v2 경로로 category와 pit_id를 전송하고 구간 상태를 보존한다", async () => {
     const api = contract();
     const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
-    const result = await source.queryRecordings?.({ from: "2026-09-01T00:00", to: "2026-10-01T00:00", eventCategory: "alert" });
-    expect(result?.[0]).toMatchObject({ width: null, height: null, frameRate: null, size: "정보 없음", duration: "정보 없음", retentionEndsAt: "정보 없음", coverage: "partial" });
+    const result = await source.queryRecordings?.({ from: "2026-10-05T00:00", to: "2026-10-12T00:00", eventCategory: "alert" });
+    expect(result?.[0]).toMatchObject({ source: "event", id: eventRecordingFixture().eventId, type: "알림", width: null, height: null, frameRate: null, codec: "정보 없음", size: "정보 없음", eventWindow: { windowState: "POINT" } });
+    expect(result?.[0].replay).toBeUndefined();
+    expect(api.urls[0].pathname).toBe("/api/v2/recordings/events");
     expect(api.urls[0].searchParams.get("category")).toBe("alert");
     expect(api.urls[0].searchParams.get("pit_id")).toBe("pit-01");
-    expect(api.urls[0].searchParams.has("eventCategory")).toBe(false);
+    expect(api.urls[0].searchParams.get("pageSize")).toBe("20");
+  });
+  test("이벤트 녹화는 90일을 넘는 범위를 요청하지 않는다", async () => {
+    const api = contract();
+    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
+    await expect(source.queryRecordings?.({ from: "2026-06-01T00:00", to: "2026-10-01T00:00" })).rejects.toMatchObject({ code: "RECORDING_RANGE_TOO_LARGE" });
+    expect(api.urls.some((url) => url.pathname === "/api/v2/recordings/events")).toBe(false);
+  });
+  test("이벤트 녹화 상세는 parts를 재생 구간으로 변환하고 다운로드 경로를 만들지 않는다", async () => {
+    const api = contract();
+    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
+    const result = await source.getRecording?.(eventRecordingFixture().eventId);
+    expect(result).toMatchObject({ status: "available", coverage: "complete", duration: "1:00", codec: "정보 없음", retentionEndsAt: "정보 없음" });
+    expect(result?.downloadUrl).toBeUndefined();
+    expect(result?.contentUrl).toBeUndefined();
+    expect(result?.replay?.parts).toHaveLength(1);
+    expect(result?.replay?.downloadReasonCode).toBe("EVENT_RANGE_EXPORT_UNSUPPORTED");
+  });
+  test("이벤트 녹화 상세의 일부 확보와 재생 불가 상태를 구분한다", async () => {
+    const api = contract();
+    const partial = eventReplayFixture({ state: "PARTIAL", unavailableIntervals: [{ fromAt: "2026-10-12T01:00:00Z", toAt: "2026-10-12T01:00:10Z", kind: "GAP", reasonCode: "RECORDING_GAP" }] });
+    api.fetchImplementation.mockImplementation((input) => {
+      const url = inputUrl(input);
+      if (url.pathname.startsWith("/api/v2/recordings/events/")) return Promise.resolve(json(partial));
+      return Promise.resolve(json(sessionFixture));
+    });
+    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
+    const result = await source.getRecording?.(eventRecordingFixture().eventId);
+    expect(result).toMatchObject({ status: "available", coverage: "partial" });
+    expect(result?.replay?.unavailableIntervals).toHaveLength(1);
+  });
+  test.each([
+    ["part가 없는 UNAVAILABLE", eventReplayFixture({ state: "UNAVAILABLE", parts: [], playbackSeconds: 0, coveredSeconds: 0 }), "unavailable"],
+    ["part가 없는 PROCESSING", eventReplayFixture({ state: "PROCESSING", parts: [], playbackSeconds: 0, coveredSeconds: 0 }), "processing"],
+  ])("이벤트 녹화 %s는 재생 가능으로 표시하지 않는다", async (_name, body, status) => {
+    const api = contract();
+    api.fetchImplementation.mockImplementation(() => Promise.resolve(json(body)));
+    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
+    expect(await source.getRecording?.(eventRecordingFixture().eventId)).toMatchObject({ status });
+  });
+  test.each([
+    ["다른 eventId", eventReplayFixture({}, { eventId: "other" })],
+    ["변조된 재생 경로", eventReplayFixture({ parts: [{ ...eventReplayFixture().parts[0], playbackPath: "https://evil.example/index.m3u8" }] })],
+    ["재생 길이 불일치", eventReplayFixture({ playbackSeconds: 90 })],
+    ["알 수 없는 state", eventReplayFixture({ state: "READY" })],
+    ["다운로드 경로 노출", eventReplayFixture({ downloadPath: "/x" })],
+  ])("이벤트 녹화 상세의 %s는 거부한다", async (_name, body) => {
+    const api = contract();
+    api.fetchImplementation.mockImplementation(() => Promise.resolve(json(body)));
+    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
+    await expect(source.getRecording?.(eventRecordingFixture().eventId)).rejects.toThrow();
   });
 });

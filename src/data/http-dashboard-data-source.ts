@@ -2,16 +2,14 @@ import type { components, paths } from "../generated/api-contract";
 import type { components as BackendComponents, paths as BackendPaths } from "../generated/backend-contract";
 import type {
   AlertLevel,
-  AlertSettings,
   DashboardData,
   DashboardStatus,
   DataAreaState,
-  EventCategory,
-  EventTone,
-  HistoryEvent,
-  NotificationRecipient,
-  RecipientSettings,
+  LidarProfile,
+  MeasurementLayoutStatus,
+  MonitoringSummary,
   Recording,
+  RecordingList,
   UserSession,
 } from "../domain/dashboard";
 
@@ -19,27 +17,30 @@ import type {
   DashboardDataRequestOptions,
   DashboardDataSource,
   DashboardDataUpdateListener,
+  DailyRecordingDeletion,
   DateRangeQuery,
+  HistoryEventQuery,
   NotificationRecipientInput,
   SessionCredentials,
 } from "./dashboard-data-source";
 import { monitoringV2Data, type ApiMonitoringSnapshotV2 } from "./monitoring-v2";
+import { parseCollectionSummaryV2, type CollectionSummary } from "./collection-summary-v2";
+import { parseFillForecastV2, type FillForecast } from "./fill-forecast-v2";
+import { parseLidarProfilesV2 } from "./lidar-profiles-v2";
+import { parseErrorBody, type ParsedErrorBody, type ValidationIssue } from "./error-body";
+import { displayTimeOffset } from "../display-time";
+import { parseMeasurementLayoutV2 } from "./measurement-layout-v2";
+import { parseActiveAlertsV2, type ActiveFillAlerts } from "./active-alerts-v2";
 import { updateLoadOneHourAgo } from "./load-one-hour-ago";
 import { parseLoadHistoryV2, type LoadHistoryScope } from "./load-history-v2";
-import type { DailyRecordingApi } from "./daily-recording-api";
 import { configuredLiveVideoMode, configuredMonitoringVersion, mjpegPlaybackEnabled, runtimeFeatureSelection, v1MonitoringEnabled, v2MonitoringEnabled, whepPlaybackEnabled } from "../build-features";
-import { timestamp } from "./contract-values";
+import { missingValue, pathWithId, rfc3339AtOffset, timeOnly, timestamp, wallClock } from "./contract-values";
 
-type ApiAlertSettings = BackendComponents["schemas"]["AlertSettings"];
-type ApiEventPage = BackendComponents["schemas"]["EventPage"];
-type ApiEvent = ApiEventPage["items"][number];
-type ApiLoadHistory = BackendComponents["schemas"]["LoadHistory"];
+// 관리자 화면 전용 요청과 변환은 해당 화면에서 처음 쓸 때 불러온다.
+const loadAdminApi = () => import("./admin-api");
+
 type ApiMonitoringSnapshot = BackendComponents["schemas"]["MonitoringSnapshot"];
 type ApiNotificationPage = BackendComponents["schemas"]["NotificationPage"];
-type ApiRecipient = BackendComponents["schemas"]["NotificationRecipient"];
-type ApiRecipientPage = BackendComponents["schemas"]["NotificationRecipientPage"];
-type ApiRecording = BackendComponents["schemas"]["Recording"];
-type ApiRecordingPage = BackendComponents["schemas"]["RecordingPage"];
 type ApiSession = BackendComponents["schemas"]["Session"];
 
 type FetchImplementation = typeof fetch;
@@ -47,58 +48,38 @@ type EventSourceFactory = (url: string) => EventSource;
 const APPLIED_EVENT_ID_LIMIT = 1024;
 const HEADER_NOTIFICATION_LIMIT = 20;
 const REQUEST_TIMEOUT_MS = 10_000;
+// 90일 적재율 이력은 약 11초가 걸리며 Backend의 처리 상한은 20초이다.
+const LOAD_HISTORY_TIMEOUT_MS = 25_000;
 const MONITORING_REFRESH_MS = 60_000;
-const missingValue = "정보 없음";
 const notificationFailureMessage = "알림을 불러오지 못했습니다.";
-const loadHistoryFailureMessage = "적재율 추이를 불러오지 못했습니다.";
-const collectionHistoryFailureMessage = "최근 수거 완료 기록을 불러오지 못했습니다.";
+export const loadHistoryFailureMessage = "적재율 추이를 불러오지 못했습니다.";
+const collectionHistoryFailureMessage = "최근 수거 기록을 불러오지 못했습니다.";
 
-const API_PATHS = {
-  alertSettings: "/api/v1/settings/alerts",
-  events: "/api/v1/events",
+export const API_PATHS = {
   notification: "/api/v1/notifications/{notificationId}",
-  notificationRecipient: "/api/v1/notification-recipients/{recipientId}",
-  notificationRecipients: "/api/v1/notification-recipients",
   notifications: "/api/v1/notifications",
   notificationsReadAll: "/api/v1/notifications/read-all",
-  recording: "/api/v1/recordings/{recordingId}",
-  recordings: "/api/v1/recordings",
   session: "/api/v1/session",
-  testNotification: "/api/v1/notifications/test",
 } as const satisfies Record<string, keyof paths & keyof BackendPaths>;
 
-const V1_MONITORING_PATHS = {
+export const V1_MONITORING_PATHS = {
   loadHistory: "/api/v1/history/load",
   events: "/api/v1/monitoring/events",
   snapshot: "/api/v1/monitoring/snapshot",
 } as const satisfies Record<string, keyof paths & keyof BackendPaths>;
 
-function pathWithId(path: string, parameter: string, value: string) {
-  return path.replace(`{${parameter}}`, encodeURIComponent(value));
-}
-
 export class ApiError extends Error {
   readonly code?: string;
+  readonly issues?: ValidationIssue[];
   readonly status: number;
 
-  constructor(status: number, message: string, code?: string) {
+  constructor(status: number, message: string, code?: string, issues?: ValidationIssue[]) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.issues = issues;
   }
-}
-
-function wallClock(value: string | null, includeSeconds = false) {
-  if (value === null) return missingValue;
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
-  if (!match) return value;
-  return `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}${includeSeconds ? `:${match[6] ?? "00"}` : ""}`;
-}
-
-function timeOnly(value: string | null, includeSeconds = false) {
-  if (value === null) return missingValue;
-  return wallClock(value, includeSeconds).split(" ")[1] ?? value;
 }
 
 function receivedSnapshot() {
@@ -124,81 +105,56 @@ function sinceCollection(completedAt: string | null, serverTime: string) {
   return Number.isFinite(elapsed) && elapsed >= 0 ? durationText(elapsed) : missingValue;
 }
 
-function clockDuration(seconds: number | null) {
-  if (seconds === null) return missingValue;
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
-}
+type CollectionInsights = {
+  collection: CollectionSummary;
+  forecast: FillForecast | null;
+  profiles: LidarProfile[] | null;
+  activeAlerts: ActiveFillAlerts | null;
+  layout: MeasurementLayoutStatus | null;
+};
 
-function byteSize(bytes: number | null) {
-  if (bytes === null) return missingValue;
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-}
-
-function sameOriginResourcePath(value: string | null | undefined) {
-  if (value == null) return undefined;
-  const resource = new URL(value, window.location.origin);
-  if (!value.startsWith("/") || resource.origin !== window.location.origin) {
-    throw new Error("Recording resource path must use the dashboard origin");
+function applyForecast(summary: MonitoringSummary, forecast: FillForecast | null, serverTime: string, measuring: boolean) {
+  summary.expectedArrivalAt = missingValue;
+  summary.remainingTime = missingValue;
+  if (!forecast || !measuring || !timestamp(serverTime) || Date.parse(forecast.validUntil) <= Date.parse(serverTime)) return;
+  if (forecast.state === "REACHED") {
+    summary.expectedArrivalAt = "임계율 도달";
+    summary.remainingTime = durationText(0);
+  } else if (forecast.state === "AVAILABLE" && forecast.expectedThresholdAt) {
+    summary.expectedArrivalAt = expectedTime(forecast.expectedThresholdAt);
+    summary.remainingTime = durationText(Math.max(0, Math.floor((Date.parse(forecast.expectedThresholdAt) - Date.parse(serverTime)) / 1000)));
   }
-  return `${resource.pathname}${resource.search}${resource.hash}`;
 }
 
-function timeOffset(value: string) {
-  return value.match(/(?:Z|[+-]\d{2}:\d{2})$/i)?.[0] ?? "Z";
+function applyCollectionInsights(monitoring: DashboardData["monitoring"], insights: CollectionInsights | null, serverTime: string) {
+  const measuring = monitoring.v2?.dataState === "FRESH";
+  const { summary } = monitoring;
+  applyForecast(summary, insights?.forecast ?? null, serverTime, measuring);
+  const collection = insights?.collection ?? null;
+  summary.timeSinceCollection = sinceCollection(collection?.lastActivityAt ?? null, serverTime);
+  summary.averageCollectionCycle = !collection ? missingValue
+    : collection.averageCycleSeconds === null ? "자료 부족" : durationText(collection.averageCycleSeconds);
+  monitoring.lidarProfiles = measuring && insights?.profiles ? insights.profiles : [];
+  monitoring.measurementLayout = insights ? insights.layout : undefined;
+  const reported = insights?.activeAlerts ?? null;
+  // evaluationState는 적재율 판정 상태이며 장비와 측정 항목의 표시 여부를 결정하지 않는다.
+  const fillCurrent = measuring && reported?.evaluationState === monitoring.v2?.operations?.effectiveState;
+  monitoring.alerts = reported?.items
+    .filter((alert) => alert.health !== undefined || fillCurrent)
+    .map((alert) => ({ ...alert, time: timeOnly(alert.time), ...(alert.startedAt !== undefined && { startedAt: alert.startedAt === null ? null : wallClock(alert.startedAt) }) })) ?? [];
+  monitoring.activeAlertsState = reported && {
+    evaluationState: fillCurrent ? reported.evaluationState : "UNKNOWN",
+    reasonCodes: reported.reasonCodes,
+    coverage: reported.coverage,
+  };
 }
 
-function rfc3339AtOffset(timestamp: number, offset: string, preserveMilliseconds = false) {
-  const match = offset.match(/^([+-])(\d{2}):(\d{2})$/);
-  const offsetMinutes = match
-    ? (match[1] === "-" ? -1 : 1) * (Number(match[2]) * 60 + Number(match[3]))
-    : 0;
-  const suffix = match ? offset : "Z";
-  const iso = new Date(timestamp + offsetMinutes * 60_000).toISOString();
-  return preserveMilliseconds ? iso.replace(/Z$/, suffix) : iso.replace(/\.\d{3}Z$/, suffix);
-}
-
-function toDateTimeInput(value: string) {
-  return wallClock(value).replace(" ", "T").slice(0, 16);
-}
-
-function toRfc3339(value: string, offset: string) {
-  if (/(?:[zZ]|[+-]\d{2}:\d{2})$/.test(value)) return value;
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(value)) {
-    return `${value.length === 16 ? `${value}:00` : value}${offset}`;
-  }
-  return new Date(value).toISOString();
-}
-
-function eventCategoryLabel(category: EventCategory) {
-  return category === "collection" ? "수거" as const : category === "alert" ? "알림" as const : "오류" as const;
-}
-
-function eventTone(category: EventCategory, status?: ApiEvent["status"]): EventTone {
-  if (category === "error") return "error";
-  if (category === "collection" || status === "completed") return "complete";
-  return "warning";
-}
-
-function historyMarkerPresentation(type: ApiLoadHistory["eventMarkers"][number]["type"]) {
-  if (type === "collection_required") return { color: "#f58a07", label: "수거 필요" as const };
-  if (type === "collection_completed") return { color: "#0aa45b", label: "수거 완료" as const };
-  return { color: "#e83232", label: "오류" as const };
+function insightsSignature(monitoring: DashboardData["monitoring"]) {
+  return JSON.stringify([monitoring.summary, monitoring.lidarProfiles, monitoring.alerts, monitoring.activeAlertsState, monitoring.measurementLayout]);
 }
 
 function alertLevel(severity: "info" | "warning" | "error"): AlertLevel {
   return severity;
-}
-
-function eventStatus(status: ApiEvent["status"]) {
-  if (status === "completed") return "완료";
-  if (status === "resolved") return "해제";
-  return "발생";
 }
 
 function systemStatus(status: ApiMonitoringSnapshot["systemStatus"]): DashboardStatus {
@@ -217,73 +173,6 @@ function mapSession(session: ApiSession): UserSession {
   };
 }
 
-function mapAlertSettings(settings: ApiAlertSettings): AlertSettings {
-  return {
-    collectionThreshold: settings.collectionThresholdPercent,
-    enabledEventTypes: (settings.eventTypes ?? ["collection_required", "measurement_error", "device_error"]).filter((type): type is AlertSettings["enabledEventTypes"][number] =>
-      type === "collection_required" || type === "measurement_error" || type === "device_error"),
-    maximumRepeatCount: settings.maximumRepeatCount ?? 3,
-    preCollectionAlert: {
-      enabled: settings.preCollectionAlert.enabled ?? true,
-      threshold: settings.preCollectionAlert.thresholdPercent,
-    },
-    recoveryNotificationEnabled: settings.recoveryNotificationEnabled ?? true,
-    repeatIntervalMinutes: settings.repeatIntervalMinutes ?? 30,
-    sendDelayMinutes: settings.sendDelayMinutes ?? 0,
-    version: settings.version,
-  };
-}
-
-function recipientSettings(recipient: ApiRecipient): RecipientSettings {
-  return {
-    collection: recipient.eventTypes.includes("collection_required"),
-    device: recipient.eventTypes.includes("device_error"),
-    email: recipient.channels.includes("email"),
-    enabled: recipient.enabled ?? true,
-    error: recipient.eventTypes.includes("measurement_error"),
-    sms: recipient.channels.includes("sms"),
-    useGlobal: (recipient.subscriptionMode ?? "global") === "global",
-  };
-}
-
-function mapRecipient(recipient: ApiRecipient): NotificationRecipient {
-  return {
-    channel: recipient.channels.map((channel) => channel === "email" ? "이메일" : "문자").join(", ") || "-",
-    email: recipient.email,
-    enabled: recipient.enabled ?? true,
-    id: recipient.id,
-    name: recipient.name,
-    phone: recipient.phone ?? "-",
-    team: recipient.team,
-    version: recipient.version,
-  };
-}
-
-function mapRecipientResult(recipient: ApiRecipient) {
-  return {
-    recipient: mapRecipient(recipient),
-    settings: recipientSettings(recipient),
-  };
-}
-
-function recipientPreferences(settings: RecipientSettings) {
-  const channels: ApiRecipient["channels"][number][] = [
-    settings.email ? "email" : null,
-    settings.sms ? "sms" : null,
-  ].filter((value): value is ApiRecipient["channels"][number] => value !== null);
-  const eventTypes: ApiRecipient["eventTypes"][number][] = [
-    settings.collection ? "collection_required" : null,
-    settings.error ? "measurement_error" : null,
-    settings.device ? "device_error" : null,
-  ].filter((value): value is ApiRecipient["eventTypes"][number] => value !== null);
-  return {
-    channels,
-    enabled: settings.enabled,
-    eventTypes,
-    subscriptionMode: settings.useGlobal ? "global" as const : "custom" as const,
-  };
-}
-
 function mapLidarProfile(snapshot: ApiMonitoringSnapshot, lidarId: "lidar-1" | "lidar-2") {
   const profile = snapshot.lidarProfiles.find((candidate) => candidate.lidarId === lidarId);
   return {
@@ -296,79 +185,6 @@ function mapLidarProfile(snapshot: ApiMonitoringSnapshot, lidarId: "lidar-1" | "
       height: sample.valid ? sample.height ?? null : null,
       positionRatio: sample.positionRatio,
     })) ?? [],
-  };
-}
-
-function mapEvent(event: ApiEvent, backendRecords = false): HistoryEvent {
-  return {
-    content: event.detail || event.title,
-    title: event.title,
-    detail: event.detail,
-    id: event.id,
-    recordingId: event.recordingId ?? null,
-    status: backendRecords ? event.type === "collection_completed" && event.status === "completed" ? "완료" : null : eventStatus(event.status),
-    time: wallClock(event.occurredAt),
-    tone: backendRecords && event.category !== "collection" ? event.severity === "error" ? "error" : "warning" : eventTone(event.category, event.status),
-    type: eventCategoryLabel(event.category),
-  };
-}
-
-function mapRecording(recording: ApiRecording, offset?: string): Recording {
-  const atOffset = (value: string | null) => value === null || offset === undefined ? value : rfc3339AtOffset(Date.parse(value), offset, true);
-  const startedAt = atOffset(recording.startedAt);
-  const endedAt = atOffset(recording.endedAt);
-  const date = wallClock(startedAt, true).split(" ")[0];
-  const status = recording.status ?? "unavailable";
-  const available = status === "available" && (recording.mediaStatus == null || recording.mediaStatus === "ready");
-  return {
-    source: "event",
-    codec: recording.videoCodec?.toUpperCase() || missingValue,
-    contentUrl: available ? sameOriginResourcePath(recording.contentPath) : undefined,
-    date,
-    detail: recording.detail || recording.title,
-    downloadUrl: available ? sameOriginResourcePath(recording.downloadPath) : undefined,
-    duration: clockDuration(recording.durationSeconds),
-    end: wallClock(endedAt, true),
-    format: recording.containerFormat?.toUpperCase() || missingValue,
-    frameRate: recording.frameRate ?? null,
-    height: recording.heightPixels ?? null,
-    id: recording.id,
-    retentionEndsAt: wallClock(atOffset(recording.retainedUntil), true),
-    retentionStartsAt: wallClock(atOffset(recording.retainedFrom), true),
-    sample: false,
-    size: byteSize(recording.sizeBytes),
-    start: wallClock(startedAt, true),
-    status: status === "available" && !available ? "unavailable" : status,
-    thumbnailUrl: sameOriginResourcePath(recording.thumbnailPath),
-    time: `${timeOnly(startedAt)} - ${timeOnly(endedAt)}`,
-    tone: eventTone(recording.eventCategory),
-    type: eventCategoryLabel(recording.eventCategory),
-    width: recording.widthPixels ?? null,
-    mediaStatus: recording.mediaStatus,
-    coverage: recording.coverage,
-    gaps: recording.gaps?.map((gap) => ({ start: wallClock(atOffset(gap.start_at), true), end: wallClock(atOffset(gap.end_at), true) })),
-    errorCode: recording.errorCode,
-  };
-}
-
-function historyData(load: ApiLoadHistory, events: readonly ApiEvent[], backendRecords = false): DashboardData["history"] {
-  const origin = new Date(load.from).getTime();
-  const hour = (value: string) => (new Date(value).getTime() - origin) / 3_600_000;
-  return {
-    chartEvents: load.eventMarkers.map((event) => ({
-      ...historyMarkerPresentation(event.type),
-      detail: event.detail,
-      hour: hour(event.occurredAt),
-      id: event.id,
-      time: wallClock(event.occurredAt),
-      value: event.valuePercent,
-    })),
-    endsAt: toDateTimeInput(load.to),
-    events: events.map(event => mapEvent(event, backendRecords)),
-    loadSamples: load.samples.map((sample) => ({ hour: hour(sample.measuredAt),
-      value: sample.valid && typeof sample.valuePercent === "number" && Number.isFinite(sample.valuePercent) ? sample.valuePercent : null })),
-    startsAt: toDateTimeInput(load.from),
-    thresholds: load.collectionThresholds.map((sample) => ({ hour: hour(sample.effectiveAt), value: sample.valuePercent })),
   };
 }
 
@@ -464,14 +280,17 @@ function monitoringData(snapshot: ApiMonitoringSnapshot, notifications: ApiNotif
   };
 }
 
-function emptyHistory(to: string): DashboardData["history"] {
-  const offset = timeOffset(to);
-  const from = rfc3339AtOffset(new Date(to).getTime() - 7 * 24 * 3_600_000, offset);
-  return { chartEvents: [], endsAt: toDateTimeInput(to), events: [], loadSamples: [], startsAt: toDateTimeInput(from), thresholds: [] };
+// 목록 핸들은 함수를 가지므로 복제하지 않고 같은 핸들을 공유한다.
+function cloneDashboardData(data: DashboardData): DashboardData {
+  const { recordingsList, ...rest } = data;
+  const copy = structuredClone(rest);
+  return recordingsList ? { ...copy, recordingsList } : copy;
 }
 
-function emptyAlertSettings(): AlertSettings {
-  return {
+const readyState: DataAreaState = { status: "ready" };
+
+const emptyAdminData: DashboardData["admin"] = {
+  alertSettings: {
     collectionThreshold: 80,
     enabledEventTypes: [],
     maximumRepeatCount: 1,
@@ -480,8 +299,11 @@ function emptyAlertSettings(): AlertSettings {
     repeatIntervalMinutes: 0,
     sendDelayMinutes: 0,
     version: "",
-  };
-}
+  },
+  preCollectionAlert: { enabled: false, threshold: 70 },
+  recipientSettings: {},
+  recipients: [],
+};
 
 export function createHttpDashboardDataSource({
   eventSourceFactory = (url) => new EventSource(url, { withCredentials: true }),
@@ -516,16 +338,14 @@ export function createHttpDashboardDataSource({
   if (useV2Monitoring && selectedLiveVideoMode !== "mjpeg") throw new Error("Monitoring v2 supports only MJPEG live video.");
   let csrfToken = "";
   let currentData: DashboardData | null = null;
-  let displayTimeOffset = "Z";
   let hasAuthenticatedSession = false;
   let monitoringRevision = 0;
   let notificationRevision = 0;
   let notificationRefreshRequired = false;
-  let completedCollectionAt: string | null = null;
+  let collectionInsights: CollectionInsights | null = null;
   let collectionRequestedAt = -Infinity;
   let monitoringScope: LoadHistoryScope | null = null;
   let serverClock: { timestamp: number; receivedAt: number } | null = null;
-  let dailyApiPromise: Promise<DailyRecordingApi> | null = null;
   let notificationActionsController = new AbortController();
   const listeners = new Set<DashboardDataUpdateListener>();
   const resetNotificationActions = () => {
@@ -534,7 +354,7 @@ export function createHttpDashboardDataSource({
   };
   const publishNotifications = () => {
     const data = currentData;
-    if (data) listeners.forEach((listener) => listener(structuredClone(data)));
+    if (data) listeners.forEach((listener) => listener(cloneDashboardData(data)));
   };
   const pitPath = (path: string) => backendContract
     ? `${path}${path.includes("?") ? "&" : "?"}${new URLSearchParams({ pit_id: pitId })}` : path;
@@ -550,7 +370,7 @@ export function createHttpDashboardDataSource({
       monitoring.videoUrl = `/media/cameras/${encodeURIComponent(cameraId)}/live`;
       monitoring.videoStatus = "available";
     }
-    if (monitoring.v2) monitoring.summary.timeSinceCollection = sinceCollection(completedCollectionAt, snapshot.serverTime);
+    if (monitoring.v2) applyCollectionInsights(monitoring, collectionInsights, snapshot.serverTime);
     if (monitoring.v2) {
       monitoringScope = { pitId, siteId: monitoring.v2.siteId, edgeId: monitoring.v2.edgeId };
       serverClock = { timestamp: Date.parse(snapshot.serverTime), receivedAt: performance.now() };
@@ -558,7 +378,7 @@ export function createHttpDashboardDataSource({
     return monitoring;
   };
 
-  const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+  const request = async <T>(path: string, { timeoutMs = REQUEST_TIMEOUT_MS, ...init }: RequestInit & { timeoutMs?: number } = {}): Promise<T> => {
     const controller = new AbortController();
     let authorizationStatus: number | undefined;
     let rejectDeadline: (error: Error) => void = () => undefined;
@@ -574,7 +394,7 @@ export function createHttpDashboardDataSource({
       const error = new ApiError(authorizationStatus ?? 504, "API request timed out.", "REQUEST_TIMEOUT");
       controller.abort(error);
       rejectDeadline(error);
-    }, REQUEST_TIMEOUT_MS);
+    }, timeoutMs);
     const operation = async () => {
       const checkAbort = () => {
         if (controller.signal.aborted) throw controller.signal.reason;
@@ -595,14 +415,11 @@ export function createHttpDashboardDataSource({
           notificationActionsController.abort();
           onSessionExpired();
         }
-        let detail: { code?: string; detail?: string; title?: string; error?: { code?: string; message?: string } } = {};
-        try {
-          const payload: unknown = await response.json();
-          if (payload && typeof payload === "object") detail = payload;
-        } catch { /* Empty or non-JSON error response. */ }
+        let body: ParsedErrorBody = {};
+        try { body = parseErrorBody(await response.json()); }
+        catch { /* Empty or non-JSON error response. */ }
         checkAbort();
-        const code = detail.code ?? detail.error?.code ?? (detail.detail === "MONITORING_SOURCE_NOT_CONFIGURED" ? detail.detail : undefined);
-        throw new ApiError(response.status, typeof detail.detail === "string" ? detail.detail : detail.error?.message ?? detail.title ?? `API request failed with ${response.status}`, code);
+        throw new ApiError(response.status, body.message ?? `API request failed with ${response.status}`, body.code, body.issues);
       }
       const responseText = await response.text();
       checkAbort();
@@ -659,48 +476,31 @@ export function createHttpDashboardDataSource({
     publishNotifications();
   };
 
-  const getCompletedCollectionAt = async (signal?: AbortSignal) => {
+  const getCollectionSummary = async (signal?: AbortSignal) => {
     collectionRequestedAt = performance.now();
-    const result = await request<unknown>(pitPath(`${API_PATHS.events}?category=collection&page=1&pageSize=1`), { signal });
-    if (!result || typeof result !== "object" || !("items" in result) || !Array.isArray(result.items) || result.items.length > 1) throw new Error("Unexpected collection history contract.");
-    const row: unknown = result.items[0];
-    if (row === undefined) return null;
-    if (!row || typeof row !== "object" || !("type" in row) || row.type !== "collection_completed"
-      || !("category" in row) || row.category !== "collection" || !("status" in row) || row.status !== "completed"
-      || !("occurredAt" in row) || typeof row.occurredAt !== "string" || !/(?:Z|[+-]\d{2}:\d{2})$/i.test(row.occurredAt) || !Number.isFinite(Date.parse(row.occurredAt))) {
-      throw new Error("Unexpected collection history contract.");
-    }
-    return row.occurredAt;
-  };
-
-  const listEveryPage = async <TPage extends { readonly items: readonly unknown[]; readonly page: { readonly totalPages: number } }, TItem>(
-    path: string,
-    signal?: AbortSignal,
-  ) => {
-    const items: TItem[] = [];
-    let page = 1;
-    while (true) {
-      const separator = path.includes("?") ? "&" : "?";
-      const result = await request<TPage>(`${path}${separator}page=${page}&pageSize=100`, { signal });
-      items.push(...result.items as readonly TItem[]);
-      if (page >= result.page.totalPages) break;
-      page += 1;
-    }
-    return items;
-  };
-
-  const queryParameters = (query: DateRangeQuery) => {
-    const parameters = new URLSearchParams({ from: toRfc3339(query.from, displayTimeOffset), to: toRfc3339(query.to, displayTimeOffset) });
-    if (backendContract) parameters.set("pit_id", pitId);
-    if (query.eventCategory) parameters.set(backendContract ? "category" : "eventCategory", query.eventCategory);
-    return parameters;
+    const optional = <T,>(operation: Promise<T>) => operation.catch((error: unknown) => {
+      if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError") || isAuthorizationError(error)) throw error;
+      return null;
+    });
+    const [collection, forecast, profiles, activeAlerts, layout] = await Promise.all([
+      request<unknown>(pitPath("/api/v2/monitoring/collection-summary"), { signal }).then((value) => parseCollectionSummaryV2(value, pitId)),
+      optional(request<unknown>(pitPath("/api/v2/monitoring/fill-forecast"), { signal }).then((value) => parseFillForecastV2(value, pitId))),
+      optional(request<unknown>(pitPath("/api/v2/monitoring/profiles"), { signal }).then((value) => parseLidarProfilesV2(value, pitId))),
+      optional(request<unknown>(pitPath("/api/v2/monitoring/active-alerts?scope=ALL"), { signal }).then((value) => parseActiveAlertsV2(value, pitId))),
+      optional(request<unknown>(pitPath("/api/v2/monitoring/layout"), { signal }).then((value) => parseMeasurementLayoutV2(value, pitId))),
+    ]);
+    return { collection, forecast, profiles, activeAlerts, layout };
   };
 
   const requestV2LoadHistory = async (from: string, to: string, signal?: AbortSignal) => {
     if (!monitoringScope) throw new Error("Monitoring source is not initialized.");
     const scope = { ...monitoringScope };
     const parameters = new URLSearchParams({ pit_id: pitId, from, to });
-    const result = parseLoadHistoryV2(await request<unknown>(`/api/v2/monitoring/load-history?${parameters}`, { signal }), scope);
+    const response = await request<unknown>(`/api/v2/monitoring/load-history?${parameters}`, { signal, timeoutMs: LOAD_HISTORY_TIMEOUT_MS })
+      .catch((error: unknown) => {
+        throw error instanceof ApiError && error.code === "REQUEST_TIMEOUT" ? new ApiError(error.status, error.message, "HISTORY_CLIENT_TIMEOUT") : error;
+      });
+    const result = parseLoadHistoryV2(response, scope);
     if (monitoringScope.siteId !== scope.siteId || monitoringScope.edgeId !== scope.edgeId) throw new Error("Monitoring source changed during history request.");
     if (Date.parse(result.from) !== Date.parse(from) || Date.parse(result.to) !== Date.parse(to)) throw new Error("Unexpected load history range.");
     return { ...result, monitoringSamples: result.monitoringSamples.map((sample) => ({ ...sample,
@@ -712,83 +512,34 @@ export function createHttpDashboardDataSource({
   const recentHistory = (to: string, signal?: AbortSignal) => requestV2LoadHistory(
     rfc3339AtOffset(Date.parse(to) - 24 * 3_600_000, displayTimeOffset), to, signal);
 
-  const queryHistory = async (query: DateRangeQuery, signal?: AbortSignal) => {
-    const parameters = queryParameters(query);
-    if (!useV2Monitoring) {
-      const [load, events] = await Promise.all([
-        request<ApiLoadHistory>(`${V1_MONITORING_PATHS.loadHistory}?${parameters}`, { signal }),
-        listEveryPage<ApiEventPage, ApiEvent>(`${API_PATHS.events}?${parameters}`, signal),
-      ]);
-      return historyData(load, events, backendContract);
-    }
-    const from = toRfc3339(query.from, displayTimeOffset);
-    const to = toRfc3339(query.to, displayTimeOffset);
-    const unsupported = Date.parse(to) - Date.parse(from) > 7 * 24 * 3_600_000;
-    const [loadResult, eventsResult] = await Promise.all([
-      unsupported ? Promise.resolve({ value: null, state: { status: "unsupported" as const, message: "v2 적재율 추이는 최대 7일까지 조회할 수 있습니다." } })
-        : optionalArea(requestV2LoadHistory(from, to, signal), null, loadHistoryFailureMessage, signal),
-      optionalArea(listEveryPage<ApiEventPage, ApiEvent>(`${API_PATHS.events}?${parameters}`, signal), [], "운영 이력을 불러오지 못했습니다.", signal),
-    ]);
-    const load = loadResult.value;
-    const history = emptyHistory(to);
-    return {
-      ...history,
-      startsAt: toDateTimeInput(from), endsAt: toDateTimeInput(to),
-      loadSamples: load?.historySamples ?? [],
-      events: eventsResult.value.map((event) => mapEvent(event, backendContract)),
-      thresholds: currentData ? [{ hour: 0, value: currentData.monitoring.summary.collectionThreshold }] : [],
-      loadState: { ...loadResult.state, from, to, thresholdKind: "current" as const },
-      eventsState: eventsResult.state,
-    };
-  };
-
-  const queryRecordings = async (query: DateRangeQuery, signal?: AbortSignal) => {
-    if (query.recordingSource === "daily") {
-      return (await getDailyApi()).queryRecordings(query, signal);
-    }
-    const recordings = await listEveryPage<ApiRecordingPage, ApiRecording>(`${API_PATHS.recordings}?${queryParameters(query)}`, signal);
-    return recordings.map(recording => mapRecording(recording, displayTimeOffset));
-  };
-
-  const getDailyApi = () => {
-    if (!supportsDailyRecordings) throw new ApiError(404, "현재 연결은 날짜 녹화를 지원하지 않습니다.", "UNSUPPORTED_ENDPOINT");
-    dailyApiPromise ??= import("./daily-recording-api").then(({ createDailyRecordingApi }) => createDailyRecordingApi({
-      ApiError, cameraId, request,
+  // 이력 이벤트 표와 녹화 조회는 해당 화면에서 처음 쓸 때 불러온 모듈이 처리한다.
+  let recordingsApiPromise: Promise<ReturnType<typeof import("./http-recordings-api").createRecordingsApi>> | null = null;
+  const recordingsApi = () => {
+    recordingsApiPromise ??= import("./http-recordings-api").then(({ createRecordingsApi }) => createRecordingsApi({
+      ApiError, backendContract, cameraId,
+      collectionThreshold: () => currentData?.monitoring.summary.collectionThreshold,
       isAuthenticated: () => hasAuthenticatedSession && Boolean(csrfToken),
+      optionalArea, pitId, request, requestV2LoadHistory,
       serverNow: () => {
         if (!serverClock) throw new Error("A valid server time is required for daily recordings.");
         return serverClock.timestamp + Math.max(0, performance.now() - serverClock.receivedAt);
       },
-    })).catch((error: unknown) => { dailyApiPromise = null; throw error; });
-    return dailyApiPromise;
+      supportsDailyRecordings, useV2Monitoring,
+    })).catch((error: unknown) => { recordingsApiPromise = null; throw error; });
+    return recordingsApiPromise;
+  };
+  const queryHistory = async (query: DateRangeQuery, signal?: AbortSignal) => (await recordingsApi()).queryHistory(query, signal);
+  const queryHistoryEvents = async (query: HistoryEventQuery, signal?: AbortSignal) => (await recordingsApi()).queryHistoryEvents(query, signal);
+  const queryRecordings = async (query: DateRangeQuery, signal?: AbortSignal) => (await recordingsApi()).queryRecordings(query, signal);
+  const getRecording = async (recordingId: string, signal?: AbortSignal, recordingSource: "daily" | "event" = "event") =>
+    (await recordingsApi()).getRecording(recordingId, signal, recordingSource);
+  // 목록 핸들은 동기적으로 만들어야 하므로 첫 ensure에서 모듈을 불러와 실제 핸들을 만든다.
+  const openRecordingList = (query: DateRangeQuery): RecordingList => {
+    let inner: Promise<RecordingList> | null = null;
+    return { ensure: async (rank, signal) => (await (inner ??= recordingsApi().then((api) => api.openRecordingList(query)))).ensure(rank, signal) };
   };
 
-  const getRecording = async (recordingId: string, signal?: AbortSignal, recordingSource: "daily" | "event" = "event") => {
-    if (recordingSource === "daily") {
-      try { return await (await getDailyApi()).getRecording(recordingId, signal); }
-      catch (error) { if (error instanceof ApiError && error.status === 404) return null; throw error; }
-    }
-    try {
-      const path = pathWithId(API_PATHS.recording, "recordingId", recordingId);
-      return mapRecording(await request<ApiRecording>(path, { signal }), displayTimeOffset);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 404) return null;
-      throw error;
-    }
-  };
-
-  const getRecipients = async (session: UserSession | null, signal?: AbortSignal) => {
-    if (session?.user.role !== "administrator") return { recipients: [], settings: {} as Record<string, RecipientSettings> };
-    const apiRecipients = await listEveryPage<ApiRecipientPage, ApiRecipient>(API_PATHS.notificationRecipients, signal);
-    return {
-      recipients: apiRecipients.map(mapRecipient),
-      settings: Object.fromEntries(apiRecipients.map((recipient) => [recipient.email, recipientSettings(recipient)])),
-    };
-  };
-
-  const getAlertSettings = async (session: UserSession | null, signal?: AbortSignal) => session?.user.role === "administrator"
-    ? mapAlertSettings(await request<ApiAlertSettings>(pitPath(API_PATHS.alertSettings), { signal }))
-    : emptyAlertSettings();
+  const adminContext = () => ({ pitPath, request });
 
   const finishNotificationAction = async (ids: Set<string>, session: UserSession | null | undefined, signal: AbortSignal, readAllRevision?: number) => {
     const isCurrentSession = () => currentData?.session === session && hasAuthenticatedSession && !signal.aborted;
@@ -829,16 +580,8 @@ export function createHttpDashboardDataSource({
   const source: DashboardDataSource = {
     monitoringVersion,
     supportsDailyRecordings,
-    createNotificationRecipient: async (input: NotificationRecipientInput) => {
-      const body = {
-        ...recipientPreferences(input.settings),
-        email: input.recipient.email,
-        name: input.recipient.name,
-        phone: input.recipient.phone === "-" ? null : input.recipient.phone,
-        team: input.recipient.team,
-      } satisfies BackendComponents["schemas"]["NotificationRecipientCreate"] & components["schemas"]["NotificationRecipientCreate"];
-      return mapRecipientResult(await request<ApiRecipient>(API_PATHS.notificationRecipients, { method: "POST", body: JSON.stringify(body) }));
-    },
+    supportsEventRecordingRangeLimit: backendContract,
+    createNotificationRecipient: async (input: NotificationRecipientInput) => (await loadAdminApi()).createRecipient(adminContext(), input),
     createSession: async (credentials: SessionCredentials) => {
       const body = { ...credentials } satisfies BackendComponents["schemas"]["LoginRequest"] & components["schemas"]["LoginRequest"];
       const session = await request<ApiSession>(API_PATHS.session, { method: "POST", body: JSON.stringify(body) });
@@ -868,32 +611,20 @@ export function createHttpDashboardDataSource({
       const previous = session?.user.id === currentData?.session?.user.id ? currentData : null;
       const previousLoad = previous?.monitoring.v2?.siteId === monitoring.v2?.siteId
         && previous?.monitoring.v2?.edgeId === monitoring.v2?.edgeId ? previous?.monitoring : undefined;
-      displayTimeOffset = timeOffset(snapshot.serverTime);
-      const end = backendContract && (!useV2Monitoring || path === "/recordings")
-        ? rfc3339AtOffset(Math.ceil(new Date(snapshot.serverTime).getTime() / 60_000) * 60_000, displayTimeOffset)
-        : useV2Monitoring ? rfc3339AtOffset(path === "/history"
-          ? Math.floor(Date.parse(snapshot.serverTime) / 60_000) * 60_000 : Date.parse(snapshot.serverTime), displayTimeOffset) : snapshot.serverTime;
-      const start = rfc3339AtOffset(new Date(end).getTime() - 7 * 24 * 3_600_000, displayTimeOffset);
-      const requestedRecordingId = path === "/recordings" ? new URLSearchParams(locationSearch()).get("recordingId") : null;
-      const recordingsSource = supportsDailyRecordings && !requestedRecordingId
-        && new URLSearchParams(locationSearch()).get("recordingSource") !== "event" ? "daily" : "event";
-      const recordingQueryEnd = recordingsSource === "daily" ? snapshot.serverTime : end;
-      const recordingQueryStart = recordingsSource === "daily"
-        ? rfc3339AtOffset(Date.parse(snapshot.serverTime) - 7 * 86_400_000, displayTimeOffset) : start;
-      const previousRecordings = previous?.recordingsSource === recordingsSource ? previous.recordings : [];
-      const [notificationResult, historyResult, recordingsResult, settings, recipients, completionResult, recentHistoryResult] = await Promise.all([
+      const previousHistoryThresholds = useV2Monitoring ? [{ hour: 0, value: monitoring.summary.collectionThreshold }] : [];
+      const [notificationResult, historyResult, recordingsResult, adminResult, completionResult, recentHistoryResult] = await Promise.all([
         optionalArea(getNotifications(session, options.signal), null, notificationFailureMessage, options.signal, previous?.monitoring.unreadNotificationCount != null),
-        optionalArea(path === "/history" ? queryHistory({ from: start, to: end }, options.signal) : Promise.resolve(emptyHistory(end)),
-          previous?.history ?? emptyHistory(end), "이력을 불러오지 못했습니다.", options.signal, previous !== null),
-        optionalArea(path === "/recordings"
-          ? requestedRecordingId
-            ? getRecording(requestedRecordingId, options.signal).then((recording) => recording ? [recording] : [])
-            : queryRecordings({ from: recordingQueryStart, to: recordingQueryEnd, recordingSource: recordingsSource }, options.signal)
-          : Promise.resolve([]), previousRecordings, "녹화 목록을 불러오지 못했습니다.", options.signal, previousRecordings.length > 0),
-        path === "/admin" ? getAlertSettings(session, options.signal) : emptyAlertSettings(),
-        path === "/admin" ? getRecipients(session, options.signal) : { recipients: [], settings: {} },
-        optionalArea(useV2Monitoring && backendContract && monitoringDetails ? getCompletedCollectionAt(options.signal) : Promise.resolve(null),
-          previous ? completedCollectionAt : null, collectionHistoryFailureMessage, options.signal, previous !== null),
+        path === "/history"
+          ? recordingsApi().then((api) => api.initialHistoryForRoute(snapshot.serverTime, displayTimeOffset, monitoring.summary.collectionThreshold))
+          : Promise.resolve({ chartEvents: [], endsAt: snapshot.serverTime, events: [], loadSamples: [], startsAt: snapshot.serverTime, thresholds: previousHistoryThresholds } as DashboardData["history"]),
+        path === "/recordings"
+          ? recordingsApi().then((api) => api.initialRecordingsForRoute(snapshot.serverTime, locationSearch(), displayTimeOffset, previous && previous.recordingsSource ? { recordings: previous.recordings, source: previous.recordingsSource } : null, options.signal))
+          : Promise.resolve({ recordings: [] as Recording[], recordingsList: undefined as RecordingList | undefined, recordingsTotal: undefined as number | undefined, recordingsSource: "event" as const, recordingsState: readyState, historyEndsAt: undefined as string | undefined }),
+        path === "/admin" && session?.user.role === "administrator"
+          ? loadAdminApi().then((api) => api.fetchAdminInitial(adminContext(), options.signal))
+          : Promise.resolve(emptyAdminData),
+        optionalArea(useV2Monitoring && backendContract && monitoringDetails ? getCollectionSummary(options.signal) : Promise.resolve(null),
+          previous ? collectionInsights : null, collectionHistoryFailureMessage, options.signal, previous !== null),
         optionalArea(useV2Monitoring && monitoringDetails ? recentHistory(snapshot.serverTime, options.signal) : Promise.resolve(null), null,
           loadHistoryFailureMessage, options.signal, Boolean(previousLoad?.loadHistory.length)),
       ]);
@@ -907,39 +638,31 @@ export function createHttpDashboardDataSource({
         monitoring.loadHistoryState = { ...recentHistoryResult.state, from: recentHistoryResult.value?.from, to: recentHistoryResult.value?.to };
       }
       if (options.signal?.aborted) throw new DOMException("Dashboard request aborted.", "AbortError");
-      completedCollectionAt = completionResult.value;
+      collectionInsights = completionResult.value;
       notificationRefreshRequired = notificationResult.state.status === "error";
-      if (monitoring.v2) monitoring.summary.timeSinceCollection = sinceCollection(completedCollectionAt, snapshot.serverTime);
+      if (monitoring.v2) applyCollectionInsights(monitoring, collectionInsights, snapshot.serverTime);
       updateLoadOneHourAgo(monitoring);
-      currentData = {
+      const nextData: DashboardData = {
         reception,
-        admin: {
-          alertSettings: settings,
-          preCollectionAlert: settings.preCollectionAlert,
-          recipientSettings: recipients.settings,
-          recipients: recipients.recipients,
-        },
-        history: historyResult.state.status === "error"
-          ? { ...historyResult.value, loadState: historyResult.state, eventsState: historyResult.state }
-          : useV2Monitoring ? { ...historyResult.value, thresholds: [{ hour: 0, value: monitoring.summary.collectionThreshold }] } : historyResult.value,
+        admin: adminResult,
+        history: recordingsResult.historyEndsAt ? { ...historyResult, endsAt: recordingsResult.historyEndsAt } : historyResult,
         lastMeasuredAt: timeOnly(snapshot.measuredAt, true),
         monitoring,
-        recordings: recordingsResult.value,
-        recordingsSource,
-        recordingsState: recordingsResult.state,
+        recordings: recordingsResult.recordings,
+        ...(recordingsResult.recordingsList && { recordingsList: recordingsResult.recordingsList, recordingsTotal: recordingsResult.recordingsTotal }),
+        recordingsSource: recordingsResult.recordingsSource,
+        recordingsState: recordingsResult.recordingsState,
         session,
       };
-      return structuredClone(currentData);
+      currentData = nextData;
+      return cloneDashboardData(nextData);
     },
     getRecording,
-    ...(supportsDailyRecordings ? { prepareDailyRecordingExport: async (recordingId: string, signal?: AbortSignal) => {
-      return (await getDailyApi()).prepareExport(recordingId, signal);
-    } } : {}),
-    getRecordingCoverage: async (recordingId, signal) => {
-      const { clipIdentifier, parseClipCoverage } = await import("./recording-coverage");
-      if (!clipIdentifier.test(recordingId)) throw new Error("Recording coverage requires a media clip identifier.");
-      return parseClipCoverage(await request<unknown>(`/api/v1/media/clips/${encodeURIComponent(recordingId)}`, { signal }), recordingId, cameraId);
-    },
+    ...(supportsDailyRecordings ? {
+      deleteDailyRecording: async (recordingId: string, signal?: AbortSignal): Promise<DailyRecordingDeletion> => (await recordingsApi()).deleteDailyRecording(recordingId, signal),
+      prepareDailyRecordingExport: async (recordingId: string, signal?: AbortSignal) => (await recordingsApi()).prepareDailyRecordingExport(recordingId, signal),
+    } : {}),
+    getRecordingCoverage: async (recordingId, signal) => (await recordingsApi()).getRecordingCoverage(recordingId, signal),
     markAllNotificationsRead: async () => {
       const session = currentData?.session;
       const { signal } = notificationActionsController;
@@ -955,28 +678,14 @@ export function createHttpDashboardDataSource({
       await finishNotificationAction(new Set([notificationId]), session, signal);
     },
     queryHistory,
+    queryHistoryEvents,
     queryRecordings,
-    replaceAlertSettings: async (settings) => {
-      const body = {
-        collectionThresholdPercent: settings.collectionThreshold,
-        eventTypes: settings.enabledEventTypes,
-        maximumRepeatCount: settings.maximumRepeatCount,
-        preCollectionAlert: { enabled: settings.preCollectionAlert.enabled, thresholdPercent: settings.preCollectionAlert.threshold },
-        recoveryNotificationEnabled: settings.recoveryNotificationEnabled,
-        repeatIntervalMinutes: settings.repeatIntervalMinutes,
-        sendDelayMinutes: settings.sendDelayMinutes,
-      } satisfies BackendComponents["schemas"]["AlertSettingsUpdate"] & components["schemas"]["AlertSettingsUpdate"];
-      return mapAlertSettings(await request<ApiAlertSettings>(pitPath(API_PATHS.alertSettings), {
-        body: JSON.stringify(body),
-        headers: { "If-Match": settings.version },
-        method: "PUT",
-      }));
-    },
+    openRecordingList,
+    replaceAlertSettings: async (settings) => (await loadAdminApi()).replaceAlertSettings(adminContext(), settings),
     sendTestNotification: async (recipientId, channels) => {
-      const body = { channels, recipientId } satisfies BackendComponents["schemas"]["TestNotificationRequest"] & components["schemas"]["TestNotificationRequest"];
       const session = currentData?.session;
       const { signal } = notificationActionsController;
-      await request<void>(API_PATHS.testNotification, { body: JSON.stringify(body), method: "POST", signal });
+      await (await loadAdminApi()).sendTestNotification(adminContext(), recipientId, channels, signal);
       try { await finishNotificationAction(new Set(), session, signal); }
       catch { /* The accepted request is independent of notification refresh or cancellation. */ }
     },
@@ -1009,7 +718,7 @@ export function createHttpDashboardDataSource({
         if (!active || !currentData) return;
         currentData.authError = { status: error.status === 401 ? 401 : 403,
           message: error.status === 401 ? "로그인이 만료되었습니다." : "조회 권한이 없습니다." };
-        listener(structuredClone(currentData));
+        listener(cloneDashboardData(currentData));
         active = false;
         sessionController.abort();
         notificationActionScope.abort();
@@ -1026,7 +735,7 @@ export function createHttpDashboardDataSource({
           currentData.monitoring.loadHistory = load.monitoringSamples;
           currentData.monitoring.loadHistoryState = { status: "ready", from: load.from, to: load.to };
           updateLoadOneHourAgo(currentData.monitoring);
-          listener(structuredClone(currentData));
+          listener(cloneDashboardData(currentData));
         } catch (error) {
           if (isAuthorizationError(error)) { failAuthorization(error); return; }
           if (!active || sessionController.signal.aborted || !currentData) return;
@@ -1035,7 +744,7 @@ export function createHttpDashboardDataSource({
             from: currentData.monitoring.loadHistoryState?.from, to: currentData.monitoring.loadHistoryState?.to,
           };
           updateLoadOneHourAgo(currentData.monitoring);
-          listener(structuredClone(currentData));
+          listener(cloneDashboardData(currentData));
         } finally { refreshingLoadHistory = false; }
       };
       const historyTimer = useV2Monitoring && monitoringDetails ? window.setInterval(() => {
@@ -1074,7 +783,7 @@ export function createHttpDashboardDataSource({
               notificationRefreshRequired = false;
               synchronizedNotificationId = expectedNotificationId;
               if ((currentData.monitoring.v2?.operations?.notificationId ?? null) === synchronizedNotificationId) notificationsRefreshQueued = false;
-              listener(structuredClone(currentData));
+              listener(cloneDashboardData(currentData));
             } catch (error) {
               if (isAuthorizationError(error)) {
                 failAuthorization(error);
@@ -1083,7 +792,7 @@ export function createHttpDashboardDataSource({
               if (sessionController.signal.aborted) return;
               if (active && currentData) {
                 applyNotificationFailure(error);
-                listener(structuredClone(currentData));
+                listener(cloneDashboardData(currentData));
               }
             }
           }
@@ -1095,14 +804,14 @@ export function createHttpDashboardDataSource({
         void (async () => {
           if (active && currentData?.monitoring.v2) {
             try {
-              const completedAt = await getCompletedCollectionAt(sessionController.signal);
+              const summary = await getCollectionSummary(sessionController.signal);
               if (!active || !currentData?.monitoring.v2) return;
-              completedCollectionAt = completedAt;
-              const elapsed = sinceCollection(completedAt, currentData.monitoring.v2.serverTime);
-              if (currentData.monitoring.summary.timeSinceCollection !== elapsed || currentData.monitoring.completedCollectionState?.status === "error") {
-                currentData.monitoring.summary.timeSinceCollection = elapsed;
+              collectionInsights = summary;
+              const before = insightsSignature(currentData.monitoring);
+              applyCollectionInsights(currentData.monitoring, summary, currentData.monitoring.v2.serverTime);
+              if (before !== insightsSignature(currentData.monitoring) || currentData.monitoring.completedCollectionState?.status === "error") {
                 currentData.monitoring.completedCollectionState = { status: "ready" };
-                listener(structuredClone(currentData));
+                listener(cloneDashboardData(currentData));
               }
             } catch (error) {
               if (isAuthorizationError(error)) {
@@ -1111,8 +820,8 @@ export function createHttpDashboardDataSource({
               }
               if (sessionController.signal.aborted) return;
               if (active && currentData?.monitoring.v2) {
-                currentData.monitoring.completedCollectionState = areaError(error, collectionHistoryFailureMessage, completedCollectionAt !== null);
-                listener(structuredClone(currentData));
+                currentData.monitoring.completedCollectionState = areaError(error, collectionHistoryFailureMessage, collectionInsights !== null);
+                listener(cloneDashboardData(currentData));
               }
             }
           }
@@ -1123,17 +832,14 @@ export function createHttpDashboardDataSource({
         if (typeof event.data !== "string") return;
         let snapshot: ApiMonitoringSnapshot | ApiMonitoringSnapshotV2;
         let monitoring: DashboardData["monitoring"];
-        let offset: string;
         let measuredAt: string | null;
         try {
           snapshot = JSON.parse(event.data) as typeof snapshot;
           monitoring = mapMonitoring(snapshot, null);
-          offset = timeOffset(snapshot.serverTime);
           measuredAt = timeOnly(snapshot.measuredAt, true);
         } catch { return; }
         monitoringRevision += 1;
         if (monitoring.v2) monitoring.v2.streamState = "connected";
-        displayTimeOffset = offset;
         const headerNotifications = currentData.monitoring.headerNotifications;
         const unreadNotificationCount = currentData.monitoring.unreadNotificationCount;
         const sourceChanged = monitoring.v2 && currentData.monitoring.v2
@@ -1150,7 +856,7 @@ export function createHttpDashboardDataSource({
           },
         };
         updateLoadOneHourAgo(currentData.monitoring);
-        listener(structuredClone(currentData));
+        listener(cloneDashboardData(currentData));
         const notificationId = monitoring.v2?.operations?.notificationId;
         if (notificationRefreshRequired || (notificationId && notificationId !== synchronizedNotificationId)) refreshV2Notifications();
         if (useV2Monitoring && monitoring.v2 && backendContract) refreshCompletedCollection();
@@ -1169,7 +875,7 @@ export function createHttpDashboardDataSource({
           }));
           updateLoadOneHourAgo(currentData.monitoring);
         }
-        if (currentData) listener(structuredClone(currentData));
+        if (currentData) listener(cloneDashboardData(currentData));
         if (!backendContract || !hasAuthenticatedSession || checkingSession) return;
         checkingSession = true;
         void getSession(sessionController.signal)
@@ -1198,7 +904,7 @@ export function createHttpDashboardDataSource({
         });
         currentData.monitoring.headerNotifications.splice(HEADER_NOTIFICATION_LIMIT);
         if (!read && currentData.monitoring.unreadNotificationCount !== null) currentData.monitoring.unreadNotificationCount += 1;
-        listener(structuredClone(currentData));
+        listener(cloneDashboardData(currentData));
       });
       eventSource.addEventListener("session.expired", (event) => {
         if (!active || isDuplicate(event)) return;
@@ -1218,8 +924,7 @@ export function createHttpDashboardDataSource({
             if (!active || !currentData) return;
             let changed = false;
             if (expectedMonitoringRevision === monitoringRevision) {
-              displayTimeOffset = timeOffset(snapshot.serverTime);
-              currentData = {
+                      currentData = {
                 ...currentData,
                 reception: receivedSnapshot(),
                 lastMeasuredAt: timeOnly(snapshot.measuredAt, true),
@@ -1247,7 +952,7 @@ export function createHttpDashboardDataSource({
               }
               changed = true;
             }
-            if (changed) listener(structuredClone(currentData));
+            if (changed) listener(cloneDashboardData(currentData));
           })
           .catch((error: unknown) => { if (isAuthorizationError(error)) failAuthorization(error); });
       });
@@ -1260,14 +965,7 @@ export function createHttpDashboardDataSource({
         eventSource.close();
       };
     },
-    updateNotificationRecipient: async (recipient, settings) => {
-      const body = recipientPreferences(settings) satisfies BackendComponents["schemas"]["NotificationRecipientPatch"] & components["schemas"]["NotificationRecipientPatch"];
-      return mapRecipientResult(await request<ApiRecipient>(pathWithId(API_PATHS.notificationRecipient, "recipientId", recipient.id), {
-        body: JSON.stringify(body),
-        headers: { "Content-Type": "application/merge-patch+json", "If-Match": recipient.version },
-        method: "PATCH",
-      }));
-    },
+    updateNotificationRecipient: async (recipient, settings) => (await loadAdminApi()).updateRecipient(adminContext(), recipient, settings),
   };
 
   return source;

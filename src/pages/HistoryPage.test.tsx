@@ -81,20 +81,47 @@ test("LIMITED와 현재 임계율 참고 의미를 표시하고 v1 marker를 v2 
   expect(container.querySelectorAll(".history-event-target")).toHaveLength(0);
 });
 
-test("30일과 90일 선택은 유지하고 v2 추이만 미지원으로 표시한다", async () => {
+test("90일 선택은 그대로 조회하고 조회 중 상태를 표시한다", async () => {
   const mock = createMockDashboardDataSource();
   const data = await mock.getDashboardData();
-  const queryHistory = vi.fn().mockResolvedValue({ ...data.history, loadSamples: [], loadState: { status: "unsupported", message: "v2 적재율 추이는 최대 7일까지 조회할 수 있습니다." } });
+  let finish!: (value: DashboardData["history"]) => void;
+  const queryHistory = vi.fn(() => new Promise<DashboardData["history"]>((resolve) => { finish = resolve; }));
+  const { container } = await renderHistory({}, { ...mock, monitoringVersion: "v2", queryHistory });
+  fireEvent.click(screen.getByRole("button", { name: "최근 90일" }));
+  fireEvent.click(screen.getByRole("button", { name: "조회" }));
+  expect(queryHistory).toHaveBeenCalledOnce();
+  expect(screen.getByRole("button", { name: "조회 중" })).toBeDisabled();
+  expect(container.querySelector("#history-query-status")).toHaveTextContent("조회 중입니다.");
+  await act(async () => { finish({ ...data.history, loadState: { status: "ready" } }); await Promise.resolve(); });
+  expect(screen.getByRole("button", { name: "최근 90일" })).toHaveAttribute("aria-pressed", "true");
+  expect(container.querySelector("#history-query-status")).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("90일을 넘는 기간은 요청 전에 안내하고 요청하지 않는다", async () => {
+  const mock = createMockDashboardDataSource();
+  const queryHistory = vi.fn();
   await renderHistory({}, { ...mock, monitoringVersion: "v2", queryHistory });
-  expect(screen.getByRole("button", { name: "최근 90일" })).toBeEnabled();
-  fireEvent.click(screen.getByRole("button", { name: "최근 30일" }));
+  fireEvent.click(screen.getByRole("button", { name: "최근 90일" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "시작 시각" }), { target: { value: "2000-01-01 00:00" } });
+  fireEvent.click(screen.getByRole("button", { name: "조회" }));
+  expect(screen.getByRole("alert")).toHaveTextContent("최대 90일");
+  expect(queryHistory).not.toHaveBeenCalled();
+});
+
+test.each([
+  ["HISTORY_QUERY_TIMEOUT", "서버의 조회 처리 시간이 초과되었습니다. 기간을 줄여 다시 조회하세요."],
+  ["HISTORY_TOO_MANY_POINTS", "조회 구간 수가 응답 한도를 넘습니다. 기간을 줄여 다시 조회하세요."],
+])("%s 오류는 빈 그래프로 대체하지 않고 코드별 안내를 그래프 영역에 표시한다", async (code, message) => {
+  const mock = createMockDashboardDataSource();
+  const data = await mock.getDashboardData();
+  const queryHistory = vi.fn().mockResolvedValue({ ...data.history, loadSamples: [], loadState: { status: "error", code, message, httpStatus: 503, stale: false } });
+  const { container } = await renderHistory({}, { ...mock, monitoringVersion: "v2", queryHistory });
   fireEvent.click(screen.getByRole("button", { name: "조회" }));
   await act(async () => { await Promise.resolve(); });
+  expect(screen.getByText(message, { selector: "text" })).toBeVisible();
+  expect(container.querySelectorAll(".history-load-line")).toHaveLength(0);
   expect(queryHistory).toHaveBeenCalledOnce();
-  expect(screen.getByRole("button", { name: "최근 30일" })).toHaveAttribute("aria-pressed", "true");
-  expect(screen.getByText("v2 적재율 추이는 최대 7일까지 조회할 수 있습니다.", { selector: "text" })).toBeVisible();
-  expect(screen.getByText("총 9건")).toBeVisible();
-  expect(screen.queryByText("조회된 적재율 데이터가 없습니다.")).not.toBeInTheDocument();
 });
 
 test("이벤트 조회 실패는 데이터 없음이나 총 0건으로 표시하지 않는다", async () => {
@@ -203,4 +230,58 @@ test("이벤트 변경, 닫기와 source 변경은 선택한 상세를 분리하
   view.rerender(<HistoryPage {...view.props} dataSource={{ ...source }} />);
   expect(screen.queryByRole("dialog", { name: "이벤트 상세" })).not.toBeInTheDocument();
   expect(getDashboardData).not.toHaveBeenCalled();
+});
+
+function historyEvent(index: number): DashboardData["history"]["events"][number] {
+  return { id: `evt-${index}`, content: `내용 ${index}`, title: `이벤트 ${index}`, recordingId: null, status: null, time: "2026-10-15 12:00", tone: "warning", type: "알림" };
+}
+
+function pagedSource() {
+  const mock = createMockDashboardDataSource();
+  const pending: Array<{ page: number; resolve: (items: number[]) => void; signal?: AbortSignal }> = [];
+  let finishLoad!: (value: DashboardData["history"]) => void;
+  const queryHistory = vi.fn(() => new Promise<DashboardData["history"]>((resolve) => { finishLoad = resolve; }));
+  const queryHistoryEvents = vi.fn((query: { page: number; pageSize: number }, signal?: AbortSignal) => new Promise<{ events: DashboardData["history"]["events"]; totalItems: number; totalPages: number; page: number }>((resolve) => {
+    pending.push({ page: query.page, signal, resolve: (items) => resolve({ events: items.map(historyEvent), totalItems: 1811, totalPages: 227, page: query.page }) });
+  }));
+  return { source: { ...mock, monitoringVersion: "v2" as const, queryHistory, queryHistoryEvents }, queryHistory, queryHistoryEvents, pending, finishLoad: (value: DashboardData["history"]) => finishLoad(value) };
+}
+
+test("이벤트 표는 적재율 그래프를 기다리지 않고 보이는 페이지만 서버에서 조회한다", async () => {
+  const { source, queryHistory, queryHistoryEvents, pending, finishLoad } = pagedSource();
+  const data = await createMockDashboardDataSource().getDashboardData();
+  const loading = { ...data.history, events: [], loadSamples: [], loadState: { status: "loading" as const }, eventsState: { status: "loading" as const } };
+  const { container } = await renderHistory(loading, source);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+  expect(queryHistory).toHaveBeenCalledOnce();
+  expect(queryHistoryEvents).toHaveBeenCalledOnce();
+  expect(queryHistoryEvents.mock.calls[0][0]).toMatchObject({ page: 0, pageSize: 8 });
+  expect(screen.getByText("불러오는 중")).toBeVisible();
+  await act(async () => { pending[0].resolve([1, 2, 3, 4, 5, 6, 7, 8]); await Promise.resolve(); });
+  expect(screen.getByText("총 1811건")).toBeVisible();
+  expect(container.querySelectorAll(".history-events tbody tr")).toHaveLength(8);
+  expect(screen.getByText("1 / 227")).toBeVisible();
+  expect(container.querySelector("#history-query-status")).toHaveTextContent("조회 중입니다.");
+  expect(screen.getByText("적재율 이력을 불러오는 중입니다.", { selector: "text" })).toBeVisible();
+  await act(async () => { finishLoad({ ...data.history, events: [], loadState: { status: "ready" } }); await Promise.resolve(); });
+  expect(container.querySelector("#history-query-status")).toBeNull();
+});
+
+test("표 페이지 이동은 해당 서버 페이지만 요청하고 이전 요청의 늦은 응답은 적용하지 않는다", async () => {
+  const { source, queryHistoryEvents, pending, finishLoad } = pagedSource();
+  const data = await createMockDashboardDataSource().getDashboardData();
+  const loading = { ...data.history, events: [], loadSamples: [], loadState: { status: "loading" as const }, eventsState: { status: "loading" as const } };
+  await renderHistory(loading, source);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+  await act(async () => { pending[0].resolve([1, 2, 3, 4, 5, 6, 7, 8]); finishLoad({ ...data.history, events: [], loadState: { status: "ready" } }); await Promise.resolve(); });
+  fireEvent.click(screen.getByRole("button", { name: "다음 이벤트 페이지" }));
+  fireEvent.click(screen.getByRole("button", { name: "다음 이벤트 페이지" }));
+  expect(queryHistoryEvents).toHaveBeenCalledTimes(3);
+  expect(queryHistoryEvents.mock.calls.slice(1).map(([query]) => query.page)).toEqual([1, 2]);
+  expect(pending[1].signal?.aborted).toBe(true);
+  await act(async () => { pending[2].resolve([21, 22]); await Promise.resolve(); });
+  await act(async () => { pending[1].resolve([11, 12, 13]); await Promise.resolve(); });
+  expect(screen.getByText("이벤트 21")).toBeVisible();
+  expect(screen.queryByText("이벤트 11")).toBeNull();
+  expect(screen.getByText("3 / 227")).toBeVisible();
 });

@@ -36,12 +36,12 @@ test("최근 24시간 눈금은 정각을 표시하고 표본 좌표와 실제 �
   expect(container.querySelector(".chart-tooltip")).toHaveTextContent("19:21");
 });
 
-test("분 단위 offset의 시간대에서도 표시 시간 기준 정각에 눈금을 배치한다", () => {
+test("표본 offset과 무관하게 한국 표준시 정각에 눈금을 배치한다", () => {
   const { container } = render(<LoadChart threshold={80} samples={[
     { measuredAt: "2026-10-14T19:21:34+05:30", time: "19:21", value: 44 },
     { measuredAt: "2026-10-15T19:21:34+05:30", time: "19:21", value: 56 },
   ]} />);
-  expect([...container.querySelectorAll('text[y="166"]')].map(text => text.textContent)).toEqual(["21:00", "00:00", "03:00", "06:00", "09:00", "12:00", "15:00", "18:00"]);
+  expect([...container.querySelectorAll('text[y="166"]')].map(text => text.textContent)).toEqual(["00:00", "03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00"]);
 });
 
 test("조회 범위를 알 수 없는 단독 표본은 분 단위 눈금을 임의로 배치하지 않는다", () => {
@@ -65,6 +65,16 @@ test("최근 적재율과 LiDAR profile은 유효하지 않은 표본에서 선�
     { height: 1.2, positionRatio: 0 },
     { height: null, positionRatio: 0.5 },
     { height: 2.4, positionRatio: 1 },
+  ]} />);
+
+  expect(container.querySelectorAll(".profile-chart-line")).toHaveLength(2);
+
+  rerender(<ProfileChart average="1.8 m" color="blue" label="LiDAR 1" maximum="2.4 m" minimum="1.2 m" samples={[
+    { height: 2.4, positionRatio: 0.9 },
+    { height: 2.2, positionRatio: 0.8 },
+    { height: null, positionRatio: null },
+    { height: 1.9, positionRatio: 0.3 },
+    { height: 1.8, positionRatio: 0.2 },
   ]} />);
 
   expect(container.querySelectorAll(".profile-chart-line")).toHaveLength(2);

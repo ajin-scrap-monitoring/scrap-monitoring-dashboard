@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 export function useLatestRequest(scope: unknown) {
   const current = useRef<AbortController | null>(null);
@@ -7,10 +7,10 @@ export function useLatestRequest(scope: unknown) {
     current.current = null;
   }, [scope]);
 
-  return () => {
+  return useCallback(() => {
     current.current?.abort();
     const controller = new AbortController();
     current.current = controller;
     return controller.signal;
-  };
+  }, []);
 }

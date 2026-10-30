@@ -14,10 +14,12 @@ test.each(["/history", "/recordings"])("%s의 최초 데이터 확인 중에는 
   expect(screen.getByRole("main", { name: "데이터를 불러오는 중입니다." })).toBeVisible();
   expect(screen.queryByRole("link", { name: "로그인" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "사용자 메뉴" })).not.toBeInTheDocument();
+  expect(document.querySelector(".global-nav")).toBeEmptyDOMElement();
   expect(screen.queryByLabelText("데이터 수신 상태")).not.toBeInTheDocument();
   await act(() => { complete(data); return Promise.resolve(); });
   expect(await screen.findByRole("button", { name: "사용자 메뉴" })).toBeVisible();
   expect(screen.getByText("조회 사용자")).toBeVisible();
+  expect(Array.from(document.querySelectorAll(".global-nav a"), link => link.textContent)).toEqual(["현황", "이력", "녹화 영상"]);
   expect(screen.queryByRole("link", { name: "로그인" })).not.toBeInTheDocument();
   expect(await screen.findByLabelText("데이터 수신 상태")).toHaveTextContent("연결 정상");
 });

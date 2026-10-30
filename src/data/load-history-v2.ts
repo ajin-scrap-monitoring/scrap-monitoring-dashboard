@@ -1,4 +1,4 @@
-import type { HistoryLoadSample, LoadHistorySample } from "../domain/dashboard";
+import type { HistoryLoadSample, LoadHistoryMetadata, LoadHistorySample } from "../domain/dashboard";
 import { record, strings, timestamp, timestampValue } from "./contract-values";
 
 export type LoadHistoryScope = { pitId: string; siteId: string; edgeId: string };
@@ -13,10 +13,17 @@ export type ParsedLoadHistoryV2 = {
 };
 
 const historyStates = ["AVAILABLE", "LIMITED", "UNAVAILABLE", "STALE", "UNKNOWN", "NO_DATA"];
-const intervals = [60, 300, 900, 3600];
-const maximumHistoryDuration = 7 * 24 * 3_600_000;
+const inputSources = ["EDGE_STATE", "HEIGHT_SECTIONS", "MIXED"];
+const valuePolicies = ["RAW_STATE", "MEDIAN_MINUTE"];
+const intervals = [60, 300, 900, 3600, 7200, 21600, 86400];
+export const maximumHistoryDays = 90;
+const maximumHistoryDuration = maximumHistoryDays * 24 * 3_600_000;
 const maximumHistorySamples = 1441;
 const historyClock = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Seoul" });
+
+function optionalOneOf(value: unknown, allowed: string[]) {
+  return value === undefined || value === null || (typeof value === "string" && allowed.includes(value));
+}
 
 function clock(value: string) {
   return historyClock.format(new Date(value));
@@ -55,8 +62,9 @@ export function parseLoadHistoryV2(value: unknown, scope: LoadHistoryScope): Par
     const generatedAt = sample.generatedAt as string | null;
     const observedAt = sample.observedAt as string | null;
     if (generatedAt !== null && (timestampValue(generatedAt) < bucketStart || timestampValue(generatedAt) >= bucketEnd)) return fail();
-    if (sample.valid && sample.valuePercent !== null && (generatedAt === null || observedAt === null
-      || !["AVAILABLE", "LIMITED"].includes(sample.dataState))) return fail();
+    if (sample.valid && sample.valuePercent !== null && !["AVAILABLE", "LIMITED"].includes(sample.dataState)) return fail();
+    if (!optionalOneOf(sample.inputSource, inputSources) || !optionalOneOf(sample.valuePolicy, valuePolicies)
+      || !(sample.simulated === undefined || typeof sample.simulated === "boolean")) return fail();
 
     const measuredAt = generatedAt ?? sample.bucketStartAt;
     const metadata = {
@@ -67,6 +75,9 @@ export function parseLoadHistoryV2(value: unknown, scope: LoadHistoryScope): Par
       assessmentId: sample.assessmentId,
       dataState: sample.dataState as HistoryDataState,
       reasonCodes: sample.reasonCodes,
+      ...(typeof sample.inputSource === "string" && { inputSource: sample.inputSource as LoadHistoryMetadata["inputSource"] }),
+      ...(typeof sample.valuePolicy === "string" && { valuePolicy: sample.valuePolicy as LoadHistoryMetadata["valuePolicy"] }),
+      ...(typeof sample.simulated === "boolean" && { simulated: sample.simulated }),
     };
     const plottedValue = sample.valid && typeof sample.valuePercent === "number" ? sample.valuePercent : null;
     monitoringSamples.push({ ...metadata, measuredAt, time: clock(measuredAt), value: plottedValue });

@@ -1,9 +1,31 @@
 import { expect, test } from "@playwright/test";
 
-import { monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
+import { activeAlertsFixture, activeCoverageFixture, activeHealthAlertFixture, lidarProfilesFixture, measurementLayoutFixture, monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
 import { historyV2, installBackendApi, type BackendSnapshot } from "./backend-api.js";
 
 test.use({ timezoneId: "Asia/Seoul" });
+
+test("판단 불가는 중립 회색으로 표시하고 수치 수신 전후에도 카드와 지표 위치를 유지한다", async ({ page }) => {
+  const api = await installBackendApi(page, { initial: monitoringV2StateFixture("UNAVAILABLE") });
+  await page.goto("/?source=api");
+  const value = page.locator(".kpi-value");
+  await expect(value).toHaveText("판단 불가");
+  await page.evaluate(() => document.fonts.ready);
+  await expect(value).toHaveCSS("color", "rgb(71, 85, 105)");
+  await expect(value).toHaveCSS("font-size", "32px");
+  await expect(value).toHaveCSS("font-weight", "650");
+  const geometry = () => page.locator(".monitoring-grid > .card, .kpi-value, .mini-stat").evaluateAll(elements => elements.map(element => {
+    const { x, y, height } = element.getBoundingClientRect();
+    return { x, y, height };
+  }));
+  const unavailable = await geometry();
+  await api.snapshot(monitoringV2StateFixture("FRESH", 72.5));
+  await expect(value).toHaveText("72.5%");
+  await expect(value).toHaveCSS("color", "rgb(17, 24, 39)");
+  await expect(value).toHaveCSS("font-size", "76px");
+  await expect(value).toHaveCSS("font-weight", "800");
+  expect(await geometry()).toEqual(unavailable);
+});
 
 for (const source of ["mock", "api"]) {
   test(`${source} 현재 상태의 6개 지표는 같은 크기이며 제목과 값을 구분한다`, async ({ page }) => {
@@ -184,7 +206,7 @@ test("촬영 시각이 없는 영상은 frame 수신 시각을 표시하고 확�
   await page.goto("/?source=api");
   const video = page.locator(".live-frame");
   await expect(video.locator(".live-time")).toHaveText(/^영상 수신 \d{2}:\d{2}:\d{2}$/);
-  await expect(video.locator(".live-time")).toHaveAttribute("title", /GMT\+0900/);
+  await expect(video.locator(".live-time")).toHaveAttribute("title", /\(한국 표준시\)$/);
   await expect(video).not.toContainText("촬영 시각 미제공");
   const receivedAt = await video.locator("time").getAttribute("datetime");
   expect(Date.parse(receivedAt!)).toBeGreaterThan(Date.parse(initial.serverTime));
@@ -199,7 +221,7 @@ test("촬영 시각이 없는 영상은 frame 수신 시각을 표시하고 확�
 });
 
 for (const threshold of [85, 90, 100]) {
-  test(`현재 임계율 ${threshold}% 문구는 점선과 겹치지 않고 측정 영역은 제목과 그림만 표시한다`, async ({ page }) => {
+  test(`현재 임계율 ${threshold}% 문구는 점선과 겹치지 않고 측정 영역은 제목, 배치 상태 한 줄과 그림만 표시한다`, async ({ page }) => {
     const snapshot = deviceSnapshot();
     const initial = { ...snapshot, summary: { ...snapshot.summary, collectionThresholdPercent: threshold } };
     await installBackendApi(page, { initial });
@@ -212,7 +234,7 @@ for (const threshold of [85, 90, 100]) {
     const lineBounds = await chart.locator('path[stroke-dasharray="5 5"]').boundingBox();
     if (!labelBounds || !lineBounds) throw new Error("The threshold label and line must be measurable.");
     expect(lineBounds.y - labelBounds.y - labelBounds.height).toBeGreaterThan(4);
-    await expect(page.locator(".measurement-card .monitoring-card-title")).toHaveText("측정 영역");
+    await expect(page.locator(".measurement-card .monitoring-card-title")).toHaveText("측정 영역시뮬레이션 배치, 실측 설치 미확인");
     await expect(page.locator(".measurement-card svg")).toBeVisible();
     await expect(page.locator(".monitoring-grid > .card")).toHaveCount(8);
   });
@@ -248,4 +270,98 @@ test("긴 소수 적재율의 tooltip과 장비 표시가 기존 카드 밖으�
   expect(await geometry()).toEqual(before);
   expect(await page.locator(".device").evaluateAll(nodes => Math.max(...nodes.map(node => node.scrollWidth - node.clientWidth)))).toBeLessThanOrEqual(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+});
+
+test("활성 알림은 장비 항목과 확인 불가 구성 요소를 같은 카드 크기와 페이지 방식으로 표시한다", async ({ page }) => {
+  const initial = { ...monitoringV2StateFixture("FRESH", 72.5), operations: { effectiveState: "NORMAL" as const, lastKnownState: null, lastEvaluatedAt: null, lastAlertAt: null, notificationId: null } };
+  const api = await installBackendApi(page, { initial });
+  api.setActiveAlerts(activeAlertsFixture({ evaluationState: "NORMAL", reasonCodes: ["OPERATIONS_EVALUATION_PENDING"], coverage: activeCoverageFixture(), items: [
+    activeHealthAlertFixture(),
+    activeHealthAlertFixture({ id: "health:lidar:pit-01:lidar-b", title: "LiDAR 상태 이상", componentKind: "LIDAR", componentId: "lidar-b", state: "STALE", startedAt: null, startBasis: "UNKNOWN", evidenceSource: "STATUS_FRESHNESS" }),
+  ] }));
+  await page.goto("/?source=api");
+  const card = page.locator(".alerts-card");
+  const geometry = () => page.locator(".monitoring-grid > .card").evaluateAll(cards => cards.map(element => {
+    const { x, y, width, height } = element.getBoundingClientRect();
+    return { x, y, width, height };
+  }));
+  await expect(page.locator(".monitoring-grid > .card")).toHaveCount(8);
+  await expect(card.locator(".alert-count")).toHaveText("2건 / 확인 불가 2");
+  const before = await geometry();
+  await expect(card.getByText("Edge 장치 상태 이상")).toBeVisible();
+  await expect(card.getByText("엣지 장비 일부 기능 제한, 서버 최초 확인 10-13 08:47")).toBeVisible();
+  await expect(card.getByText("LiDAR 2 갱신 지연, 시작 정보 없음")).toBeVisible();
+  await expect(card.getByText("카메라", { exact: true })).toBeVisible();
+  await expect(card.getByText("확인 불가, 상태 입력 계약 없음")).toBeVisible();
+  await expect(card.locator(".active-alert")).toHaveCount(4);
+  await expect(card.locator(".pagination")).toContainText("1 / 1");
+  expect(await geometry()).toEqual(before);
+  const overflow = await card.evaluate(element => element.scrollWidth - element.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("적재율 판정 불가에서도 장비 항목을 표시하고 적재율 판정 불가만 따로 안내한다", async ({ page }) => {
+  const initial = { ...monitoringV2StateFixture("FRESH", 72.5), operations: { effectiveState: "ERROR" as const, lastKnownState: null, lastEvaluatedAt: null, lastAlertAt: null, notificationId: null } };
+  const api = await installBackendApi(page, { initial });
+  api.setActiveAlerts(activeAlertsFixture({ evaluationState: "ERROR", reasonCodes: ["OPERATIONS_EVALUATION_ERROR"], coverage: [], items: [activeHealthAlertFixture()] }));
+  await page.goto("/?source=api");
+  const card = page.locator(".alerts-card");
+  await expect(card.getByText("Edge 장치 상태 이상")).toBeVisible();
+  await expect(card.getByText("적재율 경보", { exact: true })).toBeVisible();
+  await expect(card.getByText("판정 불가", { exact: true })).toBeVisible();
+  await expect(card.locator(".alert-count")).toHaveText("1건");
+});
+
+for (const [state, bindingState, label] of [
+  ["SIMULATION", "MATCHED", "시뮬레이션 배치, 실측 설치 미확인"],
+  ["PARTIAL", "MATCHED", "일부 배치 정보 없음"],
+  ["UNVERIFIED", "MATCHED", "실측 배치 미검증"],
+  ["UNAVAILABLE", "UNKNOWN", "배치 정보 확인 불가"],
+  ["SIMULATION", "MISMATCH", "배치 정보 확인 불가"],
+] as const) {
+  test(`측정 영역은 layout ${state}/${bindingState}를 한 줄로 표시하고 그림과 카드 크기를 유지한다`, async ({ page }) => {
+    const api = await installBackendApi(page, { initial: monitoringV2StateFixture("FRESH", 72.5) });
+    api.setLayout(measurementLayoutFixture({ state, bindingState }));
+    await page.goto("/?source=api");
+    const card = page.locator(".measurement-card");
+    await expect(card.locator(".measurement-layout-state")).toHaveText(label);
+    await expect(card.locator(".measurement-layout-state")).toHaveAttribute("title", /사유 SIMULATION_GEOMETRY, PHYSICAL_INSTALLATION_UNVERIFIED \/ LiDAR 1 SIMULATION \/ LiDAR 2 SIMULATION/);
+    await expect(card.locator("svg.measurement-svg")).toBeVisible();
+    const svgBox = await card.locator("svg.measurement-svg").boundingBox();
+    const titleBox = await card.locator(".monitoring-card-title").boundingBox();
+    expect(titleBox!.height).toBeLessThanOrEqual(24);
+    expect(svgBox!.height).toBeGreaterThan(200);
+    expect(await card.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
+    await expect(page.locator(".monitoring-grid > .card")).toHaveCount(8);
+  });
+}
+
+test("layout 조회 실패는 측정 영역에 정보 없음만 표시하고 나머지 화면은 유지한다", async ({ page }) => {
+  const api = await installBackendApi(page, { initial: monitoringV2StateFixture("FRESH", 72.5) });
+  api.setLayout(null);
+  await page.goto("/?source=api");
+  await expect(page.locator(".measurement-layout-state")).toHaveText("배치 정보 없음");
+  await expect(page.locator(".kpi-value")).toHaveText("72.5%");
+  await expect(page.locator(".measurement-card svg.measurement-svg")).toBeVisible();
+});
+
+test("SENSOR_ANGLE처럼 표본 수가 많고 앞쪽이 무효인 profile도 A에서 B 방향으로 유효 구간만 그리고 0cm를 보존한다", async ({ page }) => {
+  const api = await installBackendApi(page, { initial: monitoringV2StateFixture("FRESH", 72.5) });
+  const invalid = Array.from({ length: 605 }, (_, index) => ({ angleMdeg: 270_088 + index, sourceIndex: 1114 + index, positionRatio: null, height: null, valid: false }));
+  const valid = Array.from({ length: 195 }, (_, index) => ({ angleMdeg: 338_148 + index, sourceIndex: 1719 + index, positionRatio: 0.5 + index * 0.0025, height: index === 100 ? null : index === 101 ? 0 : 300 + index, valid: index !== 100 }));
+  const base = lidarProfilesFixture();
+  api.setProfiles({ ...base, profiles: [
+    { ...base.profiles[1], sensorId: "lidar-a", samples: [...invalid, ...valid] },
+    { ...base.profiles[0], sensorId: "lidar-b" },
+  ] });
+  await page.goto("/?source=api");
+  const first = page.locator(".chart-card").filter({ hasText: "LiDAR 1" });
+  const lines = first.locator(".profile-chart-line");
+  await expect(lines).toHaveCount(2);
+  const ranges = await lines.evaluateAll(paths => paths.map(path => [...(path.getAttribute("d") ?? "").matchAll(/[ML]([\d.]+) ([\d.]+)/g)].map(match => ({ x: Number(match[1]), y: Number(match[2]) }))));
+  expect(ranges[0][0].x).toBeCloseTo(40 + 370 * 0.5, 1);
+  expect(ranges[0].at(-1)!.x).toBeLessThan(ranges[1][0].x);
+  expect(ranges[1][0].y).toBeCloseTo(148, 1);
+  expect(ranges[1].at(-1)!.x).toBeCloseTo(40 + 370 * (0.5 + 194 * 0.0025), 1);
+  for (const range of ranges) for (const [index, point] of range.entries()) if (index > 0) expect(point.x).toBeGreaterThan(range[index - 1].x);
 });

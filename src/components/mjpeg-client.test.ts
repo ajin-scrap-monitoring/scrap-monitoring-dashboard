@@ -72,7 +72,7 @@ test("이미 취소된 연결은 fetch를 시작하지 않는다", async () => {
   expect(fetchImplementation).not.toHaveBeenCalled();
 });
 
-test.each([false, true])("최초 또는 다음 frame timeout을 적용하고 reader를 취소한다: %s", async (receivedFrame) => {
+test.each([false, true])("최초 frame은 3초, 다음 frame은 2초까지 기다리고 reader를 취소한다: %s", async (receivedFrame) => {
   vi.useFakeTimers();
   const onFrame = vi.fn();
   const cancel = vi.fn();
@@ -80,9 +80,59 @@ test.each([false, true])("최초 또는 다음 frame timeout을 적용하고 rea
   const response = new Response(stream, { headers: { "Content-Type": "multipart/x-mixed-replace; boundary=frame" } });
   const reading = readMjpeg({ url: "/live", signal: new AbortController().signal, onFrame, fetchImplementation: vi.fn(() => Promise.resolve(response)) });
   const rejected = expect(reading).rejects.toMatchObject({ name: "AbortError" });
-  await vi.advanceTimersByTimeAsync(9999);
+  await vi.advanceTimersByTimeAsync((receivedFrame ? 2000 : 3000) - 1);
   expect(cancel).not.toHaveBeenCalled();
   expect(onFrame).toHaveBeenCalledTimes(receivedFrame ? 1 : 0);
+  await vi.advanceTimersByTimeAsync(1);
+  await rejected;
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(stream.locked).toBe(false);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test("정상 frame마다 다음 frame 대기를 갱신하고 2초 이내 수신을 유지한다", async () => {
+  vi.useFakeTimers();
+  const onFrame = vi.fn();
+  const cancel = vi.fn();
+  let writer: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const stream = new ReadableStream<Uint8Array>({ start(controller) { writer = controller; }, cancel });
+  const response = new Response(stream, { headers: { "Content-Type": "multipart/x-mixed-replace; boundary=frame" } });
+  const reading = readMjpeg({ url: "/live", signal: new AbortController().signal, onFrame, fetchImplementation: vi.fn(() => Promise.resolve(response)) });
+  const rejected = expect(reading).rejects.toMatchObject({ name: "AbortError" });
+  await vi.advanceTimersByTimeAsync(2999);
+  writer?.enqueue(frameBytes());
+  await vi.advanceTimersByTimeAsync(0);
+  for (let index = 0; index < 3; index++) {
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(cancel).not.toHaveBeenCalled();
+    writer?.enqueue(frameBytes());
+    await vi.advanceTimersByTimeAsync(0);
+  }
+  expect(onFrame).toHaveBeenCalledTimes(4);
+  await vi.advanceTimersByTimeAsync(1999);
+  expect(cancel).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);
+  await rejected;
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(stream.locked).toBe(false);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test("완성되지 않은 frame의 부분 수신만으로 최초 frame 대기를 연장하지 않는다", async () => {
+  vi.useFakeTimers();
+  const onFrame = vi.fn();
+  const cancel = vi.fn();
+  let writer: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const stream = new ReadableStream<Uint8Array>({ start(controller) { writer = controller; }, cancel });
+  const response = new Response(stream, { headers: { "Content-Type": "multipart/x-mixed-replace; boundary=frame" } });
+  const reading = readMjpeg({ url: "/live", signal: new AbortController().signal, onFrame, fetchImplementation: vi.fn(() => Promise.resolve(response)) });
+  const rejected = expect(reading).rejects.toMatchObject({ name: "AbortError" });
+  const bytes = frameBytes();
+  await vi.advanceTimersByTimeAsync(2000);
+  writer?.enqueue(bytes.slice(0, -1));
+  await vi.advanceTimersByTimeAsync(999);
+  expect(cancel).not.toHaveBeenCalled();
+  expect(onFrame).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(1);
   await rejected;
   expect(cancel).toHaveBeenCalledOnce();

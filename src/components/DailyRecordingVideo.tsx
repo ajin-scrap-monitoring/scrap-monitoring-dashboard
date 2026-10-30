@@ -4,12 +4,15 @@ import type Hls from "hls.js";
 import { dailyHlsRequest, validDailyPlaylistPath } from "./daily-hls-request";
 import { loadDailyHls } from "./daily-hls-player";
 
-export function DailyRecordingVideo({ videoRef, path, label, poster, initialTime = 0, onError, onTimeUpdate }: {
+export function DailyRecordingVideo({ videoRef, path, label, poster, initialTime = 0, controls = true, autoPlay = false, onEnded, onError, onTimeUpdate }: {
   videoRef: RefObject<HTMLVideoElement | null>;
   path: string;
   label: string;
   poster?: string;
   initialTime?: number;
+  controls?: boolean;
+  autoPlay?: boolean;
+  onEnded?: () => void;
   onError: () => void;
   onTimeUpdate: (seconds: number) => void;
 }) {
@@ -82,7 +85,8 @@ export function DailyRecordingVideo({ videoRef, path, label, poster, initialTime
     };
   }, [path, videoRef]);
 
-  return <video ref={videoRef} className="recording-daily-video" controls playsInline preload="metadata" poster={poster} aria-label={label}
+  return <video ref={videoRef} className="recording-daily-video" controls={controls} autoPlay={autoPlay} playsInline preload="metadata" poster={poster} aria-label={label}
+    onEnded={onEnded}
     onTimeUpdate={event => onTimeUpdate(event.currentTarget.currentTime)} />;
 }
 

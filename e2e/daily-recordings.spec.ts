@@ -3,9 +3,9 @@ import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 
 import { sessionFixture } from "../src/test/api-contract-fixtures.js";
-import { mediaRecordingFixture, monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
+import { monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
 
-import { installBackendApi } from "./backend-api.js";
+import { installBackendApi, syntheticEventReplay } from "./backend-api.js";
 import { syntheticMp4 } from "./contract-api.js";
 import { syntheticDailyRecording, type DailyRecordingResponse } from "./daily-recording-api.js";
 
@@ -15,6 +15,74 @@ const geometry = (page: Page) => page.locator(".recordings-content .card, .recor
   const { x, y, width, height } = element.getBoundingClientRect();
   return { x: x + scrollX, y: y + scrollY, width, height };
 }));
+
+test("많은 날짜 녹화 구간에서도 시간축과 카드 배치를 유지하고 재생 갱신에 같은 표시를 재사용한다", async ({ page }) => {
+  const api = await installBackendApi(page, { initial });
+  await page.goto("/recordings?source=api");
+  await expect(page.locator(".recording-frame video")).toBeVisible();
+  const before = await geometry(page);
+  const start = Date.parse(syntheticDailyRecording.window_start_at);
+  const at = (seconds: number) => new Date(start + seconds * 1000).toISOString();
+  const count = 8000;
+  api.daily.setRecordings([{ ...syntheticDailyRecording, recorded_seconds: count,
+    playable_until_at: at((count - 1) * 3 + 1),
+    available_intervals: Array.from({ length: count }, (_, index) => ({ start_at: at(index * 3), end_at: at(index * 3 + 1), playback_start_seconds: index, playback_end_seconds: index + 1 })),
+    gaps: Array.from({ length: count }, (_, index) => ({ start_at: at(index * 3 + 1), end_at: at(index * 3 + 3), reason_code: "SYNTHETIC_GAP" })),
+  }]);
+  await page.getByRole("button", { name: "조회", exact: true }).click();
+  const timeline = page.locator(".daily-recording-timeline-track");
+  await expect(timeline.locator("svg")).toHaveCount(1);
+  expect(await timeline.locator("*").count()).toBeLessThan(10);
+  expect(await timeline.locator("path.daily-recording-range-available").getAttribute("d").then(value => value?.match(/M/g)?.length)).toBe(count);
+  expect(await timeline.locator("path.daily-recording-range-gap").getAttribute("d").then(value => value?.match(/M/g)?.length)).toBe(count);
+  await expect(timeline.locator("path.daily-recording-range-available")).toHaveCSS("fill", "rgb(11, 165, 143)");
+  await expect(timeline.locator("path.daily-recording-range-gap")).toHaveCSS("fill", "rgb(216, 86, 86)");
+  await timeline.evaluate(element => {
+    element.setAttribute("data-mutations", "0");
+    new MutationObserver(records => element.setAttribute("data-mutations", String(Number(element.getAttribute("data-mutations")) + records.length)))
+      .observe(element, { childList: true, subtree: true, attributes: true, attributeFilter: ["d", "class", "style"] });
+  });
+  await page.locator(".recording-frame video").evaluate(element => {
+    const video = element as HTMLVideoElement;
+    for (let index = 0; index < 30; index += 1) { video.currentTime = index % 2; video.dispatchEvent(new Event("timeupdate")); }
+  });
+  await expect(timeline).toHaveAttribute("data-mutations", "0");
+  expect(await geometry(page)).toEqual(before);
+  const seek = timeline.getByRole("button", { name: /방향키로 확보 구간 선택/ });
+  await seek.focus();
+  await page.keyboard.press("End");
+  await expect(seek).toHaveAccessibleName(/^확보 구간 06:39:57 ~ 06:39:58/);
+  await page.keyboard.press("Home");
+  await expect(seek).toHaveAccessibleName(/^확보 구간 00:00:00 ~ 00:00:01/);
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".recorded-time")).toContainText("00:00:00");
+});
+
+test("날짜 녹화 단건 조회의 일시적인 실패는 같은 player로 자동 복구한다", async ({ page }) => {
+  const api = await installBackendApi(page, { initial });
+  api.daily.setRecordings([{ ...syntheticDailyRecording, recording_date: "2026-10-13", window_start_at: "2026-10-12T15:00:00Z", window_end_at: "2026-10-13T15:00:00Z", status: "recording", export_allowed: false,
+    coverage_as_of_at: "2026-10-12T15:00:12Z", playable_until_at: "2026-10-12T15:00:12Z",
+    gaps: [{ start_at: "2026-10-12T15:00:01Z", end_at: "2026-10-12T15:00:11Z", reason_code: "CAMERA_DISCONNECTED" }],
+    available_intervals: syntheticDailyRecording.available_intervals.map(interval => ({ ...interval, start_at: interval.start_at.replace("11T", "12T"), end_at: interval.end_at.replace("11T", "12T") })),
+  }]);
+  let requests = 0;
+  await page.route(`**/api/v2/recordings/daily/${syntheticDailyRecording.recording_id}`, route => {
+    requests += 1;
+    return requests === 3 ? route.fulfill({ status: 503, json: { detail: "Synthetic temporary failure" } }) : route.fallback();
+  });
+  await page.goto("/recordings?source=api");
+  const video = page.locator(".recording-frame video");
+  await expect(video).toBeVisible();
+  await video.evaluate(element => element.setAttribute("data-recovery-player", "confirmed"));
+  const before = await geometry(page);
+  await expect(page.getByRole("button", { name: "확인 실패 상세", exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(video).toHaveAttribute("data-recovery-player", "confirmed");
+  await expect(page.getByRole("button", { name: "확인 실패 상세", exact: true })).toHaveCount(0, { timeout: 10_000 });
+  expect(requests).toBeGreaterThanOrEqual(4);
+  await expect(video).toHaveAttribute("data-recovery-player", "confirmed");
+  expect(await geometry(page)).toEqual(before);
+  expect(api.daily.requests.some(request => request.method() === "POST")).toBe(false);
+});
 
 test("날짜 녹화는 공개 HLS 경로의 MSE 재생과 확보 구간 및 누락을 구분한다", async ({ page }) => {
   const api = await installBackendApi(page, { initial });
@@ -46,7 +114,7 @@ test("날짜 녹화는 공개 HLS 경로의 MSE 재생과 확보 구간 및 누�
   await laterInterval.focus();
   await page.keyboard.press("Enter");
   await expect(page.locator(".recorded-time")).toContainText("00:00:11");
-  expect(api.requests.some(url => url.pathname === "/api/v1/recordings")).toBe(false);
+  expect(api.requests.some(url => url.pathname === "/api/v2/recordings/events")).toBe(false);
   expect(api.daily.mediaRequests.some(request => request.url().endsWith("/hls/index.m3u8"))).toBe(true);
   expect(api.daily.mediaRequests.filter(request => request.url().endsWith(".ts")).length).toBeGreaterThanOrEqual(1);
   expect(api.daily.mediaRequests.every(request => new URL(request.url()).pathname.startsWith(`/media/daily-recordings/${syntheticDailyRecording.recording_id}/`))).toBe(true);
@@ -79,9 +147,9 @@ test("녹화 중인 긴 EVENT playlist는 최신 구간이 아니라 첫 segment
   expect(await video.evaluate(element => (element as HTMLVideoElement).currentTime)).toBeLessThan(5);
 });
 
-test("날짜 범위를 한국 날짜의 종료일 포함 조건으로 전송하고 이벤트 목록과 분리한다", async ({ page }) => {
+test("날짜 범위를 한국 날짜로 조회하고 전체와 유형 필터를 구분한다", async ({ page }) => {
   const api = await installBackendApi(page, { initial });
-  api.setRecordings([{ ...mediaRecordingFixture, startedAt: "2026-10-12T01:00:00+09:00", endedAt: "2026-10-12T01:01:00+09:00" }]);
+  api.setEventReplays([syntheticEventReplay({}, { windowFrom: "2026-10-11T16:00:00Z", windowTo: "2026-10-11T16:01:00Z", occurredAt: "2026-10-11T16:00:00Z" })]);
   await page.goto("/recordings?source=api");
   await expect(page.locator(".recording-item .recording-type")).toHaveText("날짜 녹화");
   await page.getByRole("textbox", { name: "시작 시각", exact: true }).fill("2026-10-11 12:00");
@@ -95,12 +163,20 @@ test("날짜 범위를 한국 날짜의 종료일 포함 조건으로 전송하�
   expect(query.has("camera_id")).toBe(false);
   expect(query.has("category")).toBe(false);
   await expect(page.locator(".recording-item")).toHaveCount(1);
-  await page.getByRole("button", { name: "이벤트", exact: true }).click();
-  const eventResponse = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/recordings");
+  await expect(page.getByRole("button", { name: "이벤트", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "전체", exact: true }).click();
+  const eventResponse = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v2/recordings/events");
   await page.getByRole("button", { name: "조회", exact: true }).click();
   expect((await eventResponse).status()).toBe(200);
+  await expect(page.locator(".recording-item")).toHaveCount(2);
+  await expect(page.locator(".recording-item .recording-type")).toHaveText(["알림", "날짜 녹화"]);
+  const allGeometry = await geometry(page);
+  await page.getByRole("button", { name: "알림", exact: true }).click();
+  await page.getByRole("button", { name: "조회", exact: true }).click();
+  await expect(page.locator(".recording-item")).toHaveCount(1);
   await expect(page.locator(".recording-item .recording-type")).not.toHaveText("날짜 녹화");
   await expect(page.getByRole("region", { name: "날짜 녹화 범위" })).toHaveCount(0);
+  expect(await geometry(page)).toEqual(allGeometry);
   await page.getByRole("button", { name: "날짜", exact: true }).click();
   await page.getByRole("button", { name: "조회", exact: true }).click();
   await expect(page.locator(".recording-item .recording-type")).toHaveText("날짜 녹화");
@@ -250,4 +326,43 @@ test("MP4 비동기 준비 실패는 재진입 후에도 구분하고 HLS 재생
   await assertFailure();
   await page.reload();
   await assertFailure();
+});
+
+test("관리자의 날짜 녹화 삭제는 확인창 뒤에 CSRF와 함께 요청하고 카드 배치를 유지한다", async ({ page }) => {
+  const api = await installBackendApi(page, { initial });
+  await page.goto("/recordings?source=api");
+  await expect(page.locator(".recording-frame video")).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  const before = await geometry(page);
+  const remove = page.getByRole("button", { name: "날짜 녹화 삭제", exact: true });
+  await expect(remove).toBeVisible();
+  if (page.viewportSize()?.height === 1080) await expect(remove).toBeInViewport();
+  const del = () => api.daily.requests.filter(request => request.method() === "DELETE");
+  await remove.click();
+  const dialog = page.getByRole("dialog", { name: "날짜 녹화 삭제", exact: true });
+  await expect(dialog).toContainText("이벤트 구간도 재생할 수 없게 됩니다");
+  await dialog.getByRole("button", { name: "취소", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(del()).toHaveLength(0);
+  api.daily.conflictOnDelete(true);
+  await remove.click();
+  await dialog.getByRole("button", { name: "영구 삭제", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("삭제할 수 없습니다");
+  expect(del()).toHaveLength(1);
+  api.daily.conflictOnDelete(false);
+  await dialog.getByRole("button", { name: "영구 삭제", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(del()).toHaveLength(2);
+  expect(await del()[1].allHeaders()).toMatchObject({ "x-csrf-token": sessionFixture.csrfToken });
+  await expect(page.locator(".recording-item")).toHaveCount(0);
+  await expect(page.getByText("날짜 녹화를 삭제했습니다.", { exact: false })).toBeVisible();
+  expect(await geometry(page)).toEqual(before);
+});
+
+test("조회 사용자에게는 날짜 녹화 삭제를 표시하지 않는다", async ({ page }) => {
+  await installBackendApi(page, { initial });
+  await page.route("**/api/v1/session", route => route.fulfill({ json: { ...sessionFixture, user: { ...sessionFixture.user, role: "viewer" } } }));
+  await page.goto("/recordings?source=api");
+  await expect(page.locator(".recording-frame video")).toBeVisible();
+  await expect(page.getByRole("button", { name: "날짜 녹화 삭제" })).toHaveCount(0);
 });

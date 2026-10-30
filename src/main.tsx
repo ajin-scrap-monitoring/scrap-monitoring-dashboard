@@ -1,8 +1,8 @@
 import { StrictMode, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
 import { RuntimeConfiguredApp } from "./RuntimeConfiguredApp";
+import { createApplicationRoot } from "./application-root";
 import { createHttpDashboardDataSource } from "./data/http-dashboard-data-source";
 import type { DashboardRuntimeConfig } from "./runtime-config";
 
@@ -33,7 +33,9 @@ const createApiDataSource = ({ pitId, cameraId }: Pick<DashboardRuntimeConfig, "
     pitId,
     cameraId,
   });
-const renderApplication = (application: ReactNode) => createRoot(rootElement).render(<StrictMode>{application}</StrictMode>);
+const applicationRoot = createApplicationRoot(rootElement);
+const renderApplication = (application: ReactNode) => applicationRoot.render(<StrictMode>{application}</StrictMode>);
+if (import.meta.hot) import.meta.hot.dispose(() => applicationRoot.dispose());
 if (mockDataEnabled && selectedSource !== "api") {
   void import("./data/mock-dashboard-data-source").then(({ createMockDashboardDataSource, resolveMockScenario }) => {
     renderApplication(<App dataSource={createMockDashboardDataSource(resolveMockScenario(searchParameters.get("scenario")))} />);

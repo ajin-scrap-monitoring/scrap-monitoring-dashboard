@@ -40,10 +40,45 @@ test("날짜 녹화는 날짜 source로 조회하며 이벤트 clip 상세를 �
   await act(async () => { await Promise.resolve(); });
   expect(queryRecordings).toHaveBeenLastCalledWith(expect.objectContaining({ recordingSource: "daily", eventCategory: undefined }), expect.any(AbortSignal));
   expect(view.container.querySelectorAll(".recordings-content .card")).toHaveLength(5);
-  fireEvent.click(screen.getByRole("button", { name: "이벤트" }));
+  fireEvent.click(screen.getByRole("button", { name: "전체" }));
   fireEvent.click(screen.getByRole("button", { name: /^조회$/ }));
   await act(async () => { await Promise.resolve(); });
-  expect(queryRecordings).toHaveBeenLastCalledWith(expect.not.objectContaining({ recordingSource: "daily" }), expect.any(AbortSignal));
+  expect(queryRecordings).toHaveBeenLastCalledWith(expect.objectContaining({ recordingSource: "all", eventCategory: undefined }), expect.any(AbortSignal));
+});
+
+test("전체는 날짜와 사건 녹화를 함께 표시하고 같은 ID도 source로 구분한다", async () => {
+  const { data, recording, props } = await fixture();
+  const event: Recording = { ...data.recordings[0], id: recording.id, source: "event", type: "알림", start: "2026-10-12 01:00:00", end: "2026-10-12 01:01:00" };
+  const queryRecordings = vi.fn().mockResolvedValue([recording, event]);
+  const source = { supportsDailyRecordings: true, getDashboardData: () => Promise.resolve(data), queryRecordings };
+  const view = render(<RecordingsPage {...props} dataSource={source} />);
+  const types = view.container.querySelectorAll(".query-type")[1];
+  expect(Array.from(types.querySelectorAll("button"), button => button.textContent)).toEqual(["전체", "날짜", "수거", "알림", "오류"]);
+  expect(screen.queryByRole("button", { name: "이벤트" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "전체" }));
+  fireEvent.click(screen.getByRole("button", { name: /^조회$/ }));
+  await act(async () => { await Promise.resolve(); });
+  expect(view.container.querySelectorAll(".recording-item")).toHaveLength(2);
+  expect(view.container.querySelectorAll(".recording-item.selected")).toHaveLength(1);
+  fireEvent.click(view.container.querySelectorAll<HTMLButtonElement>(".recording-item")[1]);
+  expect(view.container.querySelectorAll(".recording-item.selected")).toHaveLength(1);
+  expect(view.container.querySelector(".recording-item.selected .recording-type")).toHaveTextContent("알림");
+  expect(view.container.querySelectorAll(".recordings-content .card")).toHaveLength(5);
+});
+
+test.each([["수거", "collection"], ["알림", "alert"], ["오류", "error"]])("%s 필터는 날짜 녹화를 제외하고 해당 유형만 표시한다", async (type, category) => {
+  const { data, recording, props } = await fixture();
+  const events = ["수거", "알림", "오류"].map((type, index) => ({ ...data.recordings[0], id: `event-${index}`, source: "event" as const, type, start: "2026-10-12 01:00:00", end: "2026-10-12 01:01:00" }));
+  const queryRecordings = vi.fn().mockResolvedValue([recording, ...events]);
+  const source = { supportsDailyRecordings: true, getDashboardData: () => Promise.resolve(data), queryRecordings };
+  const view = render(<RecordingsPage {...props} dataSource={source} />);
+  fireEvent.click(screen.getByRole("button", { name: type }));
+  fireEvent.click(screen.getByRole("button", { name: /^조회$/ }));
+  await act(async () => { await Promise.resolve(); });
+  expect(queryRecordings).toHaveBeenCalledWith(expect.objectContaining({ eventCategory: category }), expect.any(AbortSignal));
+  expect(queryRecordings.mock.calls[0][0]).not.toHaveProperty("recordingSource");
+  expect(view.container.querySelectorAll(".recording-item")).toHaveLength(1);
+  expect(view.container.querySelector(".recording-item .recording-type")).toHaveTextContent(type);
 });
 
 test("지난 날짜 MP4 준비와 polling은 재생을 유지하며 ready 응답에서만 다운로드한다", async () => {
@@ -149,4 +184,37 @@ test("MP4 비동기 준비 실패와 재진입은 오류를 표시하지만 HLS 
   expect(screen.getByRole("button", { name: "MP4 다운로드 준비" })).toBeEnabled();
   fireEvent.click(screen.getByRole("button", { name: "MP4 준비 실패 상세" }));
   expect(screen.getByRole("dialog", { name: "녹화 상태 상세" })).toHaveTextContent(code);
+});
+
+const administrator = { expiresAt: "2026-10-14T00:00:00Z", user: { displayName: "관리자", id: "admin", role: "administrator" as const } };
+
+test("관리자는 날짜 녹화 삭제 전에 공유 이벤트 재생 불가를 확인받고 삭제 뒤 목록에서 제거한다", async () => {
+  const { data, recording, props } = await fixture();
+  const getRecording = vi.fn().mockResolvedValue(recording);
+  const deleteDailyRecording = vi.fn().mockResolvedValue({ outcome: "deleted" });
+  const dataSource = { supportsDailyRecordings: true, getDashboardData: () => Promise.resolve(data), getRecording, deleteDailyRecording };
+  const view = render(<RecordingsPage {...props} dataSource={dataSource} session={administrator} />);
+  fireEvent.click(await screen.findByRole("button", { name: "날짜 녹화 삭제" }));
+  expect(screen.getByRole("dialog", { name: "날짜 녹화 삭제" })).toHaveTextContent("이벤트 구간도 재생할 수 없게");
+  expect(deleteDailyRecording).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "영구 삭제" }));
+  await act(async () => { await Promise.resolve(); });
+  expect(deleteDailyRecording).toHaveBeenCalledWith(recording.id);
+  expect(view.container.querySelectorAll(".recording-item")).toHaveLength(0);
+});
+
+test("삭제 409는 확인창에 안내하고 목록을 유지하며 일반 사용자에게는 버튼이 없다", async () => {
+  const { data, recording, props } = await fixture();
+  const getRecording = vi.fn().mockResolvedValue(recording);
+  const deleteDailyRecording = vi.fn().mockRejectedValue(Object.assign(new Error("conflict"), { status: 409 }));
+  const dataSource = { supportsDailyRecordings: true, getDashboardData: () => Promise.resolve(data), getRecording, deleteDailyRecording };
+  const view = render(<RecordingsPage {...props} dataSource={dataSource} session={administrator} />);
+  fireEvent.click(await screen.findByRole("button", { name: "날짜 녹화 삭제" }));
+  fireEvent.click(screen.getByRole("button", { name: "영구 삭제" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("삭제할 수 없습니다");
+  expect(view.container.querySelectorAll(".recording-item")).toHaveLength(1);
+  cleanup();
+  render(<RecordingsPage {...props} dataSource={dataSource} session={{ expiresAt: "2026-10-14T00:00:00Z", user: { displayName: "조회자", id: "viewer", role: "viewer" } }} />);
+  await screen.findByLabelText("날짜 녹화 영상");
+  expect(screen.queryByRole("button", { name: "날짜 녹화 삭제" })).not.toBeInTheDocument();
 });

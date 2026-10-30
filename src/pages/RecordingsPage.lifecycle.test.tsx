@@ -15,6 +15,134 @@ async function fixture() {
   return { data, ready, second };
 }
 
+test.each([new TypeError("Network unavailable"), ...[408, 429, 500, 502, 503, 504].map(status => Object.assign(new Error("Temporary failure"), { status }))])("일시적인 단건 조회 실패는 기존 player를 유지하고 자동 복구한다 (%s)", async (error) => {
+  vi.useFakeTimers();
+  const { data, ready } = await fixture();
+  const processing: Recording = { ...ready, mediaStatus: "processing" };
+  const getRecording = vi.fn().mockResolvedValueOnce(processing).mockRejectedValueOnce(error).mockResolvedValue(ready);
+  const source = { getDashboardData: () => Promise.resolve(data), getRecording };
+  const view = render(<RecordingsPage dataSource={source} recordings={[processing]} headerNotifications={[]} reception={data.reception} />);
+  await act(async () => { await Promise.resolve(); });
+  const video = view.container.querySelector("video");
+  expect(video).not.toBeNull();
+  await act(() => vi.advanceTimersByTimeAsync(2000));
+  expect(view.container.querySelector("video")).toBe(video);
+  expect(screen.getByRole("button", { name: "다운로드 불가" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "확인 실패 상세" })).toBeInTheDocument();
+  expect(view.container.querySelectorAll(".recordings-content .card")).toHaveLength(5);
+  await act(() => vi.advanceTimersByTimeAsync(2000));
+  expect(getRecording).toHaveBeenCalledTimes(3);
+  expect(view.container.querySelector("video")).toBe(video);
+  expect(screen.queryByRole("button", { name: "확인 실패 상세" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "녹화 영상 다운로드" })).toBeEnabled();
+  await act(() => vi.advanceTimersByTimeAsync(60_000));
+  expect(getRecording).toHaveBeenCalledTimes(3);
+});
+
+test("처음부터 조회에 실패한 녹화는 재확인 전 재생과 다운로드를 허용하지 않는다", async () => {
+  vi.useFakeTimers();
+  const { data, ready } = await fixture();
+  const getRecording = vi.fn().mockRejectedValueOnce(Object.assign(new Error("Temporary failure"), { status: 503 })).mockResolvedValue(ready);
+  const source = { getDashboardData: () => Promise.resolve(data), getRecording };
+  const view = render(<RecordingsPage dataSource={source} recordings={[ready]} headerNotifications={[]} reception={data.reception} />);
+  await act(async () => { await Promise.resolve(); });
+  expect(view.container.querySelector("video")).toBeNull();
+  expect(screen.getByRole("button", { name: "다운로드 불가" })).toBeDisabled();
+  await act(() => vi.advanceTimersByTimeAsync(2000));
+  expect(view.container.querySelector("video")).toHaveAttribute("src", ready.contentUrl);
+});
+
+test("연속 실패는 2초, 4초와 8초 간격으로 세 번만 재시도한다", async () => {
+  vi.useFakeTimers();
+  const { data, ready } = await fixture();
+  const processing: Recording = { ...ready, mediaStatus: "processing" };
+  const getRecording = vi.fn().mockResolvedValueOnce(processing).mockRejectedValue(Object.assign(new Error("Temporary failure"), { status: 503 }));
+  const source = { getDashboardData: () => Promise.resolve(data), getRecording };
+  const view = render(<RecordingsPage dataSource={source} recordings={[processing]} headerNotifications={[]} reception={data.reception} />);
+  await act(async () => { await Promise.resolve(); });
+  const video = view.container.querySelector("video");
+  await act(() => vi.advanceTimersByTimeAsync(2000));
+  expect(getRecording).toHaveBeenCalledTimes(2);
+  for (const delay of [2000, 4000, 8000]) {
+    const count = getRecording.mock.calls.length;
+    await act(() => vi.advanceTimersByTimeAsync(delay - 1));
+    expect(getRecording).toHaveBeenCalledTimes(count);
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(getRecording).toHaveBeenCalledTimes(count + 1);
+  }
+  await act(() => vi.advanceTimersByTimeAsync(60_000));
+  expect(getRecording).toHaveBeenCalledTimes(5);
+  expect(view.container.querySelector("video")).toBe(video);
+  expect(screen.getByRole("button", { name: "다운로드 불가" })).toBeDisabled();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test.each([400, 401, 403, 404, 410, 501])("HTTP %s 오류는 재시도하거나 이전 player 및 다운로드를 유지하지 않는다", async (status) => {
+  vi.useFakeTimers();
+  const { data, ready } = await fixture();
+  const processing: Recording = { ...ready, mediaStatus: "processing" };
+  const getRecording = vi.fn().mockResolvedValueOnce(processing).mockRejectedValue(Object.assign(new Error("Unavailable"), { status }));
+  const source = { getDashboardData: () => Promise.resolve(data), getRecording };
+  const view = render(<RecordingsPage dataSource={source} recordings={[processing]} headerNotifications={[]} reception={data.reception} />);
+  await act(async () => { await Promise.resolve(); });
+  expect(view.container.querySelector("video")).not.toBeNull();
+  await act(() => vi.advanceTimersByTimeAsync(2000));
+  expect(view.container.querySelector("video")).toBeNull();
+  expect(screen.getByRole("button", { name: "다운로드 불가" })).toBeDisabled();
+  await act(() => vi.advanceTimersByTimeAsync(60_000));
+  expect(getRecording).toHaveBeenCalledTimes(2);
+});
+
+test("단건 조회 재시도 대기 중 선택 변경과 unmount는 이전 재시도를 취소한다", async () => {
+  vi.useFakeTimers();
+  const { data, ready, second } = await fixture();
+  const getRecording = vi.fn<(id: string, signal?: AbortSignal) => Promise<Recording | null>>().mockRejectedValue(new TypeError("Network unavailable"));
+  const source = { getDashboardData: () => Promise.resolve(data), getRecording };
+  const view = render(<RecordingsPage dataSource={source} recordings={[ready, second]} headerNotifications={[]} reception={data.reception} />);
+  await act(async () => { await Promise.resolve(); });
+  fireEvent.click(view.container.querySelectorAll<HTMLButtonElement>(".recording-item")[1]);
+  await act(async () => { await Promise.resolve(); });
+  expect(getRecording.mock.calls[0][1]?.aborted).toBe(true);
+  view.unmount();
+  await act(() => vi.advanceTimersByTimeAsync(60_000));
+  expect(getRecording).toHaveBeenCalledTimes(2);
+});
+
+test("단건 조회 복구 후 다음 실패는 기본 재시도 간격을 사용한다", async () => {
+  vi.useFakeTimers();
+  const { data, ready } = await fixture();
+  const processing: Recording = { ...ready, mediaStatus: "processing" };
+  const error = Object.assign(new Error("Temporary failure"), { status: 503 });
+  const getRecording = vi.fn().mockResolvedValueOnce(processing).mockRejectedValueOnce(error)
+    .mockResolvedValueOnce(processing).mockRejectedValueOnce(error).mockResolvedValue(ready);
+  const source = { getDashboardData: () => Promise.resolve(data), getRecording };
+  render(<RecordingsPage dataSource={source} recordings={[processing]} headerNotifications={[]} reception={data.reception} />);
+  await act(async () => { await Promise.resolve(); });
+  for (let count = 2; count <= 5; count += 1) {
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(getRecording).toHaveBeenCalledTimes(count);
+  }
+  expect(screen.getByRole("button", { name: "녹화 영상 다운로드" })).toBeEnabled();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test.each([null, new SyntaxError("Invalid response")])("삭제 응답과 잘못된 단건 응답은 기존 재생을 유지하거나 재시도하지 않는다 (%s)", async (failure) => {
+  vi.useFakeTimers();
+  const { data, ready } = await fixture();
+  const processing: Recording = { ...ready, mediaStatus: "processing" };
+  const getRecording = vi.fn().mockResolvedValueOnce(processing);
+  if (failure === null) getRecording.mockResolvedValue(null);
+  else getRecording.mockRejectedValue(failure);
+  const source = { getDashboardData: () => Promise.resolve(data), getRecording };
+  const view = render(<RecordingsPage dataSource={source} recordings={[processing]} headerNotifications={[]} reception={data.reception} />);
+  await act(async () => { await Promise.resolve(); });
+  expect(view.container.querySelector("video")).not.toBeNull();
+  await act(() => vi.advanceTimersByTimeAsync(2000));
+  expect(view.container.querySelector("video")).toBeNull();
+  await act(() => vi.advanceTimersByTimeAsync(60_000));
+  expect(getRecording).toHaveBeenCalledTimes(2);
+});
+
 test("실패한 녹화 목록에는 길이의 결측 문구를 숨기고 정보 카드에는 서버 값을 유지한다", async () => {
   const { data, ready } = await fixture();
   const failed: Recording = { ...ready, mediaStatus: "failed", status: "unavailable", duration: "정보 없음", contentUrl: undefined, downloadUrl: undefined };

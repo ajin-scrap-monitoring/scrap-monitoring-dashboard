@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
+import { collectionSummaryFixture, monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
 import { notificationPageFixture } from "../src/test/api-contract-fixtures.js";
 
 import { installBackendApi, type MediaMode } from "./backend-api.js";
@@ -23,10 +23,12 @@ test("이력에서 녹화로 이동할 때 사용자 영역과 수신 상태를 
   try {
     await page.getByRole("link", { name: "녹화 영상", exact: true }).click();
     await expect(page.getByRole("main", { name: "대시보드 설정을 불러오는 중입니다.", exact: true })).toBeVisible();
+    await expect(page.locator(".global-nav a")).toHaveCount(0);
     await expect(page.locator("header .user-tools")).toBeEmpty();
     await expect(page.getByLabel("데이터 수신 상태")).toHaveCount(0);
     releaseConfig();
     await expect(page.getByRole("main", { name: "데이터를 불러오는 중입니다.", exact: true })).toBeVisible();
+    await expect(page.locator(".global-nav a")).toHaveCount(0);
     await expect(page.locator("header .user-tools")).toBeEmpty();
     await expect(page.getByLabel("데이터 수신 상태")).toHaveCount(0);
     await expect(page.getByText("수신 대기", { exact: true })).toHaveCount(0);
@@ -124,7 +126,7 @@ test("적재율 경보는 Backend의 평가 결과를 표시하고 연결 중단
 
 test("제공된 경보 평가와 실제 완료 시각을 변환하고 새 경보를 알림함에 연결한다", async ({ page }) => {
   const api = await installBackendApi(page, { initial: monitoringV2StateFixture("FRESH", 0) });
-  api.setCompletionEvents([{ id: "evt-col-opaque", type: "collection_completed", category: "collection", status: "completed", severity: "info", occurredAt: "2026-10-12T22:00:10Z", title: "수거 완료", detail: "실제 완료 기록", resolvedAt: "2026-10-12T22:00:10Z", recordingId: null }]);
+  api.setCollectionSummary(collectionSummaryFixture({ lastCollectionActivityAt: "2026-10-12T22:00:10Z", activitySource: "HEIGHT_SETTLED" }));
   await page.goto("/?source=api");
   const elapsed = page.locator(".status-details > div").filter({ hasText: "최근 수거 후 경과" });
   await expect(elapsed).toContainText("2시간 0분");
@@ -262,21 +264,53 @@ test("v2 영상 확대와 키보드 닫기는 단일 연결 및 자원 회수를
 });
 
 for (const mode of ["silent", "unavailable", "invalid"] satisfies MediaMode[]) {
-  test(`v2 영상 ${mode} 오류는 LIVE를 숨기고 제한된 재연결 뒤 수동 재시도를 제공한다`, async ({ page }) => {
+  test(`v2 영상 ${mode} 오류는 LIVE를 숨기고 버튼 없이 자동 재연결을 유지한다`, async ({ page }) => {
     await page.clock.install();
     await installBackendApi(page, { mediaMode: mode });
     await page.goto("/?source=api");
     await expect(page.locator(".kpi-value")).toHaveText("판단 불가");
-    for (let attempt = 0; attempt < 4; attempt += 1) {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
       await expect.poll(() => page.evaluate(() => window.backendFixture.metrics().attempts)).toBe(attempt + 1);
-      if (mode === "silent") await page.clock.runFor(10_000);
-      if (attempt < 3) await page.clock.runFor((attempt + 1) * 1000);
+      if (mode === "silent") await page.clock.runFor(3000);
+      await page.clock.runFor([250, 500, 1000][Math.min(attempt, 2)]);
     }
-    await expect(page.getByText("영상 연결 불가", { exact: true })).toBeVisible();
+    await expect(page.getByText("영상 연결 중", { exact: true })).toBeVisible();
+    await expect(page.getByText("영상 연결 불가", { exact: true })).toHaveCount(0);
     await expect(page.getByText("LIVE", { exact: true })).toHaveCount(0);
     await expect(page.locator(".live-time")).toHaveCount(0);
-    await page.getByRole("button", { name: "영상 다시 연결" }).click();
-    await expect.poll(() => page.evaluate(() => window.backendFixture.metrics().attempts)).toBe(5);
+    await expect(page.getByRole("button", { name: "영상 다시 연결" })).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.backendFixture.metrics().attempts)).toBe(7);
+  });
+}
+
+for (const [mode, timeout] of [["slow-start", 3000], ["interrupted", 2000]] as const) {
+  test(`v2 영상 ${mode}는 ${timeout}ms 감지와 250ms 대기 후 정상 frame으로 복구한다`, async ({ page }) => {
+    await page.clock.install({ time: new Date("2026-10-16T00:00:00Z") });
+    await page.clock.pauseAt(new Date("2026-10-16T00:00:01Z"));
+    await installBackendApi(page, { mediaMode: mode });
+    await page.goto("/?source=api");
+    await expect(page.locator(".kpi-value")).toHaveText("판단 불가");
+    await expect.poll(() => page.evaluate(() => window.backendFixture.metrics().attempts)).toBe(1);
+    const video = page.locator(".live-frame");
+    if (mode === "interrupted") await expect(video.getByText("LIVE", { exact: true })).toBeVisible();
+    await page.clock.runFor(timeout - 1);
+    expect(await page.evaluate(() => window.backendFixture.metrics().attempts)).toBe(1);
+    if (mode === "interrupted") await expect(video.getByText("LIVE", { exact: true })).toBeVisible();
+    await page.clock.runFor(1);
+    await expect(video.getByText("영상 연결 중", { exact: true })).toBeVisible();
+    await expect(video.getByText("LIVE", { exact: true })).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.backendFixture.metrics().videos)).toBe(0);
+    await expect.poll(() => page.evaluate(() => window.backendFixture.metrics().objectUrls)).toBe(0);
+    await page.clock.runFor(249);
+    expect(await page.evaluate(() => window.backendFixture.metrics().attempts)).toBe(1);
+    await page.clock.runFor(1);
+    await expect.poll(() => page.evaluate(() => window.backendFixture.metrics().attempts)).toBe(2);
+    await expect(video.getByText("LIVE", { exact: true })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.backendFixture.metrics().videos)).toBe(1);
+    await expect.poll(() => page.evaluate(() => window.backendFixture.metrics().objectUrls)).toBe(1);
+    await page.clock.runFor(6000);
+    await expect(video.getByText("LIVE", { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => window.backendFixture.metrics().attempts)).toBe(2);
   });
 }
 

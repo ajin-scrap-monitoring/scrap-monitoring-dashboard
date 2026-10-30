@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { createHttpDashboardDataSource } from "./http-dashboard-data-source";
 import type { createDailyRecordingApi } from "./daily-recording-api";
 import { notificationPageFixture, recordingPageFixture, sessionFixture } from "../test/api-contract-fixtures";
-import { monitoringV2StateFixture } from "../test/backend-contract-fixtures";
+import { eventRecordingId, eventRecordingPageFixture, eventReplayFixture, monitoringV2StateFixture } from "../test/backend-contract-fixtures";
 
 const daily = vi.hoisted(() => {
   const queryRecordings = vi.fn(() => Promise.resolve([]));
@@ -26,7 +26,9 @@ function requestPath(input: RequestInfo | URL) {
 
 function eventFetch(input: RequestInfo | URL) {
   const path = requestPath(input);
-  const value = path === "/api/v1/recordings" ? recordingPageFixture : recordingPageFixture.items[0];
+  const value = path === "/api/v2/recordings/events" ? eventRecordingPageFixture()
+    : path === `/api/v2/recordings/events/${eventRecordingId}` ? eventReplayFixture()
+      : path === "/api/v1/recordings" ? recordingPageFixture : recordingPageFixture.items[0];
   return Promise.resolve(new Response(JSON.stringify(value), { headers: { "Content-Type": "application/json" } }));
 }
 
@@ -56,8 +58,10 @@ describe("날짜 녹화 API의 지연 로딩 경계", () => {
     const source = createHttpDashboardDataSource({ ...options, fetchImplementation: eventFetch });
     expect(daily.create).not.toHaveBeenCalled();
     await source.queryRecordings?.(range);
-    await source.getRecording?.(recordingPageFixture.items[0].id);
     expect(daily.create).not.toHaveBeenCalled();
+    await source.getRecording?.(options.apiContract === "backend" ? eventRecordingId : recordingPageFixture.items[0].id);
+    // Backend 이벤트 단건은 보관 만료를 날짜 녹화 상세에서 읽으므로 날짜 지원 연결에서만 module을 초기화한다.
+    if (!(options.apiContract === "backend" && source.supportsDailyRecordings)) expect(daily.create).not.toHaveBeenCalled();
   });
 
   test.each([

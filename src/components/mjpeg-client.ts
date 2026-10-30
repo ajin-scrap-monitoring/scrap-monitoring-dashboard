@@ -1,5 +1,7 @@
 const MAX_FRAME_BYTES = 4 * 1024 * 1024;
 const MAX_HEADER_BYTES = 4096;
+const FIRST_FRAME_TIMEOUT_MS = 3000;
+const NEXT_FRAME_TIMEOUT_MS = 2000;
 
 export class MjpegResponseError extends Error {
   readonly status: number;
@@ -39,12 +41,12 @@ export async function readMjpeg({
   signal.addEventListener("abort", abort, { once: true });
   if (signal.aborted) abort();
   let timeout: ReturnType<typeof setTimeout> | undefined;
-  const waitForFrame = () => {
+  const waitForFrame = (timeoutMs: number) => {
     clearTimeout(timeout);
-    timeout = setTimeout(abort, 10_000);
+    timeout = setTimeout(abort, timeoutMs);
   };
   try {
-    waitForFrame();
+    waitForFrame(FIRST_FRAME_TIMEOUT_MS);
     const response = await fetchImplementation(url, { credentials: "include", cache: "no-store", signal: controller.signal });
     if (!response.ok) throw new MjpegResponseError(response.status);
     const contentType = response.headers.get("Content-Type") ?? "";
@@ -83,7 +85,7 @@ export async function readMjpeg({
         onFrame(new Blob([frame], { type: "image/jpeg" }));
         pending = pending.slice(frameLength);
         frameLength = undefined;
-        waitForFrame();
+        waitForFrame(NEXT_FRAME_TIMEOUT_MS);
       }
     }
     throw new DOMException("MJPEG connection aborted.", "AbortError");

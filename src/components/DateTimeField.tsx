@@ -2,14 +2,14 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { dateTimeValue } from "../date-range";
+import { seoulDateTime } from "../display-time";
 
 const pad = (value: number) => String(value).padStart(2, "0");
 const dateText = (date: Date) => `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
 function parseDate(value: string) {
   const timestamp = dateTimeValue(value);
   if (Number.isFinite(timestamp)) return new Date(timestamp);
-  const now = new Date();
-  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes()));
+  return new Date(`${seoulDateTime(new Date().getTime()).slice(0, 16)}:00Z`);
 }
 
 export function DateTimeField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
