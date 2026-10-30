@@ -85,7 +85,7 @@ tool=(docker run --rm --name "$tool_container" --network host \
   --mount "type=bind,source=$repository_root,target=$repository_root,readonly" \
   --mount "type=bind,source=$work_directory,target=$work_directory" \
   --workdir "$repository_root" --env "VERIFY_RUN_DIRECTORY=$work_directory" --env "VERIFY_RUN_ID=$run_id" "$tool_image")
-run_step container-runtime 120s "${tool[@]}" bash scripts/verify-container-image.sh "$dashboard_image" "$dashboard_container" 0.4.1
+run_step container-runtime 120s "${tool[@]}" bash scripts/verify-container-image.sh "$dashboard_image" "$dashboard_container" 0.5.0
 run_step tls-integration 120s "${tool[@]}" bash test/tls/integration.sh "$dashboard_image"
 run_step reverse-proxy 120s "${tool[@]}" node test/proxy/integration.mjs "$dashboard_image"
 printf 'Production runtime, TLS and reverse proxy verification passed.\n'
