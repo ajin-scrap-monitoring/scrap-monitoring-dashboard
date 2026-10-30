@@ -1,8 +1,22 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 
 import { DashboardHeader, DashboardPageShell } from "./DashboardShell";
-import { setHeaderPopoversLoaderForTest } from "./header-popovers-loader";
+import { createModuleLoader } from "./header-popovers-loader";
+
+let mockLoaderOverride: (() => Promise<typeof import("./HeaderPopovers")>) | null = null;
+
+vi.mock("./header-popovers-loader", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./header-popovers-loader")>();
+  return {
+    ...actual,
+    loadHeaderPopovers: () => (mockLoaderOverride ? mockLoaderOverride() : actual.loadHeaderPopovers()),
+  };
+});
+
+afterEach(() => {
+  mockLoaderOverride = null;
+});
 
 test.each([false, true])("인증 확인 전에는 로컬 로그인 표시 %s와 무관하게 사용자 영역을 숨긴다", (stored) => {
   if (stored) window.sessionStorage.setItem("scrap-monitoring-authenticated", "true");
@@ -158,7 +172,7 @@ test("모듈 로딩이 끝나기 전에 버튼을 눌러도 로딩이 끝나면 
   const deferred = new Promise<typeof import("./HeaderPopovers")>((resolve) => {
     resolveLoader = resolve;
   });
-  setHeaderPopoversLoaderForTest(() => deferred);
+  mockLoaderOverride = createModuleLoader(() => deferred);
 
   render(
     <DashboardHeader
@@ -181,12 +195,10 @@ test("모듈 로딩이 끝나기 전에 버튼을 눌러도 로딩이 끝나면 
 
   expect(await screen.findByText("수거 필요")).toBeVisible();
   expect(screen.getByLabelText("최근 알림")).toBeVisible();
-
-  setHeaderPopoversLoaderForTest(null);
 });
 
 test("모듈 로딩이 실패하면 안내와 다시 시도 버튼을 보여준다", async () => {
-  setHeaderPopoversLoaderForTest(() => Promise.reject(new Error("Chunk load failed")));
+  mockLoaderOverride = createModuleLoader(() => Promise.reject(new Error("Chunk load failed")));
 
   render(
     <DashboardHeader
@@ -202,14 +214,12 @@ test("모듈 로딩이 실패하면 안내와 다시 시도 버튼을 보여준�
 
   expect(await screen.findByText("메뉴를 불러오지 못했습니다.")).toBeVisible();
   expect(screen.getByRole("button", { name: "다시 시도" })).toBeVisible();
-
-  setHeaderPopoversLoaderForTest(null);
 });
 
 test("로딩이 실패한 뒤 다시 시도하면 패널이 뜬다", async () => {
   const actualModule = await import("./HeaderPopovers");
   let attempts = 0;
-  setHeaderPopoversLoaderForTest(() => {
+  mockLoaderOverride = createModuleLoader(() => {
     attempts += 1;
     if (attempts === 1) return Promise.reject(new Error("Chunk load failed"));
     return Promise.resolve(actualModule);
@@ -234,14 +244,12 @@ test("로딩이 실패한 뒤 다시 시도하면 패널이 뜬다", async () =>
 
   expect(await screen.findByText("수거 필요")).toBeVisible();
   expect(screen.getByLabelText("최근 알림")).toBeVisible();
-
-  setHeaderPopoversLoaderForTest(null);
 });
 
 test("로딩이 실패한 뒤 메뉴 버튼을 다시 눌러도 재시도하여 패널이 뜬다", async () => {
   const actualModule = await import("./HeaderPopovers");
   let attempts = 0;
-  setHeaderPopoversLoaderForTest(() => {
+  mockLoaderOverride = createModuleLoader(() => {
     attempts += 1;
     if (attempts === 1) return Promise.reject(new Error("Chunk load failed"));
     return Promise.resolve(actualModule);
@@ -265,12 +273,10 @@ test("로딩이 실패한 뒤 메뉴 버튼을 다시 눌러도 재시도하여 
   fireEvent.click(menuButton);
 
   expect(await screen.findByRole("button", { name: "로그아웃" })).toBeVisible();
-
-  setHeaderPopoversLoaderForTest(null);
 });
 
 test("로딩 중 또는 실패 상태에서 Escape와 바깥 클릭으로 패널을 닫을 수 있다", async () => {
-  setHeaderPopoversLoaderForTest(() => Promise.reject(new Error("Chunk load failed")));
+  mockLoaderOverride = createModuleLoader(() => Promise.reject(new Error("Chunk load failed")));
 
   render(
     <DashboardHeader
@@ -294,6 +300,4 @@ test("로딩 중 또는 실패 상태에서 Escape와 바깥 클릭으로 패널
   fireEvent.pointerDown(document.body);
   expect(screen.queryByText("메뉴를 불러오지 못했습니다.")).not.toBeInTheDocument();
   expect(button).toHaveAttribute("aria-expanded", "false");
-
-  setHeaderPopoversLoaderForTest(null);
 });
