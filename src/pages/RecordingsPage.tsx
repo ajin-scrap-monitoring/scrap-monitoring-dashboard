@@ -532,7 +532,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                       <div className="recording-info-actions">
                         {(Boolean(selectedRecording?.source !== "daily" && selectedRecording?.coverage === "partial" && dataSource?.getRecordingCoverage && clipIdentifier.test(selectedRecording.id))
                           || Boolean(selectedRecording?.replay && selectedRecording.replay.unavailableIntervals.length > 0)
-                          || Boolean(selectedRecording?.daily && selectedRecording.daily.gaps.length > 0)) && <button className="detail-trigger recording-coverage-trigger" type="button" aria-haspopup="dialog" onClick={() => setCoverageRecordingId(selectedRecording.id)}>부분 저장</button>}
+                          || Boolean(selectedRecording?.daily && selectedRecording.daily.gaps.length > 0)) && <button className="detail-trigger recording-coverage-trigger" type="button" aria-haspopup="dialog" onClick={() => setCoverageRecordingId(selectedRecording.id)}>{selectedRecording?.source !== "daily" && selectedRecording?.coverage === "partial" && dataSource?.getRecordingCoverage && clipIdentifier.test(selectedRecording.id) ? "부분 저장" : "누락 구간"}</button>}
                         {selectedRecording && (!selectedRecording.sample || selectedRecording.mediaStatus || selectedRecording.errorCode) && <RecordingStatusDetails
                           key={selectedKey} recording={selectedRecording} error={(detailState.source === dataSource && detailState.key === selectedKey ? detailState.error : undefined) ?? (playbackError?.key === selectedKey ? playbackError?.message : undefined)} pending={detailRequired && !detailReady} />}
                       </div>

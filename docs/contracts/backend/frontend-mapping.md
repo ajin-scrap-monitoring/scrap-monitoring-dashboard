@@ -248,7 +248,7 @@ v2 경보와 수거 판단 목록(`/api/v2/monitoring/alerts`, `collection-event
 이벤트 재생 시간축의 위치다. 한 part가 끝나면 다음 part로 이동하고 마지막 part의 끝에서
 정지한다. `unavailableIntervals`는 재생하지 않는 구간이며 하루 또는 이벤트 구간 전체가
 녹화되었다고 가정하지 않는다. 날짜 녹화를 삭제하면 같은 날짜 영상을 쓰는 이벤트 구간도
-재생할 수 없다. 이벤트 상세의 `unavailableIntervals` 또는 날짜 녹화의 `gaps`가 1개 이상이면 녹화 정보 카드의 부분 저장 버튼으로 녹화 범위 상세 창을 연다. 이벤트 창은 요청 구간(`windowFrom` ~ `windowTo`), 요청 길이, 확보 길이, 재생 길이와 각 구간의 시작 및 종료 시각, 종류(GAP, UNCONFIRMED, FUTURE, MISSING, EXPIRED)와 `reasonCode`를 표시한다. 날짜 창은 녹화 날짜와 `gaps`의 시작 및 종료 시각과 `reason_code`를 표시한다.
+재생할 수 없다. 이벤트 상세의 `unavailableIntervals` 또는 날짜 녹화의 `gaps`가 1개 이상이면 녹화 정보 카드의 누락 구간 버튼으로 녹화 범위 상세 창을 연다. 이벤트 창은 요청 구간(`windowFrom` ~ `windowTo`), 요청 길이, 확보 길이, 재생 길이와 각 구간의 시작 및 종료 시각, 종류(GAP, UNCONFIRMED, FUTURE, MISSING, EXPIRED)와 `reasonCode`를 표시한다. 날짜 창은 녹화 날짜와 `gaps`의 시작 및 종료 시각과 `reason_code`를 표시한다.
 
 ## 추가 계약 요청
 

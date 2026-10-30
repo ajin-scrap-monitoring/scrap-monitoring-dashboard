@@ -126,19 +126,19 @@ test("이벤트 녹화 목록은 첫 화면에 서버 1페이지만 받고 필�
   await expect(pagination).toContainText("1 /");
 });
 
-test("unavailableIntervals가 있는 PARTIAL 이벤트 상세의 부분 저장 버튼과 녹화 범위 상세 창 내용을 확인한다", async ({ page }) => {
+test("unavailableIntervals가 있는 PARTIAL 이벤트 상세의 누락 구간 버튼과 녹화 범위 상세 창 내용을 확인한다", async ({ page }) => {
   const api = await installBackendApi(page, { initial });
   api.setEventReplays([partialEventReplayWithGaps({}, event)]);
   await page.goto("/recordings?source=api&recordingSource=event");
   const trigger = page.locator(".recording-coverage-trigger");
   await expect(trigger).toBeVisible();
-  await expect(trigger).toHaveText("부분 저장");
+  await expect(trigger).toHaveText("누락 구간");
   await trigger.click();
   const dialog = page.getByRole("dialog", { name: "녹화 범위 상세" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("요청 구간")).toBeVisible();
   await expect(dialog.getByText("요청 길이")).toBeVisible();
-  await expect(dialog.getByText("60초")).toBeVisible();
+  await expect(dialog.getByText("1:00")).toBeVisible();
   await expect(dialog.getByText("확보 길이")).toBeVisible();
   await expect(dialog.getByText("재생 길이")).toBeVisible();
   await expect(dialog.getByText(/확인된 누락/)).toBeVisible();
@@ -147,12 +147,12 @@ test("unavailableIntervals가 있는 PARTIAL 이벤트 상세의 부분 저장 �
   await expect(dialog).toHaveCount(0);
 });
 
-test("gaps에 사유 코드가 있는 날짜 녹화의 부분 저장 버튼과 녹화 범위 상세 창 내용을 확인한다", async ({ page }) => {
+test("gaps에 사유 코드가 있는 날짜 녹화의 누락 구간 버튼과 녹화 범위 상세 창 내용을 확인한다", async ({ page }) => {
   await installBackendApi(page, { initial });
   await page.goto("/recordings?source=api&recordingSource=daily");
   const trigger = page.locator(".recording-coverage-trigger");
   await expect(trigger).toBeVisible();
-  await expect(trigger).toHaveText("부분 저장");
+  await expect(trigger).toHaveText("누락 구간");
   await trigger.click();
   const dialog = page.getByRole("dialog", { name: "녹화 범위 상세" });
   await expect(dialog).toBeVisible();

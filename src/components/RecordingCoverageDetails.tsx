@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { wallClock } from "../data/contract-values";
 import type { DashboardDataSource } from "../data/dashboard-data-source";
 import type { Recording, RecordingCoverageDetail } from "../domain/dashboard";
+import { replayClock } from "../data/event-recordings";
 import { DetailFields } from "./DetailFields";
 import { recordingErrorCode } from "../recording-status";
 
@@ -49,9 +50,9 @@ export default function RecordingCoverageDetails({
     return <>
       <DetailFields fields={[
         ["요청 구간", `${startText} ~ ${endText}`],
-        ["요청 길이", typeof replay.requestedSeconds === "number" ? `${replay.requestedSeconds}초` : "정보 없음"],
-        ["확보 길이", `${replay.coveredSeconds}초`],
-        ["재생 길이", `${replay.playbackSeconds}초`],
+        ["요청 길이", typeof replay.requestedSeconds === "number" ? replayClock(replay.requestedSeconds) : "정보 없음"],
+        ["확보 길이", replayClock(replay.coveredSeconds)],
+        ["재생 길이", replayClock(replay.playbackSeconds)],
       ]} />
       <h3>누락 구간</h3>
       <ul>
