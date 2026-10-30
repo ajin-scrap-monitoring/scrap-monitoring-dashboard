@@ -861,4 +861,22 @@ describe("Backend v2 모니터링", () => {
     const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend" });
     await expect(source.getRecording?.(eventRecordingFixture().eventId)).rejects.toThrow();
   });
+
+  test.each(["DISABLED", "WARMING", "READY", "UNAVAILABLE"] as const)("v2 snapshot의 summary.filterState %s를 domain에 반영한다", (filterState) => {
+    const snapshot = monitoringV2StateFixture("FRESH");
+    const result = monitoringV2Data({ ...snapshot, summary: { ...snapshot.summary, filterState } }, "pit-01");
+    expect(result.v2?.filterState).toBe(filterState);
+  });
+
+  test.each([undefined, null])("v2 snapshot의 summary.filterState 부재(%s)는 null로 반영한다", (filterState) => {
+    const snapshot = monitoringV2StateFixture("FRESH");
+    const summary = { ...snapshot.summary, filterState };
+    const result = monitoringV2Data({ ...snapshot, summary }, "pit-01");
+    expect(result.v2?.filterState).toBeNull();
+  });
+
+  test.each(["INVALID", "OFF", 123, true])("v2 snapshot의 summary.filterState 허용값 밖(%s)은 계약 오류로 거부한다", (filterState) => {
+    const snapshot = monitoringV2StateFixture("FRESH");
+    expect(() => monitoringV2Data({ ...snapshot, summary: { ...snapshot.summary, filterState } }, "pit-01")).toThrow("Unexpected monitoring contract or pit assignment.");
+  });
 });

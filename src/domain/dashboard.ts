@@ -181,6 +181,8 @@ export type EventRecordingWindow = {
   simulated: boolean | null;
   pitAttribution: "RECORDED" | "CURRENT_ASSIGNMENT";
   reasonCodes: string[];
+  windowFrom?: string;
+  windowTo?: string | null;
 };
 
 export type EventReplay = {
@@ -231,6 +233,8 @@ export type Recording = {
   replay?: EventReplay;
   // 목록 응답의 재생 요약이다. 상세 응답의 replay를 받으면 replay가 우선한다.
   playbackSummary?: EventPlaybackSummary;
+  windowFrom?: string;
+  windowTo?: string | null;
   codec: string;
   contentUrl?: string;
   retentionStartsAt: string;
@@ -308,8 +312,11 @@ export type DataReception = {
   lastReceivedAt: string | null;
 };
 
+export type MonitoringFilterState = "DISABLED" | "WARMING" | "READY" | "UNAVAILABLE";
+
 export type MonitoringV2 = {
   simulated?: boolean;
+  filterState?: MonitoringFilterState | null;
   serverTime: string;
   dataState: "FRESH" | "STALE" | "UNAVAILABLE" | "UNKNOWN" | "NO_DATA";
   snapshotId: string;

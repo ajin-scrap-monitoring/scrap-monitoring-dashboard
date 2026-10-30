@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { eventRecordingId, monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
 
-import { installBackendApi, syntheticEventReplay } from "./backend-api.js";
+import { installBackendApi, partialEventReplayWithGaps, syntheticEventReplay } from "./backend-api.js";
 
 const initial = { ...monitoringV2StateFixture("FRESH", 0), serverTime: "2026-10-15T09:30:00+09:00" };
 const event = { windowFrom: "2026-10-14T23:59:30Z", windowTo: "2026-10-15T00:00:30Z", occurredAt: "2026-10-15T00:00:00Z" };
@@ -124,4 +124,41 @@ test("이벤트 녹화 목록은 첫 화면에 서버 1페이지만 받고 필�
   await page.getByRole("button", { name: "조회", exact: true }).click();
   await expect.poll(() => requested().at(-1)).toBe("1/20");
   await expect(pagination).toContainText("1 /");
+});
+
+test("unavailableIntervals가 있는 PARTIAL 이벤트 상세의 부분 저장 버튼과 녹화 범위 상세 창 내용을 확인한다", async ({ page }) => {
+  const api = await installBackendApi(page, { initial });
+  api.setEventReplays([partialEventReplayWithGaps({}, event)]);
+  await page.goto("/recordings?source=api&recordingSource=event");
+  const trigger = page.locator(".recording-coverage-trigger");
+  await expect(trigger).toBeVisible();
+  await expect(trigger).toHaveText("부분 저장");
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "녹화 범위 상세" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("요청 구간")).toBeVisible();
+  await expect(dialog.getByText("요청 길이")).toBeVisible();
+  await expect(dialog.getByText("60초")).toBeVisible();
+  await expect(dialog.getByText("확보 길이")).toBeVisible();
+  await expect(dialog.getByText("재생 길이")).toBeVisible();
+  await expect(dialog.getByText(/확인된 누락/)).toBeVisible();
+  await expect(dialog.getByText(/RECORDING_GAP/)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+});
+
+test("gaps에 사유 코드가 있는 날짜 녹화의 부분 저장 버튼과 녹화 범위 상세 창 내용을 확인한다", async ({ page }) => {
+  await installBackendApi(page, { initial });
+  await page.goto("/recordings?source=api&recordingSource=daily");
+  const trigger = page.locator(".recording-coverage-trigger");
+  await expect(trigger).toBeVisible();
+  await expect(trigger).toHaveText("부분 저장");
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "녹화 범위 상세" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("녹화 날짜")).toBeVisible();
+  await expect(dialog.getByText("2026-10-12", { exact: true })).toBeVisible();
+  await expect(dialog.getByText(/CAMERA_DISCONNECTED/)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
 });

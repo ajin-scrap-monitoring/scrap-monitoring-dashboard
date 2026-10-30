@@ -310,3 +310,33 @@ test("layout 조회 실패는 배치 정보 없음으로 표시하고 조회 전
   view.rerender(<MonitoringPage data={{ ...data, monitoring: { ...data.monitoring } }} dataSource={dataSource} />);
   expect(view.container.querySelector(".measurement-layout-state")).toHaveTextContent("배치 정보 없음");
 });
+
+test.each([
+  [false, undefined, "추정 적재율", undefined],
+  [false, null, "추정 적재율", undefined],
+  [false, "DISABLED" as const, "추정 적재율", undefined],
+  [false, "READY" as const, "추정 적재율", undefined],
+  [false, "WARMING" as const, "추정 적재율 (안정화 준비 중)", "시간 필터가 준비되는 동안의 값"],
+  [false, "UNAVAILABLE" as const, "추정 적재율 (안정화 불가)", undefined],
+  [true, undefined, "추정 적재율 (시뮬레이션)", undefined],
+  [true, "WARMING" as const, "추정 적재율 (시뮬레이션, 안정화 준비 중)", "시간 필터가 준비되는 동안의 값"],
+  [true, "UNAVAILABLE" as const, "추정 적재율 (시뮬레이션, 안정화 불가)", undefined],
+  [true, "DISABLED" as const, "추정 적재율 (시뮬레이션)", undefined],
+  [true, "READY" as const, "추정 적재율 (시뮬레이션)", undefined],
+])("추정 적재율 label(simulated=%s, filterState=%s)은 '%s'로 표시된다", async (simulated, filterState, expectedLabel, expectedTitle) => {
+  const dataSource = createMockDashboardDataSource();
+  const data = await dataSource.getDashboardData();
+  data.monitoring.v2 = {
+    ...data.monitoring.v2!,
+    simulated,
+    filterState,
+  };
+  const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
+  const label = container.querySelector(".kpi-label");
+  expect(label).toHaveTextContent(expectedLabel);
+  if (expectedTitle) {
+    expect(label).toHaveAttribute("title", expectedTitle);
+  } else {
+    expect(label).not.toHaveAttribute("title");
+  }
+});

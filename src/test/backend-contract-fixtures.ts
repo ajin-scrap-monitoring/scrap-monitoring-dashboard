@@ -46,14 +46,14 @@ export const monitoringV2Fixture = {
   },
 } satisfies components["schemas"]["MonitoringSnapshotV2"];
 
-export function monitoringV2StateFixture(dataState: components["schemas"]["MonitoringSnapshotV2"]["dataState"], loadPercent = 0): components["schemas"]["MonitoringSnapshotV2"] {
+export function monitoringV2StateFixture(dataState: components["schemas"]["MonitoringSnapshotV2"]["dataState"], loadPercent = 0, summaryOverrides: Record<string, unknown> = {}): components["schemas"]["MonitoringSnapshotV2"] {
   return {
     ...monitoringV2Fixture,
     dataState,
     reasonCodes: dataState === "FRESH" ? [] : [`SYNTHETIC_${dataState}`],
     measuredAt: dataState === "NO_DATA" ? null : monitoringV2Fixture.measuredAt,
     assessmentReceivedAt: dataState === "NO_DATA" ? null : monitoringV2Fixture.assessmentReceivedAt,
-    summary: { ...monitoringV2Fixture.summary, loadPercent: dataState === "FRESH" ? loadPercent : null },
+    summary: { ...monitoringV2Fixture.summary, loadPercent: dataState === "FRESH" ? loadPercent : null, ...summaryOverrides },
     assessment: dataState === "NO_DATA" ? null : {
       ...monitoringV2Fixture.assessment,
       decision_state: dataState === "FRESH" ? "AVAILABLE" : "UNAVAILABLE",

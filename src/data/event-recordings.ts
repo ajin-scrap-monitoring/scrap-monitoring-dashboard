@@ -80,6 +80,8 @@ export function eventRecordingItem(value: unknown): EventRecordingItem {
       simulated: (value.simulated) ?? null,
       pitAttribution: value.pitAttribution === undefined ? "RECORDED" : choice(value.pitAttribution, ["RECORDED", "CURRENT_ASSIGNMENT"] as const),
       reasonCodes: (value.reasonCodes) ?? [],
+      windowFrom: stamp(value.windowFrom),
+      windowTo: optionalStamp(value.windowTo),
     },
     playback: playbackSummary(value.playback),
   };
@@ -171,6 +173,8 @@ export function mapEventRecording(item: EventRecordingItem, replay?: EventReplay
   return {
     source: "event",
     eventWindow: item.window,
+    windowFrom: item.windowFrom,
+    windowTo: item.windowTo,
     ...(replay && { replay }),
     ...(summary && { playbackSummary: summary }),
     id: item.eventId,
