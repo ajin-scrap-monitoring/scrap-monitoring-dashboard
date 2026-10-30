@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { ROUTES } from "../app-routing";
 import { v1MonitoringEnabled } from "../build-features";
@@ -11,11 +11,24 @@ import { DetailDialog } from "../components/DetailDialog";
 import { DetailFields } from "../components/DetailFields";
 import { dateTimeValue, isValidDateTime, recentPeriods, recentRange } from "../date-range";
 import type { DashboardDataSource } from "../data/dashboard-data-source";
-import type { DashboardData, DataAreaState, DataReception, EventCategory, HeaderNotification, HistoryEvent, HistoryLoadSample, UserSession } from "../domain/dashboard";
+import type { DashboardData, DataAreaState, DataReception, EventCategory, HeaderNotification, HistoryEvent, HistoryEventPage, HistoryLoadSample, UserSession } from "../domain/dashboard";
 import { useLatestRequest } from "../use-latest-request";
 import { timeAxisTicks } from "../chart-time-axis";
 
 const historyEventsPerPage = 8;
+
+type ServerEvents = {
+  items: HistoryEvent[];
+  totalItems: number;
+  totalPages: number;
+  page: number;
+  // loading은 첫 조회 중, paging은 다른 페이지 조회 중이며 이전 행을 계속 표시한다.
+  status: "ready" | "loading" | "paging" | "error";
+  query: { start: string; end: string; category: EventCategory | undefined } | null;
+};
+
+const categories = { "수거": "collection", "알림": "alert", "오류": "error" } as const;
+const maximumQueryDays = 90;
 
 function eventTitle(event: HistoryEvent) {
   return event.title || event.content;
@@ -53,8 +66,9 @@ function HistoryLoadChart({ chartEvents, loadSamples: samples, startsAt, endsAt,
   if (segment.length) segments.push(segment);
   const previousResult = loadState?.status === "error" && loadState.stale === true && segments.length > 0;
   const unavailable = (loadState?.status === "error" && !previousResult) || loadState?.status === "unsupported" || loadState?.status === "loading";
-  const emptyMessage = loadState?.status === "unsupported" ? loadState.message ?? "v2 적재율 추이는 최대 7일까지 조회할 수 있습니다."
-    : loadState?.status === "error" ? "적재율 이력을 조회하지 못했습니다."
+  const rangeGuidance = loadState?.status === "error" && loadState.code?.startsWith("HISTORY_") === true ? loadState.message : undefined;
+  const emptyMessage = loadState?.status === "unsupported" ? loadState.message ?? "적재율 추이는 최대 90일까지 조회할 수 있습니다."
+    : loadState?.status === "error" ? rangeGuidance ?? "적재율 이력을 조회하지 못했습니다."
       : loadState?.status === "loading" ? "적재율 이력을 불러오는 중입니다."
         : samples.some((sample) => sample.dataState !== "NO_DATA") ? "유효한 적재율 데이터가 없습니다." : "조회된 적재율 데이터가 없습니다.";
   const thresholdPath = thresholdPoints.map((sample, index) => {
@@ -146,14 +160,68 @@ export function HistoryPage({ dataSource, history, headerNotifications, headerUn
   const [displayedHistory, setDisplayedHistory] = useState(history);
   const [eventType, setEventType] = useState("전체");
   const [eventPage, setEventPage] = useState(0);
-  const [range, setRange] = useState(() => recentRange(168, history.endsAt));
+  // 이력 데이터가 조회 전 상태(loading)이면 화면이 첫 조회를 직접 시작한다.
+  const [initialQuery] = useState(() => ({ ...recentRange(168, history.endsAt), deferred: history.loadState?.status === "loading" && typeof dataSource?.queryHistory === "function" }));
+  const [range, setRange] = useState(() => ({ start: initialQuery.start, end: initialQuery.end }));
   const [preset, setPreset] = useState<number | null>(168);
-  const [applied, setApplied] = useState(() => ({ ...recentRange(168, history.endsAt), eventType: "전체" }));
+  const [applied, setApplied] = useState(() => ({ start: initialQuery.start, end: initialQuery.end, eventType: "전체" }));
   const [queryError, setQueryError] = useState("");
-  const [queryState, setQueryState] = useState({ source: dataSource, busy: false });
-  const querying = queryState.source === dataSource && queryState.busy;
-  const setQuerying = (busy: boolean) => setQueryState({ source: dataSource, busy });
+  const [queryState, setQueryState] = useState({ source: dataSource, load: initialQuery.deferred, events: initialQuery.deferred });
+  const busy = queryState.source === dataSource ? queryState : { load: false, events: false };
+  const querying = busy.load || busy.events;
+  const setBusy = useCallback((patch: { load?: boolean; events?: boolean }) =>
+    setQueryState((previous) => ({ ...(previous.source === dataSource ? previous : { load: false, events: false }), source: dataSource, ...patch })), [dataSource]);
   const startQuery = useLatestRequest(dataSource);
+  const startEventsQuery = useLatestRequest(dataSource);
+  // 서버 페이지 방식의 이벤트 표 상태이다. null이면 queryHistory가 돌려준 전체 이벤트를 화면에서 나눈다.
+  const [serverEvents, setServerEvents] = useState<ServerEvents | null>(() => history.eventsState?.status === "loading" && dataSource?.queryHistoryEvents
+    ? { items: [], totalItems: 0, totalPages: 1, page: 0, status: "loading", query: null } : null);
+  const runQuery = useCallback((nextRange: { start: string; end: string }, nextType: string) => {
+    if (!dataSource?.queryHistory) return;
+    const category = categories[nextType as keyof typeof categories] as EventCategory | undefined;
+    const signal = startQuery();
+    setBusy({ load: true });
+    void dataSource.queryHistory({ eventCategory: category, from: nextRange.start, to: nextRange.end }, signal)
+      .then((value) => {
+        if (signal.aborted) return;
+        setDisplayedHistory(value);
+        setApplied({ start: nextRange.start, end: nextRange.end, eventType: nextType });
+        setQueryError("");
+        if (!dataSource.queryHistoryEvents) setEventPage(0);
+      })
+      .catch(() => { if (!signal.aborted) setQueryError("이력 데이터를 조회하지 못했습니다. 기존 조회 결과를 유지합니다."); })
+      .finally(() => { if (!signal.aborted) setBusy({ load: false }); });
+    if (!dataSource.queryHistoryEvents) return;
+    // 이벤트 표는 적재율 그래프를 기다리지 않고 보이는 페이지만 서버에서 조회한다.
+    const eventsSignal = startEventsQuery();
+    const query = { start: nextRange.start, end: nextRange.end, category };
+    setBusy({ events: true });
+    void dataSource.queryHistoryEvents({ eventCategory: category, from: nextRange.start, to: nextRange.end, page: 0, pageSize: historyEventsPerPage }, eventsSignal)
+      .then((result: HistoryEventPage) => {
+        if (eventsSignal.aborted) return;
+        setServerEvents({ items: result.events, totalItems: result.totalItems, totalPages: result.totalPages, page: 0, status: "ready", query });
+        setEventPage(0);
+      })
+      .catch(() => { if (!eventsSignal.aborted) setServerEvents((previous) => ({ items: [], totalItems: 0, totalPages: 1, page: 0, status: "error", query: previous?.query ?? null })); })
+      .finally(() => { if (!eventsSignal.aborted) setBusy({ events: false }); });
+  }, [dataSource, setBusy, startEventsQuery, startQuery]);
+  useEffect(() => {
+    if (!initialQuery.deferred) return;
+    // 첫 조회는 렌더 직후의 타이머에서 시작해 effect 본문에서 상태를 갱신하지 않는다.
+    const timer = window.setTimeout(() => runQuery({ start: initialQuery.start, end: initialQuery.end }, "전체"), 0);
+    return () => window.clearTimeout(timer);
+  }, [initialQuery, runQuery]);
+  const changeEventPage = (page: number) => {
+    if (!serverEvents) { setEventPage(page); return; }
+    const query = serverEvents.query;
+    if (!query || busy.events || !dataSource?.queryHistoryEvents) return;
+    setEventPage(page);
+    const signal = startEventsQuery();
+    setServerEvents((previous) => previous && { ...previous, status: "paging" });
+    void dataSource.queryHistoryEvents({ eventCategory: query.category, from: query.start, to: query.end, page, pageSize: historyEventsPerPage }, signal)
+      .then((result) => { if (!signal.aborted) setServerEvents({ items: result.events, totalItems: result.totalItems, totalPages: result.totalPages, page, status: "ready", query }); })
+      .catch(() => { if (!signal.aborted) setServerEvents((previous) => previous && { ...previous, status: "error" }); });
+  };
   const [eventSelection, setEventSelection] = useState<{
     event: HistoryEvent;
     source: DashboardDataSource | undefined;
@@ -179,38 +247,36 @@ export function HistoryPage({ dataSource, history, headerNotifications, headerUn
   const thresholds = displayedHistory.thresholds.filter((sample, index, values) => sample.hour <= endHour && (sample.hour >= startHour || index === values.findLastIndex((candidate) => candidate.hour <= startHour)))
     .map((sample) => ({ ...sample, hour: Math.max(0, sample.hour - startHour) }));
   const showLegend = (type: string) => dataSource?.monitoringVersion !== "v2" && (applied.eventType === "전체" || applied.eventType === type);
-  const totalEventPages = Math.max(1, Math.ceil(filteredEvents.length / historyEventsPerPage));
-  const visibleEvents = filteredEvents.slice(eventPage * historyEventsPerPage, (eventPage + 1) * historyEventsPerPage);
+  const totalEventPages = serverEvents ? Math.max(1, serverEvents.totalPages) : Math.max(1, Math.ceil(filteredEvents.length / historyEventsPerPage));
+  const visibleEvents = serverEvents ? serverEvents.items : filteredEvents.slice(eventPage * historyEventsPerPage, (eventPage + 1) * historyEventsPerPage);
+  const eventsFailed = serverEvents ? serverEvents.status === "error" : displayedHistory.eventsState?.status === "error";
+  const eventsLoading = serverEvents?.status === "loading";
+  const eventsTotal = serverEvents ? serverEvents.totalItems : filteredEvents.length;
   return (
     <DashboardPageShell activePage="history" dataSource={dataSource} headerNotifications={headerNotifications} headerUnreadCount={headerUnreadCount} notificationState={headerNotificationState} session={session}>
       <main className="history-page" aria-label="스크랩 모니터링 이력">
         <div className="page-heading"><h1>이력</h1><DataReceptionMeta reception={reception} /></div>
         <div className="history-content">
           <section className="card history-query">
-            <div className="history-query-head"><SectionTitle>조회 조건</SectionTitle>{queryError && <p id="history-query-error" role="alert" title={queryError}>{queryError}</p>}</div>
+            <div className="history-query-head"><SectionTitle>조회 조건</SectionTitle>{queryError ? <p id="history-query-error" role="alert" title={queryError}>{queryError}</p>
+              : querying && <p id="history-query-status" role="status">조회 중입니다. 긴 기간은 10초 이상 걸릴 수 있습니다.</p>}</div>
             <form className="query-controls" aria-describedby={queryError ? "history-query-error" : undefined} onSubmit={(event) => {
               event.preventDefault();
               if (!isValidDateTime(range.start) || !isValidDateTime(range.end) || dateTimeValue(range.start) >= dateTimeValue(range.end)) {
                 setQueryError("올바른 날짜와 시간을 입력하고, 종료 시각을 시작 시각보다 늦게 설정하세요.");
                 return;
               }
-              const applyResult = (nextHistory?: DashboardData["history"]) => {
-                if (nextHistory) setDisplayedHistory(nextHistory);
+              if (dataSource?.monitoringVersion === "v2" && dateTimeValue(range.end) - dateTimeValue(range.start) > maximumQueryDays * 86_400_000) {
+                setQueryError(`조회 기간은 최대 ${maximumQueryDays}일입니다. 기간을 줄여 다시 조회하세요.`);
+                return;
+              }
+              if (!dataSource?.queryHistory) {
                 setApplied({ ...range, eventType });
                 setEventPage(0);
                 setQueryError("");
-              };
-              if (!dataSource?.queryHistory) {
-                applyResult();
                 return;
               }
-              const category = ({ "수거": "collection", "알림": "alert", "오류": "error" } as const)[eventType as "수거" | "알림" | "오류"] as EventCategory | undefined;
-              const signal = startQuery();
-              setQuerying(true);
-              void dataSource.queryHistory({ eventCategory: category, from: range.start, to: range.end }, signal)
-                .then((value) => { if (!signal.aborted) applyResult(value); })
-                .catch(() => { if (!signal.aborted) setQueryError("이력 데이터를 조회하지 못했습니다. 기존 조회 결과를 유지합니다."); })
-                .finally(() => { if (!signal.aborted) setQuerying(false); });
+              runQuery(range, eventType);
             }}>
               <div className="query-type" role="group" aria-label="빠른 기간 선택">
                 <span>빠른 선택</span>
@@ -226,16 +292,16 @@ export function HistoryPage({ dataSource, history, headerNotifications, headerUn
           </section>
           <section className="card history-load"><div className="history-card-head"><SectionTitle>적재율 이력</SectionTitle><div className="history-legend" aria-label="그래프 범례"><span><i className="history-legend-line" />{displayedHistory.loadState?.thresholdKind === "current" ? "현재 임계율" : "수거 임계율"}</span>{v1MonitoringEnabled && showLegend("알림") && <span><i className="history-legend-leader need" />수거 필요</span>}{v1MonitoringEnabled && showLegend("수거") && <span><i className="history-legend-leader complete" />수거 완료</span>}{v1MonitoringEnabled && showLegend("오류") && <span><i className="history-legend-leader error" />오류</span>}</div></div><HistoryLoadChart key={`${applied.start}-${applied.end}-${applied.eventType}`} {...displayedHistory} startsAt={applied.start} endsAt={applied.end} loadSamples={loadSamples} chartEvents={chartEvents} thresholds={thresholds} /></section>
           <section className="card history-events">
-            <div className="history-card-head"><SectionTitle>이벤트 이력</SectionTitle><span>{displayedHistory.eventsState?.status === "error" ? "조회 실패" : `총 ${filteredEvents.length}건`}</span></div>
-            <div className="history-table-wrap"><table>
+            <div className="history-card-head"><SectionTitle>이벤트 이력</SectionTitle><span>{eventsFailed ? "조회 실패" : eventsLoading ? "불러오는 중" : `총 ${eventsTotal}건`}</span></div>
+            <div className="history-table-wrap"><table aria-busy={serverEvents?.status === "paging" || eventsLoading}>
               <thead><tr><th>시각</th><th>이벤트 유형</th><th>상태</th><th>내용</th><th>관련 녹화</th></tr></thead>
               <tbody>{visibleEvents.length > 0 ? visibleEvents.map((event) => <tr key={event.id}>
                 <td>{event.time}</td><td>{event.type}</td><td>{event.status && <><span className={`event-dot ${event.tone}`} />{event.status}</>}</td>
                 <td><button className="detail-trigger" type="button" aria-label={`${event.time} ${event.type} ${eventTitle(event)} 상세 보기`} onClick={() => setEventSelection({ event, source: dataSource })}>{eventTitle(event)}</button></td>
                 <td>{event.recordingId ? <a href={`${ROUTES.recordings}?recordingId=${encodeURIComponent(event.recordingId)}`}>영상 보기</a> : "-"}</td>
-              </tr>) : <tr><td className="table-empty" colSpan={5}>{displayedHistory.eventsState?.status === "error" ? "이벤트 이력을 조회하지 못했습니다." : "조회된 이벤트가 없습니다."}</td></tr>}</tbody>
+              </tr>) : <tr><td className="table-empty" colSpan={5}>{eventsFailed ? "이벤트 이력을 조회하지 못했습니다." : eventsLoading ? "이벤트 이력을 불러오는 중입니다." : "조회된 이벤트가 없습니다."}</td></tr>}</tbody>
             </table></div>
-            <Pagination ariaLabel="이벤트 이력 페이지" currentPage={eventPage} itemLabel="이벤트" onPageChange={setEventPage} totalPages={totalEventPages} />
+            <Pagination ariaLabel="이벤트 이력 페이지" currentPage={eventPage} itemLabel="이벤트" onPageChange={changeEventPage} totalPages={totalEventPages} />
           </section>
         </div>
       </main>
@@ -244,7 +310,7 @@ export function HistoryPage({ dataSource, history, headerNotifications, headerUn
           <h3>{eventTitle(selectedEvent)}</h3>
           <p>{selectedEvent.detail ?? selectedEvent.content}</p>
         </div>
-        <DetailFields fields={[["발생 시각", selectedEvent.time], ["이벤트 유형", selectedEvent.type], ...(selectedEvent.status ? [["상태", selectedEvent.status] as const] : [])]} />
+        <DetailFields fields={[["발생 시각", selectedEvent.time], ["이벤트 유형", selectedEvent.type], ...(selectedEvent.status ? [["상태", selectedEvent.status] as const] : []), ...(selectedEvent.extraFields ?? [])]} />
         {selectedEvent.recordingId && <p><a className="history-recording-link" href={`${ROUTES.recordings}?recordingId=${encodeURIComponent(selectedEvent.recordingId)}`}>관련 녹화 확인</a></p>}
       </DetailDialog>}
     </DashboardPageShell>

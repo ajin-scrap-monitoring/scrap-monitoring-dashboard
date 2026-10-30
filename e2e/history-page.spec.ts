@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 
 import { eventFixture, eventPageFixture } from "../src/test/api-contract-fixtures.js";
-import { mediaRecordingFixture, monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
-import { installBackendApi } from "./backend-api.js";
+import { monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
+import { installBackendApi, syntheticEventReplay } from "./backend-api.js";
 import { installContractApi } from "./contract-api.js";
 
 test("조회 입력 오류와 실패 안내는 기존 카드와 조회 조건의 위치를 유지한다", async ({ page }) => {
@@ -30,7 +30,8 @@ test("조회 입력 오류와 실패 안내는 기존 카드와 조회 조건의
   let fail = true;
   await page.route("**/api/v1/events?*", route => fail ? route.fulfill({ status: 503, json: { detail: "Synthetic query failure" } }) : route.fallback());
   await page.getByRole("button", { name: "조회", exact: true }).click();
-  await expect(alert).toHaveText("이력 데이터를 조회하지 못했습니다. 기존 조회 결과를 유지합니다.");
+  await expect(page.locator(".history-events")).toContainText("이벤트 이력을 조회하지 못했습니다.");
+  await expect(alert).toHaveCount(0);
   await expect(page.getByRole("button", { name: "조회", exact: true })).toBeEnabled();
   expect(await geometry()).toEqual(before);
   await expect(page.locator(".history-query > p")).toHaveCount(0);
@@ -85,13 +86,12 @@ test("기간과 유형 필터는 조회 버튼으로 적용하며 정상 적재�
   const queries: URL[] = [];
   await page.route("**/api/v1/events?*", route => {
     const url = new URL(route.request().url());
-    if (url.searchParams.get("pageSize") === "1") return route.fallback();
     queries.push(url);
     const from = Date.parse(url.searchParams.get("from")!);
     const to = Date.parse(url.searchParams.get("to")!);
     const category = url.searchParams.get("category");
     const items = events.filter(event => Date.parse(event.occurredAt) >= from && Date.parse(event.occurredAt) <= to && (!category || category === event.category));
-    return route.fulfill({ json: { items, page: { page: 1, pageSize: 100, totalItems: items.length, totalPages: items.length ? 1 : 0 } } });
+    return route.fulfill({ json: { items, page: { page: 1, pageSize: 8, totalItems: items.length, totalPages: items.length ? 1 : 0 } } });
   });
   await page.goto("/history?source=api");
   const rows = page.locator(".history-events tbody tr");
@@ -124,7 +124,7 @@ test("기간과 유형 필터는 조회 버튼으로 적용하며 정상 적재�
   const apply = async () => {
     const response = page.waitForResponse(response => {
       const url = new URL(response.url());
-      return url.pathname === "/api/v1/events" && url.searchParams.get("pageSize") === "100";
+      return url.pathname === "/api/v1/events" && url.searchParams.get("pageSize") === "8";
     });
     await page.getByRole("button", { name: "조회", exact: true }).click();
     expect((await response).status()).toBe(200);
@@ -153,8 +153,8 @@ test("기간과 유형 필터는 조회 버튼으로 적용하며 정상 적재�
   await apply();
   await expect(rows).toHaveCount(1);
   await expect(rows.first().locator("td").nth(1)).toHaveText("오류");
-  expect(Date.parse(queries.at(-1)!.searchParams.get("from")!)).toBe(Date.parse("2026-10-11T00:00:00Z"));
-  expect(Date.parse(queries.at(-1)!.searchParams.get("to")!)).toBe(Date.parse("2026-10-12T00:00:00Z"));
+  expect(Date.parse(queries.at(-1)!.searchParams.get("from")!)).toBe(Date.parse("2026-10-11T00:00:00+09:00"));
+  expect(Date.parse(queries.at(-1)!.searchParams.get("to")!)).toBe(Date.parse("2026-10-12T00:00:00+09:00"));
   const beforeInvalid = queries.length;
   await page.getByRole("textbox", { name: "시작 시각", exact: true }).fill("2026-10-13T00:00");
   await page.getByRole("button", { name: "조회", exact: true }).click();
@@ -206,14 +206,11 @@ test(`Backend 설명을 해석하지 않고 제목과 중앙 모달에 원문을
 for (const failed of [false, true]) {
   test(`이벤트의 영상 보기는 연결된 녹화를 조회하고 ${failed ? "녹화 실패를 표시한다" : "재생과 다운로드를 제공한다"}`, async ({ page }) => {
     const api = await installBackendApi(page);
-    const id = "550e8400-e29b-41d4-a716-446655440099";
-    api.setRecordings([{ ...mediaRecordingFixture, id,
-      status: failed ? "unavailable" : "available", mediaStatus: failed ? "failed" : "ready",
-      contentPath: failed ? null : `/media/clips/${id}/content`, downloadPath: failed ? null : `/media/clips/${id}/content?download=true`,
-      errorCode: failed ? "NO_FRAMES_AVAILABLE" : null,
-    }]);
+    const id = "evt-alt-31";
+    api.setEventReplays([syntheticEventReplay(failed ? { state: "UNAVAILABLE", parts: [], playbackSeconds: 0, coveredSeconds: 0, reasonCodes: ["NO_COVERAGE"] } : {},
+      { eventId: id, occurredAt: "2026-10-12T00:00:00Z", windowFrom: "2026-10-11T23:59:30Z", windowTo: "2026-10-12T00:00:30Z" })]);
     await page.route("**/api/v1/events?*", route => new URL(route.request().url()).searchParams.get("category") === "collection"
-      ? route.fallback() : route.fulfill({ json: { ...eventPageFixture, items: [{ ...eventFixture, id: "evt-alt-31", occurredAt: "2026-10-12T00:00:00Z", recordingId: id }] } }));
+      ? route.fallback() : route.fulfill({ json: { ...eventPageFixture, items: [{ ...eventFixture, id: "evt-alt-31", occurredAt: "2026-10-12T00:00:00Z", recordingId: "legacy-media-id", recordingEventId: id }] } }));
     await page.route("**/api/v2/monitoring/alerts?*", route => route.fulfill({ json: {
       offset: 0, limit: 20, totalItems: 1,
       items: [{ eventId: "evt-alt-31", assessmentId: "assessment-for-event-31", notificationId: "notif-31", loadPercent: 85,
@@ -232,14 +229,38 @@ for (const failed of [false, true]) {
     await row.getByRole("link", { name: "영상 보기" }).click();
     await expect(page).toHaveURL(new RegExp(`/recordings\\?recordingId=${id}$`));
     await expect(page.getByRole("heading", { name: "녹화 영상", level: 1, exact: true })).toBeVisible();
-    expect(api.requests.some(url => url.pathname === `/api/v1/recordings/${id}`)).toBe(true);
+    expect(api.requests.some(url => url.pathname === `/api/v2/recordings/events/${id}`)).toBe(true);
     if (failed) {
-      await expect(page.locator(".recording-frame video")).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "다운로드 불가", exact: true })).toBeDisabled();
-      await expect(page.locator(".recording-info")).toContainText("녹화 실패");
+      await expect(page.locator(".event-replay")).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "영상 없음 상세", exact: true })).toBeVisible();
     } else {
-      await expect(page.locator(".recording-frame video")).toBeVisible();
-      await expect(page.getByRole("button", { name: "녹화 영상 다운로드", exact: true })).toBeEnabled();
+      await expect(page.locator(".event-replay")).toBeVisible();
+      await expect(page.locator(".recording-info")).toContainText("재생 가능");
     }
   });
 }
+
+test("이력 이벤트 표는 보이는 페이지만 서버에 요청하고 적재율 그래프를 기다리지 않는다", async ({ page }) => {
+  const api = await installBackendApi(page);
+  api.setHistoryEvents(Array.from({ length: 30 }, (_, index) => ({ ...eventFixture, id: `evt-page-${index}`, title: `페이지 이벤트 ${index}`,
+    occurredAt: new Date(Date.parse("2026-10-12T00:00:00Z") - index * 60_000).toISOString() })));
+  api.setLoadHistory(() => ({ status: 200, delayMs: 1500, body: { detail: "late" } }));
+  await page.goto("/history?source=api");
+  const rows = page.locator(".history-events tbody tr");
+  await expect(rows).toHaveCount(8);
+  await expect(page.getByText("총 30건")).toBeVisible();
+  await expect(page.getByRole("img", { name: "조회 기간 대표 적재율 변화 그래프" }).getByText("적재율 이력을 불러오는 중입니다.")).toBeVisible();
+  const eventRequests = () => api.requests.filter(url => url.pathname === "/api/v1/events");
+  expect(eventRequests().map(url => `${url.searchParams.get("page")}/${url.searchParams.get("pageSize")}`)).toEqual(["1/8"]);
+  expect(eventRequests().every(url => url.searchParams.get("collection_scope") === "all")).toBe(true);
+  const pagination = page.getByLabel("이벤트 이력 페이지");
+  await expect(pagination).toContainText("1 / 4");
+  await page.getByRole("button", { name: "다음 이벤트 페이지" }).click();
+  await expect(pagination).toContainText("2 / 4");
+  await expect(rows.first()).toContainText("페이지 이벤트 8");
+  await page.getByRole("button", { name: "다음 이벤트 페이지" }).click();
+  await page.getByRole("button", { name: "다음 이벤트 페이지" }).click();
+  await expect(pagination).toContainText("4 / 4");
+  await expect(rows).toHaveCount(6);
+  await expect.poll(() => eventRequests().map(url => url.searchParams.get("page")).join(",")).toBe("1,2,3,4");
+});

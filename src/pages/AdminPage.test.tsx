@@ -76,6 +76,29 @@ test("설정 충돌은 성공으로 표시하지 않고 기존 적용값과 입�
   expect(document.querySelectorAll(".threshold-change p")).toHaveLength(1);
 });
 
+test("서버의 422 검증 실패는 기존 적용값을 유지하고 입력 확인을 안내한다", async () => {
+  const source = createMockDashboardDataSource();
+  const data = await source.getDashboardData();
+  const save = vi.fn().mockRejectedValue({ status: 422 });
+  render(<AdminPage admin={data.admin} headerNotifications={[]} dataSource={{ ...source, replaceAlertSettings: save }} />);
+  fireEvent.change(screen.getByLabelText("변경값"), { target: { value: "90" } });
+  fireEvent.click(screen.getByRole("button", { name: "수거 설정 저장" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("임계율 조합을 확인하세요");
+  expect(document.querySelector(".threshold-applied strong")).toHaveTextContent(`${data.admin.alertSettings.collectionThreshold}%`);
+});
+
+test("422 검증 배열의 loc는 수거 설정과 정책 영역에 나누어 표시한다", async () => {
+  const source = createMockDashboardDataSource();
+  const data = await source.getDashboardData();
+  const issue = (...loc: string[]) => ({ loc, message: "bad", type: "value_error" });
+  const save = vi.fn().mockRejectedValue({ status: 422, issues: [issue("body", "preCollectionAlert", "thresholdPercent"), issue("body", "repeatIntervalMinutes")] });
+  render(<AdminPage admin={data.admin} headerNotifications={[]} dataSource={{ ...source, replaceAlertSettings: save }} />);
+  fireEvent.click(screen.getByRole("button", { name: "수거 설정 저장" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("사전 알림 기준 값을 서버가 받아들이지 않았습니다.");
+  expect(document.querySelector(".policy-feedback")).toHaveTextContent("반복 간격 값을 서버가 받아들이지 않았습니다.");
+  expect(document.querySelector(".threshold-change")).not.toHaveTextContent("반복 간격");
+});
+
 test("data source가 바뀌면 이전 저장 응답을 화면에 적용하지 않는다", async () => {
   const source = createMockDashboardDataSource();
   const data = await source.getDashboardData();

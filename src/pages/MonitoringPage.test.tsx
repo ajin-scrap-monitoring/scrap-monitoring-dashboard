@@ -90,9 +90,9 @@ test.each(["FRESH", "STALE", "UNAVAILABLE", "UNKNOWN", "NO_DATA"] as const)("v2 
     "현재 상태", "실시간 영상", "측정 영역", "최근 24시간 적재율", "LiDAR 1", "LiDAR 2", "활성 알림", "장비 상태",
   ]);
   expect(within(main).getByText("적재율 경보").parentElement).toHaveTextContent("미지원");
-  expect(within(main).getByText("예상 도달", { exact: true }).parentElement).toHaveTextContent("미지원");
+  expect(within(main).getByText("예상 도달", { exact: true }).parentElement).toHaveTextContent("정보 없음");
   expect(within(main).getByText("1시간 전 적재율").parentElement).toHaveTextContent("정보 없음");
-  expect(within(main).getByText("평균 수거 주기").parentElement).toHaveTextContent("미지원");
+  expect(within(main).getByText("평균 수거 주기").parentElement).toHaveTextContent("정보 없음");
   expect(within(main).getByText("최근 수거 후 경과").parentElement).toHaveTextContent("정보 없음");
   expect(main.querySelectorAll(".load-chart-line, .profile-chart-line")).toHaveLength(0);
   expect(within(main).queryByText("적재 중", { exact: true })).not.toBeInTheDocument();
@@ -221,4 +221,92 @@ test("경보 정보가 없으면 높은 적재율과 collecting으로 경보 등
   const view = render(<MonitoringPage data={data} dataSource={dataSource} />);
   expect(view.container.querySelector(".alarm-status")).toHaveTextContent("미지원");
   expect(screen.queryByText("수거 중", { exact: true })).not.toBeInTheDocument();
+});
+
+async function alertData(activeAlertsState: NonNullable<Awaited<ReturnType<ReturnType<typeof createMockDashboardDataSource>["getDashboardData"]>>["monitoring"]["activeAlertsState"]>, alerts: Awaited<ReturnType<ReturnType<typeof createMockDashboardDataSource>["getDashboardData"]>>["monitoring"]["alerts"] = []) {
+  const dataSource = createMockDashboardDataSource();
+  const data = await dataSource.getDashboardData();
+  data.monitoring = { ...monitoringV2Data(monitoringV2StateFixture("FRESH", 72.5), "pit-01"), alerts, activeAlertsState };
+  return { data, dataSource };
+}
+
+const edgeAlert = {
+  id: "health:edge", level: "warning" as const, title: "Edge 장치 상태 이상", detail: "엣지 장비 DEGRADED", time: "09:00",
+  startedAt: "2026-10-13 08:47",
+  health: { componentKind: "EDGE" as const, componentName: "엣지 장비", componentId: "edge-01", state: "DEGRADED", evidenceSource: "EDGE_STATUS" as const, reasonCodes: ["EDGE_REPORT_DEGRADED"], simulated: null },
+};
+
+test("활성 알림은 장비 항목과 서버 최초 확인 시각을 표시하고 적재율 판정 불가는 별도 행으로 안내한다", async () => {
+  const { data, dataSource } = await alertData({ evaluationState: "UNKNOWN", reasonCodes: ["OPERATIONS_EVALUATION_PENDING"], coverage: [] }, [edgeAlert]);
+  const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
+  const card = container.querySelector(".alerts-card") as HTMLElement;
+  expect(within(card).getByText("Edge 장치 상태 이상")).toBeVisible();
+  expect(within(card).getByText("엣지 장비 일부 기능 제한, 서버 최초 확인 10-13 08:47")).toBeVisible();
+  expect(within(card).getByText("엣지 장비 일부 기능 제한, 서버 최초 확인 10-13 08:47").closest(".active-alert")).toHaveAttribute("title", expect.stringContaining("EDGE_STATUS"));
+  expect(within(card).getByText("적재율 경보")).toBeVisible();
+  expect(within(card).getByText("판정 불가")).toBeVisible();
+  expect(card.querySelector(".alert-count")).toHaveTextContent("1건");
+  expect(container.querySelectorAll(".monitoring-grid > .card")).toHaveLength(8);
+});
+
+test("startedAt이 null이면 시작 정보 없음으로 표시하고 서버 판정 시각으로 대신 채우지 않는다", async () => {
+  const { data, dataSource } = await alertData({ evaluationState: "NORMAL", reasonCodes: [], coverage: [] }, [{ ...edgeAlert, startedAt: null }]);
+  render(<MonitoringPage data={data} dataSource={dataSource} />);
+  expect(screen.getByText("엣지 장비 일부 기능 제한, 시작 정보 없음")).toBeVisible();
+});
+
+test("coverage의 UNKNOWN과 UNSUPPORTED 구성 요소는 확인 불가로 표시하고 CHECKED는 표시하지 않는다", async () => {
+  const { data, dataSource } = await alertData({ evaluationState: "NORMAL", reasonCodes: [], coverage: [
+    { componentKind: "CAMERA", componentName: "카메라", componentId: null, state: "UNSUPPORTED", reasonCodes: ["CAMERA_HEALTH_SOURCE_NOT_CONFIGURED"] },
+    { componentKind: "LIDAR", componentName: "LiDAR 2", componentId: "lidar-b", state: "UNKNOWN", reasonCodes: [] },
+    { componentKind: "EDGE", componentName: "엣지 장비", componentId: "edge-01", state: "CHECKED", reasonCodes: [] },
+  ] });
+  const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
+  const card = container.querySelector(".alerts-card") as HTMLElement;
+  expect(within(card).getByText("카메라")).toBeVisible();
+  expect(within(card).getByText("확인 불가, 상태 입력 계약 없음")).toBeVisible();
+  expect(within(card).getByText("LiDAR 2")).toBeVisible();
+  expect(within(card).getByText("확인 불가, 현재 상태를 확인하지 못함")).toBeVisible();
+  expect(within(card).queryByText("엣지 장비")).toBeNull();
+  expect(card.querySelector(".alert-count")).toHaveTextContent("0건 / 확인 불가 2");
+  expect(card).not.toHaveTextContent("현재 활성 알림이 없습니다.");
+});
+
+test("활성 알림 행은 4개씩 같은 페이지 방식으로 나누고 확인 불가 안내 행도 포함한다", async () => {
+  const alerts = Array.from({ length: 4 }, (_, index) => ({ ...edgeAlert, id: `health:${index}`, title: `장치 ${index}` }));
+  const { data, dataSource } = await alertData({ evaluationState: "NORMAL", reasonCodes: [], coverage: [
+    { componentKind: "CAMERA", componentName: "카메라", componentId: null, state: "UNSUPPORTED", reasonCodes: [] },
+  ] }, alerts);
+  const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
+  const card = container.querySelector(".alerts-card") as HTMLElement;
+  expect(card.querySelectorAll(".active-alert")).toHaveLength(4);
+  fireEvent.click(within(card).getByRole("button", { name: "다음 알림 페이지" }));
+  expect(card.querySelectorAll(".active-alert")).toHaveLength(1);
+  expect(within(card).getByText("카메라")).toBeVisible();
+});
+
+test.each([
+  ["SIMULATION", "MATCHED", "시뮬레이션 배치, 실측 설치 미확인"],
+  ["PARTIAL", "MATCHED", "일부 배치 정보 없음"],
+  ["UNVERIFIED", "MATCHED", "실측 배치 미검증"],
+  ["UNAVAILABLE", "UNKNOWN", "배치 정보 확인 불가"],
+  ["SIMULATION", "MISMATCH", "배치 정보 확인 불가"],
+] as const)("측정 영역 카드는 layout state %s와 binding %s를 한 줄 상태로 표시하고 그림은 유지한다", async (layoutState, bindingState, label) => {
+  const { data, dataSource } = await alertData({ evaluationState: "NORMAL", reasonCodes: [], coverage: [] });
+  data.monitoring.measurementLayout = { state: layoutState, bindingState, simulated: true, reasonCodes: ["SIMULATION_GEOMETRY"],
+    sensors: [{ sensorId: "lidar-b", calibrationState: "SIMULATION", reasonCodes: [] }, { sensorId: "lidar-a", calibrationState: "SIMULATION", reasonCodes: [] }] };
+  const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
+  const card = container.querySelector(".measurement-card") as HTMLElement;
+  expect(within(card).getByText(label)).toHaveAttribute("title", "사유 SIMULATION_GEOMETRY / LiDAR 2 SIMULATION / LiDAR 1 SIMULATION");
+  expect(card.querySelector("svg.measurement-svg")).not.toBeNull();
+});
+
+test("layout 조회 실패는 배치 정보 없음으로 표시하고 조회 전에는 표시하지 않는다", async () => {
+  const { data, dataSource } = await alertData({ evaluationState: "NORMAL", reasonCodes: [], coverage: [] });
+  data.monitoring.measurementLayout = undefined;
+  const view = render(<MonitoringPage data={data} dataSource={dataSource} />);
+  expect(view.container.querySelector(".measurement-layout-state")).toBeNull();
+  data.monitoring.measurementLayout = null;
+  view.rerender(<MonitoringPage data={{ ...data, monitoring: { ...data.monitoring } }} dataSource={dataSource} />);
+  expect(view.container.querySelector(".measurement-layout-state")).toHaveTextContent("배치 정보 없음");
 });

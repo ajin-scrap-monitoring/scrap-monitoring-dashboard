@@ -25,6 +25,9 @@ export type LoadHistoryMetadata = {
   observedAt?: string | null;
   dataState?: "AVAILABLE" | "LIMITED" | "UNAVAILABLE" | "STALE" | "UNKNOWN" | "NO_DATA";
   reasonCodes?: string[];
+  inputSource?: "EDGE_STATE" | "HEIGHT_SECTIONS" | "MIXED";
+  valuePolicy?: "RAW_STATE" | "MEDIAN_MINUTE";
+  simulated?: boolean;
 };
 
 export type UserSession = {
@@ -46,12 +49,33 @@ export type DeviceStatus = {
   receivedLabel?: string;
 };
 
+export type ActiveHealthAlert = {
+  componentKind: "EDGE" | "LIDAR" | "MEASUREMENT";
+  componentName: string;
+  componentId: string;
+  state: string;
+  evidenceSource: "EDGE_STATUS" | "STATUS_FRESHNESS" | "CURRENT_MEASUREMENT";
+  reasonCodes: string[];
+  simulated: boolean | null;
+};
+
+export type ActiveAlertCoverage = {
+  componentKind: "EDGE" | "LIDAR" | "MEASUREMENT" | "CAMERA";
+  componentName: string;
+  componentId: string | null;
+  state: "CHECKED" | "UNKNOWN" | "UNSUPPORTED";
+  reasonCodes: string[];
+};
+
 export type ActiveAlert = {
   detail: string;
   id: string;
   level: AlertLevel;
   time: string;
   title: string;
+  // 활성 알림 API가 서버 최초 확인 시각을 제공한 경우만 설정하며 null은 시작 정보 없음이다. 값은 표시용 시각 문자열이다.
+  startedAt?: string | null;
+  health?: ActiveHealthAlert;
 };
 
 export type HeaderNotification = ActiveAlert & {
@@ -66,7 +90,8 @@ export type LoadHistorySample = LoadHistoryMetadata & {
 
 export type LidarProfileSample = {
   height: number | null;
-  positionRatio: number;
+  // null은 위치를 알 수 없는 표본이며 선을 끊는 표지로 보존한다.
+  positionRatio: number | null;
 };
 
 export type LidarProfile = {
@@ -76,6 +101,18 @@ export type LidarProfile = {
   maximum: string;
   minimum: string;
   samples: LidarProfileSample[];
+  simulated?: boolean;
+  calibrationState?: "UNVERIFIED" | "VERIFIED" | "UNAVAILABLE" | "SIMULATION";
+  reasonCodes?: string[];
+};
+
+export type MeasurementLayoutStatus = {
+  state: "SIMULATION" | "PARTIAL" | "UNVERIFIED" | "UNAVAILABLE";
+  bindingState: "MATCHED" | "MISMATCH" | "UNKNOWN";
+  // null은 응답에 값이 없음이다.
+  simulated: boolean | null;
+  reasonCodes: string[];
+  sensors: Array<{ sensorId: string; calibrationState: "SIMULATION" | "VERIFIED" | "UNAVAILABLE"; reasonCodes: string[] }>;
 };
 
 export type MonitoringSummary = {
@@ -100,6 +137,7 @@ export type HistoryEvent = {
   time: string;
   tone: EventTone;
   type: "수거" | "알림" | "오류";
+  extraFields?: ReadonlyArray<readonly [label: string, value: string]>;
 };
 
 export type HistoryLoadSample = LoadHistoryMetadata & {
@@ -122,9 +160,77 @@ export type HistoryThresholdSample = {
   value: number;
 };
 
+export type EventReplayPart = {
+  recordingId: string;
+  recordingDate: string;
+  playbackPath: string;
+  fromAt: string;
+  toAt: string;
+  startSeconds: number;
+  endSeconds: number;
+  relativeStartSeconds: number;
+  relativeEndSeconds: number;
+  mapping: "LINEAR" | "POINT_TIMESTAMP";
+};
+
+export type EventRecordingWindow = {
+  windowKind: "COLLECTION_CYCLE" | "EVENT_CONTEXT";
+  windowState: "CLOSED" | "OPEN" | "UNKNOWN" | "POINT";
+  eventType: string;
+  stateAtOccurrence: string | null;
+  simulated: boolean | null;
+  pitAttribution: "RECORDED" | "CURRENT_ASSIGNMENT";
+  reasonCodes: string[];
+};
+
+export type EventReplay = {
+  state: "AVAILABLE" | "PARTIAL" | "PROCESSING" | "UNAVAILABLE";
+  asOf: string;
+  effectiveTo: string | null;
+  requestedSeconds: number | null;
+  coveredSeconds: number;
+  playbackSeconds: number;
+  parts: EventReplayPart[];
+  unavailableIntervals: Array<{ startsAt: string; endsAt: string; kind: "GAP" | "UNCONFIRMED" | "FUTURE" | "MISSING" | "EXPIRED"; reasonCode: string }>;
+  reasonCodes: string[];
+  downloadReasonCode: string | null;
+};
+
+export type EventPlaybackSummary = {
+  state: "AVAILABLE" | "PARTIAL" | "PROCESSING" | "UNAVAILABLE" | "UNKNOWN";
+  // null은 길이를 알 수 없음이며 0초와 구분한다.
+  playbackSeconds: number | null;
+  reasonCodes: string[];
+};
+
+export type HistoryEventPage = {
+  events: HistoryEvent[];
+  // 조회 조건에 맞는 전체 건수와 서버 페이지 수이며 불러온 개수가 아니다.
+  totalItems: number;
+  totalPages: number;
+  // 0부터 시작하는 표 페이지 번호이다.
+  page: number;
+};
+
+export type RecordingListSnapshot = {
+  items: Recording[];
+  // 날짜 녹화 수와 이벤트 totalItems의 합이다.
+  total: number;
+  complete: boolean;
+};
+
+export type RecordingList = {
+  // 시작 시각 역순의 앞쪽 rank개가 확정될 때까지만 서버 페이지를 순서대로 가져온다.
+  ensure(rank: number, signal?: AbortSignal): Promise<RecordingListSnapshot>;
+};
+
 export type Recording = {
   source?: "daily" | "event";
   daily?: DailyRecording;
+  eventWindow?: EventRecordingWindow;
+  replay?: EventReplay;
+  // 목록 응답의 재생 요약이다. 상세 응답의 replay를 받으면 replay가 우선한다.
+  playbackSummary?: EventPlaybackSummary;
   codec: string;
   contentUrl?: string;
   retentionStartsAt: string;
@@ -203,6 +309,7 @@ export type DataReception = {
 };
 
 export type MonitoringV2 = {
+  simulated?: boolean;
   serverTime: string;
   dataState: "FRESH" | "STALE" | "UNAVAILABLE" | "UNKNOWN" | "NO_DATA";
   snapshotId: string;
@@ -267,9 +374,16 @@ export type DashboardData = {
     completedCollectionState?: DataAreaState;
     loadHistoryState?: DataAreaState;
     lidarProfiles: LidarProfile[];
+    // undefined는 아직 조회하지 않음, null은 조회 실패 또는 미지원이다.
+    measurementLayout?: MeasurementLayoutStatus | null;
     loadHistory: LoadHistorySample[];
     status: DashboardStatus;
     v2?: MonitoringV2;
+    activeAlertsState?: {
+      evaluationState: "NORMAL" | "WARNING" | "CRITICAL" | "UNKNOWN" | "ERROR";
+      reasonCodes: string[];
+      coverage: ActiveAlertCoverage[];
+    } | null;
     summary: MonitoringSummary;
     videoMode: "sample" | "webrtc" | "mjpeg";
     videoUrl?: string;
@@ -280,4 +394,7 @@ export type DashboardData = {
   recordings: Recording[];
   recordingsSource?: "daily" | "event";
   recordingsState?: DataAreaState;
+  // 녹화 화면의 첫 목록을 만든 목록 핸들이며 이후 페이지를 이어서 가져온다.
+  recordingsList?: RecordingList;
+  recordingsTotal?: number;
 };

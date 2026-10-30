@@ -1,5 +1,5 @@
 import type { DailyRecording } from "../domain/daily-recording";
-import { timestamp as validTimestamp, timestampValue } from "./contract-values";
+import { record, timestamp as validTimestamp, timestampValue } from "./contract-values";
 
 export type { DailyRecording } from "../domain/daily-recording";
 
@@ -7,9 +7,13 @@ export const dailyRecordingIdentifier = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0
 
 function fail(): never { throw new Error("Unexpected daily recording contract."); }
 
+function choice<const T extends readonly string[]>(value: unknown, options: T): T[number] {
+  if (typeof value === "string" && (options as readonly string[]).includes(value)) return value;
+  return fail();
+}
+
 function object(value: unknown): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return fail();
-  return value as Record<string, unknown>;
+  return record(value) ? value : fail();
 }
 
 function text(value: unknown): string {
@@ -21,10 +25,6 @@ function number(value: unknown): number {
 }
 
 function boolean(value: unknown): boolean { return typeof value === "boolean" ? value : fail(); }
-
-function choice<const T extends readonly string[]>(value: unknown, options: T): T[number] {
-  return typeof value === "string" && options.includes(value) ? value : fail();
-}
 
 function timestamp(value: unknown): string {
   const result = text(value);

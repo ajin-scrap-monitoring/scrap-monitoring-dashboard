@@ -25,6 +25,7 @@ const syntheticTs = Buffer.from("R0AREABC8CUAAcEAAP8B/wAB/IAUSBIBBkZGbXBlZwlTZXJ
 export async function installDailyRecordingApi(page: Page, authenticated: () => boolean, onRequest: (url: URL) => void) {
   let recordings: readonly DailyRecordingResponse[] = [syntheticDailyRecording];
   let failedList = false;
+  let deleteConflict = false;
   let exportPolls = 0;
   const requests: Request[] = [];
   const mediaRequests: Request[] = [];
@@ -44,6 +45,13 @@ export async function installDailyRecordingApi(page: Page, authenticated: () => 
     const id = url.pathname.split("/")[5];
     const recording = recordings.find(item => item.recording_id === id);
     if (!recording) { await route.fulfill({ status: 404, json: { detail: "Not found" } }); return; }
+    if (request.method() === "DELETE") {
+      if (request.headers()["x-csrf-token"] !== sessionFixture.csrfToken) { await route.fulfill({ status: 403, json: { detail: "Invalid or missing CSRF token" } }); return; }
+      if (deleteConflict || recording.status !== "closed" || recording.export_state === "processing") { await route.fulfill({ status: 409, json: { detail: "Daily recording is not deletable" } }); return; }
+      recordings = recordings.filter(item => item.recording_id !== id);
+      await route.fulfill({ status: 204 });
+      return;
+    }
     if (url.pathname.endsWith("/exports")) {
       if (request.method() !== "POST") { await route.fulfill({ status: 405 }); return; }
       if (request.headers()["x-csrf-token"] !== sessionFixture.csrfToken) { await route.fulfill({ status: 403, json: { detail: "Invalid or missing CSRF token" } }); return; }
@@ -95,5 +103,6 @@ ${prefix}/segment-2.ts
     mediaRequests,
     setRecordings: (next: readonly DailyRecordingResponse[]) => { recordings = next; },
     failList: (failed: boolean) => { failedList = failed; },
+    conflictOnDelete: (conflict: boolean) => { deleteConflict = conflict; },
   };
 }

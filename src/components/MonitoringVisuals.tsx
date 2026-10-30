@@ -1,28 +1,18 @@
 import { Fragment, useState } from "react";
 
 import type { DashboardData, DataAreaState, LidarProfile } from "../domain/dashboard";
+import { seoulClock } from "../display-time";
 import { timeAxisTicks } from "../chart-time-axis";
 import { SectionTitle } from "./DashboardPrimitives";
 
-export function UnsupportedChart({ label, reason }: { label: string; reason: string }) {
+export function UnsupportedChart({ label, reason, statusLabel = "미지원" }: { label: string; reason: string; statusLabel?: string }) {
   return <section className="card chart-card span-4">
-    <div className="chart-title-row"><SectionTitle>{label}</SectionTitle><span className="chart-unavailable-label">미지원</span></div>
+    <div className="chart-title-row"><SectionTitle>{label}</SectionTitle><span className="chart-unavailable-label">{statusLabel}</span></div>
     <div className="chart-unavailable"><p>{reason}</p></div>
   </section>;
 }
 
-function clockOffset(reference: string) {
-  const match = reference.match(/(Z|([+-])(\d{2}):(\d{2}))$/i);
-  return match?.[1].toUpperCase() === "Z"
-    ? 0
-    : match ? (match[2] === "-" ? -1 : 1) * (Number(match[3]) * 60 + Number(match[4])) : 0;
-}
-
-function clockAt(timestamp: number, reference: string, local = false) {
-  if (local) return new Date(timestamp).toTimeString().slice(0, 5);
-  const date = new Date(timestamp + clockOffset(reference) * 60_000);
-  return `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
-}
+const clockOffsetMinutes = 540;
 
 function contiguousSegments<T>(items: readonly T[], isValid: (item: T) => boolean) {
   const segments: T[][] = [];
@@ -148,19 +138,17 @@ export function LoadChart({ samples, threshold, state, thresholdKind }: { sample
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const plottedSamples = orderedSamples.map((sample, index) => ({
     ...sample,
-    time: thresholdKind === "current" ? clockAt(Date.parse(sample.measuredAt), "", true) : sample.time,
+    time: thresholdKind === "current" ? seoulClock(Date.parse(sample.measuredAt), false) : sample.time,
     x: xValues[index],
     y: sample.value === null ? null : toY(sample.value),
   }));
   const previousResult = state?.status === "error" && state.stale === true && plottedSamples.some((sample) => sample.value !== null);
   const unavailable = (state?.status === "error" && !previousResult) || state?.status === "unsupported" || state?.status === "loading";
   const sampleSegments = contiguousSegments(unavailable ? [] : plottedSamples, (sample) => sample.y !== null);
-  const reference = orderedSamples[0]?.measuredAt ?? state?.from ?? "";
-  const offset = thresholdKind === "current" ? -new Date(firstTimestamp).getTimezoneOffset() : clockOffset(reference);
   const tickHours = lastTimestamp - firstTimestamp <= 6 * 3_600_000 ? 1 : 3;
   const xTicks = hasTimestampRange
-    ? timeAxisTicks(firstTimestamp, lastTimestamp, tickHours, offset).map(timestamp => ({
-        label: clockAt(timestamp, reference, thresholdKind === "current"),
+    ? timeAxisTicks(firstTimestamp, lastTimestamp, tickHours, clockOffsetMinutes).map(timestamp => ({
+        label: seoulClock(timestamp, false),
         x: 40 + ((timestamp - firstTimestamp) / (lastTimestamp - firstTimestamp)) * 370,
       }))
     : [];
@@ -242,7 +230,7 @@ export function LoadChart({ samples, threshold, state, thresholdKind }: { sample
   );
 }
 
-export function ProfileChart({ average, color, label, maximum, minimum, samples }: LidarProfile) {
+export function ProfileChart({ average, color, label, maximum, minimum, samples, simulated, calibrationState }: LidarProfile) {
   const stroke = color === "blue" ? "#1677e8" : "#0ba58f";
   const axisTextColor = color === "blue" ? "#0b3f8d" : "#066f5e";
   const yMin = 0;
@@ -253,11 +241,11 @@ export function ProfileChart({ average, color, label, maximum, minimum, samples 
   const gridXValues = [{ positionRatio: 0, value: "A" }, { positionRatio: 1, value: "B" }];
   const toY = (value: number) => chart.bottom - (value - yMin) * ((chart.bottom - chart.top) / (yMax - yMin));
   const toX = (positionRatio: number) => chart.left + (chart.right - chart.left) * Math.max(0, Math.min(1, positionRatio));
-  const orderedSamples = [...samples].sort((leftSample, rightSample) => leftSample.positionRatio - rightSample.positionRatio);
-  const plottedSamples = orderedSamples.map((sample) => ({
+  // 배열 순서를 유지하고 x는 positionRatio로 정한다. 위치나 높이가 없는 표본은 선을 끊는다.
+  const plottedSamples = samples.map((sample) => ({
     ...sample,
-    x: toX(sample.positionRatio),
-    y: sample.height === null ? null : toY(sample.height),
+    x: toX(sample.positionRatio ?? 0),
+    y: sample.height === null || sample.positionRatio === null ? null : toY(sample.height),
   }));
   const profileSegments = contiguousSegments(plottedSamples, (sample) => sample.y !== null);
 
@@ -265,7 +253,7 @@ export function ProfileChart({ average, color, label, maximum, minimum, samples 
     <section className="card chart-card span-4">
       <div className="chart-title-row">
         <SectionTitle>{label}</SectionTitle>
-        <div className={`profile-stat ${color}`}>
+        <div className={`profile-stat ${color}`} title={[simulated ? "시뮬레이션 높이" : "", calibrationState === "UNVERIFIED" ? "보정 미검증" : ""].filter(Boolean).join(", ") || undefined}>
           <span className="average"><span className="average-label">평균</span>{average}</span>
           <span className="range">최소 {minimum} / 최대 {maximum}</span>
         </div>
@@ -299,6 +287,7 @@ export function ProfileChart({ average, color, label, maximum, minimum, samples 
             </text>
           ))}
         </g>
+        {simulated && <text x={chart.right} y="12" fill="#61708a" fontSize="10" textAnchor="end">시뮬레이션</text>}
         {profileSegments.length > 0 ? profileSegments.map((segment, index) => {
           const linePath = segment.map((sample, sampleIndex) => `${sampleIndex === 0 ? "M" : "L"}${sample.x} ${sample.y}`).join(" ");
           return <g key={`profile-segment-${index}`}>

@@ -80,6 +80,37 @@ export function summarizeRecordingResponse(url: URL, status: number, body: unkno
     })) };
 }
 
+export function summarizeEventRecordingResponse(url: URL, status: number, body: unknown) {
+  const value = body && typeof body === "object" ? body as Record<string, unknown> : {};
+  const list = url.pathname === "/api/v2/recordings/events";
+  const object = (item: unknown) => item && typeof item === "object" ? item as Record<string, unknown> : {};
+  const timestamp = (item: unknown) => typeof item === "string" && /(?:Z|[+-]\d{2}:\d{2})$/.test(item) && Number.isFinite(Date.parse(item));
+  const states = ["AVAILABLE", "PARTIAL", "PROCESSING", "UNAVAILABLE"];
+  const windows = ["CLOSED", "OPEN", "UNKNOWN", "POINT"];
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+  const records = list ? Array.isArray(value.items) ? value.items.map(object) : [] : status === 200 ? [value] : [];
+  return { endpoint: list ? "/api/v2/recordings/events" : "/api/v2/recordings/events/{id}", httpStatus: status,
+    query: { keys: [...url.searchParams.keys()].sort(), hasPit: Boolean(url.searchParams.get("pit_id")),
+      ...(list ? { explicitTimeOffsets: timestamp(from) && timestamp(to), orderedRange: Boolean(from && to && Date.parse(from) < Date.parse(to)),
+        page: url.searchParams.get("page"), pageSize: url.searchParams.get("pageSize"), category: url.searchParams.get("category") ?? "all" } : {}) },
+    itemCount: records.length,
+    items: records.map(record => {
+      const event = list ? record : object(record.event);
+      const parts = Array.isArray(record.parts) ? record.parts : [];
+      return { validIdentifier: typeof event.eventId === "string" && event.eventId.length > 0,
+        validWindow: timestamp(event.windowFrom) && (event.windowTo == null || (timestamp(event.windowTo) && Date.parse(event.windowFrom as string) <= Date.parse(event.windowTo as string))),
+        windowState: windows.includes(String(event.windowState)) ? event.windowState : "unknown",
+        ...(list ? (() => {
+          const playback = object(event.playback);
+          return { playbackState: event.playback == null ? null : [...states, "UNKNOWN"].includes(String(playback.state)) ? playback.state : "unrecognized",
+            playbackSecondsKnown: typeof playback.playbackSeconds === "number" };
+        })() : { replayState: states.includes(String(record.state)) ? record.state : "unknown", partCount: parts.length,
+          unavailableIntervalCount: Array.isArray(record.unavailableIntervals) ? record.unavailableIntervals.length : 0,
+          playbackSecondsKnown: typeof record.playbackSeconds === "number", hasDownload: typeof record.downloadPath === "string" }) };
+    }) };
+}
+
 async function optionalState(path: string) {
   try {
     if (!(await lstat(path)).isFile()) throw new Error("Browser state must be a regular file.");
@@ -118,13 +149,15 @@ export async function inspectBrowser(options: ReturnType<typeof inspectionOption
       ? route.continue() : route.abort());
     const page = await context.newPage();
     page.setDefaultTimeout(20_000);
-    const recordingResponses: Promise<ReturnType<typeof summarizeRecordingResponse>>[] = [];
+    const recordingResponses: Promise<ReturnType<typeof summarizeRecordingResponse> | ReturnType<typeof summarizeEventRecordingResponse>>[] = [];
     page.on("response", response => {
       const url = new URL(response.url());
-      if (url.origin === options.baseUrl && /^\/api\/v1\/recordings(?:\/[^/]+)?$/.test(url.pathname)
+      const event = /^\/api\/v2\/recordings\/events(?:\/[^/]+)?$/.test(url.pathname);
+      if (url.origin === options.baseUrl && (event || /^\/api\/v1\/recordings(?:\/[^/]+)?$/.test(url.pathname))
         && response.request().method() === "GET" && recordingResponses.length < 100) {
-        recordingResponses.push(response.json().then((body: unknown) => summarizeRecordingResponse(url, response.status(), body))
-          .catch(() => summarizeRecordingResponse(url, response.status(), null)));
+        const summarize = event ? summarizeEventRecordingResponse : summarizeRecordingResponse;
+        recordingResponses.push(response.json().then((body: unknown) => summarize(url, response.status(), body))
+          .catch(() => summarize(url, response.status(), null)));
       }
     });
     let consoleErrors = 0;

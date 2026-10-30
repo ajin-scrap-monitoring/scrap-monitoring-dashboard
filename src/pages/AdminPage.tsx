@@ -6,14 +6,13 @@ import { Pagination } from "../components/Pagination";
 import { Dropdown } from "../components/Dropdown";
 import type { DashboardDataSource } from "../data/dashboard-data-source";
 import type { AlertSettings, DashboardData, DataAreaState, HeaderNotification, RecipientSettings, UserSession } from "../domain/dashboard";
+import { recipientFailure, settingsFailures, type SettingsArea } from "./alert-settings-failure";
 import { useAdminAction } from "./use-admin-action";
 import { useModalFocus } from "../use-modal-focus";
 
 const recipientsPerPage = 10;
-function saveFailure(error: unknown, message: string) {
-  return error && typeof error === "object" && "status" in error && error.status === 412
-    ? "다른 변경이 있습니다. 새로고침 후 다시 시도하세요." : message;
-}
+const minimumCollectionThreshold = 5;
+const preAlertGap = 5;
 const eventChoices = [["collection", "수거 필요"], ["error", "측정 오류"], ["device", "장비 장애"]] as const;
 const channelChoices = [["email", "이메일"], ["sms", "문자"]] as const;
 function newRecipientDefaults() { return { name: "", team: "", email: "", phone: "", emailChannel: true, smsChannel: false, enabled: true, useGlobal: true, collection: true, error: true, device: true }; }
@@ -116,17 +115,27 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
     );
   };
 
+  const showSettingsFailure = (error: unknown, requestedArea: SettingsArea, fallback: string) => {
+    const failures = settingsFailures(error, requestedArea, fallback);
+    const messageOf = (area: SettingsArea) => failures.filter((failure) => failure.area === area).map((failure) => failure.message).join(" ");
+    if (requestedArea === "threshold" || failures.some((failure) => failure.area === "threshold")) {
+      setThresholdMessage("");
+      setThresholdError(messageOf("threshold"));
+    }
+    if (requestedArea === "policy" || failures.some((failure) => failure.area === "policy")) setPolicyMessage(messageOf("policy"));
+  };
+
   const saveThreshold = () => {
     if (settingsAction.busy) return;
     const next = Number(threshold);
     const early = preAlertEnabled ? Number(preAlertThreshold) : alertSettings.preCollectionAlert.threshold;
     setThresholdMessage("");
-    if (!threshold.trim() || !Number.isInteger(next) || next < 1 || next > 100) {
-      setThresholdError("수거 임계율은 1~100 사이의 정수로 입력하세요.");
+    if (!threshold.trim() || !Number.isInteger(next) || next < minimumCollectionThreshold || next > 100) {
+      setThresholdError(`수거 임계율은 ${minimumCollectionThreshold}~100 사이의 정수로 입력하세요.`);
       return;
     }
-    if (preAlertEnabled && (!preAlertThreshold.trim() || !Number.isInteger(early) || early < 1 || early >= next)) {
-      setThresholdError("사전 알림 기준은 1 이상, 수거 임계율 미만의 정수로 입력하세요.");
+    if ((preAlertEnabled && !preAlertThreshold.trim()) || !Number.isInteger(early) || early < 0 || early > next - preAlertGap) {
+      setThresholdError(`사전 알림 기준은 0 이상, 수거 임계율보다 ${preAlertGap}%p 이상 낮은 정수로 입력하세요.`);
       return;
     }
     const nextSettings: AlertSettings = {
@@ -150,10 +159,7 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
         setSavedPolicy(savedPolicyView);
         setThresholdMessage("수거 설정을 저장했습니다.");
       },
-      (error) => {
-        setThresholdMessage("");
-        setThresholdError(saveFailure(error, "수거 설정을 저장하지 못했습니다."));
-      },
+      (error) => showSettingsFailure(error, "threshold", "수거 설정을 저장하지 못했습니다."),
     );
   };
 
@@ -251,7 +257,7 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
         setRecipientSettings((items) => ({ ...items, [updated.recipient.email]: structuredClone(updated.settings) }));
         finishRecipientPanel();
       },
-      (error) => setRecipientSaveError(saveFailure(error, "수신 설정을 저장하지 못했습니다.")),
+      (error) => setRecipientSaveError(recipientFailure(error, "수신 설정을 저장하지 못했습니다.")),
     );
   };
 
@@ -286,7 +292,7 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
         setSavedPolicy(savedPolicyView);
         setPolicyMessage("알림 정책을 저장했습니다.");
       },
-      (error) => setPolicyMessage(saveFailure(error, "알림 정책을 저장하지 못했습니다.")),
+      (error) => showSettingsFailure(error, "policy", "알림 정책을 저장하지 못했습니다."),
     );
   };
 
@@ -299,10 +305,10 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
             <section className="card threshold-card">
               <SectionTitle>수거 임계율</SectionTitle><fieldset className="admin-fields" disabled={settingsAction.busy}>
               <div className="threshold-editor">
-                <div className="threshold-change"><label htmlFor="threshold-input" className="admin-label">변경값</label><div className="threshold-input"><input id="threshold-input" type="number" min="1" max="100" value={threshold} onChange={(event) => setThreshold(event.target.value)} /><span>%</span></div><p className="admin-inline-feedback" role={thresholdError ? "alert" : thresholdMessage ? "status" : undefined} title={thresholdError || thresholdMessage || undefined}>{thresholdError || thresholdMessage || "허용 범위는 서버 설정을 따릅니다."}</p><button className="admin-primary" type="button" onClick={saveThreshold}>수거 설정 저장</button></div>
+                <div className="threshold-change"><label htmlFor="threshold-input" className="admin-label">변경값</label><div className="threshold-input"><input id="threshold-input" type="number" min="5" max="100" value={threshold} onChange={(event) => setThreshold(event.target.value)} /><span>%</span></div><p className="admin-inline-feedback" role={thresholdError ? "alert" : thresholdMessage ? "status" : undefined} title={thresholdError || thresholdMessage || undefined}>{thresholdError || thresholdMessage || "허용 범위는 서버 설정을 따릅니다."}</p><button className="admin-primary" type="button" onClick={saveThreshold}>수거 설정 저장</button></div>
                 <div className="threshold-applied"><span>현재 적용값</span><strong>{currentThreshold}<small>%</small></strong></div>
               </div>
-              <section className="threshold-alert-settings"><div className="threshold-alert-head"><div><h3>사전 수거 알림</h3><p>사전 알림 사용 여부와 기준을 저장합니다.</p></div><AdminToggle className="admin-toggle threshold-alert-toggle" checked={preAlertEnabled} onChange={setPreAlertEnabled} /></div><label className="pre-alert-timing"><span>알림 기준 적재율</span><div className="pre-alert-setting-row"><div className="compact-percent-input"><input type="number" min="1" max="99" value={preAlertThreshold} disabled={!preAlertEnabled} onChange={(event) => setPreAlertThreshold(event.target.value)} /><b>%</b></div><small>현재 적용 {savedPreAlertEnabled ? `${savedPreAlertThreshold}%` : "중지"}</small></div></label></section>
+              <section className="threshold-alert-settings"><div className="threshold-alert-head"><div><h3>사전 수거 알림</h3><p>사전 알림 사용 여부와 기준을 저장합니다.</p></div><AdminToggle className="admin-toggle threshold-alert-toggle" checked={preAlertEnabled} onChange={setPreAlertEnabled} /></div><label className="pre-alert-timing"><span>알림 기준 적재율</span><div className="pre-alert-setting-row"><div className="compact-percent-input"><input type="number" min="0" max="95" value={preAlertThreshold} disabled={!preAlertEnabled} onChange={(event) => setPreAlertThreshold(event.target.value)} /><b>%</b></div><small>현재 적용 {savedPreAlertEnabled ? `${savedPreAlertThreshold}%` : "중지"}</small></div></label></section>
             </fieldset></section>
             <section className="card recipients-card">
               <div className="admin-card-head"><SectionTitle>알림 대상 관리</SectionTitle><div className="recipients-tools"><span>총 {recipients.length}명</span><button className="admin-primary compact" type="button" onClick={() => setAddRecipientOpen(true)}>알림 대상 추가</button></div></div>

@@ -53,6 +53,21 @@ for (const definition of pages) {
     expect(expected, "A frozen pre-change baseline is required.").toBeDefined();
     expect(expected.filter((entry) => entry.className.split(" ").includes("card"))).toHaveLength(definition.cards);
     await expectGeometry(page, expected);
+    const heading = page.locator(".page-heading");
+    const title = heading.locator("h1");
+    await expect(title).toHaveCSS("font-size", viewport.width < 1500 ? "26px" : "28px");
+    await expect(title).toHaveCSS("font-weight", "650");
+    const titleStyle = await title.evaluate(element => {
+      const bounds = element.getBoundingClientRect();
+      return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height,
+        beforeContent: getComputedStyle(element, "::before").content };
+    });
+    const band = await heading.boundingBox();
+    expect(band).not.toBeNull();
+    expect(band!.height).toBe(76);
+    expect(titleStyle.y).toBeGreaterThan(band!.y);
+    expect(titleStyle.y + titleStyle.height).toBeLessThan(band!.y + band!.height);
+    expect(titleStyle.beforeContent).toBe("none");
   });
 }
 

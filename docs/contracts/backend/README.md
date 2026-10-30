@@ -16,7 +16,7 @@ schema를 추출한 snapshot이다.
 `src/generated/backend-contract.ts`는 이 snapshot에서 생성한다. 통합 검증은 실행한
 Backend의 OpenAPI를 같은 추출기로 처리해 snapshot 전체가 일치하는지 검사한다.
 snapshot 검사 및 명시적 갱신 절차는
-[구현 정보](../../implementation.md#정적-검사와-테스트-기준선)를 따른다.
+[검증 기준](../../testing.md#정적-검사와-테스트-기준선)을 따른다.
 
 이 snapshot은 실행 가능한 구현을 확인한 근거이며 전체 시스템 계약이나 현장 운영 정책의
 승인을 대신하지 않는다. `../proposal/`은 v1 제안과 WHEP 대역 서버 검증에만 사용한다.
@@ -39,9 +39,11 @@ snapshot 검사 및 명시적 갱신 절차는
 
 `measuredAt`은 STATE assessment의 `observed_to`다. 서버가 assessment를 받은 시각은
 측정 시각이나 freshness 기준을 대신하지 않는다. `0`은 유효한 적재율이며 결측값이 아니다.
-프론트엔드는 `null`을 0으로 변환하지 않고 상태, reason code와 capability를 표시한다.
-v2 경보 평가, 적재율 시계열, 경보 목록과 수거 사건의 revision 이력은 제공한다. LiDAR
-profile과 예상 도달 시각은 제공하지 않는다. v1 이력, 알림과 관리자 설정의 적용 경계 및
+프론트엔드는 `null`을 0으로 변환하지 않고 상태, reason code와 capability를 화면 모델에
+보존한다. 기본 화면의 표시 범위는 화면 데이터 매핑을 따른다.
+v2 경보 평가, 적재율 시계열, 경보 목록, 수거 사건의 revision 이력, LiDAR profile,
+예상 도달 시각, 수거 요약, 적재율 및 장비 활성 알림(`scope=ALL`)과 측정 영역
+배치 상태(`layout`)를 제공한다. v1 이력, 알림과 관리자 설정의 적용 경계 및
 기존 화면 항목별 변환과 추가 계약 평가는 [화면 데이터 매핑](frontend-mapping.md)을 따른다.
 
 Edge Orchestrator는 적재율 산출을 구현하지 않으며 `FILL_METHOD_NOT_IMPLEMENTED`와
@@ -98,35 +100,40 @@ Service의 HTTP 접근을 보호하는 수단이 아니다.
 MJPEG client는 `multipart/x-mixed-replace`, boundary와 `Content-Length`로 JPEG 프레임을
 읽는다. header는 4096 byte, JPEG는 4 MiB로 제한하며 chunk 분할과 무관하게 검사한다.
 브라우저가 JPEG를 decode한 뒤 LIVE 상태를 표시하며 stream 종료나 오류 시 마지막 프레임을
-숨긴다. 최초 프레임과 다음 프레임에 timeout을 적용하고 제한된 재연결 뒤 수동 재시도를
+숨긴다. 최초 프레임과 다음 프레임에 timeout을 적용하고 간격 상한을 둔 자동 재연결을
 제공한다. decode 실패도 연결 오류로 처리하며 화면 종료 시 stream reader, timer와 Blob URL을
 정리한다. Media Service는 프레임 촬영 시각을 제공하지 않는다.
 
-이벤트 녹화 조회는 `/api/v1/recordings`와 단건 조회를 사용한다. 실제 필터는 `pit_id`, `from`,
-`to`, `category`이며 Backend의 page pagination을 따른다. duration, width, height,
-frame rate, size와 보관 시각의 `null`은 정보 없음으로 표시한다. `mediaStatus`, `coverage`,
-`gaps`와 `errorCode`는 저장 상태 및 누락 구간을 표시한다. 부분 저장된 ready MP4는 재생할
-수 있다. 재생 전 단건 조회와 다운로드 전 재조회로 접근 상태를 확인하며 collecting,
-processing, failed, deleted, expired 상태에는 재생 및 다운로드 경로를 노출하지 않는다.
-collecting과 processing은 단건 조회를 반복하고 ready 또는 종료 상태에서 반복을 중단한다.
-다운로드 재조회가 접근 불가 상태나 HTTP 404 및 410을 반환하면 다운로드를 시작하지 않는다.
+이벤트 녹화는 다음 2개 endpoint를 사용하며 날짜 녹화의 HLS를 이벤트 구간으로 잘라 재생한다.
 
-Backend의 이벤트 녹화 응답은 실제 확보 구간이 없으면 요청 구간을 `startedAt`과
-`endedAt`으로 제공한다. `containerFormat`과 `videoCodec`의 응답 모델 기본값은 각각
-`mp4`와 `h264`이며 실패한 녹화에도 포함된다. 이 값과 구간 정보는 파일 생성 성공이나
-실제 파일의 metadata 검사 결과를 증명하지 않는다.
+| Method | 경로 | 용도 |
+| --- | --- | --- |
+| `GET` | `/api/v2/recordings/events` | 이벤트 녹화 목록 |
+| `GET` | `/api/v2/recordings/events/{event_id}` | 구간 상태와 재생할 날짜 녹화 `parts` |
 
-부분 저장 표시를 선택하면 `/api/v1/media/clips/{clip_id}`를 조회해 요청 구간과
-실제 확보 구간을 별도 상세창에 표시한다. 응답의 clip 및 camera 식별자를 검사하며 구간별
-누락 원인은 제공되지 않는다. 녹화 정책은 이 상세창에 표시하지 않는다.
+목록의 실제 필터는 `pit_id`, `category`, `from`, `to`, `page`, `pageSize`이며 기간은 최대
+90일이다. 목록 항목의 `windowState`는 `CLOSED`, `OPEN`, `UNKNOWN`, `POINT`다. 상세의
+`state`는 `AVAILABLE`, `PARTIAL`, `PROCESSING`, `UNAVAILABLE`이고 `parts`는 날짜 녹화의
+`recordingId`, `playbackPath`, 날짜 녹화 안의 `startSeconds`와 `endSeconds`, 이벤트 재생
+시간축의 `relativeStartSeconds`와 `relativeEndSeconds`를 제공한다. `unavailableIntervals`는
+재생할 수 없는 구간이며 `downloadPath`는 항상 null이고 `downloadReasonCode`는
+`EVENT_RANGE_EXPORT_UNSUPPORTED`다. 이벤트 구간 MP4, 파일 용량, codec, 해상도와
+frame rate는 제공하지 않는다. `include_playback=true`는 목록 항목에 `playback`(상태, 길이,
+사유 코드) 요약을 더한다. 보관 만료는 `parts`가 가리키는 날짜 녹화 상세의
+`expires_at`에서 읽는다.
 
-날짜 녹화는 Backend의 다음 3개 endpoint를 사용하며 이벤트 녹화와 별도로 조회한다.
+Frontend는 `eventId` 형식, `parts`의 날짜 녹화 UUID와 `playbackPath`, 재생 시간축의 연속성과
+`playbackSeconds` 합계를 검사하고 위반하면 오류로 처리한다. 이력과 녹화의 연결은 `/api/v1/events`
+항목의 `recordingEventId`만 사용한다.
+
+날짜 녹화는 Backend의 다음 4개 endpoint를 사용하며 이벤트 녹화와 별도로 조회한다.
 
 | Method | 경로 | 용도 |
 | --- | --- | --- |
 | `GET` | `/api/v2/recordings/daily` | 날짜 녹화 목록 |
 | `GET` | `/api/v2/recordings/daily/{recording_id}` | 상태, 확보 및 누락 구간과 재생 및 다운로드 경로 |
 | `POST` | `/api/v2/recordings/daily/{recording_id}/exports` | MP4 다운로드 준비 |
+| `DELETE` | `/api/v2/recordings/daily/{recording_id}` | 지난 날짜 영상 삭제(administrator와 CSRF) |
 
 목록은 Backend에 설정한 camera를 대상으로 `from_date` 이상, `to_date` 미만의 한국 날짜를
 조회한다. `limit`은 1부터 100까지이며 `next_cursor`는 해석하지 않고 다음 요청에 전달한다.
@@ -144,7 +151,7 @@ HLS 목록과 각 segment 및 MP4 요청마다 session을 검사하고 Media 내
 HLS 목록 안의 Media 절대 경로도 브라우저 경로로 변환한다. Media에는 session Cookie와
 Authorization 및 임의의 query를 전달하지 않으며 MP4의 `download=true`와 Range만 보존한다.
 공통 Nginx snippet과 배포 주입 경계는
-[구현 정보](../../implementation.md#nginx-reverse-proxy-배포-경계)를 따른다.
+[배포 경계](../../deployment.md#nginx-reverse-proxy-배포-경계)를 따른다.
 
 MP4 export는 viewer 또는 administrator session과 `X-CSRF-Token`이 필요하다. 준비 요청
 직전에 단건 상태를 재조회하며 `closed` 상태인 지난 날짜, 확보 영상 존재와
@@ -153,7 +160,12 @@ MP4 export는 viewer 또는 administrator session과 `X-CSRF-Token`이 필요하
 다운로드 불가를 녹화 실패로 표시하지 않는다. 원본 만료와 export cache 만료는 구분한다.
 
 MP4 재생은 HTTP Range 요청을 사용한다. 삭제된 파일은 gateway에서 `410`으로 거절한다.
-프론트엔드는 clip 생성, 삭제와 보관 정책 변경 화면을 제공하지 않는다.
+날짜 녹화 삭제는 administrator에게만 표시하고 확인창에서 같은 날짜 영상을 쓰는 이벤트
+구간도 재생할 수 없게 됨을 알린다. 삭제는 `X-CSRF-Token`과 함께 요청하며 204 뒤 목록과
+선택 상세를 갱신한다. 409는 녹화 중, 마감 중 또는 내보내기 진행 중의 충돌이며 상태를 다시
+조회한다. 404, 410 및 5xx 응답은 해당 녹화를 재조회해 이미 없는 경우에만 삭제 반영으로
+처리하고 저장 공간 정리 완료 여부는 확인하지 못한 것으로 구분한다.
+프론트엔드는 수동 clip 생성과 보관 정책 변경 화면을 제공하지 않는다.
 
 ## 통합 검증
 
@@ -165,14 +177,14 @@ MP4 재생은 HTTP Range 요청을 사용한다. 삭제된 파일은 gateway에�
 | `media` | 고정한 실제 Camera Media Service |
 | `dashboard` | synthetic data를 비활성화한 production 프론트엔드 |
 | `dashboard-alt` | 같은 production image와 다른 runtime 설정을 사용하는 독립 Browser 검증 |
-| `camera-input` | synthetic JPEG ingest와 부분 이벤트 MP4 및 날짜 HLS fixture 생성 |
+| `camera-input` | synthetic JPEG ingest와 이벤트 및 날짜 HLS fixture 생성 |
 | `edge-input` | 실제 Edge Orchestrator의 v2 메시지 생성과 Backend 전달 |
 | `browser` | Chromium 사용자 흐름 및 계약 snapshot 검사 |
 
 호스트 port를 공개하지 않으며 매 실행마다 자격 증명과 격리된 데이터 volume을 생성한다.
 정상, 실패와 INT 및 TERM 종료 시 해당 project의 컨테이너, volume과 image를 제거한다.
 정제한 결과 및 screenshot과 비공개 로그의 저장 위치, 대기 상한과 recovery 절차는
-[구현 정보](../../implementation.md#개발과-검증-컨테이너)를 따른다.
+[검증 자원 회수](../../testing.md#컨테이너-통합-검증)를 따른다.
 `SYNC_SOURCE_ROOT`를 지정하면 해당 경로의 `backend`, `media`, `edge` checkout을 재사용하며
 revision과 작업 트리가 일치하지 않으면 실패한다. 운영 데이터나 운영 자격 증명을 사용하지
 않는다.
@@ -181,10 +193,10 @@ revision과 작업 트리가 일치하지 않으면 실패한다. 운영 데이�
 0% 및 STALE과 session 종료를 확인한다. 과거 STATE의 0%, 25%, 68.5%, 100%와 결측 및
 LIMITED를 실제 Backend에 입력해 7일 및 24시간 이력의 그래프 좌표와 현재 임계율 선을
 검사한다. v2 경보의 실시간 알림 표시, 모두 읽음의 서버
-저장과 전체 페이지 reload 후의 읽음 상태 유지를 검사한다. 녹화는 기간과 전체, 수거,
-알림 및 오류 필터, 결과가 없는 구간, nullable 정보, 부분 MP4 재생, Range 206/416과
-삭제 후 410을 확인한다. 브라우저가 내려받은 MP4의 파일명, 파일 header와 전체 byte가
-Media Service의 응답과 일치하는지 검사한다. 1280, 1440과 1920 너비에서 현재 상태 및
+저장과 전체 페이지 reload 후의 읽음 상태 유지를 검사한다. 이벤트 녹화는 v2 목록과 상세의
+계약, 수거, 알림 및 오류 필터, 결과가 없는 구간, 날짜 녹화 part의 HLS 재생, `downloadPath`
+없음과 다운로드 불가 안내를 확인한다. 진행 중인 날짜 녹화의 삭제 요청은 CSRF 없이 403,
+CSRF와 함께 409이며 녹화가 남는지 확인한다. 1280, 1440과 1920 너비에서 현재 상태 및
 녹화 화면을 검사하고 1280 너비에서 영상 확대의 키보드 종료와 focus 복원을 확인한다.
 runtime 검증은 동일한 local image ID를 확인하고 두 Nginx의 실제 JSON mount를 읽은 Browser의
 pit query 및 camera 경로를 검사한다. 이 검사의 API 및 영상 응답은 별도 synthetic fixture이며

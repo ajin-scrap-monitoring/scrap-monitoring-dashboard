@@ -220,8 +220,10 @@ export interface paths {
         readonly get?: never;
         readonly put?: never;
         /**
-         * Queue a test notification
+         * Record a test notification request
          * @description Queue an immediate test notification to a recipient.
+         *
+         *     The current implementation records the request without external delivery.
          */
         readonly post: operations["send_test_notification_api_v1_notifications_test_post"];
         readonly delete?: never;
@@ -342,6 +344,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v2/monitoring/active-alerts": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Active Alerts */
+        readonly get: operations["get_active_alerts_api_v2_monitoring_active_alerts_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v2/monitoring/alerts": {
         readonly parameters: {
             readonly query?: never;
@@ -393,6 +412,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v2/monitoring/collection-summary": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Collection Summary */
+        readonly get: operations["get_collection_summary_api_v2_monitoring_collection_summary_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v2/monitoring/events": {
         readonly parameters: {
             readonly query?: never;
@@ -410,6 +446,40 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v2/monitoring/fill-forecast": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Fill Forecast */
+        readonly get: operations["get_fill_forecast_api_v2_monitoring_fill_forecast_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v2/monitoring/layout": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Measurement Layout */
+        readonly get: operations["get_measurement_layout_api_v2_monitoring_layout_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v2/monitoring/load-history": {
         readonly parameters: {
             readonly query?: never;
@@ -419,6 +489,23 @@ export interface paths {
         };
         /** Get Load History */
         readonly get: operations["get_load_history_api_v2_monitoring_load_history_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v2/monitoring/profiles": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Profiles */
+        readonly get: operations["profiles_api_v2_monitoring_profiles_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -496,10 +583,178 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v2/recordings/events": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Events */
+        readonly get: operations["list_events_api_v2_recordings_events_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v2/recordings/events/{event_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Replay Event */
+        readonly get: operations["replay_event_api_v2_recordings_events__event_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActiveFillAlertPageV2 */
+        readonly ActiveFillAlertPageV2: {
+            /**
+             * Computedat
+             * Format: date-time
+             */
+            readonly computedAt: string;
+            /** Coverage */
+            readonly coverage?: readonly components["schemas"]["ActiveHealthCoverageV2"][];
+            /**
+             * Evaluationstate
+             * @enum {string}
+             */
+            readonly evaluationState: "NORMAL" | "WARNING" | "CRITICAL" | "UNKNOWN" | "ERROR";
+            /** Items */
+            readonly items?: readonly (components["schemas"]["ActiveFillAlertV2"] | components["schemas"]["ActiveHealthAlertV2"])[];
+            /** Pitid */
+            readonly pitId: string;
+            /** Reasoncodes */
+            readonly reasonCodes?: readonly string[];
+            /**
+             * Scope
+             * @default FILL_OPERATIONS
+             * @enum {string}
+             */
+            readonly scope?: "FILL_OPERATIONS" | "ALL";
+        };
+        /** ActiveFillAlertV2 */
+        readonly ActiveFillAlertV2: {
+            /**
+             * Evaluatedat
+             * Format: date-time
+             */
+            readonly evaluatedAt: string;
+            /** Evaluationsource */
+            readonly evaluationSource?: ("CURRENT_OBSERVATION" | "RECENT_PERSISTED") | null;
+            /** Id */
+            readonly id: string;
+            /** Loadpercent */
+            readonly loadPercent: number;
+            /** Measuredat */
+            readonly measuredAt?: string | null;
+            /** Notificationid */
+            readonly notificationId?: string | null;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            readonly severity: "warning" | "error";
+            /** Simulated */
+            readonly simulated: boolean;
+            /**
+             * Startbasis
+             * @default UNKNOWN
+             * @enum {string}
+             */
+            readonly startBasis?: "SERVER_EVALUATION" | "UNKNOWN";
+            /** Startedat */
+            readonly startedAt?: string | null;
+            /** Title */
+            readonly title: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            readonly type: "pre_collection_alert" | "collection_required";
+        };
+        /** ActiveHealthAlertV2 */
+        readonly ActiveHealthAlertV2: {
+            /** Componentid */
+            readonly componentId: string;
+            /**
+             * Componentkind
+             * @enum {string}
+             */
+            readonly componentKind: "EDGE" | "LIDAR" | "MEASUREMENT";
+            /**
+             * Evaluatedat
+             * Format: date-time
+             */
+            readonly evaluatedAt: string;
+            /**
+             * Evidencesource
+             * @enum {string}
+             */
+            readonly evidenceSource: "EDGE_STATUS" | "STATUS_FRESHNESS" | "CURRENT_MEASUREMENT";
+            /** Id */
+            readonly id: string;
+            /** Measuredat */
+            readonly measuredAt?: string | null;
+            /** Reasoncodes */
+            readonly reasonCodes?: readonly string[];
+            /**
+             * Severity
+             * @enum {string}
+             */
+            readonly severity: "warning" | "error";
+            /** Simulated */
+            readonly simulated?: boolean | null;
+            /**
+             * Startbasis
+             * @default UNKNOWN
+             * @enum {string}
+             */
+            readonly startBasis?: "SERVER_EVALUATION" | "UNKNOWN";
+            /** Startedat */
+            readonly startedAt?: string | null;
+            /** State */
+            readonly state: string;
+            /** Title */
+            readonly title: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            readonly type: "device_error" | "measurement_error";
+        };
+        /** ActiveHealthCoverageV2 */
+        readonly ActiveHealthCoverageV2: {
+            /** Componentid */
+            readonly componentId?: string | null;
+            /**
+             * Componentkind
+             * @enum {string}
+             */
+            readonly componentKind: "EDGE" | "LIDAR" | "MEASUREMENT" | "CAMERA";
+            /** Reasoncodes */
+            readonly reasonCodes?: readonly string[];
+            /**
+             * State
+             * @enum {string}
+             */
+            readonly state: "CHECKED" | "UNKNOWN" | "UNSUPPORTED";
+        };
         /**
          * Alert
          * @description Active alert item displayed on dashboard.
@@ -526,6 +781,19 @@ export interface components {
              * @enum {string}
              */
             readonly type: "pre_collection_alert" | "collection_required" | "collection_started" | "collection_completed" | "measurement_error" | "device_error" | "video_delay";
+        };
+        /** AlertLifecycle */
+        readonly AlertLifecycle: {
+            /** Resolutionobservedat */
+            readonly resolutionObservedAt?: string | null;
+            /** Resolvedat */
+            readonly resolvedAt?: string | null;
+            /**
+             * State
+             * @default UNKNOWN
+             * @enum {string}
+             */
+            readonly state?: "ACTIVE" | "RESOLVED" | "UNKNOWN";
         };
         /**
          * AlertSettings
@@ -705,6 +973,8 @@ export interface components {
             /** Deleted At */
             readonly deleted_at: string | null;
             readonly error: components["schemas"]["ClipError"] | null;
+            /** Event At */
+            readonly event_at?: string | null;
             /** Event Id */
             readonly event_id: string;
             /** Expires At */
@@ -755,6 +1025,26 @@ export interface components {
             /** State */
             readonly state: string;
         };
+        /**
+         * CollectionCriteria
+         * @description Only retained original criteria; absent historic fields are never reconstructed.
+         */
+        readonly CollectionCriteria: {
+            /** Detectionprofile */
+            readonly detectionProfile?: string | null;
+            /** Detectionversion */
+            readonly detectionVersion?: string | null;
+            /** Endpolicy */
+            readonly endPolicy?: string | null;
+            /** Heightbasis */
+            readonly heightBasis?: string | null;
+            /** Matchescurrentscope */
+            readonly matchesCurrentScope?: boolean | null;
+            /** Scopetoken */
+            readonly scopeToken?: string | null;
+            /** Settleseconds */
+            readonly settleSeconds?: number | null;
+        };
         /** CollectionEventPage */
         readonly CollectionEventPage: {
             /** Items */
@@ -765,6 +1055,117 @@ export interface components {
             readonly offset: number;
             /** Totalitems */
             readonly totalItems: number;
+        };
+        /** CollectionSummaryV2 */
+        readonly CollectionSummaryV2: {
+            /** Activitysource */
+            readonly activitySource?: ("CONFIRMED_COMPLETION" | "HEIGHT_SETTLED") | null;
+            /** Averagecollectioncycleseconds */
+            readonly averageCollectionCycleSeconds?: number | null;
+            /** Averagedetectedcollectioncycleseconds */
+            readonly averageDetectedCollectionCycleSeconds?: number | null;
+            /** Averagesettledcollectioncycleseconds */
+            readonly averageSettledCollectionCycleSeconds?: number | null;
+            /** Completedcollectionsinwindow */
+            readonly completedCollectionsInWindow: number;
+            /**
+             * Computedat
+             * Format: date-time
+             */
+            readonly computedAt: string;
+            /** Cyclecount */
+            readonly cycleCount: number;
+            /**
+             * Detectedcollectionsinwindow
+             * @default 0
+             */
+            readonly detectedCollectionsInWindow?: number;
+            /** Detectionconfirmseconds */
+            readonly detectionConfirmSeconds: number;
+            /** Detectiondropmeters */
+            readonly detectionDropMeters?: number | null;
+            /**
+             * Detectionenabled
+             * @default false
+             */
+            readonly detectionEnabled?: boolean;
+            /**
+             * Detectionendpolicy
+             * @default NO_FURTHER_DROP
+             * @constant
+             */
+            readonly detectionEndPolicy?: "NO_FURTHER_DROP";
+            /**
+             * Detectionheightbasis
+             * @default UPPER
+             * @enum {string}
+             */
+            readonly detectionHeightBasis?: "UPPER" | "REPRESENTATIVE";
+            /**
+             * Detectionprofile
+             * @default FIELD
+             * @enum {string}
+             */
+            readonly detectionProfile?: "FIELD" | "SIMULATION";
+            /** Detectionreasoncodes */
+            readonly detectionReasonCodes?: readonly string[];
+            /** Detectionsettleseconds */
+            readonly detectionSettleSeconds: number;
+            /** Detectionsimulated */
+            readonly detectionSimulated?: boolean | null;
+            /**
+             * Detectionstate
+             * @default DISABLED
+             */
+            readonly detectionState?: ("BASELINING" | "IDLE" | "CANDIDATE" | "COLLECTING") | ("DISABLED" | "UNKNOWN");
+            /** Lastcollectionactivityat */
+            readonly lastCollectionActivityAt?: string | null;
+            /** Lastcollectionat */
+            readonly lastCollectionAt?: string | null;
+            /** Lastdetectedcollectionat */
+            readonly lastDetectedCollectionAt?: string | null;
+            /** Lastsettledcollectionat */
+            readonly lastSettledCollectionAt?: string | null;
+            /** Pitid */
+            readonly pitId: string;
+            /** Reasoncodes */
+            readonly reasonCodes?: readonly string[];
+            /** Secondssincelastcollection */
+            readonly secondsSinceLastCollection?: number | null;
+            /** Secondssincelastcollectionactivity */
+            readonly secondsSinceLastCollectionActivity?: number | null;
+            /** Secondssincelastdetection */
+            readonly secondsSinceLastDetection?: number | null;
+            /** Secondssincelastsettlement */
+            readonly secondsSinceLastSettlement?: number | null;
+            /**
+             * Settledcollectionsinwindow
+             * @default 0
+             */
+            readonly settledCollectionsInWindow?: number;
+            /**
+             * Settledcyclecount
+             * @default 0
+             */
+            readonly settledCycleCount?: number;
+            /** Settledcyclereasoncodes */
+            readonly settledCycleReasonCodes?: readonly string[];
+            /**
+             * Source
+             * @default COLLECTION_LOG
+             * @constant
+             */
+            readonly source?: "COLLECTION_LOG";
+            /**
+             * Windowfrom
+             * Format: date-time
+             */
+            readonly windowFrom: string;
+            /**
+             * Windowto
+             * Format: date-time
+             */
+            readonly windowTo: string;
         };
         /**
          * CollectionThresholdSample
@@ -925,6 +1326,141 @@ export interface components {
             readonly items: readonly components["schemas"]["src__app__schemas__history__Event"][];
             readonly page: components["schemas"]["PageMetadata"];
         };
+        /** EventPlaybackSummary */
+        readonly EventPlaybackSummary: {
+            /** Playbackseconds */
+            readonly playbackSeconds?: number | null;
+            /** Reasoncodes */
+            readonly reasonCodes?: readonly string[];
+            /**
+             * State
+             * @enum {string}
+             */
+            readonly state: "AVAILABLE" | "PARTIAL" | "PROCESSING" | "UNAVAILABLE" | "UNKNOWN";
+        };
+        /** EventRecording */
+        readonly EventRecording: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            readonly category: "collection" | "alert" | "error";
+            /** Eventid */
+            readonly eventId: string;
+            /** Eventto */
+            readonly eventTo?: string | null;
+            /** Eventtype */
+            readonly eventType: string;
+            /**
+             * Occurredat
+             * Format: date-time
+             */
+            readonly occurredAt: string;
+            /**
+             * Pitattribution
+             * @default RECORDED
+             * @enum {string}
+             */
+            readonly pitAttribution?: "RECORDED" | "CURRENT_ASSIGNMENT";
+            /** Pitid */
+            readonly pitId: string;
+            /** @description Opt-in list summary; null when include_playback is false */
+            readonly playback?: components["schemas"]["EventPlaybackSummary"] | null;
+            /** Reasoncodes */
+            readonly reasonCodes?: readonly string[];
+            /** Simulated */
+            readonly simulated?: boolean | null;
+            /** Stateatoccurrence */
+            readonly stateAtOccurrence?: string | null;
+            /** Title */
+            readonly title: string;
+            /**
+             * Windowfrom
+             * Format: date-time
+             */
+            readonly windowFrom: string;
+            /**
+             * Windowkind
+             * @enum {string}
+             */
+            readonly windowKind: "COLLECTION_CYCLE" | "EVENT_CONTEXT";
+            /**
+             * Windowstate
+             * @enum {string}
+             */
+            readonly windowState: "CLOSED" | "OPEN" | "UNKNOWN" | "POINT";
+            /** Windowto */
+            readonly windowTo?: string | null;
+        };
+        /** EventRecordingPage */
+        readonly EventRecordingPage: {
+            /**
+             * Asof
+             * Format: date-time
+             */
+            readonly asOf: string;
+            /**
+             * From
+             * Format: date-time
+             */
+            readonly from: string;
+            /** Items */
+            readonly items: readonly components["schemas"]["EventRecording"][];
+            readonly page: components["schemas"]["PageMetadata"];
+            /**
+             * To
+             * Format: date-time
+             */
+            readonly to: string;
+        };
+        /** EventRecordingReplay */
+        readonly EventRecordingReplay: {
+            /**
+             * Asof
+             * Format: date-time
+             */
+            readonly asOf: string;
+            /**
+             * Coveredseconds
+             * @default 0
+             */
+            readonly coveredSeconds?: number;
+            /** Downloadpath */
+            readonly downloadPath?: null;
+            /**
+             * Downloadreasoncode
+             * @default EVENT_RANGE_EXPORT_UNSUPPORTED
+             * @constant
+             */
+            readonly downloadReasonCode?: "EVENT_RANGE_EXPORT_UNSUPPORTED";
+            /** Effectiveto */
+            readonly effectiveTo?: string | null;
+            readonly event: components["schemas"]["EventRecording"];
+            /** Parts */
+            readonly parts?: readonly components["schemas"]["ReplayPart"][];
+            /**
+             * Playbackseconds
+             * @default 0
+             */
+            readonly playbackSeconds?: number;
+            /** Reasoncodes */
+            readonly reasonCodes?: readonly string[];
+            /** Requestedseconds */
+            readonly requestedSeconds?: number | null;
+            /**
+             * Source
+             * @default DAILY_RECORDING
+             * @constant
+             */
+            readonly source?: "DAILY_RECORDING";
+            /**
+             * State
+             * @enum {string}
+             */
+            readonly state: "AVAILABLE" | "PARTIAL" | "PROCESSING" | "UNAVAILABLE";
+            /** Unavailableintervals */
+            readonly unavailableIntervals?: readonly components["schemas"]["UnavailableInterval"][];
+        };
         /** Evidence */
         readonly Evidence: {
             /** Scans */
@@ -938,6 +1474,133 @@ export interface components {
             readonly method_version: string;
             /** Ratio */
             readonly ratio: number;
+        };
+        /** FillForecastV2 */
+        readonly FillForecastV2: {
+            /**
+             * Computedat
+             * Format: date-time
+             */
+            readonly computedAt: string;
+            /** Currentloadpercent */
+            readonly currentLoadPercent?: number | null;
+            /** Expectedthresholdat */
+            readonly expectedThresholdAt?: string | null;
+            /** Increasepercentperminute */
+            readonly increasePercentPerMinute?: number | null;
+            /**
+             * Inputsource
+             * @enum {string}
+             */
+            readonly inputSource: "EDGE_STATE" | "HEIGHT_SECTIONS";
+            /**
+             * Method
+             * @default RECENT_LINEAR_TREND_V1
+             * @constant
+             */
+            readonly method?: "RECENT_LINEAR_TREND_V1";
+            /** Pitid */
+            readonly pitId: string;
+            /** Reasoncodes */
+            readonly reasonCodes?: readonly string[];
+            /** Remainingseconds */
+            readonly remainingSeconds?: number | null;
+            /**
+             * Samplecount
+             * @default 0
+             */
+            readonly sampleCount?: number;
+            /**
+             * Simulated
+             * @default false
+             */
+            readonly simulated?: boolean;
+            /**
+             * State
+             * @default UNAVAILABLE
+             * @enum {string}
+             */
+            readonly state?: "AVAILABLE" | "REACHED" | "UNAVAILABLE";
+            /** Targetthresholdpercent */
+            readonly targetThresholdPercent: number;
+            /** Trendrsquared */
+            readonly trendRSquared?: number | null;
+            /**
+             * Validuntil
+             * Format: date-time
+             */
+            readonly validUntil: string;
+            /**
+             * Windowfrom
+             * Format: date-time
+             */
+            readonly windowFrom: string;
+            /**
+             * Windowto
+             * Format: date-time
+             */
+            readonly windowTo: string;
+        };
+        /** FillObservation */
+        readonly FillObservation: {
+            /** Config Revision */
+            readonly config_revision: string;
+            /**
+             * Data State
+             * @enum {string}
+             */
+            readonly data_state: "AVAILABLE" | "LIMITED" | "UNAVAILABLE" | "STALE" | "UNKNOWN" | "NO_DATA";
+            /** Edge Id */
+            readonly edge_id: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            readonly generated_at: string;
+            /** Message Id */
+            readonly message_id: string;
+            /** Method Version */
+            readonly method_version: string | null;
+            /** Observation Id */
+            readonly observation_id: string;
+            /** Observed To */
+            readonly observed_to: string | null;
+            /** Reason Codes */
+            readonly reason_codes: readonly string[];
+            /**
+             * Received At
+             * Format: date-time
+             */
+            readonly received_at: string;
+            /** Rule Version */
+            readonly rule_version: string | null;
+            /** Scope Token */
+            readonly scope_token?: string | null;
+            /**
+             * Simulated
+             * @default false
+             */
+            readonly simulated?: boolean;
+            /** Site Id */
+            readonly site_id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            readonly source: "EDGE_STATE" | "HEIGHT_SECTIONS";
+            /**
+             * Time Basis
+             * @default SOURCE_UTC
+             * @enum {string}
+             */
+            readonly time_basis?: "SOURCE_UTC" | "SIMULATION_SOURCE_UTC_UNVERIFIED";
+            /** Value Percent */
+            readonly value_percent?: number | null;
+        };
+        /** HTTPErrorResponse */
+        readonly HTTPErrorResponse: {
+            /** Detail */
+            readonly detail: string;
         };
         /** HTTPValidationError */
         readonly HTTPValidationError: {
@@ -982,6 +1645,8 @@ export interface components {
         readonly HistorySampleV2: {
             /** Assessmentid */
             readonly assessmentId?: string | null;
+            /** Averagepercent */
+            readonly averagePercent?: number | null;
             /**
              * Bucketendat
              * Format: date-time
@@ -1000,17 +1665,158 @@ export interface components {
             readonly dataState?: "AVAILABLE" | "LIMITED" | "UNAVAILABLE" | "STALE" | "UNKNOWN" | "NO_DATA";
             /** Generatedat */
             readonly generatedAt?: string | null;
+            /**
+             * Inputsource
+             * @default EDGE_STATE
+             * @enum {string}
+             */
+            readonly inputSource?: "EDGE_STATE" | "HEIGHT_SECTIONS" | "MIXED";
+            /**
+             * Invalidsamples
+             * @default 0
+             */
+            readonly invalidSamples?: number;
+            /** Maximumpercent */
+            readonly maximumPercent?: number | null;
+            /** Methodversion */
+            readonly methodVersion?: string | null;
+            /** Minimumpercent */
+            readonly minimumPercent?: number | null;
+            /** Observationid */
+            readonly observationId?: string | null;
             /** Observedat */
             readonly observedAt?: string | null;
             /** Reasoncodes */
             readonly reasonCodes?: readonly string[];
             /**
+             * Simulated
+             * @default false
+             */
+            readonly simulated?: boolean;
+            /**
              * Valid
              * @default false
              */
             readonly valid?: boolean;
+            /**
+             * Validsamples
+             * @default 0
+             */
+            readonly validSamples?: number;
             /** Valuepercent */
             readonly valuePercent?: number | null;
+            /**
+             * Valuepolicy
+             * @default RAW_STATE
+             * @enum {string}
+             */
+            readonly valuePolicy?: "RAW_STATE" | "MEDIAN_MINUTE";
+        };
+        /** LayoutFrame */
+        readonly LayoutFrame: {
+            /**
+             * Handedness
+             * @default RIGHT_HANDED
+             * @constant
+             */
+            readonly handedness?: "RIGHT_HANDED";
+            /** Id */
+            readonly id: string;
+            /** Origindescription */
+            readonly originDescription: string;
+            /**
+             * Unit
+             * @default cm
+             * @constant
+             */
+            readonly unit?: "cm";
+            /**
+             * Verticalaxis
+             * @default z
+             * @constant
+             */
+            readonly verticalAxis?: "z";
+            /** Xaxisdescription */
+            readonly xAxisDescription: string;
+            /** Yaxisdescription */
+            readonly yAxisDescription: string;
+            /** Zaxisdescription */
+            readonly zAxisDescription: string;
+        };
+        /** LayoutMeasurementLine */
+        readonly LayoutMeasurementLine: {
+            readonly a: components["schemas"]["LayoutPoint3"];
+            readonly b: components["schemas"]["LayoutPoint3"];
+            /**
+             * Kind
+             * @default SCAN_PLANE_FLOOR_INTERSECTION
+             * @constant
+             */
+            readonly kind?: "SCAN_PLANE_FLOOR_INTERSECTION";
+            /** Lengthcm */
+            readonly lengthCm: number;
+        };
+        /** LayoutPoint2 */
+        readonly LayoutPoint2: {
+            /** X */
+            readonly x: number;
+            /** Y */
+            readonly y: number;
+        };
+        /** LayoutPoint3 */
+        readonly LayoutPoint3: {
+            /** X */
+            readonly x: number;
+            /** Y */
+            readonly y: number;
+            /** Z */
+            readonly z: number;
+        };
+        /** LayoutProfileMapping */
+        readonly LayoutProfileMapping: {
+            /** Axis */
+            readonly axis?: ("x" | "y") | null;
+            /**
+             * Basis
+             * @enum {string}
+             */
+            readonly basis: "FLOOR_SECTION" | "FRAME_AXIS";
+            /** Maximumcm */
+            readonly maximumCm: number;
+            /** Minimumcm */
+            readonly minimumCm: number;
+        };
+        /** LayoutRegion */
+        readonly LayoutRegion: {
+            /** Boundary */
+            readonly boundary: readonly components["schemas"]["LayoutPoint2"][];
+            /** Floorz */
+            readonly floorZ: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            readonly kind: "SIMULATION_BOUNDARY" | "HEIGHT_MEASUREMENT_REGION";
+            /** Topz */
+            readonly topZ?: number | null;
+        };
+        /** LayoutSensor */
+        readonly LayoutSensor: {
+            /**
+             * Calibrationstate
+             * @default UNAVAILABLE
+             * @enum {string}
+             */
+            readonly calibrationState?: "SIMULATION" | "VERIFIED" | "UNAVAILABLE";
+            /** Calibrationversion */
+            readonly calibrationVersion?: string | null;
+            readonly measurementLine?: components["schemas"]["LayoutMeasurementLine"] | null;
+            readonly position?: components["schemas"]["LayoutPoint3"] | null;
+            readonly profileMapping?: components["schemas"]["LayoutProfileMapping"] | null;
+            /** Reasoncodes */
+            readonly reasonCodes?: readonly string[];
+            /** Sensorid */
+            readonly sensorId: string;
         };
         /**
          * LidarProfile
@@ -1042,6 +1848,17 @@ export interface components {
              */
             readonly unit?: "m";
         };
+        /** LidarProfilePageV2 */
+        readonly LidarProfilePageV2: {
+            /** Meansectionfillpercent */
+            readonly meanSectionFillPercent?: number | null;
+            /** Meansectionreasoncodes */
+            readonly meanSectionReasonCodes?: readonly string[];
+            /** Pitid */
+            readonly pitId: string;
+            /** Profiles */
+            readonly profiles: readonly components["schemas"]["LidarProfileV2"][];
+        };
         /**
          * LidarProfileSample
          * @description Single surface measurement point along the LiDAR scan line.
@@ -1056,6 +1873,110 @@ export interface components {
              * @default true
              */
             readonly valid?: boolean;
+        };
+        /**
+         * LidarProfileSampleV2
+         * @description One received or spatially grouped point; unavailable positions remain null.
+         *
+         *     Angle metadata is present only for SENSOR_ANGLE samples. Keep dictionary semantics
+         *     for the projection/filter pipeline and omit absent keys from existing responses.
+         */
+        readonly LidarProfileSampleV2: {
+            /** Anglemdeg */
+            readonly angleMdeg?: number;
+            /**
+             * Height
+             * @description Height in cm
+             */
+            readonly height: number | null;
+            /** Positionratio */
+            readonly positionRatio: number | null;
+            /** Sourceindex */
+            readonly sourceIndex?: number;
+            /** Valid */
+            readonly valid: boolean;
+        };
+        /**
+         * LidarProfileV2
+         * @description No height is inferred from a reflection coordinate or an unverified floor distance.
+         *
+         *     A verified, explicit frame/floor/region reference enables a separate height projection.
+         */
+        readonly LidarProfileV2: {
+            /** Average */
+            readonly average?: number | null;
+            /**
+             * Calibrationstate
+             * @default UNVERIFIED
+             * @enum {string}
+             */
+            readonly calibrationState?: "UNVERIFIED" | "VERIFIED" | "UNAVAILABLE" | "SIMULATION";
+            /** Calibrationversion */
+            readonly calibrationVersion?: string | null;
+            /** Configrevision */
+            readonly configRevision?: string | null;
+            /**
+             * Coveragebasis
+             * @default SPATIAL_BINS
+             * @enum {string}
+             */
+            readonly coverageBasis?: "SPATIAL_BINS" | "RECEIVED_POINTS";
+            /**
+             * Coverageratio
+             * @default 0
+             */
+            readonly coverageRatio?: number;
+            /** Filteredaverage */
+            readonly filteredAverage?: number | null;
+            /** Maximum */
+            readonly maximum?: number | null;
+            /** Measuredat */
+            readonly measuredAt?: string | null;
+            /** Minimum */
+            readonly minimum?: number | null;
+            /** Reasoncodes */
+            readonly reasonCodes?: readonly string[];
+            /** Referencedepthcm */
+            readonly referenceDepthCm?: number | null;
+            /** Referencedistancecm */
+            readonly referenceDistanceCm: number;
+            /** Samples */
+            readonly samples?: readonly components["schemas"]["LidarProfileSampleV2"][];
+            /** Sectionfillpercent */
+            readonly sectionFillPercent?: number | null;
+            /** Sectionlengthcm */
+            readonly sectionLengthCm?: number | null;
+            /** Sensorid */
+            readonly sensorId: string;
+            /**
+             * Simulated
+             * @default false
+             */
+            readonly simulated?: boolean;
+            /**
+             * Summaryvaluepolicy
+             * @default PROFILE_MEAN
+             * @enum {string}
+             */
+            readonly summaryValuePolicy?: "PROFILE_MEAN" | "SCAN_MEAN_TEMPORAL_MEDIAN";
+            /**
+             * Timebasis
+             * @default SOURCE_UTC
+             * @enum {string}
+             */
+            readonly timeBasis?: "SOURCE_UTC" | "SIMULATION_SOURCE_UTC_UNVERIFIED";
+            /**
+             * Unit
+             * @default cm
+             * @constant
+             */
+            readonly unit?: "cm";
+            /**
+             * Valuepolicy
+             * @default SPATIAL_BIN_MEDIAN
+             * @enum {string}
+             */
+            readonly valuePolicy?: "SPATIAL_BIN_MEDIAN" | "SPATIAL_TEMPORAL_MEDIAN" | "SENSOR_ANGLE";
         };
         /**
          * LiveVideo
@@ -1109,7 +2030,7 @@ export interface components {
              * Bucketseconds
              * @enum {integer}
              */
-            readonly bucketSeconds: 60 | 300 | 900 | 3600;
+            readonly bucketSeconds: 60 | 300 | 900 | 3600 | 7200 | 21600 | 86400;
             /**
              * From
              * Format: date-time
@@ -1179,6 +2100,66 @@ export interface components {
              */
             readonly username: string;
         };
+        /** MeasurementLayoutV2 */
+        readonly MeasurementLayoutV2: {
+            /**
+             * Bindingstate
+             * @default UNKNOWN
+             * @enum {string}
+             */
+            readonly bindingState?: "MATCHED" | "MISMATCH" | "UNKNOWN";
+            /**
+             * Computedat
+             * Format: date-time
+             */
+            readonly computedAt: string;
+            /** Configrevision */
+            readonly configRevision?: string | null;
+            /** Configurationgeneratedat */
+            readonly configurationGeneratedAt?: string | null;
+            readonly coordinateFrame?: components["schemas"]["LayoutFrame"] | null;
+            /** Pitid */
+            readonly pitId: string;
+            /** Reasoncodes */
+            readonly reasonCodes?: readonly string[];
+            readonly region?: components["schemas"]["LayoutRegion"] | null;
+            /** Sensors */
+            readonly sensors?: readonly components["schemas"]["LayoutSensor"][];
+            /**
+             * Simulated
+             * @default false
+             */
+            readonly simulated?: boolean;
+            /**
+             * Source
+             * @default NONE
+             * @enum {string}
+             */
+            readonly source?: "SIMULATION_REFERENCE" | "HEIGHT_REFERENCE" | "NONE";
+            /**
+             * State
+             * @default UNAVAILABLE
+             * @enum {string}
+             */
+            readonly state?: "SIMULATION" | "PARTIAL" | "UNVERIFIED" | "UNAVAILABLE";
+            /**
+             * Unit
+             * @default cm
+             * @constant
+             */
+            readonly unit?: "cm";
+        };
+        /** MediaErrorDetail */
+        readonly MediaErrorDetail: {
+            /** Code */
+            readonly code: string;
+            /** Message */
+            readonly message: string;
+        };
+        /** MediaErrorResponse */
+        readonly MediaErrorResponse: {
+            readonly error: components["schemas"]["MediaErrorDetail"];
+        };
         /**
          * MonitoringSnapshot
          * @description Complete dashboard state snapshot conforming to proposal/openapi.yaml.
@@ -1233,6 +2214,7 @@ export interface components {
              */
             readonly dataState: "FRESH" | "STALE" | "UNAVAILABLE" | "UNKNOWN" | "NO_DATA";
             readonly deviceStatus: components["schemas"]["src__app__schemas__edge_v2__DeviceStatus"];
+            readonly fillObservation?: components["schemas"]["FillObservation"] | null;
             /** Measuredat */
             readonly measuredAt: string | null;
             readonly operations?: components["schemas"]["OperationStatus"] | null;
@@ -1294,10 +2276,29 @@ export interface components {
         readonly MonitoringSummaryV2: {
             /** Collectionthresholdpercent */
             readonly collectionThresholdPercent: number;
+            /**
+             * Filterstate
+             * @default DISABLED
+             * @enum {string}
+             */
+            readonly filterState?: "DISABLED" | "WARMING" | "READY" | "UNAVAILABLE";
+            /**
+             * Inputsource
+             * @default EDGE_STATE
+             * @enum {string}
+             */
+            readonly inputSource?: "EDGE_STATE" | "HEIGHT_SECTIONS";
             /** Loadpercent */
             readonly loadPercent?: number | null;
+            /** Rawloadpercent */
+            readonly rawLoadPercent?: number | null;
             /** Recoverythresholdpercent */
             readonly recoveryThresholdPercent: number;
+            /**
+             * Simulated
+             * @default false
+             */
+            readonly simulated?: boolean;
             /** Warningthresholdpercent */
             readonly warningThresholdPercent: number;
         };
@@ -1472,6 +2473,8 @@ export interface components {
              * @enum {string}
              */
             readonly effectiveState: "NORMAL" | "WARNING" | "CRITICAL" | "UNKNOWN" | "ERROR";
+            /** Evaluationsource */
+            readonly evaluationSource?: ("CURRENT_OBSERVATION" | "RECENT_PERSISTED") | null;
             /** Lastalertat */
             readonly lastAlertAt: string | null;
             /** Lastevaluatedat */
@@ -1575,6 +2578,14 @@ export interface components {
              * @enum {string}
              */
             readonly eventCategory: "collection" | "alert" | "error";
+            /** Eventendedat */
+            readonly eventEndedAt?: string | null;
+            /** Eventoccurredat */
+            readonly eventOccurredAt?: string | null;
+            /** Eventsimulated */
+            readonly eventSimulated?: boolean | null;
+            /** Eventwindowcovered */
+            readonly eventWindowCovered?: boolean | null;
             /**
              * Framerate
              * @default 30
@@ -1645,6 +2656,73 @@ export interface components {
             readonly pre_roll_seconds: number;
             /** Retention Days */
             readonly retention_days: number;
+        };
+        /** ReplayPart */
+        readonly ReplayPart: {
+            /** Endseconds */
+            readonly endSeconds: number;
+            /**
+             * Fromat
+             * Format: date-time
+             */
+            readonly fromAt: string;
+            /**
+             * Mapping
+             * @default LINEAR
+             * @enum {string}
+             */
+            readonly mapping?: "LINEAR" | "POINT_TIMESTAMP";
+            /** Playbackpath */
+            readonly playbackPath: string;
+            /**
+             * Recordingdate
+             * Format: date
+             */
+            readonly recordingDate: string;
+            /**
+             * Recordingid
+             * Format: uuid
+             */
+            readonly recordingId: string;
+            /**
+             * Relativeendseconds
+             * @description End on the event's zero-based playable timeline, excluding missing spans
+             * @default 0
+             */
+            readonly relativeEndSeconds?: number;
+            /**
+             * Relativestartseconds
+             * @description Start on the event's zero-based playable timeline, excluding missing spans
+             * @default 0
+             */
+            readonly relativeStartSeconds?: number;
+            /** Startseconds */
+            readonly startSeconds: number;
+            /**
+             * Toat
+             * Format: date-time
+             */
+            readonly toAt: string;
+        };
+        /** RequestValidationErrorResponse */
+        readonly RequestValidationErrorResponse: {
+            /** Detail */
+            readonly detail: readonly components["schemas"]["RequestValidationIssue"][];
+        };
+        /** RequestValidationIssue */
+        readonly RequestValidationIssue: {
+            /** Ctx */
+            readonly ctx?: {
+                readonly [key: string]: unknown;
+            } | null;
+            /** Input */
+            readonly input?: unknown;
+            /** Loc */
+            readonly loc: readonly (string | number)[];
+            /** Msg */
+            readonly msg: string;
+            /** Type */
+            readonly type: string;
         };
         /** ScanReference */
         readonly ScanReference: {
@@ -1776,6 +2854,26 @@ export interface components {
             /** Recipientid */
             readonly recipientId: string;
         };
+        /** UnavailableInterval */
+        readonly UnavailableInterval: {
+            /**
+             * Fromat
+             * Format: date-time
+             */
+            readonly fromAt: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            readonly kind: "GAP" | "UNCONFIRMED" | "FUTURE" | "MISSING" | "EXPIRED";
+            /** Reasoncode */
+            readonly reasonCode: string;
+            /**
+             * Toat
+             * Format: date-time
+             */
+            readonly toAt: string;
+        };
         /**
          * User
          * @description Authenticated user profile.
@@ -1804,13 +2902,22 @@ export interface components {
         /** V2Alert */
         readonly V2Alert: {
             /** Assessmentid */
-            readonly assessmentId: string;
+            readonly assessmentId: string | null;
             /** Eventid */
             readonly eventId: string;
+            /**
+             * Inputsource
+             * @default EDGE_STATE
+             * @enum {string}
+             */
+            readonly inputSource?: "EDGE_STATE" | "HEIGHT_SECTIONS";
+            readonly lifecycle?: components["schemas"]["AlertLifecycle"];
             /** Loadpercent */
             readonly loadPercent: number;
             /** Notificationid */
             readonly notificationId: string;
+            /** Observationid */
+            readonly observationId?: string | null;
             /**
              * Observedat
              * Format: date-time
@@ -1818,6 +2925,11 @@ export interface components {
             readonly observedAt: string;
             /** Readat */
             readonly readAt: string | null;
+            /**
+             * Simulated
+             * @default false
+             */
+            readonly simulated?: boolean;
             /**
              * Triggeredat
              * Format: date-time
@@ -1910,8 +3022,17 @@ export interface components {
              * @enum {string}
              */
             readonly category: "collection" | "alert" | "error";
+            readonly collectionCriteria?: components["schemas"]["CollectionCriteria"] | null;
+            /** Collectionsource */
+            readonly collectionSource?: ("MANUAL_CONFIRMATION" | "HEIGHT_SETTLED") | null;
+            /** Confirmedcompletion */
+            readonly confirmedCompletion?: boolean | null;
             /** Detail */
             readonly detail: string;
+            /** Detectionid */
+            readonly detectionId?: string | null;
+            /** Eventsource */
+            readonly eventSource?: "EDGE_V2_TRANSITION" | null;
             /** Id */
             readonly id: string;
             /**
@@ -1919,8 +3040,19 @@ export interface components {
              * Format: date-time
              */
             readonly occurredAt: string;
+            /** Pitattribution */
+            readonly pitAttribution?: ("RECORDED" | "CURRENT_ASSIGNMENT") | null;
+            /** Reasoncodes */
+            readonly reasonCodes?: readonly string[];
+            /**
+             * Recordingeventid
+             * @description Event ID for GET /api/v2/recordings/events/{event_id}; null when no unambiguous reference exists. Does not guarantee available footage.
+             */
+            readonly recordingEventId?: string | null;
             /** Recordingid */
             readonly recordingId?: string | null;
+            /** Resolutionobservedat */
+            readonly resolutionObservedAt?: string | null;
             /** Resolvedat */
             readonly resolvedAt?: string | null;
             /**
@@ -1928,13 +3060,23 @@ export interface components {
              * @enum {string}
              */
             readonly severity: "info" | "warning" | "error";
+            /** Simulated */
+            readonly simulated?: boolean | null;
+            /** Stateatoccurrence */
+            readonly stateAtOccurrence?: ("UNAVAILABLE" | "RECOVERED" | "PREPARING" | "DEGRADED" | "UNKNOWN") | null;
             /**
              * Status
              * @enum {string}
              */
-            readonly status: "active" | "resolved" | "completed";
+            readonly status: "active" | "resolved" | "completed" | "unknown";
+            /** Statusbasis */
+            readonly statusBasis?: ("AT_OCCURRENCE" | "CURRENT_EVALUATION" | "PERSISTED_RESOLUTION" | "UNVERIFIED") | null;
             /** Title */
             readonly title: string;
+            /** Transitionid */
+            readonly transitionId?: number | null;
+            /** Transitionkind */
+            readonly transitionKind?: ("DEVICE_STATE_CHANGED" | "MEASUREMENT_VALIDITY_CHANGED") | null;
             /**
              * Type
              * @enum {string}
@@ -1996,13 +3138,40 @@ export interface operations {
                     readonly "application/json": components["schemas"]["PitConfigResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2035,13 +3204,40 @@ export interface operations {
                     readonly "application/json": components["schemas"]["PitConfigResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2056,6 +3252,8 @@ export interface operations {
                 readonly page?: number;
                 /** @description Page size */
                 readonly pageSize?: number;
+                /** @description Automatic collection criteria: current or all historical */
+                readonly collection_scope?: "current" | "all";
                 /** @description Pit identifier */
                 readonly pit_id?: string;
             };
@@ -2074,13 +3272,13 @@ export interface operations {
                     readonly "application/json": components["schemas"]["EventPage"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
                 };
             };
         };
@@ -2109,13 +3307,13 @@ export interface operations {
                     readonly "application/json": components["schemas"]["LoadHistory"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
                 };
             };
         };
@@ -2142,13 +3340,112 @@ export interface operations {
                     readonly "application/json": components["schemas"]["ClipDetail"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
                 };
             };
         };
@@ -2175,13 +3472,121 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
                 };
             };
         };
@@ -2275,13 +3680,40 @@ export interface operations {
                     readonly "application/json": components["schemas"]["NotificationRecipientPage"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2312,13 +3744,49 @@ export interface operations {
                     readonly "application/json": components["schemas"]["NotificationRecipient"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2353,13 +3821,67 @@ export interface operations {
                     readonly "application/json": components["schemas"]["NotificationRecipient"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed */
+            readonly 412: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2391,13 +3913,31 @@ export interface operations {
                     readonly "application/json": components["schemas"]["NotificationPage"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2422,13 +3962,40 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2461,13 +4028,49 @@ export interface operations {
                     };
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2501,13 +4104,49 @@ export interface operations {
                     readonly "application/json": components["schemas"]["Notification"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2542,13 +4181,112 @@ export interface operations {
                     readonly "application/json": components["schemas"]["RecordingPage"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
                 };
             };
         };
@@ -2576,13 +4314,112 @@ export interface operations {
                     readonly "application/json": components["schemas"]["Recording"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
                 };
             };
         };
@@ -2607,13 +4444,31 @@ export interface operations {
                     readonly "application/json": components["schemas"]["Session"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2640,13 +4495,31 @@ export interface operations {
                     readonly "application/json": components["schemas"]["Session"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2671,13 +4544,40 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2705,13 +4605,40 @@ export interface operations {
                     readonly "application/json": components["schemas"]["AlertSettings"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2746,13 +4673,119 @@ export interface operations {
                     readonly "application/json": components["schemas"]["AlertSettings"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed */
+            readonly 412: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Precondition Required */
+            readonly 428: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly get_active_alerts_api_v2_monitoring_active_alerts_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly scope?: "FILL_OPERATIONS" | "ALL";
+                readonly pit_id?: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ActiveFillAlertPageV2"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2781,13 +4814,40 @@ export interface operations {
                     readonly "application/json": components["schemas"]["V2AlertPage"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2816,13 +4876,40 @@ export interface operations {
                     readonly "application/json": components["schemas"]["CollectionEventPage"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2853,13 +4940,101 @@ export interface operations {
                     readonly "application/json": components["schemas"]["CollectionEventPage"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly get_collection_summary_api_v2_monitoring_collection_summary_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly window_days?: number;
+                readonly pit_id?: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CollectionSummaryV2"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2886,13 +5061,160 @@ export interface operations {
                     readonly "application/json": unknown;
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly get_fill_forecast_api_v2_monitoring_fill_forecast_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly pit_id?: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["FillForecastV2"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly get_measurement_layout_api_v2_monitoring_layout_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly pit_id?: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MeasurementLayoutV2"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2902,7 +5224,7 @@ export interface operations {
             readonly query?: {
                 readonly from?: string | null;
                 readonly to?: string | null;
-                readonly bucket_seconds?: (60 | 300 | 900 | 3600) | null;
+                readonly bucket_seconds?: (60 | 300 | 900 | 3600 | 7200 | 21600 | 86400) | null;
                 readonly pit_id?: string;
             };
             readonly header?: never;
@@ -2922,13 +5244,100 @@ export interface operations {
                     readonly "application/json": components["schemas"]["LoadHistoryV2"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly profiles_api_v2_monitoring_profiles_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly pit_id?: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["LidarProfilePageV2"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2955,13 +5364,40 @@ export interface operations {
                     readonly "application/json": components["schemas"]["MonitoringSnapshotV2"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -2992,13 +5428,112 @@ export interface operations {
                     readonly "application/json": components["schemas"]["DailyPage"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
                 };
             };
         };
@@ -3025,13 +5560,112 @@ export interface operations {
                     readonly "application/json": components["schemas"]["DailyRecording"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
                 };
             };
         };
@@ -3058,13 +5692,121 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
                 };
             };
         };
@@ -3102,13 +5844,325 @@ export interface operations {
                     readonly "application/json": components["schemas"]["DailyRecording"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly list_events_api_v2_recordings_events_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly pit_id?: string | null;
+                readonly category?: "all" | "collection" | "alert" | "error";
+                readonly from?: string | null;
+                readonly to?: string | null;
+                readonly page?: number;
+                readonly pageSize?: number;
+                readonly before_seconds?: number;
+                readonly after_seconds?: number;
+                readonly include_playback?: boolean;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["EventRecordingPage"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly replay_event_api_v2_recordings_events__event_id__get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly pit_id?: string | null;
+                readonly before_seconds?: number;
+                readonly after_seconds?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly event_id: string;
+            };
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["EventRecordingReplay"];
+                };
+            };
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
                 };
             };
         };

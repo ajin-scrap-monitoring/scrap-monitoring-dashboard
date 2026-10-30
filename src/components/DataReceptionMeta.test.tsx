@@ -11,9 +11,8 @@ test.each([
   expect(screen.getByRole("status")).toHaveTextContent(label);
   const time = view.container.querySelector("time");
   expect(time).toHaveAttribute("datetime", lastReceivedAt);
-  const date = new Date(lastReceivedAt);
-  expect(time).toHaveTextContent([date.getHours(), date.getMinutes(), date.getSeconds()].map(value => String(value).padStart(2, "0")).join(":"));
-  expect(time).toHaveAttribute("title", new Date(lastReceivedAt).toString());
+  expect(time).toHaveTextContent("14:23:41");
+  expect(time).toHaveAttribute("title", "2026-10-15 14:23:41 (한국 표준시)");
 });
 
 test("수신 전에는 시각을 생성하지 않는다", () => {

@@ -2,13 +2,19 @@ import type { Page } from "@playwright/test";
 
 import type { components } from "../src/generated/backend-contract.js";
 import { alertSettingsFixture, eventPageFixture, loadHistoryFixture, notificationPageFixture, sessionFixture } from "../src/test/api-contract-fixtures.js";
-import { mediaRecordingFixture, monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
+import { collectionSummaryFixture, eventRecordingPageFixture, eventReplayFixture, eventReplayPartFixture, measurementLayoutFixture, monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
 
-import { syntheticMp4 } from "./contract-api.js";
-import { installDailyRecordingApi } from "./daily-recording-api.js";
+import { installDailyRecordingApi, syntheticDailyRecording } from "./daily-recording-api.js";
 
 export type BackendSnapshot = components["schemas"]["MonitoringSnapshotV2"];
-export type MediaMode = "healthy" | "silent" | "invalid" | "unavailable" | "unauthorized";
+export type EventReplayResponse = ReturnType<typeof eventReplayFixture>;
+export function syntheticEventReplay(overrides: Record<string, unknown> = {}, event: Record<string, unknown> = {}): EventReplayResponse {
+  const id = syntheticDailyRecording.recording_id;
+  const base = eventReplayFixture({}, event);
+  const part = eventReplayPartFixture({ recordingId: id, playbackPath: `/media/daily-recordings/${id}/hls/index.m3u8`, fromAt: base.event.windowFrom, toAt: base.event.windowTo });
+  return { ...base, effectiveTo: base.event.windowTo, parts: [part], ...overrides };
+}
+export type MediaMode = "healthy" | "silent" | "slow-start" | "interrupted" | "invalid" | "unavailable" | "unauthorized";
 export type BrowserControl = {
   emit: (type: string, data: string) => void;
   eventUrls: () => string[];
@@ -22,7 +28,8 @@ declare global {
 export function historyV2(url: URL, snapshot: BackendSnapshot): components["schemas"]["LoadHistoryV2"] {
   const until = Date.parse(url.searchParams.get("to") ?? snapshot.serverTime);
   const since = Date.parse(url.searchParams.get("from") ?? new Date(until - 86_400_000).toISOString());
-  const bucketSeconds = until - since <= 86_400_000 ? 60 : 900;
+  // Backend와 같이 응답 상한 1,441 구간을 만족하는 가장 작은 간격을 고른다.
+  const bucketSeconds = ([60, 300, 900, 3600, 7200, 21600, 86400] as const).find((seconds) => Math.ceil(until / (seconds * 1000)) - Math.floor(since / (seconds * 1000)) <= 1441) ?? 86400;
   const interval = bucketSeconds * 1000;
   const first = Math.floor(since / interval) * interval;
   return {
@@ -49,9 +56,15 @@ export function historyV2(url: URL, snapshot: BackendSnapshot): components["sche
 export async function installBackendApi(page: Page, { initial = monitoringV2StateFixture("UNAVAILABLE"), authenticated = true, mediaMode = "healthy", runtimeConfig = true }: { initial?: BackendSnapshot; authenticated?: boolean; mediaMode?: MediaMode; runtimeConfig?: boolean } = {}) {
   let snapshot = initial;
   let sessionActive = authenticated;
-  let recordings: components["schemas"]["Recording"][] = [mediaRecordingFixture];
+  let eventReplays: EventReplayResponse[] = [syntheticEventReplay()];
+  let historyEvents: Array<typeof eventPageFixture.items[number]> = [...eventPageFixture.items];
   let notifications: components["schemas"]["NotificationPage"] = notificationPageFixture;
-  let completionEvents: components["schemas"]["EventPage"]["items"] = [];
+  let collectionSummary: ReturnType<typeof collectionSummaryFixture> = collectionSummaryFixture();
+  // null이면 해당 API를 제공하지 않는 응답(501)이다.
+  let activeAlerts: unknown = null;
+  let layout: unknown = measurementLayoutFixture();
+  let profiles: unknown = null;
+  let loadHistory: ((url: URL) => { status: number; body: unknown; delayMs?: number } | undefined) | null = null;
   const requests: URL[] = [];
   if (runtimeConfig) await page.route("**/runtime-config.json", (route) => route.fulfill({ json: { schemaVersion: 1, pitId: initial.pitId, cameraId: "camera-main" } }));
   await page.addInitScript(({ initialSnapshot, mode }) => {
@@ -86,6 +99,8 @@ export async function installBackendApi(page: Page, { initial = monitoringV2Stat
       });
       if (!url.pathname.startsWith("/media/cameras/") || !url.pathname.endsWith("/live")) return nativeFetch(input, init);
       attempts += 1;
+      const silent = mode === "silent" || (mode === "slow-start" && attempts === 1);
+      const interrupted = mode === "interrupted" && attempts === 1;
       if (mode === "unavailable" || mode === "unauthorized") return Promise.resolve(new Response(null, { status: mode === "unauthorized" ? 401 : 503 }));
       if (init?.signal?.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
       const canvas = document.createElement("canvas");
@@ -117,9 +132,9 @@ export async function installBackendApi(page: Page, { initial = monitoringV2Stat
           controller = value;
           videos.add(identity);
           init?.signal?.addEventListener("abort", abort, { once: true });
-          if (mode !== "silent") {
+          if (!silent) {
             controller.enqueue(frame);
-            timer = setInterval(() => { if (!closed) controller.enqueue(frame); }, 300);
+            if (!interrupted) timer = setInterval(() => { if (!closed) controller.enqueue(frame); }, 300);
           }
         }, cancel: cleanup,
       });
@@ -141,7 +156,14 @@ export async function installBackendApi(page: Page, { initial = monitoringV2Stat
       await (sessionActive ? json(sessionFixture) : json({ detail: "Unauthorized" }, 401));
     } else if (!sessionActive) await json({ detail: "Unauthorized" }, 401);
     else if (url.pathname === "/api/v2/monitoring/snapshot") await json(snapshot);
-    else if (url.pathname === "/api/v2/monitoring/load-history") await json(historyV2(url, snapshot));
+    else if (url.pathname === "/api/v2/monitoring/load-history") {
+      const override = loadHistory?.(url);
+      if (override?.delayMs) await new Promise((resolve) => setTimeout(resolve, override.delayMs));
+      await (override ? json(override.body, override.status) : json(historyV2(url, snapshot)));
+    }
+    else if (url.pathname === "/api/v2/monitoring/active-alerts") await (activeAlerts === null ? json({ detail: "Unexpected fixture request" }, 501) : json(activeAlerts));
+    else if (url.pathname === "/api/v2/monitoring/layout") await (layout === null ? json({ detail: "Layout unavailable" }, 503) : json(layout));
+    else if (url.pathname === "/api/v2/monitoring/profiles") await (profiles === null ? json({ detail: "Unexpected fixture request" }, 501) : json(profiles));
     else if (url.pathname === "/api/v2/monitoring/alerts") await json({ items: [], limit: 20, offset: Number(url.searchParams.get("offset") ?? 0), totalItems: 0 });
     else if (url.pathname === `/api/v1/config/pits/${encodeURIComponent(snapshot.pitId)}`) await json({ id: snapshot.pitId, name: "시험 pit", total_depth_cm: 300, warning_threshold_percent: 75, critical_threshold_percent: 85, updated_at: snapshot.serverTime });
     else if (url.pathname === "/api/v1/notifications") await json(notifications);
@@ -158,25 +180,42 @@ export async function installBackendApi(page: Page, { initial = monitoringV2Stat
       await json(updated);
     }
     else if (url.pathname === "/api/v1/history/load") await json(loadHistoryFixture);
-    else if (url.pathname === "/api/v1/events") await json(url.searchParams.get("pageSize") === "1" && url.searchParams.get("category") === "collection"
-      ? { items: completionEvents, page: { page: 1, pageSize: 1, totalPages: completionEvents.length ? 1 : 0, totalItems: completionEvents.length } } : eventPageFixture);
+    else if (url.pathname === "/api/v1/events") {
+      const category = url.searchParams.get("category");
+      const filtered = historyEvents.filter((item) => !category || item.category === category);
+      const [number, size] = [Number(url.searchParams.get("page") ?? 1), Number(url.searchParams.get("pageSize") ?? 20)];
+      await json({ ...eventPageFixture, items: filtered.slice((number - 1) * size, number * size),
+        page: { page: number, pageSize: size, totalItems: filtered.length, totalPages: Math.ceil(filtered.length / size) } });
+    }
+    else if (url.pathname === "/api/v2/monitoring/collection-summary") await json(collectionSummary);
     else if (url.pathname === "/api/v1/settings/alerts") await json(alertSettingsFixture);
     else if (url.pathname === "/api/v1/notification-recipients") await json({ items: [], page: { page: 1, pageSize: 100, totalItems: 0, totalPages: 1 } });
-    else if (url.pathname === "/api/v1/recordings") await json({ items: recordings, page: { page: 1, pageSize: 100, totalItems: recordings.length, totalPages: 1 } });
-    else if (url.pathname.startsWith("/api/v1/recordings/")) {
-      const recording = recordings.find((item) => item.id === decodeURIComponent(url.pathname.split("/").at(-1) ?? ""));
-      await (recording ? json(recording) : json({ detail: "Not found" }, 404));
+    else if (url.pathname === "/api/v2/recordings/events") {
+      const category = url.searchParams.get("category");
+      const withPlayback = url.searchParams.get("include_playback") === "true";
+      const items = eventReplays.filter(item => !category || item.event.category === category)
+        .map(item => withPlayback && !("playback" in item.event) ? { ...item.event, playback: { state: item.state, playbackSeconds: item.playbackSeconds, reasonCodes: item.reasonCodes } } : item.event);
+      const [number, size] = [Number(url.searchParams.get("page") ?? 1), Number(url.searchParams.get("pageSize") ?? 100)];
+      await json({ ...eventRecordingPageFixture(items.slice((number - 1) * size, number * size)),
+        page: { page: number, pageSize: size, totalItems: items.length, totalPages: Math.ceil(items.length / size) } });
+    } else if (url.pathname.startsWith("/api/v2/recordings/events/")) {
+      const replay = eventReplays.find(item => item.event.eventId === decodeURIComponent(url.pathname.split("/").at(-1) ?? ""));
+      await (replay ? json(replay) : json({ detail: "Not found" }, 404));
     } else await json({ detail: "Unexpected fixture request" }, 501);
   });
-  await page.route("**/media/clips/**", (route) => route.fulfill({ body: syntheticMp4, contentType: "video/mp4" }));
   const daily = await installDailyRecordingApi(page, () => sessionActive, url => requests.push(url));
   return {
     requests,
     daily,
     expire: () => { sessionActive = false; },
-    setRecordings: (next: typeof recordings) => { recordings = next; },
+    setEventReplays: (next: EventReplayResponse[]) => { eventReplays = next; },
+    setHistoryEvents: (next: typeof historyEvents) => { historyEvents = next; },
     setNotifications: (next: typeof notifications) => { notifications = next; },
-    setCompletionEvents: (next: typeof completionEvents) => { completionEvents = next; },
+    setCollectionSummary: (next: typeof collectionSummary) => { collectionSummary = next; },
+    setActiveAlerts: (next: unknown) => { activeAlerts = next; },
+    setLayout: (next: unknown) => { layout = next; },
+    setProfiles: (next: unknown) => { profiles = next; },
+    setLoadHistory: (next: typeof loadHistory) => { loadHistory = next; },
     async snapshot(next: BackendSnapshot) { snapshot = next; await page.evaluate((value) => window.backendFixture.emit("monitoring.snapshot", JSON.stringify(value)), next); },
   };
 }
