@@ -18,7 +18,7 @@ COPY src ./src
 COPY docs/mockups/assets/OFL.txt /app/licenses/NotoSansKR-OFL.txt
 
 # ARG 값은 ENV와 달리 이 선언만으로 최종 컨테이너의 환경 변수에 남지 않는다.
-ARG APP_VERSION=0.4.1
+ARG APP_VERSION=0.5.0
 ARG VITE_ENABLE_MOCK_DATA=false
 ARG VITE_MONITORING_API_VERSION=v2
 ARG VITE_LIVE_VIDEO_MODE=mjpeg
