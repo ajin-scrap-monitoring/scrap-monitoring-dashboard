@@ -263,6 +263,52 @@ test.each(["deleted", "expired"])("다운로드 직전 %s 상태는 새 메타�
   expect(screen.getByRole("button", { name: "다운로드 불가" })).toBeDisabled();
 });
 
+test.each([
+  ["deleted", "삭제됨"],
+  ["expired", "만료됨"],
+] as const)("날짜 녹화의 status가 %s면 보관 만료 줄에 %s을 표시한다", async (status, label) => {
+  const { data } = await fixture();
+  const daily = {
+    ...data.recordings[0],
+    source: "daily" as const,
+    daily: {
+      source: "daily" as const,
+      id: "550e8400-e29b-41d4-a716-446655440000",
+      cameraId: "camera-main",
+      recordingDate: "2026-10-12",
+      timezone: "Asia/Seoul" as const,
+      windowStartsAt: "2026-10-11T15:00:00Z",
+      windowEndsAt: "2026-10-12T15:00:00Z",
+      status,
+      coverage: "partial" as const,
+      hasGaps: false,
+      coverageAsOfAt: "2026-10-11T15:01:00Z",
+      playableUntilAt: null,
+      recordedSeconds: 50,
+      gaps: [],
+      availableIntervals: [],
+      playbackState: "unavailable" as const,
+      playbackProtocol: null,
+      playbackPath: null,
+      exportAllowed: false,
+      exportState: "not_requested" as const,
+      downloadPath: null,
+      sizeBytes: null,
+      expiresAt: "2026-11-12T15:00:00Z",
+      exportExpiresAt: null,
+      error: null,
+    },
+    mediaStatus: status,
+    status: "expired" as const,
+    retentionStartsAt: "-",
+    retentionEndsAt: status === "deleted" ? "삭제됨" : "만료됨",
+  };
+  const view = render(<RecordingsPage recordings={[daily]} headerNotifications={[]} reception={data.reception} />);
+  const retention = view.container.querySelector(".recording-retention");
+  expect(retention).toHaveTextContent(label);
+  expect(retention).not.toHaveTextContent("2026-11-12");
+});
+
 test.each([404, 410])("다운로드 재조회 HTTP %s는 파일 접근을 시작하지 않는다", async (status) => {
   const { data, ready } = await fixture();
   const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);

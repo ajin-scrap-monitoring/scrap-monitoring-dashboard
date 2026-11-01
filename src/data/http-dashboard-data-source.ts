@@ -31,6 +31,7 @@ import { parseErrorBody, type ParsedErrorBody, type ValidationIssue } from "./er
 import { displayTimeOffset } from "../display-time";
 import { parseMeasurementLayoutV2 } from "./measurement-layout-v2";
 import { parseActiveAlertsV2, type ActiveFillAlerts } from "./active-alerts-v2";
+import { parseCameraStatusV2, type CameraStatusV2 } from "./camera-status-v2";
 import { updateLoadOneHourAgo } from "./load-one-hour-ago";
 import { parseLoadHistoryV2, type LoadHistoryScope } from "./load-history-v2";
 import { configuredLiveVideoMode, configuredMonitoringVersion, mjpegPlaybackEnabled, runtimeFeatureSelection, v1MonitoringEnabled, v2MonitoringEnabled, whepPlaybackEnabled } from "../build-features";
@@ -137,15 +138,27 @@ function applyCollectionInsights(monitoring: DashboardData["monitoring"], insigh
   monitoring.lidarProfiles = measuring && insights?.profiles ? insights.profiles : [];
   monitoring.measurementLayout = insights ? insights.layout : undefined;
   const reported = insights?.activeAlerts ?? null;
-  // evaluationState는 적재율 판정 상태이며 장비와 측정 항목의 표시 여부를 결정하지 않는다.
-  const fillCurrent = measuring && reported?.evaluationState === monitoring.v2?.operations?.effectiveState;
-  monitoring.alerts = reported?.items
-    .filter((alert) => alert.health !== undefined || fillCurrent)
-    .map((alert) => ({ ...alert, time: timeOnly(alert.time), ...(alert.startedAt !== undefined && { startedAt: alert.startedAt === null ? null : wallClock(alert.startedAt) }) })) ?? [];
+  const currentSnapshotId = monitoring.v2?.snapshotId;
+  const sameBasis = reported !== null && currentSnapshotId !== undefined && reported.basis.snapshotId === currentSnapshotId;
+  const snapshotEffectiveState = monitoring.v2?.operations?.effectiveState ?? "UNKNOWN";
+  const isMismatch = sameBasis && snapshotEffectiveState !== reported.evaluationState;
+  monitoring.alerts = reported?.items.map((alert) => ({
+    ...alert,
+    time: timeOnly(alert.time),
+    ...(alert.startedAt !== undefined && { startedAt: alert.startedAt === null ? null : wallClock(alert.startedAt) }),
+  })) ?? [];
   monitoring.activeAlertsState = reported && {
-    evaluationState: fillCurrent ? reported.evaluationState : "UNKNOWN",
+    evaluationState: reported.evaluationState,
     reasonCodes: reported.reasonCodes,
     coverage: reported.coverage,
+    basis: reported.basis,
+    mismatch: isMismatch ? {
+      snapshotState: snapshotEffectiveState,
+      alertState: reported.evaluationState,
+      measuredAt: reported.basis.measuredAt,
+      lastEvaluatedAt: reported.basis.lastEvaluatedAt,
+      reasonCodes: reported.basis.reasonCodes,
+    } : null,
   };
 }
 
@@ -662,6 +675,14 @@ export function createHttpDashboardDataSource({
       deleteDailyRecording: async (recordingId: string, signal?: AbortSignal): Promise<DailyRecordingDeletion> => (await recordingsApi()).deleteDailyRecording(recordingId, signal),
       prepareDailyRecordingExport: async (recordingId: string, signal?: AbortSignal) => (await recordingsApi()).prepareDailyRecordingExport(recordingId, signal),
     } : {}),
+    prepareEventRecordingExport: async (eventId, options, signal) => (await recordingsApi()).prepareEventRecordingExport(eventId, options, signal),
+    getEventRecordingExportStatus: async (statusPath, signal) => (await recordingsApi()).getEventRecordingExportStatus(statusPath, signal),
+    getDailyRecordingMediaInfo: async (recordingId, signal) => (await recordingsApi()).getDailyRecordingMediaInfo(recordingId, signal),
+    getClipMediaInfo: async (clipId, signal) => (await recordingsApi()).getClipMediaInfo(clipId, signal),
+    getCameraStatus: async (signal?: AbortSignal): Promise<CameraStatusV2> => {
+      const value = await request<unknown>(pitPath("/api/v2/monitoring/camera-status"), { signal });
+      return parseCameraStatusV2(value, pitId);
+    },
     getRecordingCoverage: async (recordingId, signal) => (await recordingsApi()).getRecordingCoverage(recordingId, signal),
     markAllNotificationsRead: async () => {
       const session = currentData?.session;

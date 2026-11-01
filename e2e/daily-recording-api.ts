@@ -35,6 +35,10 @@ export async function installDailyRecordingApi(page: Page, authenticated: () => 
     requests.push(request);
     onRequest(url);
     if (!authenticated()) { await route.fulfill({ status: 401, json: { detail: "Unauthorized" } }); return; }
+    if (url.pathname.endsWith("/media-info")) {
+      await route.fallback();
+      return;
+    }
     if (url.pathname === "/api/v2/recordings/daily") {
       if (failedList) { await route.fulfill({ status: 503, json: { detail: "Synthetic list failure" } }); return; }
       const from = url.searchParams.get("from_date") ?? "";

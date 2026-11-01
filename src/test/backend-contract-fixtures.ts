@@ -144,12 +144,28 @@ export function lidarProfilesFixture(overrides: Record<string, unknown> = {}) {
   };
 }
 
+export function activeAlertsBasisFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    snapshotId: "synthetic-snapshot-1",
+    dataState: "FRESH",
+    filterState: "READY",
+    inputSource: "EDGE_STATE",
+    measuredAt: "2026-10-13T00:00:05Z",
+    lastEvaluatedAt: "2026-10-13T00:00:05Z",
+    evaluationSource: "CURRENT_OBSERVATION",
+    lastKnownState: "NORMAL",
+    reasonCodes: [],
+    ...overrides,
+  };
+}
+
 export function activeAlertsFixture(overrides: Record<string, unknown> = {}) {
   return {
     pitId: "pit-01",
     computedAt: "2026-10-13T00:00:10Z",
     scope: "ALL",
     evaluationState: "CRITICAL",
+    basis: activeAlertsBasisFixture(),
     items: [{
       id: "fill-critical:pit-01", type: "collection_required", severity: "error", title: "수거 필요",
       evaluatedAt: "2026-10-13T00:00:05Z", measuredAt: "2026-10-13T00:00:05Z", evaluationSource: "CURRENT_OBSERVATION",
@@ -270,6 +286,23 @@ export function eventReplayFixture(overrides: Record<string, unknown> = {}, even
     reasonCodes: [],
     downloadPath: null,
     downloadReasonCode: "EVENT_RANGE_EXPORT_UNSUPPORTED",
+    ...overrides,
+  };
+}
+
+export function cameraStatusFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    pitId: "pit-01",
+    cameraId: "camera-main",
+    state: "HEALTHY",
+    connectionState: "CONNECTED",
+    statusBasis: "ACCEPTED_JPEG_RECEIPT",
+    computedAt: "2026-10-13T00:00:10Z",
+    assessedAt: "2026-10-13T00:00:10Z",
+    validUntilAt: "2026-10-13T00:00:15Z",
+    validForSeconds: 5.0,
+    lastFrameReceivedAt: "2026-10-13T00:00:08Z",
+    reasonCodes: [],
     ...overrides,
   };
 }

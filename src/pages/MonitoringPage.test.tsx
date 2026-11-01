@@ -244,9 +244,62 @@ test("활성 알림은 장비 항목과 서버 최초 확인 시각을 표시하
   expect(within(card).getByText("엣지 장비 일부 기능 제한, 서버 최초 확인 10-13 08:47")).toBeVisible();
   expect(within(card).getByText("엣지 장비 일부 기능 제한, 서버 최초 확인 10-13 08:47").closest(".active-alert")).toHaveAttribute("title", expect.stringContaining("EDGE_STATUS"));
   expect(within(card).getByText("적재율 경보")).toBeVisible();
-  expect(within(card).getByText("판정 불가")).toBeVisible();
+  expect(within(card).getByText("적재율 판정 불가")).toBeVisible();
   expect(card.querySelector(".alert-count")).toHaveTextContent("1건");
   expect(container.querySelectorAll(".monitoring-grid > .card")).toHaveLength(8);
+});
+
+test("evaluationState가 UNKNOWN이고 lastKnownState가 있으면 마지막 판정을 보조 표기한다", async () => {
+  const { data, dataSource } = await alertData({
+    evaluationState: "UNKNOWN",
+    reasonCodes: ["OPERATIONS_EVALUATION_PENDING"],
+    coverage: [],
+    basis: {
+      snapshotId: "synthetic-snapshot-1",
+      dataState: "FRESH",
+      filterState: "WARMING",
+      inputSource: "EDGE_STATE",
+      measuredAt: "2026-10-13T00:00:05Z",
+      lastEvaluatedAt: "2026-10-13T00:00:05Z",
+      evaluationSource: "CURRENT_OBSERVATION",
+      lastKnownState: "NORMAL",
+      reasonCodes: ["OPERATIONS_EVALUATION_PENDING"],
+    },
+  });
+  const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
+  const card = container.querySelector(".alerts-card") as HTMLElement;
+  expect(within(card).getByText("적재율 경보")).toBeVisible();
+  expect(within(card).getByText("적재율 판정 불가 (마지막 판정 경고 기준 미만)")).toBeVisible();
+});
+
+test("basis.snapshotId가 현재 snapshot과 같고 판정이 다르면 판정 불일치 안내를 표시한다", async () => {
+  const { data, dataSource } = await alertData({
+    evaluationState: "CRITICAL",
+    reasonCodes: [],
+    coverage: [],
+    mismatch: {
+      snapshotState: "NORMAL",
+      alertState: "CRITICAL",
+      measuredAt: "2026-10-13T00:00:05Z",
+      lastEvaluatedAt: "2026-10-13T00:00:05Z",
+      reasonCodes: ["MISMATCH_REASON"],
+    },
+    basis: {
+      snapshotId: "synthetic-snapshot-1",
+      dataState: "FRESH",
+      filterState: "READY",
+      inputSource: "EDGE_STATE",
+      measuredAt: "2026-10-13T00:00:05Z",
+      lastEvaluatedAt: "2026-10-13T00:00:05Z",
+      evaluationSource: "CURRENT_OBSERVATION",
+      lastKnownState: "NORMAL",
+      reasonCodes: ["MISMATCH_REASON"],
+    },
+  });
+  const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
+  const card = container.querySelector(".alerts-card") as HTMLElement;
+  expect(within(card).getByText("현재 판정과 활성 알림 판정이 다름")).toBeVisible();
+  expect(within(card).getByText("현재 판정과 활성 알림 판정이 다름")).toHaveAttribute("title", expect.stringContaining("현재 판정 경고 기준 미만, 활성 알림 위험"));
 });
 
 test("startedAt이 null이면 시작 정보 없음으로 표시하고 서버 판정 시각으로 대신 채우지 않는다", async () => {

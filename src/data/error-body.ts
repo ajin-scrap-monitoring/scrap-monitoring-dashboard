@@ -2,7 +2,12 @@ import { record } from "./contract-values";
 
 // Backend 오류 본문은 3형식이며 같은 경로가 둘 이상을 낼 수 있다.
 // HTTPErrorResponse {detail: string}, 요청 검증 {detail: [{loc, msg, type}]}, MediaErrorResponse {error: {code, message}}.
-export type ValidationIssue = { loc: ReadonlyArray<string | number>; message: string; type: string };
+export type ValidationIssue = {
+  loc: ReadonlyArray<string | number>;
+  message: string;
+  type: string;
+  ctx?: Record<string, unknown>;
+};
 
 export type ParsedErrorBody = {
   code?: string;
@@ -16,7 +21,12 @@ function validationIssues(detail: unknown[]) {
   const issues: ValidationIssue[] = [];
   for (const item of detail) {
     if (!record(item) || !Array.isArray(item.loc) || !item.loc.every((part) => typeof part === "string" || typeof part === "number")) return undefined;
-    issues.push({ loc: item.loc, message: typeof item.msg === "string" ? item.msg : "", type: typeof item.type === "string" ? item.type : "" });
+    issues.push({
+      loc: item.loc,
+      message: typeof item.msg === "string" ? item.msg : "",
+      type: typeof item.type === "string" ? item.type : "",
+      ...(record(item.ctx) && { ctx: item.ctx }),
+    });
   }
   return issues;
 }

@@ -15,10 +15,25 @@ import type { DashboardData, DataAreaState, DataReception, EventCategory, Header
 import { recordingsPerPage } from "../data/recording-list";
 import { clipIdentifier } from "../data/recording-coverage";
 import { dailyPlaybackTimestamp, dailyRecordingAvailability } from "../data/daily-recordings";
+import { byteSize } from "../data/recording-values";
+import { wallClock } from "../data/contract-values";
+import type { EventExportStatus } from "../data/event-recordings";
+import { clearStoredExport, getStoredExport, saveStoredExport } from "../data/event-export-memory";
+import {
+  getCachedClipMediaInfo,
+  getCachedDailyMediaInfo,
+  scheduleMediaInfoRequest,
+  setCachedClipMediaInfo,
+  setCachedDailyMediaInfo,
+  type ClipMediaInfoResult,
+  type DailyMediaInfoResult,
+} from "../data/media-info-cache";
 import { useDelayedState } from "../use-delayed-state";
 import { useModalFocus } from "../use-modal-focus";
 import { useLatestRequest } from "../use-latest-request";
 import { recordingErrorCode, recordingStatus } from "../recording-status";
+import { eventExportErrorCodeMessage, parseExportError } from "./event-export-error";
+import { generateRequestId } from "./request-id";
 
 const recordingTypes = ["전체", "수거", "알림", "오류"];
 const RecordingCoverageDetails = lazy(() => import("../components/RecordingCoverageDetails"));
@@ -52,10 +67,8 @@ function replayTimestamp(recording: Recording, seconds: number) {
   return recordingTimeFormat.format(new Date(Math.min(at, Date.parse(part.toAt))));
 }
 
-function aspectRatio(recording: Recording | undefined) {
-  if (!recording) return "정보 없음";
-  const { width, height } = recording;
-  if (width === null || height === null) return "정보 없음";
+function aspectRatio(width: number | null | undefined, height: number | null | undefined) {
+  if (width == null || height == null) return "정보 없음";
   return width * 3 === height * 4 ? "4:3" : width * 9 === height * 16 ? "16:9" : `${width}:${height}`;
 }
 
@@ -126,9 +139,24 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
   const [playbackError, setPlaybackError] = useState<{ key?: string; message: string } | null>(null);
   const [downloadError, setDownloadError] = useState("");
   const [detailRevision, setDetailRevision] = useState(0);
+
+  // B-2 이벤트 구간 다운로드 상태
+  const [eventExport, setEventExport] = useState<EventExportStatus | null>(null);
+  const [eventExportBusy, setEventExportBusy] = useState(false);
+  const [eventExportError, setEventExportError] = useState<{ message: string; code?: string } | null>(null);
+  const lastRequestIdRef = useRef<string | null>(null);
+
+  // B-3 영상 파일 정보 상태
+  const [mediaInfoState, setMediaInfoState] = useState<{
+    key?: string;
+    status: "idle" | "loading" | "ready" | "not_ready" | "deleted_or_expired" | "error";
+    dailyData?: DailyMediaInfoResult;
+    clipData?: ClipMediaInfoResult;
+    error?: string;
+  }>({ status: "idle" });
   const [deletion, setDeletion] = useState<{ id: string; date: string; busy: boolean; error?: string } | null>(null);
   const [deletionNotice, setDeletionNotice] = useState("");
-  const closeDeletion = useCallback(() => setDeletion(null), []);
+  const closeDeletion = useCallback(() => setDeletion(null), [setDeletion]);
   const playerRef = useRef<HTMLVideoElement>(null);
   const expandedPlayerRef = useRef<HTMLVideoElement>(null);
   const downloadController = useRef<AbortController | null>(null);
@@ -217,6 +245,196 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
   }, [dataSource, selectedId, selectedKey, selectedSource, selectedSample, detailRevision]);
   useEffect(() => () => downloadController.current?.abort(), [dataSource]);
 
+  const currentUserId = session?.user?.id ?? "anonymous";
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedRecording || selectedRecording.source === "daily") {
+      lastRequestIdRef.current = null;
+      queueMicrotask(() => {
+        if (!active) return;
+        setEventExport(null);
+        setEventExportError(null);
+        setEventExportBusy(false);
+      });
+      return () => { active = false; };
+    }
+    const eventId = selectedRecording.id;
+    queueMicrotask(() => {
+      if (!active) return;
+      setEventExport(null);
+      setEventExportError(null);
+      setEventExportBusy(false);
+    });
+
+    const stored = getStoredExport(currentUserId, eventId);
+    if (stored && dataSource?.getEventRecordingExportStatus) {
+      lastRequestIdRef.current = stored.requestId;
+      const controller = new AbortController();
+      void dataSource.getEventRecordingExportStatus(stored.statusPath, controller.signal)
+        .then((status) => {
+          if (!active || controller.signal.aborted) return;
+          if (status.status === "deleted" || status.status === "expired") {
+            clearStoredExport(currentUserId, eventId);
+          }
+          setEventExport(status);
+        })
+        .catch((error: unknown) => {
+          if (!active || controller.signal.aborted) return;
+          if (error && typeof error === "object" && "status" in error && (error.status === 404 || error.status === 410)) {
+            clearStoredExport(currentUserId, eventId);
+          }
+        });
+      return () => {
+        active = false;
+        controller.abort();
+      };
+    } else {
+      lastRequestIdRef.current = null;
+    }
+    return () => { active = false; };
+  }, [dataSource, selectedRecording, currentUserId]);
+
+  useEffect(() => {
+    if (!eventExport || !dataSource?.getEventRecordingExportStatus) return;
+    if (eventExport.status !== "pending" && eventExport.status !== "processing") return;
+
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const poll = async () => {
+      try {
+        const nextStatus = await dataSource.getEventRecordingExportStatus!(eventExport.statusPath, controller.signal);
+        if (controller.signal.aborted) return;
+        if (nextStatus.status === "deleted" || nextStatus.status === "expired") {
+          clearStoredExport(currentUserId, eventExport.eventId);
+        }
+        setEventExport(nextStatus);
+        if (nextStatus.status === "pending" || nextStatus.status === "processing") {
+          timer = setTimeout(() => { void poll(); }, 3000);
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setEventExport((prev) => prev ? { ...prev, downloadPath: null } : null);
+        const parsed = parseExportError(error);
+        setEventExportError(parsed);
+      }
+    };
+
+    timer = setTimeout(() => { void poll(); }, 3000);
+    return () => {
+      controller.abort();
+      if (timer) clearTimeout(timer);
+    };
+  }, [dataSource, eventExport, currentUserId]);
+
+  const handlePrepareEventExport = async (isRetry = false, isNew = false) => {
+    if (!selectedRecording || selectedRecording.source === "daily" || !dataSource?.prepareEventRecordingExport) return;
+    const eventId = selectedRecording.id;
+    let requestId = lastRequestIdRef.current;
+    if (!requestId || isNew) {
+      requestId = generateRequestId();
+      lastRequestIdRef.current = requestId;
+    }
+    setEventExportBusy(true);
+    setEventExportError(null);
+    try {
+      const result = await dataSource.prepareEventRecordingExport(eventId, {
+        requestId,
+        beforeSeconds: 30,
+        afterSeconds: 30,
+        retryFailed: isRetry,
+      });
+      lastRequestIdRef.current = result.requestId;
+      saveStoredExport(currentUserId, eventId, { requestId: result.requestId, statusPath: result.statusPath });
+      setEventExport(result);
+    } catch (error) {
+      const parsed = parseExportError(error);
+      setEventExportError(parsed);
+    } finally {
+      setEventExportBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedRecording || !selectedKey) return;
+
+    if (selectedRecording.source === "daily") {
+      const recordingId = selectedRecording.id;
+      const status = selectedRecording.daily?.status;
+      const sizeBytes = selectedRecording.daily?.sizeBytes;
+
+      const cached = getCachedDailyMediaInfo(recordingId, status, sizeBytes);
+      if (cached) {
+        queueMicrotask(() => {
+          if (active) setMediaInfoState({ key: selectedKey, status: "ready", dailyData: cached });
+        });
+        return () => { active = false; };
+      }
+
+      if (!dataSource?.getDailyRecordingMediaInfo) {
+        queueMicrotask(() => {
+          if (active) setMediaInfoState({ key: selectedKey, status: "error", error: "조회 불가" });
+        });
+        return () => { active = false; };
+      }
+
+      queueMicrotask(() => {
+        if (active) setMediaInfoState({ key: selectedKey, status: "loading" });
+      });
+      void scheduleMediaInfoRequest(`daily:${recordingId}`, () => dataSource.getDailyRecordingMediaInfo!(recordingId))
+        .then((result) => {
+          setCachedDailyMediaInfo(recordingId, result, status);
+          if (active) setMediaInfoState((prev) => prev.key === selectedKey ? { key: selectedKey, status: "ready", dailyData: result } : prev);
+        })
+        .catch((error: unknown) => {
+          const status = error && typeof error === "object" && "status" in error ? Number(error.status) : 0;
+          const nextStatus = status === 409 ? "not_ready" : status === 410 ? "deleted_or_expired" : "error";
+          if (active) setMediaInfoState((prev) => prev.key === selectedKey ? { key: selectedKey, status: nextStatus, error: "조회 실패" } : prev);
+        });
+      return () => { active = false; };
+    }
+
+    if (eventExport?.status === "ready" && eventExport.clipId) {
+      const clipId = eventExport.clipId;
+      const cached = getCachedClipMediaInfo(clipId, eventExport.status, eventExport.sizeBytes);
+      if (cached) {
+        queueMicrotask(() => {
+          if (active) setMediaInfoState({ key: selectedKey, status: "ready", clipData: cached });
+        });
+        return () => { active = false; };
+      }
+
+      if (!dataSource?.getClipMediaInfo) {
+        queueMicrotask(() => {
+          if (active) setMediaInfoState({ key: selectedKey, status: "error", error: "조회 불가" });
+        });
+        return () => { active = false; };
+      }
+
+      queueMicrotask(() => {
+        if (active) setMediaInfoState({ key: selectedKey, status: "loading" });
+      });
+      void scheduleMediaInfoRequest(`clip:${clipId}`, () => dataSource.getClipMediaInfo!(clipId))
+        .then((result) => {
+          setCachedClipMediaInfo(clipId, result, eventExport.status);
+          if (active) setMediaInfoState((prev) => prev.key === selectedKey ? { key: selectedKey, status: "ready", clipData: result } : prev);
+        })
+        .catch((error: unknown) => {
+          const status = error && typeof error === "object" && "status" in error ? Number(error.status) : 0;
+          const nextStatus = status === 409 ? "not_ready" : status === 410 ? "deleted_or_expired" : "error";
+          if (active) setMediaInfoState((prev) => prev.key === selectedKey ? { key: selectedKey, status: nextStatus, error: "조회 실패" } : prev);
+        });
+      return () => { active = false; };
+    }
+
+    queueMicrotask(() => {
+      if (active) setMediaInfoState({ key: selectedKey, status: "idle" });
+    });
+    return () => { active = false; };
+  }, [dataSource, selectedKey, selectedRecording, eventExport?.status, eventExport?.clipId, eventExport?.sizeBytes]);
+
   const canDeleteDaily = Boolean(session?.user.role === "administrator" && typeof dataSource?.deleteDailyRecording === "function"
     && selectedRecording?.daily && detailFresh && !["recording", "finalizing"].includes(selectedRecording.daily.status)
     && selectedRecording.daily.exportState !== "processing");
@@ -259,6 +477,13 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
       return snapshot.items.map((item) => known.get(recordingKey(item)) ?? item);
     });
     setListInfo({ total: snapshot.total, complete: snapshot.complete });
+    if (selectedId) {
+      const nextIndex = snapshot.items.findIndex((item) => item.id === selectedId);
+      if (nextIndex >= 0) {
+        setSelectedIndex(nextIndex);
+        setRecordingPage(Math.floor(nextIndex / recordingsPerPage));
+      }
+    }
   };
 
   const selectRecordingPage = (page: number) => {
@@ -347,6 +572,193 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
       if (!controller.signal.aborted) setDownloadError("다운로드 파일을 준비하지 못했습니다. 녹화 상태를 확인한 뒤 다시 시도하세요.");
     } finally { if (!controller.signal.aborted) setDownloadState("idle"); }
   };
+
+  const isEvent = Boolean(selectedRecording?.eventWindow);
+
+  // B-3 영상 파일 정보 계산
+  let displayCodec = "정보 없음";
+  let displayResolution = "정보 없음";
+  let displayAspectRatio = "정보 없음";
+  let displayFps = "정보 없음";
+  let displayFileSize = "정보 없음";
+  let segmentsTitle: string | undefined;
+
+  if (selectedRecording?.daily) {
+    const dailyInfo = mediaInfoState.key === selectedKey ? mediaInfoState : null;
+    if (dailyInfo?.dailyData?.segments) {
+      const seg = dailyInfo.dailyData.segments;
+      const mixedText = seg.mixed === true ? "혼합" : seg.mixed === false ? "전체 확인 결과 동일" : "확인 불가";
+      segmentsTitle = `녹화 조각 형식: ${seg.status}, 측정 ${seg.measured}/${seg.total}, 혼합 여부: ${mixedText}`;
+    }
+
+    if (dailyInfo?.status === "loading") {
+      displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "확인 중";
+    } else if (dailyInfo?.status === "error") {
+      displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "조회 안 됨";
+    } else if (dailyInfo?.status === "not_ready") {
+      displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "준비 전";
+    } else if (dailyInfo?.status === "deleted_or_expired") {
+      displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "파일 삭제 또는 만료";
+    } else if (dailyInfo?.dailyData) {
+      const file = dailyInfo.dailyData.file;
+      if (file === null) {
+        displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "날짜 MP4 준비 전";
+      } else if (file.status === "ready") {
+        displayCodec = file.codec ?? "정보 없음";
+        displayResolution = file.width != null && file.height != null ? `${file.width} x ${file.height}` : "정보 없음";
+        displayAspectRatio = aspectRatio(file.width, file.height);
+        displayFps = file.fps != null ? `${file.fps} fps` : (file.fpsNum && file.fpsDen ? `${Number((file.fpsNum / file.fpsDen).toFixed(2))} fps` : "정보 없음");
+        displayFileSize = byteSize(file.sizeBytes);
+      } else {
+        displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "정보 없음";
+      }
+    }
+  } else if (selectedRecording?.eventWindow) {
+    if (!eventExport || eventExport.status !== "ready" || !eventExport.clipId) {
+      displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "구간 파일 준비 후 확인";
+    } else {
+      const clipInfo = mediaInfoState.key === selectedKey ? mediaInfoState : null;
+      if (clipInfo?.status === "loading") {
+        displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "확인 중";
+      } else if (clipInfo?.status === "not_ready") {
+        displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "준비 전";
+      } else if (clipInfo?.status === "deleted_or_expired") {
+        displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "파일 삭제 또는 만료";
+      } else if (clipInfo?.status === "error") {
+        displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "조회 안 됨";
+      } else if (clipInfo?.clipData) {
+        const media = clipInfo.clipData.mediaInfo;
+        if (media.status === "ready") {
+          displayCodec = media.codec ?? "정보 없음";
+          displayResolution = media.width != null && media.height != null ? `${media.width} x ${media.height}` : "정보 없음";
+          displayAspectRatio = aspectRatio(media.width, media.height);
+          displayFps = media.fps != null ? `${media.fps} fps` : (media.fpsNum && media.fpsDen ? `${Number((media.fpsNum / media.fpsDen).toFixed(2))} fps` : "정보 없음");
+          displayFileSize = byteSize(clipInfo.clipData.sizeBytes ?? media.sizeBytes);
+        } else {
+          displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "정보 없음";
+        }
+      }
+    }
+  } else if (selectedRecording) {
+    displayCodec = selectedRecording.codec ?? "정보 없음";
+    displayResolution = selectedRecording.width != null && selectedRecording.height != null ? `${selectedRecording.width} x ${selectedRecording.height}` : "정보 없음";
+    displayAspectRatio = aspectRatio(selectedRecording.width, selectedRecording.height);
+    displayFps = selectedRecording.frameRate != null ? `${selectedRecording.frameRate} fps` : "정보 없음";
+    displayFileSize = selectedRecording.size ?? "정보 없음";
+  }
+
+  // B-2 이벤트 구간 다운로드 UI 계산
+  let eventExportMessage = "";
+  let eventExportButtonLabel = "다운로드 불가";
+  let eventExportButtonDisabled = true;
+  let eventExportButtonAction: () => void = () => undefined;
+  let eventExportTitle: string | undefined;
+
+  if (isEvent && selectedRecording) {
+    if (eventExport) {
+      eventExportTitle = [
+        eventExport.actualFrom && eventExport.actualTo ? `추출 구간: ${wallClock(eventExport.actualFrom)} ~ ${wallClock(eventExport.actualTo)}` : null,
+        eventExport.expiresAt ? `만료 시각: ${wallClock(eventExport.expiresAt)}` : null,
+        eventExport.gaps.length > 0 ? `누락 구간: ${eventExport.gaps.length}개` : null,
+        eventExport.errorCode ? `오류 코드: ${eventExport.errorCode}` : null,
+      ].filter(Boolean).join(" / ") || undefined;
+
+      if (eventExportError) {
+        eventExportMessage = eventExportError.message;
+        if (eventExportError.code) {
+          eventExportTitle = eventExportTitle
+            ? (eventExportTitle.includes(eventExportError.code) ? eventExportTitle : `${eventExportTitle} / 오류 코드: ${eventExportError.code}`)
+            : eventExportError.code;
+        }
+        if (eventExport.status === "failed") {
+          eventExportButtonLabel = "다시 추출";
+          eventExportButtonDisabled = false;
+          eventExportButtonAction = () => { void handlePrepareEventExport(true, false); };
+        } else {
+          eventExportButtonLabel = "구간 파일 준비";
+          eventExportButtonDisabled = false;
+          eventExportButtonAction = () => { void handlePrepareEventExport(false, false); };
+        }
+      } else if (eventExportBusy || eventExport.status === "pending" || eventExport.status === "processing") {
+        eventExportMessage = "구간 파일을 준비하고 있습니다.";
+        eventExportButtonLabel = "준비 중";
+        eventExportButtonDisabled = true;
+      } else if (eventExport.status === "ready" && eventExport.downloadPath) {
+        const sizeText = eventExport.sizeBytes != null ? ` (${byteSize(eventExport.sizeBytes)})` : " (크기 정보 없음)";
+        const partialText = eventExport.coverage === "partial" ? ", 일부 구간 누락" : "";
+        eventExportMessage = `구간 파일이 준비되었습니다.${sizeText}${partialText}`;
+        eventExportButtonLabel = "다운로드";
+        eventExportButtonDisabled = false;
+        eventExportButtonAction = () => {
+          const link = document.createElement("a");
+          link.href = eventExport.downloadPath!;
+          document.body.append(link);
+          link.click();
+          link.remove();
+        };
+      } else if (eventExport.status === "failed") {
+        const mapped = eventExport.errorCode ? eventExportErrorCodeMessage(eventExport.errorCode) : undefined;
+        eventExportMessage = mapped ?? "구간 파일 준비에 실패했습니다.";
+        if (!eventExportTitle && eventExport.errorCode) {
+          eventExportTitle = eventExport.errorCode;
+        } else if (eventExport.errorCode && !eventExportTitle?.includes(eventExport.errorCode)) {
+          eventExportTitle = eventExportTitle ? `${eventExportTitle} / 오류 코드: ${eventExport.errorCode}` : `오류 코드: ${eventExport.errorCode}`;
+        }
+        eventExportButtonLabel = "다시 추출";
+        eventExportButtonDisabled = false;
+        eventExportButtonAction = () => { void handlePrepareEventExport(true, false); };
+      } else if (eventExport.status === "blocked") {
+        const mapped = eventExport.errorCode ? eventExportErrorCodeMessage(eventExport.errorCode) : undefined;
+        eventExportMessage = mapped ?? "blocked 상태입니다.";
+        if (!eventExportTitle && eventExport.errorCode) {
+          eventExportTitle = eventExport.errorCode;
+        } else if (eventExport.errorCode && !eventExportTitle?.includes(eventExport.errorCode)) {
+          eventExportTitle = eventExportTitle ? `${eventExportTitle} / 오류 코드: ${eventExport.errorCode}` : `오류 코드: ${eventExport.errorCode}`;
+        }
+        eventExportButtonLabel = "다운로드 불가";
+        eventExportButtonDisabled = true;
+      } else if (eventExport.status === "deleted" || eventExport.status === "expired") {
+        eventExportMessage = "준비한 파일이 삭제되었거나 만료되었습니다.";
+        eventExportButtonLabel = "새로 준비";
+        eventExportButtonDisabled = false;
+        eventExportButtonAction = () => { void handlePrepareEventExport(false, true); };
+      } else {
+        eventExportMessage = `${eventExport.status} 상태입니다.`;
+        eventExportButtonLabel = "다운로드 불가";
+        eventExportButtonDisabled = true;
+      }
+    } else {
+      if (eventExportError) {
+        eventExportMessage = eventExportError.message;
+        if (eventExportError.code) {
+          eventExportTitle = eventExportError.code;
+        }
+        eventExportButtonLabel = "구간 파일 준비";
+        eventExportButtonDisabled = false;
+        eventExportButtonAction = () => { void handlePrepareEventExport(false, false); };
+      } else if (eventExportBusy) {
+        eventExportMessage = "구간 파일을 준비하고 있습니다.";
+        eventExportButtonLabel = "준비 중";
+        eventExportButtonDisabled = true;
+      } else if (selectedRecording.exportPath) {
+        eventExportMessage = "이벤트 구간만 담은 MP4 파일을 준비합니다.";
+        eventExportButtonLabel = "구간 파일 준비";
+        eventExportButtonDisabled = false;
+        eventExportButtonAction = () => { void handlePrepareEventExport(false, false); };
+      } else {
+        const code = selectedRecording.downloadReasonCode;
+        if (code === "EVENT_WINDOW_NOT_CLOSED") {
+          eventExportMessage = "수거가 끝난 뒤 준비할 수 있습니다.";
+        } else if (code === "EVENT_EXPORT_RANGE_TOO_LONG") {
+          eventExportMessage = "구간이 1시간을 넘어 준비할 수 없습니다.";
+        } else {
+          eventExportMessage = "이벤트 구간 다운로드를 지원하지 않습니다.";
+        }
+        eventExportButtonLabel = "다운로드 불가";
+        eventExportButtonDisabled = true;
+      }
+    }
+  }
 
   return (
     <DashboardPageShell activePage="recordings" dataSource={dataSource} headerNotifications={headerNotifications} headerUnreadCount={headerUnreadCount} notificationState={headerNotificationState} session={session}>
@@ -543,32 +955,47 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                       <div><dt>{selectedRecording?.daily ? "확보된 길이" : selectedRecording?.replay ? "재생 길이" : "기간"}</dt><dd>{selectedRecording?.duration ?? "정보 없음"}</dd></div>
                       <div><dt>{selectedRecording?.daily ? "녹화 유형" : "발생 유형"}</dt><dd>{selectedRecording ? <span className={`recording-type ${selectedRecording.tone}`}>{selectedRecording.type}</span> : "정보 없음"}</dd></div>
                       <div><dt>{selectedRecording?.daily ? "재생 형식" : "파일 형식"}</dt><dd>{selectedRecording?.daily ? selectedRecording.daily.playbackProtocol?.toUpperCase() ?? "정보 없음" : selectedRecording?.format ?? "정보 없음"}</dd></div>
-                      <div><dt>비디오 코덱</dt><dd>{selectedRecording?.codec ?? "정보 없음"}</dd></div>
-                      <div><dt>해상도</dt><dd>{selectedRecording?.width == null || selectedRecording.height === null ? "정보 없음" : `${selectedRecording.width} x ${selectedRecording.height}`}</dd></div>
-                      <div><dt>화면 비율</dt><dd>{aspectRatio(selectedRecording)}</dd></div>
-                      <div><dt>프레임 속도</dt><dd>{selectedRecording?.frameRate == null ? "정보 없음" : `${selectedRecording.frameRate} fps`}</dd></div>
-                      <div><dt>파일 용량</dt><dd>{selectedRecording?.size ?? "정보 없음"}</dd></div>
+                      <div><dt>비디오 코덱</dt><dd title={segmentsTitle}>{displayCodec}</dd></div>
+                      <div><dt>해상도</dt><dd title={segmentsTitle}>{displayResolution}</dd></div>
+                      <div><dt>화면 비율</dt><dd title={segmentsTitle}>{displayAspectRatio}</dd></div>
+                      <div><dt>프레임 속도</dt><dd title={segmentsTitle}>{displayFps}</dd></div>
+                      <div><dt>파일 용량</dt><dd title={segmentsTitle}>{displayFileSize}</dd></div>
                       <div className="recording-retention"><dt>{selectedRecording?.daily || selectedRecording?.eventWindow ? "보관 만료" : "보관 기간"}</dt><dd>{!selectedRecording ? "정보 없음" : selectedRecording.daily || selectedRecording.eventWindow ? <span>{selectedRecording.retentionEndsAt}</span> : <><span>{selectedRecording.retentionStartsAt}</span><span>~ {selectedRecording.retentionEndsAt}</span></>}</dd></div>
                     </dl>
                   </section>
                   <section className="card recording-download">
                     <SectionTitle>녹화 파일</SectionTitle>
-                    <p role={downloadError || exportFailed ? "alert" : !selectedDownloadAvailable || downloadState === "complete" ? "status" : undefined}
-                      title={exportFailed ? `오류 코드: ${exportErrorCode ?? "제공되지 않음"}` : undefined}>
-                      {deletionNotice || downloadError || (preparingExport ? "다운로드 파일을 준비하고 있습니다. 준비가 끝나면 다운로드할 수 있습니다."
-                        : exportFailed ? "MP4 파일 준비에 실패했습니다. 녹화 상태 상세에서 오류 코드를 확인하고 다시 준비하세요."
-                        : canPrepareDownload ? "지난 날짜의 확보된 영상으로 MP4 다운로드 파일을 준비합니다. 누락 구간은 포함되지 않습니다."
-                        : selectedRecording?.daily && !selectedRecording.daily.exportAllowed && (selectedRecording.daily.status === "recording" || selectedRecording.daily.status === "finalizing") ? "오늘 녹화는 재생만 가능합니다. 날짜가 종료된 뒤 다운로드할 수 있습니다."
-                        : selectedRecording?.eventWindow ? "이벤트 구간의 MP4 다운로드는 아직 제공되지 않습니다."
-                        : !selectedDownloadAvailable ? "이 녹화 영상은 다운로드할 수 없습니다."
-                        : downloadState === "complete" ? selectedRecording?.sample ? "예시 데이터에서는 파일을 다운로드하지 않습니다." : "다운로드를 시작했습니다."
-                          : "선택한 녹화 영상의 다운로드 요청을 확인합니다.")}
+                    <p
+                      role={isEvent && eventExportError ? "alert" : downloadError || exportFailed ? "alert" : !selectedDownloadAvailable || downloadState === "complete" ? "status" : undefined}
+                      title={isEvent ? eventExportTitle : exportFailed ? `오류 코드: ${exportErrorCode ?? "제공되지 않음"}` : undefined}
+                    >
+                      {isEvent ? eventExportMessage : (
+                        deletionNotice || downloadError || (preparingExport ? "다운로드 파일을 준비하고 있습니다. 준비가 끝나면 다운로드할 수 있습니다."
+                          : exportFailed ? "MP4 파일 준비에 실패했습니다. 녹화 상태 상세에서 오류 코드를 확인하고 다시 준비하세요."
+                          : canPrepareDownload ? "지난 날짜의 확보된 영상으로 MP4 다운로드 파일을 준비합니다. 누락 구간은 포함되지 않습니다."
+                          : selectedRecording?.daily && !selectedRecording.daily.exportAllowed && (selectedRecording.daily.status === "recording" || selectedRecording.daily.status === "finalizing") ? "오늘 녹화는 재생만 가능합니다. 날짜가 종료된 뒤 다운로드할 수 있습니다."
+                          : !selectedDownloadAvailable ? "이 녹화 영상은 다운로드할 수 없습니다."
+                          : downloadState === "complete" ? selectedRecording?.sample ? "예시 데이터에서는 파일을 다운로드하지 않습니다." : "다운로드를 시작했습니다."
+                            : "선택한 녹화 영상의 다운로드 요청을 확인합니다.")
+                      )}
                     </p>
                     <div className="recording-download-actions">
-                      {canDeleteDaily && selectedRecording?.daily && <button type="button" className="recording-delete" onClick={() => setDeletion({ id: selectedRecording.id, date: selectedRecording.date, busy: false })}>날짜 녹화 삭제</button>}
-                      <button type="button" disabled={downloadState === "processing" || preparingExport || (!selectedDownloadAvailable && !canPrepareDownload)} onClick={() => { if (canPrepareDownload && !selectedDownloadAvailable) void prepareDownload(); else void requestDownload(); }}>
-                        {preparingExport ? "다운로드 준비 중" : downloadState === "processing" ? "다운로드 요청 확인 중" : canPrepareDownload && !selectedDownloadAvailable ? "MP4 다운로드 준비" : !selectedDownloadAvailable ? "다운로드 불가" : "녹화 영상 다운로드"}
-                      </button>
+                      {isEvent ? (
+                        <button
+                          type="button"
+                          disabled={eventExportButtonDisabled}
+                          onClick={eventExportButtonAction}
+                        >
+                          {eventExportButtonLabel}
+                        </button>
+                      ) : (
+                        <>
+                          {canDeleteDaily && selectedRecording?.daily && <button type="button" className="recording-delete" onClick={() => setDeletion({ id: selectedRecording.id, date: selectedRecording.date, busy: false })}>날짜 녹화 삭제</button>}
+                          <button type="button" disabled={downloadState === "processing" || preparingExport || (!selectedDownloadAvailable && !canPrepareDownload)} onClick={() => { if (canPrepareDownload && !selectedDownloadAvailable) void prepareDownload(); else void requestDownload(); }}>
+                            {preparingExport ? "다운로드 준비 중" : downloadState === "processing" ? "다운로드 요청 확인 중" : canPrepareDownload && !selectedDownloadAvailable ? "MP4 다운로드 준비" : !selectedDownloadAvailable ? "다운로드 불가" : "녹화 영상 다운로드"}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </section>
                 </aside>

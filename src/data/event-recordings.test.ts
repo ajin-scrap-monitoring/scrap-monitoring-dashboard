@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { eventRecordingFixture } from "../test/backend-contract-fixtures";
 import { recordingStatus, recordingStatusReason } from "../recording-status";
-import { eventRecordingItem, mapEventRecording } from "./event-recordings";
+import { eventRecordingItem, eventRecordingPage, eventReplay, mapEventRecording } from "./event-recordings";
 
 describe("이벤트 녹화의 표시 시각", () => {
   const item = eventRecordingItem(eventRecordingFixture({ windowFrom: "2026-10-12T00:59:30Z", windowTo: "2026-10-12T01:00:30Z" }));
@@ -65,5 +65,81 @@ describe("목록의 재생 요약", () => {
     ["AVAILABLE"],
   ])("잘못된 playback %j은 계약 오류로 처리한다", (playback) => {
     expect(() => withPlayback(playback)).toThrow("Unexpected event recording contract.");
+  });
+});
+
+describe("이벤트 페이지 파서와 stable token", () => {
+  test("snapshotToken과 snapshotExpiresAt을 파싱한다", () => {
+    const raw = {
+      items: [],
+      page: { page: 1, totalPages: 1, totalItems: 0 },
+      from: "2026-10-25T00:00:00Z",
+      to: "2026-11-01T00:00:00Z",
+      asOf: "2026-11-01T00:00:00Z",
+      snapshotToken: "tok-abc",
+      snapshotExpiresAt: "2026-11-01T05:00:00Z",
+    };
+    const parsed = eventRecordingPage(raw);
+    expect(parsed.snapshotToken).toBe("tok-abc");
+    expect(parsed.snapshotExpiresAt).toBe("2026-11-01T05:00:00Z");
+  });
+
+  test("snapshotToken이 없거나 null이면 null로 반환한다", () => {
+    const raw = {
+      items: [],
+      page: { page: 1, totalPages: 1, totalItems: 0 },
+      from: "2026-10-25T00:00:00Z",
+      to: "2026-11-01T00:00:00Z",
+      asOf: "2026-11-01T00:00:00Z",
+      snapshotToken: null,
+      snapshotExpiresAt: null,
+    };
+    const parsed = eventRecordingPage(raw);
+    expect(parsed.snapshotToken).toBeNull();
+    expect(parsed.snapshotExpiresAt).toBeNull();
+  });
+});
+
+describe("이벤트 상세 replay 파서와 exportPath, downloadReasonCode", () => {
+  const baseReplay = {
+    source: "DAILY_RECORDING",
+    state: "AVAILABLE",
+    asOf: "2026-10-12T02:00:00Z",
+    effectiveTo: "2026-10-12T01:00:30Z",
+    requestedSeconds: 60,
+    coveredSeconds: 60,
+    playbackSeconds: 60,
+    parts: [{
+      recordingId: "11111111-1111-4111-8111-111111111111",
+      recordingDate: "2026-10-12",
+      playbackPath: "/media/daily-recordings/11111111-1111-4111-8111-111111111111/hls/index.m3u8",
+      fromAt: "2026-10-12T00:59:30Z",
+      toAt: "2026-10-12T01:00:30Z",
+      startSeconds: 0,
+      endSeconds: 60,
+      relativeStartSeconds: 0,
+      relativeEndSeconds: 60,
+      mapping: "LINEAR",
+    }],
+    unavailableIntervals: [],
+    reasonCodes: [],
+    event: eventRecordingFixture({ eventId: "20261012-005930-coll" }),
+  };
+
+  test("exportPath와 downloadReasonCode를 올바르게 파싱한다", () => {
+    const { replay } = eventReplay({
+      ...baseReplay,
+      exportPath: "/api/v2/recordings/events/20261012-005930-coll/exports",
+      downloadReasonCode: "EVENT_EXPORT_NOT_REQUESTED",
+    }, "20261012-005930-coll");
+    expect(replay.exportPath).toBe("/api/v2/recordings/events/20261012-005930-coll/exports");
+    expect(replay.downloadReasonCode).toBe("EVENT_EXPORT_NOT_REQUESTED");
+  });
+
+  test("허용되지 않은 downloadReasonCode는 계약 오류로 처리한다", () => {
+    expect(() => eventReplay({
+      ...baseReplay,
+      downloadReasonCode: "INVALID_CODE",
+    }, "20261012-005930-coll")).toThrow("Unexpected event recording contract.");
   });
 });

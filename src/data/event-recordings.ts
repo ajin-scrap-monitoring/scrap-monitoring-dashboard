@@ -11,6 +11,12 @@ const windowStates = ["CLOSED", "OPEN", "UNKNOWN", "POINT"] as const;
 const replayStates = ["AVAILABLE", "PARTIAL", "PROCESSING", "UNAVAILABLE"] as const;
 const playbackStates = [...replayStates, "UNKNOWN"] as const;
 const intervalKinds = ["GAP", "UNCONFIRMED", "FUTURE", "MISSING", "EXPIRED"] as const;
+const downloadReasonCodes = [
+  "EVENT_RANGE_EXPORT_UNSUPPORTED",
+  "EVENT_EXPORT_NOT_REQUESTED",
+  "EVENT_WINDOW_NOT_CLOSED",
+  "EVENT_EXPORT_RANGE_TOO_LONG",
+] as const;
 const missingValue = "정보 없음";
 const listStatus = { AVAILABLE: "available", PARTIAL: "available", PROCESSING: "processing", UNAVAILABLE: "unavailable", UNKNOWN: "processing" } as const;
 const labels = { collection: "수거", alert: "알림", error: "오류" } as const;
@@ -35,6 +41,24 @@ export type EventRecordingPage = {
   from: string;
   to: string;
   asOf: string;
+  snapshotToken?: string | null;
+  snapshotExpiresAt?: string | null;
+};
+
+export type EventExportStatus = {
+  requestId: string;
+  eventId: string;
+  statusPath: string;
+  status: string;
+  clipId: string | null;
+  coverage: "complete" | "partial" | "none" | null;
+  sizeBytes: number | null;
+  downloadPath: string | null;
+  expiresAt: string | null;
+  actualFrom: string | null;
+  actualTo: string | null;
+  errorCode: string | null;
+  gaps: Array<{ start: string; end: string; reasonCode?: string }>;
 };
 
 function fail(): never { throw new Error("Unexpected event recording contract."); }
@@ -92,9 +116,21 @@ export function eventRecordingPage(value: unknown): EventRecordingPage {
   const page = value.page;
   if (!Number.isInteger(page.page) || (page.page as number) < 1 || !Number.isInteger(page.totalPages) || (page.totalPages as number) < 0) return fail();
   if (!Number.isInteger(page.totalItems) || (page.totalItems as number) < 0) return fail();
+  if (value.snapshotToken !== undefined && value.snapshotToken !== null && typeof value.snapshotToken !== "string") return fail();
+  if (value.snapshotExpiresAt !== undefined && value.snapshotExpiresAt !== null && !timestamp(value.snapshotExpiresAt)) return fail();
   const items = value.items.map(eventRecordingItem);
   if (new Set(items.map((item) => item.eventId)).size !== items.length) return fail();
-  return { items, page: page.page as number, totalPages: page.totalPages as number, totalItems: page.totalItems as number, from: stamp(value.from), to: stamp(value.to), asOf: stamp(value.asOf) };
+  return {
+    items,
+    page: page.page as number,
+    totalPages: page.totalPages as number,
+    totalItems: page.totalItems as number,
+    from: stamp(value.from),
+    to: stamp(value.to),
+    asOf: stamp(value.asOf),
+    snapshotToken: typeof value.snapshotToken === "string" ? value.snapshotToken : null,
+    snapshotExpiresAt: optionalStamp(value.snapshotExpiresAt),
+  };
 }
 
 function replayPart(value: unknown): EventReplayPart {
@@ -120,7 +156,9 @@ function replayPart(value: unknown): EventReplayPart {
 export function eventReplay(value: unknown, eventId: string): { item: EventRecordingItem; replay: EventReplay } {
   if (!record(value) || value.source !== "DAILY_RECORDING" || (value.downloadPath !== undefined && value.downloadPath !== null) || !Array.isArray(value.parts) || !Array.isArray(value.unavailableIntervals)
     || !(value.reasonCodes === undefined || strings(value.reasonCodes))
-    || !(value.requestedSeconds === undefined || value.requestedSeconds === null || nonNegative(value.requestedSeconds) >= 0)) return fail();
+    || !(value.requestedSeconds === undefined || value.requestedSeconds === null || nonNegative(value.requestedSeconds) >= 0)
+    || !(value.exportPath === undefined || value.exportPath === null || typeof value.exportPath === "string")
+    || !(value.downloadReasonCode === undefined || value.downloadReasonCode === null || (typeof value.downloadReasonCode === "string" && (downloadReasonCodes as readonly string[]).includes(value.downloadReasonCode)))) return fail();
   const item = eventRecordingItem(value.event);
   if (item.eventId !== eventId) return fail();
   const parts = value.parts.map(replayPart);
@@ -147,7 +185,8 @@ export function eventReplay(value: unknown, eventId: string): { item: EventRecor
         return { startsAt: stamp(interval.fromAt), endsAt: stamp(interval.toAt), kind: choice(interval.kind, intervalKinds), reasonCode: interval.reasonCode };
       }),
       reasonCodes: (value.reasonCodes) ?? [],
-      downloadReasonCode: typeof value.downloadReasonCode === "string" ? value.downloadReasonCode : null,
+      downloadReasonCode: typeof value.downloadReasonCode === "string" ? choice(value.downloadReasonCode, downloadReasonCodes) : null,
+      exportPath: typeof value.exportPath === "string" ? value.exportPath : null,
     },
   };
 }
@@ -173,6 +212,9 @@ export function mapEventRecording(item: EventRecordingItem, replay?: EventReplay
   return {
     source: "event",
     eventWindow: item.window,
+    occurredAt: item.occurredAt,
+    exportPath: replay?.exportPath ?? null,
+    downloadReasonCode: replay?.downloadReasonCode ?? null,
     windowFrom: item.windowFrom,
     windowTo: item.windowTo,
     ...(replay && { replay }),
@@ -199,5 +241,38 @@ export function mapEventRecording(item: EventRecordingItem, replay?: EventReplay
     mediaStatus: null,
     coverage: replay ? replay.state === "AVAILABLE" ? "complete" : replay.state === "PARTIAL" ? "partial" : null
       : summary?.state === "AVAILABLE" ? "complete" : summary?.state === "PARTIAL" ? "partial" : null,
+  };
+}
+
+function parseClipGap(value: unknown): { start: string; end: string; reasonCode?: string } {
+  if (!record(value)) return fail();
+  const start = value.start_at ?? value.startAt ?? value.start ?? value.fromAt;
+  const end = value.end_at ?? value.endAt ?? value.end ?? value.toAt;
+  return {
+    start: stamp(start),
+    end: stamp(end),
+    reasonCode: typeof value.reason_code === "string" ? value.reason_code : typeof value.reasonCode === "string" ? value.reasonCode : undefined,
+  };
+}
+
+export function eventExportStatus(value: unknown): EventExportStatus {
+  if (!record(value) || typeof value.requestId !== "string" || typeof value.eventId !== "string"
+    || typeof value.statusPath !== "string" || typeof value.status !== "string") return fail();
+  const coverage = value.coverage === undefined || value.coverage === null ? null : choice(value.coverage, ["complete", "partial", "none"] as const);
+  const gaps = Array.isArray(value.gaps) ? value.gaps.map(parseClipGap) : [];
+  return {
+    requestId: value.requestId,
+    eventId: value.eventId,
+    statusPath: value.statusPath,
+    status: value.status,
+    clipId: typeof value.clipId === "string" ? value.clipId : null,
+    coverage,
+    sizeBytes: typeof value.sizeBytes === "number" && Number.isFinite(value.sizeBytes) ? value.sizeBytes : null,
+    downloadPath: typeof value.downloadPath === "string" ? value.downloadPath : null,
+    expiresAt: optionalStamp(value.expiresAt),
+    actualFrom: optionalStamp(value.actualFrom),
+    actualTo: optionalStamp(value.actualTo),
+    errorCode: typeof value.errorCode === "string" ? value.errorCode : null,
+    gaps,
   };
 }

@@ -1,7 +1,20 @@
 import { useEffect, useId, useRef, useState } from "react";
 
+import { wallClock } from "../data/contract-values";
 import type { Recording } from "../domain/dashboard";
 import { recordingErrorCode, recordingStatus, recordingStatusReason } from "../recording-status";
+
+function cleanupText(daily: NonNullable<Recording["daily"]>) {
+  if (daily.cleanupState === "pending") return "파일 정리 중";
+  if (daily.cleanupState === "failed") {
+    const code = daily.cleanupError?.code ? recordingErrorCode(daily.cleanupError.code) : null;
+    return code ? `파일 정리 실패 (${code})` : "파일 정리 실패";
+  }
+  if (daily.cleanupState === "complete") {
+    return daily.cleanupCompletedAt ? `파일 정리 완료 (${wallClock(daily.cleanupCompletedAt, true)})` : "파일 정리 완료";
+  }
+  return "정보 없음";
+}
 
 export function RecordingStatusDetails({ recording, error, pending = false }: { recording: Recording; error?: string; pending?: boolean }) {
   const id = useId();
@@ -51,6 +64,7 @@ export function RecordingStatusDetails({ recording, error, pending = false }: { 
         {failed && <div><dt>오류 코드</dt><dd>{code ?? (errorCode ? "확인 불가" : "제공되지 않음")}</dd></div>}
         {recording.coverage && <div><dt>녹화 범위</dt><dd>{recording.coverage === "partial" ? "부분 저장" : recording.coverage === "complete" ? "전체 구간" : recording.coverage === "none" ? "영상 없음" : "확인 불가"}</dd></div>}
         {Boolean(recording.gaps?.length) && <div><dt>누락 구간</dt><dd>{recording.gaps?.length}개</dd></div>}
+        {recording.daily && <div><dt>파일 정리 상태</dt><dd>{cleanupText(recording.daily)}</dd></div>}
       </dl>
       {failed && <p>상세 처리 로그는 Backend와 Media Service 서버 로그에서 확인하세요.</p>}
     </div>}

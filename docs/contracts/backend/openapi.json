@@ -1,8 +1,124 @@
 {
   "components": {
     "schemas": {
+      "ActiveAlertBasisV2": {
+        "description": "The exact snapshot used by this response, including unknown and pending states.",
+        "properties": {
+          "dataState": {
+            "enum": [
+              "FRESH",
+              "STALE",
+              "UNAVAILABLE",
+              "UNKNOWN",
+              "NO_DATA"
+            ],
+            "title": "Datastate",
+            "type": "string"
+          },
+          "evaluationSource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "CURRENT_OBSERVATION",
+                  "RECENT_PERSISTED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluationsource"
+          },
+          "filterState": {
+            "enum": [
+              "DISABLED",
+              "WARMING",
+              "READY",
+              "UNAVAILABLE"
+            ],
+            "title": "Filterstate",
+            "type": "string"
+          },
+          "inputSource": {
+            "enum": [
+              "EDGE_STATE",
+              "HEIGHT_SECTIONS"
+            ],
+            "title": "Inputsource",
+            "type": "string"
+          },
+          "lastEvaluatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastevaluatedat"
+          },
+          "lastKnownState": {
+            "anyOf": [
+              {
+                "enum": [
+                  "NORMAL",
+                  "WARNING",
+                  "CRITICAL"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastknownstate"
+          },
+          "measuredAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measuredat"
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoncodes",
+            "type": "array"
+          },
+          "snapshotId": {
+            "title": "Snapshotid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshotId",
+          "dataState",
+          "filterState",
+          "inputSource",
+          "measuredAt",
+          "lastEvaluatedAt",
+          "evaluationSource",
+          "lastKnownState",
+          "reasonCodes"
+        ],
+        "title": "ActiveAlertBasisV2",
+        "type": "object"
+      },
       "ActiveFillAlertPageV2": {
         "properties": {
+          "basis": {
+            "$ref": "#/components/schemas/ActiveAlertBasisV2"
+          },
           "computedAt": {
             "format": "date-time",
             "title": "Computedat",
@@ -64,7 +180,9 @@
         "required": [
           "pitId",
           "computedAt",
-          "evaluationState"
+          "evaluationState",
+          "basis",
+          "coverage"
         ],
         "title": "ActiveFillAlertPageV2",
         "type": "object"
@@ -192,7 +310,8 @@
             "enum": [
               "EDGE",
               "LIDAR",
-              "MEASUREMENT"
+              "MEASUREMENT",
+              "CAMERA"
             ],
             "title": "Componentkind",
             "type": "string"
@@ -206,7 +325,8 @@
             "enum": [
               "EDGE_STATUS",
               "STATUS_FRESHNESS",
-              "CURRENT_MEASUREMENT"
+              "CURRENT_MEASUREMENT",
+              "MEDIA_CAMERA_STATUS"
             ],
             "title": "Evidencesource",
             "type": "string"
@@ -289,6 +409,18 @@
             ],
             "title": "Type",
             "type": "string"
+          },
+          "validUntilAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validuntilat"
           }
         },
         "required": [
@@ -328,6 +460,30 @@
             "title": "Componentkind",
             "type": "string"
           },
+          "evaluatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluatedat"
+          },
+          "evidenceSource": {
+            "anyOf": [
+              {
+                "const": "MEDIA_CAMERA_STATUS",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidencesource"
+          },
           "reasonCodes": {
             "items": {
               "type": "string"
@@ -343,6 +499,18 @@
             ],
             "title": "State",
             "type": "string"
+          },
+          "validUntilAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validuntilat"
           }
         },
         "required": [
@@ -747,6 +915,127 @@
         "title": "Assessment",
         "type": "object"
       },
+      "CameraStatusV2": {
+        "properties": {
+          "assessedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assessedat"
+          },
+          "cameraId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cameraid"
+          },
+          "computedAt": {
+            "format": "date-time",
+            "title": "Computedat",
+            "type": "string"
+          },
+          "connectionState": {
+            "default": "UNKNOWN",
+            "enum": [
+              "CONNECTED",
+              "DISCONNECTED",
+              "UNKNOWN"
+            ],
+            "title": "Connectionstate",
+            "type": "string"
+          },
+          "lastFrameReceivedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastframereceivedat"
+          },
+          "pitId": {
+            "title": "Pitid",
+            "type": "string"
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoncodes",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "HEALTHY",
+              "INTERRUPTED",
+              "UNKNOWN",
+              "UNSUPPORTED"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "statusBasis": {
+            "anyOf": [
+              {
+                "const": "ACCEPTED_JPEG_RECEIPT",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statusbasis"
+          },
+          "validForSeconds": {
+            "anyOf": [
+              {
+                "maximum": 5,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validforseconds"
+          },
+          "validUntilAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validuntilat"
+          }
+        },
+        "required": [
+          "pitId",
+          "cameraId",
+          "state",
+          "computedAt",
+          "reasonCodes"
+        ],
+        "title": "CameraStatusV2",
+        "type": "object"
+      },
       "Capabilities": {
         "additionalProperties": false,
         "properties": {
@@ -827,6 +1116,25 @@
               }
             ],
             "title": "Actual Start At"
+          },
+          "attempt_count": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Count"
+          },
+          "available_intervals": {
+            "items": {
+              "$ref": "#/components/schemas/ClipGap"
+            },
+            "title": "Available Intervals",
+            "type": "array"
           },
           "camera_id": {
             "title": "Camera Id",
@@ -926,6 +1234,18 @@
             ],
             "title": "Expires At"
           },
+          "extraction_mode": {
+            "anyOf": [
+              {
+                "const": "stream_copy",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extraction Mode"
+          },
           "gaps": {
             "items": {
               "$ref": "#/components/schemas/ClipGap"
@@ -936,6 +1256,22 @@
           "recording_policy": {
             "$ref": "#/components/schemas/RecordingPolicy"
           },
+          "request_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "time_range",
+                  "event_at",
+                  "accepted_at"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Mode"
+          },
           "requested_end_at": {
             "format": "date-time",
             "title": "Requested End At",
@@ -945,6 +1281,18 @@
             "format": "date-time",
             "title": "Requested Start At",
             "type": "string"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
           },
           "status": {
             "enum": [
@@ -1006,6 +1354,17 @@
             "title": "End At",
             "type": "string"
           },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
           "start_at": {
             "format": "date-time",
             "title": "Start At",
@@ -1017,6 +1376,45 @@
           "end_at"
         ],
         "title": "ClipGap",
+        "type": "object"
+      },
+      "ClipMediaInfo": {
+        "properties": {
+          "clip_id": {
+            "format": "uuid",
+            "title": "Clip Id",
+            "type": "string"
+          },
+          "media_info": {
+            "$ref": "#/components/schemas/FileMediaInfo"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "thumbnail": {
+            "$ref": "#/components/schemas/RecordingThumbnailInfo"
+          },
+          "timestamp_info": {
+            "$ref": "#/components/schemas/RecordingTimestampInfo"
+          }
+        },
+        "required": [
+          "clip_id",
+          "size_bytes",
+          "media_info",
+          "timestamp_info",
+          "thumbnail"
+        ],
+        "title": "ClipMediaInfo",
         "type": "object"
       },
       "Clock": {
@@ -1585,6 +1983,43 @@
         "title": "DailyGap",
         "type": "object"
       },
+      "DailyMediaInfo": {
+        "properties": {
+          "file": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileMediaInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recording_id": {
+            "format": "uuid",
+            "title": "Recording Id",
+            "type": "string"
+          },
+          "segments": {
+            "$ref": "#/components/schemas/SegmentMediaInfo"
+          },
+          "thumbnail": {
+            "$ref": "#/components/schemas/RecordingThumbnailInfo"
+          },
+          "timestamp_info": {
+            "$ref": "#/components/schemas/RecordingTimestampInfo"
+          }
+        },
+        "required": [
+          "recording_id",
+          "file",
+          "segments",
+          "timestamp_info",
+          "thumbnail"
+        ],
+        "title": "DailyMediaInfo",
+        "type": "object"
+      },
       "DailyPage": {
         "properties": {
           "items": {
@@ -1627,6 +2062,44 @@
             "title": "Camera Id",
             "type": "string"
           },
+          "cleanup_completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cleanup Completed At"
+          },
+          "cleanup_error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DailyError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cleanup_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "failed",
+                  "complete"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cleanup State"
+          },
           "coverage": {
             "anyOf": [
               {
@@ -1647,6 +2120,18 @@
             "format": "date-time",
             "title": "Coverage As Of At",
             "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
           },
           "download_path": {
             "anyOf": [
@@ -1790,6 +2275,10 @@
             ],
             "title": "Size Bytes"
           },
+          "space_reclaimed": {
+            "title": "Space Reclaimed",
+            "type": "null"
+          },
           "status": {
             "enum": [
               "recording",
@@ -1888,6 +2377,215 @@
           "last_backend_ack_at"
         ],
         "title": "DeliveryStatus",
+        "type": "object"
+      },
+      "EventExportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "afterSeconds": {
+            "default": 30,
+            "maximum": 300,
+            "minimum": 0,
+            "title": "Afterseconds",
+            "type": "integer"
+          },
+          "beforeSeconds": {
+            "default": 30,
+            "maximum": 300,
+            "minimum": 0,
+            "title": "Beforeseconds",
+            "type": "integer"
+          },
+          "requestId": {
+            "format": "uuid",
+            "title": "Requestid",
+            "type": "string"
+          },
+          "retryFailed": {
+            "default": false,
+            "title": "Retryfailed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "requestId"
+        ],
+        "title": "EventExportRequest",
+        "type": "object"
+      },
+      "EventExportResponse": {
+        "properties": {
+          "actualFrom": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actualfrom"
+          },
+          "actualTo": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actualto"
+          },
+          "attemptCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attemptcount"
+          },
+          "availableIntervals": {
+            "items": {
+              "$ref": "#/components/schemas/ClipGap"
+            },
+            "title": "Availableintervals",
+            "type": "array"
+          },
+          "clipId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clipid"
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "complete",
+                  "partial",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage"
+          },
+          "downloadPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Downloadpath"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "eventId": {
+            "title": "Eventid",
+            "type": "string"
+          },
+          "expiresAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiresat"
+          },
+          "extractionMode": {
+            "anyOf": [
+              {
+                "const": "stream_copy",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extractionmode"
+          },
+          "gaps": {
+            "items": {
+              "$ref": "#/components/schemas/ClipGap"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "requestId": {
+            "format": "uuid",
+            "title": "Requestid",
+            "type": "string"
+          },
+          "requestedFrom": {
+            "format": "date-time",
+            "title": "Requestedfrom",
+            "type": "string"
+          },
+          "requestedTo": {
+            "format": "date-time",
+            "title": "Requestedto",
+            "type": "string"
+          },
+          "sizeBytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizebytes"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "statusPath": {
+            "title": "Statuspath",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestId",
+          "eventId",
+          "status",
+          "requestedFrom",
+          "requestedTo",
+          "statusPath"
+        ],
+        "title": "EventExportResponse",
         "type": "object"
       },
       "EventPage": {
@@ -2115,6 +2813,29 @@
           "page": {
             "$ref": "#/components/schemas/PageMetadata"
           },
+          "snapshotExpiresAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshotexpiresat"
+          },
+          "snapshotToken": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshottoken"
+          },
           "to": {
             "format": "date-time",
             "title": "To",
@@ -2148,8 +2869,13 @@
             "type": "null"
           },
           "downloadReasonCode": {
-            "const": "EVENT_RANGE_EXPORT_UNSUPPORTED",
             "default": "EVENT_RANGE_EXPORT_UNSUPPORTED",
+            "enum": [
+              "EVENT_RANGE_EXPORT_UNSUPPORTED",
+              "EVENT_EXPORT_NOT_REQUESTED",
+              "EVENT_WINDOW_NOT_CLOSED",
+              "EVENT_EXPORT_RANGE_TOO_LONG"
+            ],
             "title": "Downloadreasoncode",
             "type": "string"
           },
@@ -2167,6 +2893,17 @@
           },
           "event": {
             "$ref": "#/components/schemas/EventRecording"
+          },
+          "exportPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exportpath"
           },
           "parts": {
             "items": {
@@ -2253,6 +2990,133 @@
           "vision_observations"
         ],
         "title": "Evidence",
+        "type": "object"
+      },
+      "FileMediaInfo": {
+        "properties": {
+          "codec": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codec"
+          },
+          "fps": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps"
+          },
+          "fps_den": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps Den"
+          },
+          "fps_num": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps Num"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "file_unavailable",
+                  "probe_failed",
+                  "probe_timeout",
+                  "probe_unavailable",
+                  "file_changed",
+                  "metadata_unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "source": {
+            "const": "file_probe",
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "status",
+          "source",
+          "size_bytes"
+        ],
+        "title": "FileMediaInfo",
         "type": "object"
       },
       "FillEstimate": {
@@ -3533,7 +4397,8 @@
         },
         "required": [
           "sensorId",
-          "referenceDistanceCm"
+          "referenceDistanceCm",
+          "samples"
         ],
         "title": "LidarProfileV2",
         "type": "object"
@@ -5292,6 +6157,66 @@
         "title": "RecordingPolicy",
         "type": "object"
       },
+      "RecordingThumbnailInfo": {
+        "properties": {
+          "content_path": {
+            "title": "Content Path",
+            "type": "null"
+          },
+          "representative_at": {
+            "title": "Representative At",
+            "type": "null"
+          },
+          "status": {
+            "const": "unsupported",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "representative_at",
+          "content_path"
+        ],
+        "title": "RecordingThumbnailInfo",
+        "type": "object"
+      },
+      "RecordingTimestampInfo": {
+        "properties": {
+          "capture_clock_source": {
+            "title": "Capture Clock Source",
+            "type": "null"
+          },
+          "capture_timestamp": {
+            "title": "Capture Timestamp",
+            "type": "null"
+          },
+          "capture_timestamp_supported": {
+            "const": false,
+            "title": "Capture Timestamp Supported",
+            "type": "boolean"
+          },
+          "clock_synchronization": {
+            "const": "unavailable",
+            "title": "Clock Synchronization",
+            "type": "string"
+          },
+          "time_basis": {
+            "const": "server_received_at",
+            "title": "Time Basis",
+            "type": "string"
+          }
+        },
+        "required": [
+          "time_basis",
+          "capture_timestamp_supported",
+          "capture_timestamp",
+          "capture_clock_source",
+          "clock_synchronization"
+        ],
+        "title": "RecordingTimestampInfo",
+        "type": "object"
+      },
       "ReplayPart": {
         "properties": {
           "endSeconds": {
@@ -5477,6 +6402,142 @@
           "coordinate_frame_id"
         ],
         "title": "ScanReference",
+        "type": "object"
+      },
+      "SegmentFormat": {
+        "properties": {
+          "codec": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codec"
+          },
+          "fps": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps"
+          },
+          "fps_den": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps Den"
+          },
+          "fps_num": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps Num"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "segment_count": {
+            "exclusiveMinimum": 0,
+            "title": "Segment Count",
+            "type": "integer"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "segment_count"
+        ],
+        "title": "SegmentFormat",
+        "type": "object"
+      },
+      "SegmentMediaInfo": {
+        "properties": {
+          "formats": {
+            "items": {
+              "$ref": "#/components/schemas/SegmentFormat"
+            },
+            "title": "Formats",
+            "type": "array"
+          },
+          "measured": {
+            "minimum": 0,
+            "title": "Measured",
+            "type": "integer"
+          },
+          "mixed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mixed"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "partial",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "total": {
+            "minimum": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "total",
+          "measured",
+          "mixed",
+          "formats"
+        ],
+        "title": "SegmentMediaInfo",
         "type": "object"
       },
       "SensorStatus": {
@@ -7447,6 +8508,199 @@
           }
         },
         "summary": "Get Media Clip",
+        "tags": [
+          "Media Control"
+        ]
+      }
+    },
+    "/api/v1/media/clips/{clip_id}/media-info": {
+      "get": {
+        "operationId": "get_clip_media_info_api_v1_media_clips__clip_id__media_info_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "clip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Clip Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClipMediaInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 404 Get Clip Media Info Api V1 Media Clips  Clip Id  Media Info Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Range Not Satisfiable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Clip Media Info Api V1 Media Clips  Clip Id  Media Info Get"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 503 Get Clip Media Info Api V1 Media Clips  Clip Id  Media Info Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Get Clip Media Info",
         "tags": [
           "Media Control"
         ]
@@ -9637,6 +10891,105 @@
         ]
       }
     },
+    "/api/v2/monitoring/camera-status": {
+      "get": {
+        "operationId": "get_camera_status_api_v2_monitoring_camera_status_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "default": "pit-01",
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Pit Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraStatusV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Camera Status Api V2 Monitoring Camera Status Get"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Camera Status",
+        "tags": [
+          "Monitoring v2"
+        ]
+      }
+    },
     "/api/v2/monitoring/collection-events": {
       "get": {
         "operationId": "collection_history_api_v2_monitoring_collection_events_get",
@@ -11557,6 +12910,200 @@
         ]
       }
     },
+    "/api/v2/recordings/daily/{recording_id}/media-info": {
+      "get": {
+        "description": "Inspect only selected recordings; ordinary list/detail reads stay inexpensive.",
+        "operationId": "get_daily_media_info_api_v2_recordings_daily__recording_id__media_info_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recording_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Recording Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyMediaInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 404 Get Daily Media Info Api V2 Recordings Daily  Recording Id  Media Info Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Range Not Satisfiable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Daily Media Info Api V2 Recordings Daily  Recording Id  Media Info Get"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 503 Get Daily Media Info Api V2 Recordings Daily  Recording Id  Media Info Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Get Daily Media Info",
+        "tags": [
+          "Daily Recordings"
+        ]
+      }
+    },
     "/api/v2/recordings/events": {
       "get": {
         "operationId": "list_events_api_v2_recordings_events_get",
@@ -11687,6 +13234,33 @@
             }
           },
           {
+            "in": "query",
+            "name": "stable",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Stable",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "snapshot_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[0-9a-f]{32}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Snapshot Token"
+            }
+          },
+          {
             "in": "cookie",
             "name": "scrap_session",
             "required": false,
@@ -11741,6 +13315,26 @@
               }
             },
             "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
           },
           "422": {
             "content": {
@@ -12019,8 +13613,459 @@
           "Event Recordings"
         ]
       }
+    },
+    "/api/v2/recordings/events/{event_id}/exports": {
+      "post": {
+        "description": "Only an explicit authenticated download request can create a range file.",
+        "operationId": "prepare_event_export_api_v2_recordings_events__event_id__exports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "pattern": "^(?:evt-auto-col-start|evt-alt|evt-col|evt-v2-transition|evt-err)-[1-9][0-9]{0,18}$",
+              "title": "Event Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventExportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventExportResponse"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 404 Prepare Event Export Api V2 Recordings Events  Event Id  Exports Post"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 409 Prepare Event Export Api V2 Recordings Events  Event Id  Exports Post"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Range Not Satisfiable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Prepare Event Export Api V2 Recordings Events  Event Id  Exports Post"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 503 Prepare Event Export Api V2 Recordings Events  Event Id  Exports Post"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Prepare Event Export",
+        "tags": [
+          "Event Recordings"
+        ]
+      }
+    },
+    "/api/v2/recordings/events/{event_id}/exports/{request_id}": {
+      "get": {
+        "operationId": "get_event_export_api_v2_recordings_events__event_id__exports__request_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "pattern": "^(?:evt-auto-col-start|evt-alt|evt-col|evt-v2-transition|evt-err)-[1-9][0-9]{0,18}$",
+              "title": "Event Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventExportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 404 Get Event Export Api V2 Recordings Events  Event Id  Exports  Request Id  Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Range Not Satisfiable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Event Export Api V2 Recordings Events  Event Id  Exports  Request Id  Get"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 503 Get Event Export Api V2 Recordings Events  Event Id  Exports  Request Id  Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Get Event Export",
+        "tags": [
+          "Event Recordings"
+        ]
+      }
     }
   },
   "x-source-repository": "https://github.com/ajin-scrap-monitoring/scrap-monitoring-backend",
-  "x-source-revision": "2366bc64940f3c9beb3470d7c8a760741d056fb0"
+  "x-source-revision": "3f865341df74d39273eebfee36436bc5be8fbe51"
 }

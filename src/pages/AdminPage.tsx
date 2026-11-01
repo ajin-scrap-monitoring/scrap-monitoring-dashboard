@@ -61,6 +61,8 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
   const [savedPreAlertEnabled, setSavedPreAlertEnabled] = useState(admin.alertSettings.preCollectionAlert.enabled);
   const [thresholdMessage, setThresholdMessage] = useState("");
   const [thresholdError, setThresholdError] = useState("");
+  const [collectionThresholdInvalid, setCollectionThresholdInvalid] = useState(false);
+  const [preAlertThresholdInvalid, setPreAlertThresholdInvalid] = useState(false);
   const [policyEvents, setPolicyEvents] = useState(initialPolicy.events);
   const [recoveryNotice, setRecoveryNotice] = useState(initialPolicy.recovery);
   const [policyRules, setPolicyRules] = useState(initialPolicy.rules);
@@ -121,6 +123,8 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
     if (requestedArea === "threshold" || failures.some((failure) => failure.area === "threshold")) {
       setThresholdMessage("");
       setThresholdError(messageOf("threshold"));
+      setCollectionThresholdInvalid(failures.some((failure) => failure.field === "collectionThreshold"));
+      setPreAlertThresholdInvalid(failures.some((failure) => failure.field === "preAlertThreshold"));
     }
     if (requestedArea === "policy" || failures.some((failure) => failure.area === "policy")) setPolicyMessage(messageOf("policy"));
   };
@@ -144,6 +148,8 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
       preCollectionAlert: { enabled: preAlertEnabled, threshold: early },
     };
     setThresholdError("");
+    setCollectionThresholdInvalid(false);
+    setPreAlertThresholdInvalid(false);
     setThresholdMessage("저장 중입니다.");
     settingsAction.run(
       () => dataSource ? dataSource.replaceAlertSettings?.(nextSettings) ?? Promise.reject(new Error("Unsupported action")) : Promise.resolve(nextSettings),
@@ -305,10 +311,10 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
             <section className="card threshold-card">
               <SectionTitle>수거 임계율</SectionTitle><fieldset className="admin-fields" disabled={settingsAction.busy}>
               <div className="threshold-editor">
-                <div className="threshold-change"><label htmlFor="threshold-input" className="admin-label">변경값</label><div className="threshold-input"><input id="threshold-input" type="number" min="5" max="100" value={threshold} onChange={(event) => setThreshold(event.target.value)} /><span>%</span></div><p className="admin-inline-feedback" role={thresholdError ? "alert" : thresholdMessage ? "status" : undefined} title={thresholdError || thresholdMessage || undefined}>{thresholdError || thresholdMessage || "허용 범위는 서버 설정을 따릅니다."}</p><button className="admin-primary" type="button" onClick={saveThreshold}>수거 설정 저장</button></div>
+                <div className="threshold-change"><label htmlFor="threshold-input" className="admin-label">변경값</label><div className="threshold-input"><input id="threshold-input" type="number" min="5" max="100" value={threshold} aria-invalid={collectionThresholdInvalid ? "true" : undefined} className={collectionThresholdInvalid ? "admin-input-invalid" : undefined} onChange={(event) => { setThreshold(event.target.value); setCollectionThresholdInvalid(false); setThresholdError(""); }} /><span>%</span></div><p className="admin-inline-feedback" role={thresholdError ? "alert" : thresholdMessage ? "status" : undefined} title={thresholdError || thresholdMessage || undefined}>{thresholdError || thresholdMessage || "허용 범위는 서버 설정을 따릅니다."}</p><button className="admin-primary" type="button" onClick={saveThreshold}>수거 설정 저장</button></div>
                 <div className="threshold-applied"><span>현재 적용값</span><strong>{currentThreshold}<small>%</small></strong></div>
               </div>
-              <section className="threshold-alert-settings"><div className="threshold-alert-head"><div><h3>사전 수거 알림</h3><p>사전 알림 사용 여부와 기준을 저장합니다.</p></div><AdminToggle className="admin-toggle threshold-alert-toggle" checked={preAlertEnabled} onChange={setPreAlertEnabled} /></div><label className="pre-alert-timing"><span>알림 기준 적재율</span><div className="pre-alert-setting-row"><div className="compact-percent-input"><input type="number" min="0" max="95" value={preAlertThreshold} disabled={!preAlertEnabled} onChange={(event) => setPreAlertThreshold(event.target.value)} /><b>%</b></div><small>현재 적용 {savedPreAlertEnabled ? `${savedPreAlertThreshold}%` : "중지"}</small></div></label></section>
+              <section className="threshold-alert-settings"><div className="threshold-alert-head"><div><h3>사전 수거 알림</h3><p>사전 알림 사용 여부와 기준을 저장합니다.</p></div><AdminToggle className="admin-toggle threshold-alert-toggle" checked={preAlertEnabled} onChange={setPreAlertEnabled} /></div><label className="pre-alert-timing"><span>알림 기준 적재율</span><div className="pre-alert-setting-row"><div className="compact-percent-input"><input type="number" min="0" max="95" value={preAlertThreshold} disabled={!preAlertEnabled} aria-invalid={preAlertThresholdInvalid ? "true" : undefined} className={preAlertThresholdInvalid ? "admin-input-invalid" : undefined} onChange={(event) => { setPreAlertThreshold(event.target.value); setPreAlertThresholdInvalid(false); setThresholdError(""); }} /><b>%</b></div><small>현재 적용 {savedPreAlertEnabled ? `${savedPreAlertThreshold}%` : "중지"}</small></div></label></section>
             </fieldset></section>
             <section className="card recipients-card">
               <div className="admin-card-head"><SectionTitle>알림 대상 관리</SectionTitle><div className="recipients-tools"><span>총 {recipients.length}명</span><button className="admin-primary compact" type="button" onClick={() => setAddRecipientOpen(true)}>알림 대상 추가</button></div></div>

@@ -7,9 +7,19 @@ import type { components } from "../src/generated/backend-contract.js";
 import { extractBackendContract, readManifest, type Json } from "../scripts/backend-contract.ts";
 
 type Session = components["schemas"]["Session"];
-type EventRecordingPage = { items: { eventId: string; category: "collection" | "alert" | "error"; windowState: string }[] };
+type EventRecordingPage = {
+  items: {
+    eventId: string;
+    category: "collection" | "alert" | "error";
+    windowState: string;
+    windowFrom: string;
+    windowTo: string | null;
+  }[];
+};
 type EventReplayDetail = {
   source: string; state: string; downloadPath: string | null; downloadReasonCode: string | null;
+  exportPath?: string | null;
+  effectiveTo?: string | null;
   parts: { recordingId: string; playbackPath: string }[];
 };
 const screenshots = `${process.env.SYNC_RUN_DIRECTORY ?? "test-results/integration"}/private/screenshots`;
@@ -180,7 +190,15 @@ test("실제 v2 수신 API, SSE와 적재율 추이에서 0%, STALE, session 종
     await login(page);
     const camera = page.locator(".device").filter({ has: page.getByText("카메라", { exact: true }) });
     await expect(camera.locator(".status-text")).toHaveText("정상");
-    await expect(camera.locator(".status-text")).toHaveAttribute("title", "HEALTHY");
+    await expect(camera.locator(".status-text")).toHaveAttribute("title", /프레임 수신 기준 상태/);
+    const cameraStatusResponse = await page.request.get("/api/v2/monitoring/camera-status?pit_id=pit-01");
+    expect(cameraStatusResponse.status(), "Authenticated v2 camera-status response").toBe(200);
+    const cameraStatusData = await cameraStatusResponse.json() as Record<string, unknown>;
+    expect(cameraStatusData).toMatchObject({
+      state: "HEALTHY",
+      connectionState: "CONNECTED",
+    });
+    expect(typeof cameraStatusData.validForSeconds).toBe("number");
     await send("assessments", assessment);
     await expect(page.locator(".kpi-value")).toHaveText("0%");
     const pastLoad = page.locator(".status-details > div").filter({ hasText: "1시간 전 적재율" }).locator("strong");
@@ -220,7 +238,7 @@ test("실제 v2 수신 API, SSE와 적재율 추이에서 0%, STALE, session 종
     const allAlerts = await allAlertsResponse.json() as components["schemas"]["ActiveFillAlertPageV2"];
     expect(allAlerts).toMatchObject({ pitId: "pit-01", scope: "ALL", evaluationState: "CRITICAL" });
     expect(allAlerts.items?.some(item => item.type === "collection_required")).toBe(true);
-    expect(allAlerts.coverage?.find(entry => entry.componentKind === "CAMERA")).toMatchObject({ state: "UNSUPPORTED", reasonCodes: ["CAMERA_HEALTH_SOURCE_NOT_CONFIGURED"] });
+    expect(allAlerts.coverage?.find(entry => entry.componentKind === "CAMERA")).toMatchObject({ state: "CHECKED", reasonCodes: ["FRAME_RECEIVED"] });
     const layoutResponse = await page.request.get("/api/v2/monitoring/layout?pit_id=pit-01");
     expect(layoutResponse.status(), "Authenticated v2 layout response").toBe(200);
     const layout = await layoutResponse.json() as components["schemas"]["MeasurementLayoutV2"];
@@ -360,7 +378,7 @@ test("실제 날짜 녹화의 session 보호, 공개 HLS 경로와 오늘 녹화
   await page.screenshot({ path: `${screenshots}/recordings-daily-hls.png`, fullPage: true });
 });
 
-test("실제 이벤트 녹화의 v2 목록과 상세, 날짜 녹화 part 재생, 다운로드 미지원과 삭제 제한", async ({ page, playwright }) => {
+test("실제 이벤트 녹화의 v2 목록과 상세, 날짜 녹화 part 재생, 구간 파일 준비 지원과 삭제 제한", async ({ page, playwright }) => {
   await login(page);
   const toTime = Math.ceil(Date.now() / 60_000) * 60_000 + 60_000;
   const fromTime = toTime - 3_600_000;
@@ -369,24 +387,64 @@ test("실제 이벤트 녹화의 v2 목록과 상세, 날짜 녹화 part 재생,
   expect(listResponse.status()).toBe(200);
   const list = await listResponse.json() as EventRecordingPage;
   expect(list.items.length).toBeGreaterThan(0);
-  const item = list.items[0];
+
+  const toKstTime = (iso: string) => new Date(Date.parse(iso) + 9 * 3_600_000).toISOString().slice(11, 16);
+  const toKstDate = (iso: string) => new Date(Date.parse(iso) + 9 * 3_600_000).toISOString().slice(0, 10);
+  // 기간 입력은 Asia/Seoul(+09:00) 벽시계로 해석한다.
+  const inputTime = (timestamp: number) => new Date(timestamp + 9 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
+
+  const pickCandidate = async (items: EventRecordingPage["items"]) => {
+    for (const entry of items) {
+      if (entry.windowState !== "CLOSED" && entry.windowState !== "POINT") continue;
+      const detailRes = await page.request.get(`/api/v2/recordings/events/${encodeURIComponent(entry.eventId)}?pit_id=pit-01`);
+      if (detailRes.status() !== 200) continue;
+      const rep = await detailRes.json() as EventReplayDetail;
+      if ((rep.state === "AVAILABLE" || rep.state === "PARTIAL") && rep.parts.length > 0) {
+        return { item: entry, replay: rep };
+      }
+    }
+    return null;
+  };
+
+  // 영상이 있는(AVAILABLE 또는 PARTIAL, parts 1개 이상) 닫힌 이벤트를 고른다. 없으면 실패해야 하며 skip으로 넘기지 않는다.
+  const picked = await pickCandidate(list.items);
+  expect(picked, "영상이 확보된 닫힌 이벤트가 1개 이상 존재해야 한다").toBeTruthy();
+  const item = picked!.item;
+  const replay = picked!.replay;
+
   expect(["collection", "alert", "error"]).toContain(item.category);
   expect(["CLOSED", "OPEN", "UNKNOWN", "POINT"]).toContain(item.windowState);
-  const detailResponse = await page.request.get(`/api/v2/recordings/events/${encodeURIComponent(item.eventId)}?pit_id=pit-01`);
-  expect(detailResponse.status()).toBe(200);
-  const replay = await detailResponse.json() as EventReplayDetail;
   expect(replay.source).toBe("DAILY_RECORDING");
   expect(replay.downloadPath).toBeNull();
-  expect(replay.downloadReasonCode).toBe("EVENT_RANGE_EXPORT_UNSUPPORTED");
+  expect(replay.downloadReasonCode).toBe("EVENT_EXPORT_NOT_REQUESTED");
+  expect(replay.exportPath).toBe(`/api/v2/recordings/events/${item.eventId}/exports`);
   const playable = (replay.state === "AVAILABLE" || replay.state === "PARTIAL") && replay.parts.length > 0;
   for (const part of replay.parts) {
     expect(part.playbackPath).toBe(`/media/daily-recordings/${part.recordingId}/hls/index.m3u8`);
     expect((await page.request.get(part.playbackPath)).status()).toBe(200);
   }
-  await page.goto("/recordings?recordingSource=event");
+
+  const targetDateText = toKstDate(item.windowFrom);
+  const targetStartTimeText = `${toKstTime(item.windowFrom)} -`;
+
+  let exportPostCount = 0;
+  page.on("request", request => {
+    if (request.method() === "POST" && request.url().includes("/exports")) {
+      exportPostCount++;
+    }
+  });
+
+  await page.goto("/recordings?recordingId=" + encodeURIComponent(item.eventId));
   await expect(page.getByRole("heading", { name: "녹화 영상", exact: true, level: 1 })).toBeVisible();
-  await expect(page.locator(".recording-item").first()).toBeVisible();
-  await page.locator(".recording-item").first().click();
+  const selectedItem = page.locator(".recording-item.selected");
+  await expect(selectedItem).toHaveCount(1);
+  await expect(selectedItem).toContainText(targetDateText);
+  await expect(selectedItem).toContainText(targetStartTimeText);
+
+  const infoSection = page.locator(".recording-info");
+  const startTimeDd = infoSection.locator("div").filter({ has: page.getByText("시작 시각", { exact: true }) }).locator("dd");
+  await expect(startTimeDd).toContainText(`${targetDateText} ${toKstTime(item.windowFrom)}`);
+
   if (playable) {
     await expect(page.locator(".event-replay")).toBeVisible();
     await expect(page.locator(".recording-frame video")).toBeVisible();
@@ -396,10 +454,47 @@ test("실제 이벤트 녹화의 v2 목록과 상세, 날짜 녹화 part 재생,
   } else {
     await expect(page.locator(".event-replay")).toHaveCount(0);
   }
-  await expect(page.getByText("이벤트 구간의 MP4 다운로드는 아직 제공되지 않습니다.", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "다운로드 불가", exact: true })).toBeDisabled();
-  // 기간 입력은 Asia/Seoul(+09:00) 벽시계로 해석한다.
-  const inputTime = (timestamp: number) => new Date(timestamp + 9 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
+  await expect(page.getByText("이벤트 구간만 담은 MP4 파일을 준비합니다.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "구간 파일 준비", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "구간 파일 준비", exact: true }).click();
+
+  // Media의 짧은 구간 MP4 muxing과 백엔드 작업 생성 및 프론트엔드 3초 폴링 주기를 고려해 상한을 30초로 설정한다.
+  await expect(page.getByRole("button", { name: "다운로드", exact: true })).toBeVisible({ timeout: 30_000 });
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "다운로드", exact: true }).click(),
+  ]);
+  const downloadUrl = download.url();
+  const downloadResponse = await page.request.get(downloadUrl);
+  expect(downloadResponse.status()).toBe(200);
+  expect(downloadResponse.headers()["content-type"]).toContain("video/mp4");
+  const fileBytes = await downloadResponse.body();
+  expect(fileBytes.length).toBeGreaterThan(0);
+
+  const codecDd = infoSection.locator("div").filter({ has: page.getByText("비디오 코덱", { exact: true }) }).locator("dd");
+  const resolutionDd = infoSection.locator("div").filter({ has: page.getByText("해상도", { exact: true }) }).locator("dd");
+  const fpsDd = infoSection.locator("div").filter({ has: page.getByText("프레임 속도", { exact: true }) }).locator("dd");
+  const sizeDd = infoSection.locator("div").filter({ has: page.getByText("파일 용량", { exact: true }) }).locator("dd");
+
+  await expect(codecDd).toHaveText(/^[a-zA-Z0-9_.-]+$/);
+  await expect(resolutionDd).toHaveText(/^\d+\s*x\s*\d+$/);
+  await expect(fpsDd).toHaveText(/^\d+(?:\.\d+)?\s*fps$/);
+  await expect(sizeDd).toHaveText(/^\d+(?:\.\d+)?\s*(B|KB|MB|GB)$/);
+
+  const initialPostCount = exportPostCount;
+  expect(initialPostCount).toBe(1);
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "녹화 영상", exact: true, level: 1 })).toBeVisible();
+  const reloadedSelectedItem = page.locator(".recording-item.selected");
+  await expect(reloadedSelectedItem).toHaveCount(1);
+  await expect(reloadedSelectedItem).toContainText(targetDateText);
+  await expect(reloadedSelectedItem).toContainText(targetStartTimeText);
+  const reloadedInfoSection = page.locator(".recording-info");
+  await expect(reloadedInfoSection.locator("div").filter({ has: page.getByText("시작 시각", { exact: true }) }).locator("dd")).toContainText(`${targetDateText} ${toKstTime(item.windowFrom)}`);
+  await expect(page.getByRole("button", { name: "다운로드", exact: true })).toBeVisible();
+  expect(exportPostCount, "새로고침 후 동일 이벤트 선택 시 추가 POST가 발생하지 않아야 한다").toBe(initialPostCount);
   const queryRecordings = async (category: string, label: string, from = fromTime, to = toTime) => {
     await page.getByRole("textbox", { name: "시작 시각", exact: true }).fill(inputTime(from));
     await page.getByRole("textbox", { name: "종료 시각", exact: true }).fill(inputTime(to));

@@ -30,4 +30,9 @@ export const dailyRecordingFixture = {
   expires_at: "2026-11-12T15:00:00Z",
   export_expires_at: null,
   error: null,
+  deleted_at: null,
+  cleanup_state: null,
+  cleanup_completed_at: null,
+  cleanup_error: null,
+  space_reclaimed: null,
 } as const satisfies components["schemas"]["DailyRecording"];

@@ -3,6 +3,7 @@ import { clearAuthentication, hasAuthenticationSession, setAuthenticated } from 
 import { dateTimeValue } from "../date-range";
 
 import type { DashboardDataRequestOptions, DashboardDataSource, DateRangeQuery } from "./dashboard-data-source";
+import type { CameraStatusV2 } from "./camera-status-v2";
 import { createRecordingList } from "./recording-list";
 
 export type MockScenario = DashboardStatus | "empty-lists" | "live-update" | "operation-cycle" | "loading" | "request-error";
@@ -331,6 +332,25 @@ export function createMockDashboardDataSource(scenario: MockScenario = "normal")
       if (scenario === "request-error") throw new Error("합성 데이터 요청 오류");
       if (scenario === "loading") await waitForMockLoading(options.signal);
       return withSession();
+    },
+    getCameraStatus: (signal?: AbortSignal): Promise<CameraStatusV2> => {
+      if (signal?.aborted) return Promise.reject(new DOMException("Synthetic request aborted.", "AbortError"));
+      if (scenario === "request-error") return Promise.reject(new Error("합성 데이터 요청 오류"));
+      const isDisconnected = scenario === "disconnected" || currentData.monitoring.status === "disconnected";
+      const now = new Date();
+      return Promise.resolve({
+        pitId: "pit-01",
+        cameraId: "camera-main",
+        state: isDisconnected ? "INTERRUPTED" : "HEALTHY",
+        connectionState: isDisconnected ? "DISCONNECTED" : "CONNECTED",
+        statusBasis: "ACCEPTED_JPEG_RECEIPT",
+        computedAt: now.toISOString(),
+        assessedAt: now.toISOString(),
+        validUntilAt: new Date(now.getTime() + 5000).toISOString(),
+        validForSeconds: 5.0,
+        lastFrameReceivedAt: new Date(now.getTime() - 2000).toISOString(),
+        reasonCodes: isDisconnected ? ["CAMERA_STATUS_TIMEOUT"] : [],
+      });
     },
     markAllNotificationsRead: () => {
       currentData.monitoring.headerNotifications.forEach((notification) => { notification.read = true; });

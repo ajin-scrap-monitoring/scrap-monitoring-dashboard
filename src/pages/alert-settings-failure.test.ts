@@ -7,11 +7,32 @@ const unprocessable = (...issues: ReturnType<typeof issue>[]) => ({ status: 422,
 
 test("422 검증 배열은 loc가 가리키는 입력 영역으로 나눈다", () => {
   expect(settingsFailures(unprocessable(issue("body", "collectionThresholdPercent"), issue("body", "sendDelayMinutes")), "threshold", "실패")).toEqual([
-    { area: "threshold", message: "수거 임계율 값을 서버가 받아들이지 않았습니다." },
-    { area: "policy", message: "발송 시점 값을 서버가 받아들이지 않았습니다." },
+    { area: "threshold", field: "collectionThreshold", message: "수거 임계율 값을 서버가 받아들이지 않았습니다." },
+    { area: "policy", field: "policy", message: "발송 시점 값을 서버가 받아들이지 않았습니다." },
   ]);
   expect(settingsFailures(unprocessable(issue("body", "preCollectionAlert", "thresholdPercent")), "policy", "실패")).toEqual([
-    { area: "threshold", message: "사전 알림 기준 값을 서버가 받아들이지 않았습니다." },
+    { area: "threshold", field: "preAlertThreshold", message: "사전 알림 기준 값을 서버가 받아들이지 않았습니다." },
+  ]);
+});
+
+test("alert_threshold_gap 오류는 ctx를 반영하여 사전 알림 임계율 입력 칸의 안내 문구를 만든다", () => {
+  const gapIssue = {
+    loc: ["body", "preCollectionAlert", "thresholdPercent"],
+    message: "Pre-alert threshold must be at least 5 percentage points below collection threshold",
+    type: "alert_threshold_gap",
+    ctx: { minimumGap: 5, collectionThresholdPercent: 85 },
+  };
+  expect(settingsFailures({ status: 422, issues: [gapIssue] }, "threshold", "실패")).toEqual([
+    { area: "threshold", field: "preAlertThreshold", message: "사전 알림 임계율은 수거 임계율 85%보다 최소 5%p 낮아야 합니다." },
+  ]);
+
+  const noCtxIssue = {
+    loc: ["body", "preCollectionAlert", "thresholdPercent"],
+    message: "Pre-alert threshold must be below collection threshold",
+    type: "alert_threshold_gap",
+  };
+  expect(settingsFailures({ status: 422, issues: [noCtxIssue] }, "threshold", "실패")).toEqual([
+    { area: "threshold", field: "preAlertThreshold", message: "사전 알림 임계율은 수거 임계율보다 낮아야 합니다." },
   ]);
 });
 

@@ -12,10 +12,16 @@ import type { ActiveAlert, ActiveAlertCoverage, AlarmState, DashboardData, Measu
 import { v1MonitoringEnabled } from "../build-features";
 import { seoulDisplayText } from "../display-time";
 import { useModalFocus } from "../use-modal-focus";
+import { useCameraStatus } from "./use-camera-status";
 
 const alertsPerPage = 4;
 const missingValue = "정보 없음";
 const alarmPresentation: Record<AlarmState, string> = { NORMAL: "경고 기준 미만", WARNING: "경고", CRITICAL: "위험", UNKNOWN: "확인 불가", ERROR: "판정 불가" };
+
+function alarmStateLabel(state: string | null | undefined): string {
+  if (!state) return "정보 없음";
+  return Object.hasOwn(alarmPresentation, state) ? alarmPresentation[state as AlarmState] : state;
+}
 const deviceLabels = { normal: "정상", delayed: "지연", unavailable: "수신 없음", unknown: missingValue };
 const deviceTones = { normal: "ok", delayed: "warning", unavailable: "error", unknown: "" };
 const deviceStateLabels: Record<string, string> = {
@@ -79,6 +85,7 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
   const state = monitoring.v2;
   const [alertPage, setAlertPage] = useState(0);
   const [videoOpen, setVideoOpen] = useState(false);
+  const cameraDisplay = useCameraStatus(dataSource, session?.user.id ?? null);
   const closeDialog = useCallback(() => setVideoOpen(false), []);
   const modalRef = useModalFocus<HTMLDivElement>(videoOpen, closeDialog);
   const alarmState = state?.streamState === "reconnecting" && monitoring.alarmState ? "UNKNOWN" : monitoring.alarmState;
@@ -90,7 +97,14 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
   // 확인 불가 안내 행은 활성 알림 뒤에 같은 페이지 방식으로 이어 붙이며 카드 크기를 바꾸지 않는다.
   const rows: AlertRow[] = [
     ...(alertsKnown ? monitoring.alerts : []).map((alert) => ({ alert })),
-    ...(state && alertsState && alertsUndetermined ? [{ notice: { id: "fill-undetermined", title: "적재율 경보", detail: "판정 불가", hint: alertsState.reasonCodes.join(", ") } }] : []),
+    ...(state && alertsState && alertsUndetermined ? [{
+      notice: {
+        id: "fill-undetermined",
+        title: "적재율 경보",
+        detail: alertsState.basis?.lastKnownState ? `적재율 판정 불가 (마지막 판정 ${alarmStateLabel(alertsState.basis.lastKnownState)})` : "적재율 판정 불가",
+        hint: alertsState.reasonCodes.join(", "),
+      },
+    }] : []),
     ...unconfirmed.map((entry) => ({ notice: { id: `coverage-${entry.componentKind}-${entry.componentId ?? ""}`, title: entry.componentName, detail: coverageDetail(entry), hint: entry.reasonCodes.join(", ") } })),
   ];
   const totalAlertPages = Math.max(1, Math.ceil(rows.length / alertsPerPage));
@@ -108,6 +122,16 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
   const pastLoad = monitoring.summary.loadOneHourAgo;
   const pastLoadTitle = pastLoad
     ? `관측 시각: ${seoulDisplayText(Date.parse(pastLoad.observedAt))}. ${pastLoad.dataState === "LIMITED" ? "제한된 데이터. " : ""}1시간 전 기준 시각 이전 1분 이내의 서버 이력입니다.`
+    : undefined;
+  const mismatch = alertsState?.mismatch;
+  const mismatchTitle = mismatch
+    ? [`현재 판정 ${alarmStateLabel(mismatch.snapshotState)}, 활성 알림 ${alarmStateLabel(mismatch.alertState)}`,
+      mismatch.measuredAt ? `측정 시각: ${seoulDisplayText(Date.parse(mismatch.measuredAt))}` : "측정 시각 없음",
+      mismatch.lastEvaluatedAt ? `평가 시각: ${seoulDisplayText(Date.parse(mismatch.lastEvaluatedAt))}` : "평가 시각 없음",
+      mismatch.reasonCodes.length > 0 ? `사유: ${mismatch.reasonCodes.join(", ")}` : ""].filter(Boolean).join(" / ")
+    : undefined;
+  const basisTitle = alertsState?.basis?.measuredAt
+    ? `근거 측정 시각: ${seoulDisplayText(Date.parse(alertsState.basis.measuredAt))}`
     : undefined;
 
   return <DashboardPageShell activePage="monitoring" dataSource={dataSource} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} notificationState={monitoring.notificationState} session={session}>
@@ -171,8 +195,14 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
             : ["LiDAR 1", "LiDAR 2"].map((label) => state
               ? <UnsupportedChart key={label} label={label} statusLabel="정보 없음" reason="현재 높이 곡선을 확인할 수 없습니다." />
               : <UnsupportedChart key={label} label={label} reason="API에서 LiDAR profile을 제공하지 않습니다." />)}
-          <section className="card alerts-card span-4">
-            <div className="card-head"><SectionTitle>활성 알림</SectionTitle><span className="alert-count">{alertCount}</span></div>
+          <section className="card alerts-card span-4" title={basisTitle}>
+            <div className="card-head">
+              <div className="monitoring-card-title">
+                <SectionTitle>활성 알림</SectionTitle>
+                {mismatch && <span className="measurement-layout-state" title={mismatchTitle}>현재 판정과 활성 알림 판정이 다름</span>}
+              </div>
+              <span className="alert-count" title={basisTitle}>{alertCount}</span>
+            </div>
             <div className="active-alert-list">
               {visibleRows.length > 0 ? visibleRows.map((row) => "alert" in row
                 ? <div className="active-alert" key={row.alert.id} title={alertHint(row.alert)}>
@@ -187,10 +217,22 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
           <section className="card devices-card span-8">
             <SectionTitle>장비 상태</SectionTitle>
             <div className="device-grid">
-              {monitoring.devices.length ? monitoring.devices.map((device, index) => <div className="device" key={`${index}-${device.label}`}><div>
-                <span className="device-name" title={device.label}>{device.label}</span>
-                <span className={`status-text ${deviceTones[device.status]}`} title={device.statusLabel}>{device.statusLabel ? deviceLabel(device.statusLabel) : deviceLabels[device.status]}</span>
-              </div></div>) : <p className="collection-empty">등록된 장비 상태가 없습니다.</p>}
+              {monitoring.devices.length ? monitoring.devices.map((device, index) => {
+                const isCamera = device.label === "카메라" && cameraDisplay;
+                const status = isCamera ? cameraDisplay.status : device.status;
+                const statusText = isCamera
+                  ? cameraDisplay.statusText
+                  : device.statusLabel ? deviceLabel(device.statusLabel) : deviceLabels[device.status];
+                const title = isCamera ? cameraDisplay.title : device.statusLabel;
+                return (
+                  <div className="device" key={`${index}-${device.label}`}>
+                    <div>
+                      <span className="device-name" title={device.label}>{device.label}</span>
+                      <span className={`status-text ${deviceTones[status]}`} title={title}>{statusText}</span>
+                    </div>
+                  </div>
+                );
+              }) : <p className="collection-empty">등록된 장비 상태가 없습니다.</p>}
             </div>
           </section>
         </div>

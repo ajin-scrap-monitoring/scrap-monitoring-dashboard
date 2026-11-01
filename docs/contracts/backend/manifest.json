@@ -4,12 +4,12 @@
     {
       "directory": "backend",
       "repository": "ajin-scrap-monitoring/scrap-monitoring-backend",
-      "revision": "2366bc64940f3c9beb3470d7c8a760741d056fb0"
+      "revision": "3f865341df74d39273eebfee36436bc5be8fbe51"
     },
     {
       "directory": "media",
       "repository": "ajin-scrap-monitoring/ajin-camera-media-service",
-      "revision": "3fb4d70b123811598dfaa83c9c4acf15b1f2450a"
+      "revision": "2f7dab01cb17e94f72826d6a423707e572ccf146"
     },
     {
       "directory": "edge",
@@ -22,6 +22,7 @@
     "/api/v1/events",
     "/api/v1/history/load",
     "/api/v1/media/clips/{clip_id}",
+    "/api/v1/media/clips/{clip_id}/media-info",
     "/api/v1/monitoring/events",
     "/api/v1/monitoring/snapshot",
     "/api/v1/notification-recipients",
@@ -36,6 +37,7 @@
     "/api/v1/settings/alerts",
     "/api/v2/monitoring/active-alerts",
     "/api/v2/monitoring/alerts",
+    "/api/v2/monitoring/camera-status",
     "/api/v2/monitoring/collection-events",
     "/api/v2/monitoring/collection-events/{assessment_id}/revisions",
     "/api/v2/monitoring/collection-summary",
@@ -48,7 +50,10 @@
     "/api/v2/recordings/daily",
     "/api/v2/recordings/daily/{recording_id}",
     "/api/v2/recordings/daily/{recording_id}/exports",
+    "/api/v2/recordings/daily/{recording_id}/media-info",
     "/api/v2/recordings/events",
-    "/api/v2/recordings/events/{event_id}"
+    "/api/v2/recordings/events/{event_id}",
+    "/api/v2/recordings/events/{event_id}/exports",
+    "/api/v2/recordings/events/{event_id}/exports/{request_id}"
   ]
 }

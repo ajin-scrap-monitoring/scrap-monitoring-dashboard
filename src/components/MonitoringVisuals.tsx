@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
 
 import type { DashboardData, DataAreaState, LidarProfile } from "../domain/dashboard";
+import { calculateUnmeasuredRanges } from "../data/lidar-profiles-v2";
 import { seoulClock } from "../display-time";
 import { timeAxisTicks } from "../chart-time-axis";
 import { SectionTitle } from "./DashboardPrimitives";
@@ -241,6 +242,8 @@ export function ProfileChart({ average, color, label, maximum, minimum, samples,
   const gridXValues = [{ positionRatio: 0, value: "A" }, { positionRatio: 1, value: "B" }];
   const toY = (value: number) => chart.bottom - (value - yMin) * ((chart.bottom - chart.top) / (yMax - yMin));
   const toX = (positionRatio: number) => chart.left + (chart.right - chart.left) * Math.max(0, Math.min(1, positionRatio));
+  const unmeasuredRanges = calculateUnmeasuredRanges(samples);
+  const ariaLabel = unmeasuredRanges.length > 0 ? `${label} (${unmeasuredRanges.map((r) => r.label).join(", ")})` : label;
   // 배열 순서를 유지하고 x는 positionRatio로 정한다. 위치나 높이가 없는 표본은 선을 끊는다.
   const plottedSamples = samples.map((sample) => ({
     ...sample,
@@ -258,12 +261,30 @@ export function ProfileChart({ average, color, label, maximum, minimum, samples,
           <span className="range">최소 {minimum} / 최대 {maximum}</span>
         </div>
       </div>
-      <svg className="chart-svg" viewBox="0 0 430 175" preserveAspectRatio="none" role="img" aria-label={label}>
+      <svg className="chart-svg" viewBox="0 0 430 175" preserveAspectRatio="none" role="img" aria-label={ariaLabel}>
         <g stroke="#e2e8ef" strokeWidth="1">
           {gridYValues.map((value) => (
             <path key={`grid-h-${value}`} d={`M${chart.left} ${toY(value).toFixed(1)}H${chart.right}`} />
           ))}
           <path d={`M${chart.left} ${chart.top}V${chart.bottom}M${chart.left + (chart.right - chart.left) / 2} ${chart.top}V${chart.bottom}M${chart.right} ${chart.top}V${chart.bottom}`} />
+        </g>
+        <g className="profile-unmeasured-zones">
+          {unmeasuredRanges.map((range) => {
+            const x = toX(range.startRatio);
+            const w = toX(range.endRatio) - x;
+            return (
+              <g key={`unmeasured-${range.side}`}>
+                <rect x={x} y={chart.top} width={w} height={chart.bottom - chart.top} fill="#64748b" fillOpacity="0.08">
+                  <title>{range.label}</title>
+                </rect>
+                {w >= 24 && (
+                  <text x={x + w / 2} y={(chart.top + chart.bottom) / 2 + 4} fill="#8898aa" fontSize="10" fontWeight="600" textAnchor="middle" pointerEvents="none">
+                    미측정
+                  </text>
+                )}
+              </g>
+            );
+          })}
         </g>
         <g fill="#61708a" fontSize="10">
           {gridYValues.map((value) => (

@@ -84,6 +84,10 @@ export async function installBackendApi(page: Page, { initial = monitoringV2Stat
   let historyEvents: Array<typeof eventPageFixture.items[number]> = [...eventPageFixture.items];
   let notifications: components["schemas"]["NotificationPage"] = notificationPageFixture;
   let collectionSummary: ReturnType<typeof collectionSummaryFixture> = collectionSummaryFixture();
+  let cameraStatus: unknown = null;
+  const exportStatuses = new Map<string, unknown>();
+  const clipMediaInfos = new Map<string, unknown>();
+  const dailyMediaInfos = new Map<string, unknown>();
   // null이면 해당 API를 제공하지 않는 응답(501)이다.
   let activeAlerts: unknown = null;
   let layout: unknown = measurementLayoutFixture();
@@ -180,6 +184,15 @@ export async function installBackendApi(page: Page, { initial = monitoringV2Stat
       await (sessionActive ? json(sessionFixture) : json({ detail: "Unauthorized" }, 401));
     } else if (!sessionActive) await json({ detail: "Unauthorized" }, 401);
     else if (url.pathname === "/api/v2/monitoring/snapshot") await json(snapshot);
+    else if (url.pathname === "/api/v2/monitoring/camera-status") {
+      if (cameraStatus === null) await json({ detail: "Camera status unavailable" }, 501);
+      else if (typeof cameraStatus === "number") await json({ detail: "Camera error" }, cameraStatus);
+      else if (typeof cameraStatus === "object" && cameraStatus && "status" in cameraStatus) {
+        const errorStatus = (cameraStatus as Record<string, unknown>).status;
+        if (typeof errorStatus === "number") await json({ detail: "Camera error" }, errorStatus);
+        else await json(cameraStatus);
+      } else await json(cameraStatus);
+    }
     else if (url.pathname === "/api/v2/monitoring/load-history") {
       const override = loadHistory?.(url);
       if (override?.delayMs) await new Promise((resolve) => setTimeout(resolve, override.delayMs));
@@ -214,14 +227,70 @@ export async function installBackendApi(page: Page, { initial = monitoringV2Stat
     else if (url.pathname === "/api/v2/monitoring/collection-summary") await json(collectionSummary);
     else if (url.pathname === "/api/v1/settings/alerts") await json(alertSettingsFixture);
     else if (url.pathname === "/api/v1/notification-recipients") await json({ items: [], page: { page: 1, pageSize: 100, totalItems: 0, totalPages: 1 } });
+    else if (url.pathname.startsWith("/api/v1/media/clips/") && url.pathname.endsWith("/media-info")) {
+      const clipId = decodeURIComponent(url.pathname.split("/")[5] ?? "");
+      const info = clipMediaInfos.get(clipId);
+      if (info === null) await json({ detail: "Not found" }, 404);
+      else if (info !== undefined) await json(info);
+      else await json({
+        clip_id: clipId,
+        size_bytes: 2048,
+        media_info: { status: "ready", codec: "h264", width: 1920, height: 1080, fps: 30, fps_num: 30, fps_den: 1, size_bytes: 2048, reason_code: null },
+      });
+    }
+    else if (url.pathname.startsWith("/api/v2/recordings/daily/") && url.pathname.endsWith("/media-info")) {
+      const recordingId = decodeURIComponent(url.pathname.split("/")[5] ?? "");
+      const info = dailyMediaInfos.get(recordingId);
+      if (info === null) await json({ detail: "Not found" }, 404);
+      else if (info !== undefined) await json(info);
+      else await json({
+        recording_id: recordingId,
+        file: { status: "ready", codec: "h264", width: 1920, height: 1080, fps: 30, fps_num: 30, fps_den: 1, size_bytes: 1048576, reason_code: null },
+        segments: { status: "ready", total: 10, measured: 10, formats: [{ codec: "h264", width: 1920, height: 1080, segment_count: 10 }], mixed: false },
+      });
+    }
     else if (url.pathname === "/api/v2/recordings/events") {
       const category = url.searchParams.get("category");
       const withPlayback = url.searchParams.get("include_playback") === "true";
+      const stable = url.searchParams.get("stable") === "true";
       const items = eventReplays.filter(item => !category || item.event.category === category)
         .map(item => withPlayback && !("playback" in item.event) ? { ...item.event, playback: { state: item.state, playbackSeconds: item.playbackSeconds, reasonCodes: item.reasonCodes } } : item.event);
       const [number, size] = [Number(url.searchParams.get("page") ?? 1), Number(url.searchParams.get("pageSize") ?? 100)];
-      await json({ ...eventRecordingPageFixture(items.slice((number - 1) * size, number * size)),
-        page: { page: number, pageSize: size, totalItems: items.length, totalPages: Math.ceil(items.length / size) } });
+      const pageResult = eventRecordingPageFixture(items.slice((number - 1) * size, number * size));
+      await json({
+        ...pageResult,
+        ...(stable ? { snapshotToken: "token-stable-123", snapshotExpiresAt: "2026-11-01T12:00:00Z" } : {}),
+        page: { page: number, pageSize: size, totalItems: items.length, totalPages: Math.ceil(items.length / size) },
+      });
+    } else if (url.pathname.includes("/exports")) {
+      if (route.request().method() === "POST") {
+        const postData = route.request().postData();
+        const body = (postData ? JSON.parse(postData) : {}) as Record<string, unknown>;
+        const eventId = decodeURIComponent(url.pathname.split("/")[5] ?? "");
+        const requestId = typeof body.requestId === "string" ? body.requestId : "unknown-request";
+        const statusPath = `/api/v2/recordings/events/${encodeURIComponent(eventId)}/exports/${encodeURIComponent(requestId)}`;
+        const status = exportStatuses.get(statusPath) ?? {
+          requestId,
+          eventId,
+          statusPath,
+          status: "ready",
+          clipId: "clip-export-1",
+          coverage: "complete",
+          sizeBytes: 4096,
+          downloadPath: `/media/clips/clip-export-1/content?download=true`,
+          expiresAt: null,
+          actualFrom: null,
+          actualTo: null,
+          errorCode: null,
+          gaps: [],
+        };
+        exportStatuses.set(statusPath, status);
+        await json(status, 202);
+      } else {
+        const status = exportStatuses.get(url.pathname);
+        if (status) await json(status);
+        else await json({ detail: "Not found" }, 404);
+      }
     } else if (url.pathname.startsWith("/api/v2/recordings/events/")) {
       const replay = eventReplays.find(item => item.event.eventId === decodeURIComponent(url.pathname.split("/").at(-1) ?? ""));
       await (replay ? json(replay) : json({ detail: "Not found" }, 404));
@@ -239,6 +308,10 @@ export async function installBackendApi(page: Page, { initial = monitoringV2Stat
     setActiveAlerts: (next: unknown) => { activeAlerts = next; },
     setLayout: (next: unknown) => { layout = next; },
     setProfiles: (next: unknown) => { profiles = next; },
+    setCameraStatus: (next: unknown) => { cameraStatus = next; },
+    setExportStatus: (statusPath: string, status: unknown) => { exportStatuses.set(statusPath, status); },
+    setClipMediaInfo: (clipId: string, info: unknown) => { clipMediaInfos.set(clipId, info); },
+    setDailyMediaInfo: (recordingId: string, info: unknown) => { dailyMediaInfos.set(recordingId, info); },
     setLoadHistory: (next: typeof loadHistory) => { loadHistory = next; },
     async snapshot(next: BackendSnapshot) { snapshot = next; await page.evaluate((value) => window.backendFixture.emit("monitoring.snapshot", JSON.stringify(value)), next); },
   };

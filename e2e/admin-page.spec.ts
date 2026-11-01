@@ -16,9 +16,15 @@ test("긴 대상 정보는 고정 셀 안에서 생략하고 전체 값과 관�
   let longValues = false;
   await page.route("**/api/v1/notification-recipients?*", route => route.fulfill({ json: { ...recipientPageFixture, items: [longValues ? recipient : recipientFixture] } }));
   await page.goto("/admin?source=api");
+  const cards = page.locator(".admin-content .card");
+  await expect(cards).toHaveCount(4);
+  for (let i = 0; i < 4; i++) {
+    await expect(cards.nth(i)).toBeVisible();
+  }
   await expect(page.locator(".recipients-table-wrap tbody tr")).toHaveCount(1);
   await page.evaluate(() => document.fonts.ready);
   const before = await geometry(page);
+  expect(before.length).toBeGreaterThan(0);
   const tableGeometry = () => page.locator(".recipients-table-wrap tbody tr, .recipients-table-wrap tbody td").evaluateAll(elements => elements.map(element => {
     const { x, width, height } = element.getBoundingClientRect();
     return { x, width, height };
@@ -100,9 +106,14 @@ test("긴 대상 정보는 고정 셀 안에서 생략하고 전체 값과 관�
 test("관리자 저장 충돌과 테스트 접수는 안내 위치만 바꾸고 기존 카드 배치를 유지한다", async ({ page }) => {
   await installContractApi(page, { initiallyAuthenticated: true });
   await page.goto("/admin?source=api");
-  await expect(page.locator(".admin-content .card")).toHaveCount(4);
+  const cards = page.locator(".admin-content .card");
+  await expect(cards).toHaveCount(4);
+  for (let i = 0; i < 4; i++) {
+    await expect(cards.nth(i)).toBeVisible();
+  }
   await page.evaluate(() => document.fonts.ready);
   const before = await geometry(page);
+  expect(before.length).toBeGreaterThan(0);
   await page.route("**/api/v1/settings/alerts", route => route.request().method() === "PUT"
     ? route.fulfill({ status: 412, json: { detail: "Synthetic settings conflict" } }) : route.fallback());
   await page.getByRole("button", { name: "수거 설정 저장" }).click();
@@ -145,4 +156,42 @@ test("대상 생성 요청 중 닫기를 잠그고 성공한 대상은 목록에
   await expect(dialog).toBeHidden();
   await expect(page.locator(".recipients-table-wrap")).toContainText("admin-validation@example.com");
   expect(api.requests.filter(request => request.method === "POST" && request.url.pathname === "/api/v1/notification-recipients")).toHaveLength(1);
+});
+
+test("경보 설정 저장 실패 시 alert_threshold_gap은 사전 알림 입력에 aria-invalid와 안내를 두고 카드 높이를 유지한다", async ({ page }) => {
+  await installContractApi(page, { initiallyAuthenticated: true });
+  await page.route("**/api/v1/settings/alerts", route => {
+    if (route.request().method() === "PUT") {
+      return route.fulfill({
+        status: 422,
+        json: {
+          detail: [{
+            type: "alert_threshold_gap",
+            loc: ["body", "preCollectionAlert", "thresholdPercent"],
+            msg: "Pre-alert threshold must be at least 5 percentage points below collection threshold",
+            input: 85,
+            ctx: { minimumGap: 5, collectionThresholdPercent: 85 },
+          }],
+        },
+      });
+    }
+    return route.fallback();
+  });
+  await page.goto("/admin?source=api");
+  const cards = page.locator(".admin-content .card");
+  await expect(cards).toHaveCount(4);
+  for (let i = 0; i < 4; i++) {
+    await expect(cards.nth(i)).toBeVisible();
+  }
+  const preAlertInput = page.locator(".compact-percent-input input");
+  await expect(preAlertInput).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  const before = await geometry(page);
+  expect(before.length).toBeGreaterThan(0);
+  await expect(preAlertInput).not.toHaveAttribute("aria-invalid", "true");
+
+  await page.getByRole("button", { name: "수거 설정 저장" }).click();
+  await expect(preAlertInput).toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator(".threshold-change p.admin-inline-feedback")).toHaveText("사전 알림 임계율은 수거 임계율 85%보다 최소 5%p 낮아야 합니다.");
+  expect(await geometry(page)).toEqual(before);
 });
