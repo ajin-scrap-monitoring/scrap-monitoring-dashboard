@@ -116,8 +116,8 @@ driver 서비스의 전체 건강 상태를 의미하지 않는다.
 현황의 최근 24시간과 이력 그래프는 `/api/v2/monitoring/load-history`를 사용한다.
 `bucket_seconds`는 전달하지 않고 서버의 자동 간격 선택(60, 300, 900, 3600, 7200, 21600,
 86400초)을 사용한다. 한 요청의 범위는 최대 90일이며 표본 상한은 1,441개다. 구간 수는
-`ceil(to/간격) - floor(from/간격)`이고 양 끝 구간은 요청 범위로 잘린다. 90일 조회는 약
-11초가 걸릴 수 있어 이 요청만 25초 timeout을 사용하고 조회 중 안내를 표시한다. 서버가 compact 모드로 응답하면 유효한 표본의
+`ceil(to/간격) - floor(from/간격)`이고 양 끝 구간은 요청 범위로 잘린다. 90일 조회는 서버 처리 상한 20초에
+가까운 시간이 걸릴 수 있어 이 요청만 25초 timeout을 사용하고 조회 중 안내를 표시한다. 서버가 compact 모드로 응답하면 유효한 표본의
 `generatedAt`과 `observedAt`이 null일 수 있다. 이 표본은 bucket 위치로 표시하고 시각을
 만들어 채우지 않는다. 응답의 `inputSource`, `valuePolicy`와 `simulated`는 보존한다.
 유효한 0과 결측을 구분하며 `valid=false`와 null은 선을 연결하지 않는다.
@@ -258,7 +258,7 @@ v2 경보와 수거 판단 목록(`/api/v2/monitoring/alerts`, `collection-event
 | 시작, 종료, 길이, 형식 | 이벤트 상세 | 변환 사용 | 길이는 `playbackSeconds`, 형식은 HLS |
 | 보관 만료 | 날짜 녹화 상세의 `expires_at`, `status` | 변환 사용 | `status`가 deleted 또는 expired면 "삭제됨" 또는 "만료됨" 표시, 이벤트는 `parts`의 모든 날짜 녹화 중 가장 빠른 만료를 사용하며 하나라도 확인하지 못하면 정보 없음 |
 | codec, 해상도, frame rate | `/api/v2/recordings/daily/{recording_id}/media-info`, `/api/v1/media/clips/{clip_id}/media-info` | 직접 사용 | 날짜 녹화는 file 정보와 segments(상세 창/title), 이벤트는 export 완료 후 clip media-info 연동 |
-| 이벤트 구간 용량과 MP4 | `POST /api/v2/recordings/events/{event_id}/exports`, `GET statusPath` | 직접 사용 | 구간 파일 준비 요청, 3초 폴링, 준비 완료 시 downloadPath 다운로드, 오류 code 우선 안내, D-2 fallback 캐시 |
+| 이벤트 구간 용량과 MP4 | `POST /api/v2/recordings/events/{event_id}/exports`, `GET statusPath` | 직접 사용 | 구간 파일 준비 요청, 3초 폴링, 준비 완료 시 downloadPath 다운로드, 오류 code 우선 안내, 새로고침 복구용 requestId와 statusPath 브라우저 저장(A-10 제공 전) |
 | 미리보기 썸네일 | 제공 정보 없음 | 추가 계약 필요 | 미리보기 없음 표시 |
 
 날짜 녹화는 `deleted_at`, `cleanup_state`(pending, failed, complete, null), `cleanup_completed_at`,
@@ -271,11 +271,10 @@ v2 경보와 수거 판단 목록(`/api/v2/monitoring/alerts`, `collection-event
 
 이벤트 구간 파일 준비 요청 실패와 상태 조회의 errorCode(failed, blocked)는 HTTP status보다
 오류 code를 우선해 사용자 안내 문구로 변환한다. 알려진 오류 code(RECORDING_NOT_FOUND_IN_RANGE,
-INSUFFICIENT_STORAGE, EXPORT_CAPACITY_EXCEEDED, RECORDING_STORAGE_ERROR,
-CLIP_PREPARATION_FAILED, RECORDING_BOUNDARY_UNAVAILABLE, EXPORT_INCOMPATIBLE_MEDIA,
-EVENT_EXPORT_NOT_FOUND, EVENT_WINDOW_IN_FUTURE, MEDIA_UNAVAILABLE, MEDIA_TIMEOUT 등)는
-정의된 code별 문구를 표시한다. 정의되지 않은 오류 code는 기존 HTTP status별 기본 문구를
-표시하고 title에 해당 code를 남긴다.
+INSUFFICIENT_STORAGE, RECORDING_STORAGE_ERROR, CLIP_PREPARATION_FAILED,
+RECORDING_BOUNDARY_UNAVAILABLE, EXPORT_INCOMPATIBLE_MEDIA, EVENT_EXPORT_NOT_FOUND,
+EVENT_WINDOW_IN_FUTURE, MEDIA_UNAVAILABLE, MEDIA_TIMEOUT 등)는 정의된 code별 문구를 표시한다.
+정의되지 않은 오류 code는 기존 HTTP status별 기본 문구를 표시하고 title에 해당 code를 남긴다.
 
 이벤트 녹화의 `windowState`는 `CLOSED`, `OPEN`, `UNKNOWN`, `POINT`이며 목록은 구간 상태를,
 상세는 `state`(`AVAILABLE`, `PARTIAL`, `PROCESSING`, `UNAVAILABLE`)를 상태 문구로 사용한다.
@@ -305,6 +304,12 @@ Backend와 Media Service에 전달할 요청 항목을 관리한다. 제공되�
 | A-02 | 대기 중인 이전 요청의 담당과 예정 시점 | Backend | 대기 |
 | A-07 | 적재율 이력 조회의 응답 시간 | Backend | 대기 |
 | A-09 | 이벤트 녹화 목록의 정렬 기준과 페이지 안정성 | Backend | 반영 |
+| A-10 | 이벤트 구간 export의 기존 작업 조회와 같은 계정, 이벤트, 문맥의 중복 생성 방지 | Backend | 대기 |
+| A-11 | 녹화 파일 정보(codec, 해상도, frame rate)의 파일 완성 시점 측정과 저장값 반환 | Backend, Media Service | 대기 |
+| A-12 | 현재 판정과 활성 알림을 같은 snapshot 근거로 비교하는 방법 | Backend | 대기 |
+| A-13 | 카메라 상태의 기존 실시간 연결(SSE) 전달 | Backend | 대기 |
+| A-14 | 영상이 없는 이벤트의 `exportPath` 제공 조건 | Backend | 대기 |
+| A-15 | 녹화 저장 위치와 저장 용량 정책 | Backend, Media Service | 대기 |
 
 ### 이력 및 녹화 영상의 일괄 협의 항목
 
