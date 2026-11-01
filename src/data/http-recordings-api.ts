@@ -71,6 +71,7 @@ type RecordingsApiContext = {
   cameraId: string;
   collectionThreshold: () => number | undefined;
   isAuthenticated: () => boolean;
+  monitoringScope?: () => { pitId?: string; siteId?: string; edgeId?: string } | null;
   optionalArea: <T>(operation: Promise<T>, fallback: T, message: string, signal?: AbortSignal, stale?: boolean) => Promise<{ value: T; state: DataAreaState }>;
   pitId: string;
   request: <T>(path: string, init?: RequestInit & { timeoutMs?: number }) => Promise<T>;
@@ -80,6 +81,9 @@ type RecordingsApiContext = {
   useV2Monitoring: boolean;
 };
 
+const HISTORY_CACHE_TTL_MS = 60_000;
+const MAX_HISTORY_CACHE_ENTRIES = 4;
+
 // 이력 이벤트 표와 녹화 목록 및 단건 조회이다. 이력과 녹화 화면에서 처음 쓸 때 불러온다.
 export function createRecordingsApi({
   ApiError,
@@ -87,6 +91,7 @@ export function createRecordingsApi({
   cameraId,
   collectionThreshold,
   isAuthenticated,
+  monitoringScope,
   optionalArea,
   pitId,
   request,
@@ -96,6 +101,29 @@ export function createRecordingsApi({
   useV2Monitoring,
 }: RecordingsApiContext) {
   let dailyApiPromise: Promise<DailyRecordingApi> | null = null;
+  const historyCache = new Map<string, { samples: DashboardData["history"]["loadSamples"]; timestamp: number }>();
+
+  const getCachedHistory = (key: string): DashboardData["history"]["loadSamples"] | null => {
+    const entry = historyCache.get(key);
+    if (!entry) return null;
+    if (performance.now() - entry.timestamp > HISTORY_CACHE_TTL_MS) {
+      historyCache.delete(key);
+      return null;
+    }
+    historyCache.delete(key);
+    historyCache.set(key, entry);
+    return entry.samples;
+  };
+
+  const setCachedHistory = (key: string, samples: DashboardData["history"]["loadSamples"]) => {
+    if (historyCache.has(key)) {
+      historyCache.delete(key);
+    } else if (historyCache.size >= MAX_HISTORY_CACHE_ENTRIES) {
+      const oldestKey = historyCache.keys().next().value;
+      if (oldestKey !== undefined) historyCache.delete(oldestKey);
+    }
+    historyCache.set(key, { samples, timestamp: performance.now() });
+  };
   const getDailyApi = () => {
     if (!supportsDailyRecordings) throw new ApiError(404, "현재 연결은 날짜 녹화를 지원하지 않습니다.", "UNSUPPORTED_ENDPOINT");
     dailyApiPromise ??= import("./daily-recording-api").then(({ createDailyRecordingApi }) => createDailyRecordingApi({
@@ -123,25 +151,47 @@ export function createRecordingsApi({
     const from = toRfc3339(query.from, displayTimeOffset);
     const to = toRfc3339(query.to, displayTimeOffset);
     const overRange = Date.parse(to) - Date.parse(from) > maximumHistoryDays * 24 * 3_600_000;
-    const loadResult = await optionalArea(overRange ? Promise.reject(new ApiError(422, "HISTORY_RANGE_MUST_BE_WITHIN_90_DAYS", "HISTORY_RANGE_MUST_BE_WITHIN_90_DAYS"))
-      : requestV2LoadHistory(from, to, signal).catch((error: unknown) => {
-          if (error && typeof error === "object" && "code" in error && typeof error.code === "string" && historyErrorMessages[error.code]) {
-            throw new ApiError((error as { status?: number }).status ?? 500, historyErrorMessages[error.code], error.code);
-          }
-          throw error;
-        }), null, loadHistoryFailureMessage, signal);
-    const load = loadResult.value;
+
+    const scope = monitoringScope?.();
+    const cacheKey = `${pitId}:${scope?.siteId ?? ""}:${scope?.edgeId ?? ""}:${from}:${to}`;
+
+    let cachedSamples: DashboardData["history"]["loadSamples"] | null = null;
+    if (!overRange) {
+      cachedSamples = getCachedHistory(cacheKey);
+    }
+
+    let load: { historySamples: DashboardData["history"]["loadSamples"] } | null;
+    let loadState: DataAreaState;
+
+    if (cachedSamples !== null) {
+      load = { historySamples: cachedSamples };
+      loadState = { status: "ready" };
+    } else {
+      const loadResult = await optionalArea(overRange ? Promise.reject(new ApiError(422, "HISTORY_RANGE_MUST_BE_WITHIN_90_DAYS", "HISTORY_RANGE_MUST_BE_WITHIN_90_DAYS"))
+        : requestV2LoadHistory(from, to, signal).then((result) => {
+            setCachedHistory(cacheKey, result.historySamples);
+            return result;
+          }).catch((error: unknown) => {
+            if (error && typeof error === "object" && "code" in error && typeof error.code === "string" && historyErrorMessages[error.code]) {
+              throw new ApiError((error as { status?: number }).status ?? 500, historyErrorMessages[error.code], error.code);
+            }
+            throw error;
+          }), null, loadHistoryFailureMessage, signal);
+      load = loadResult.value;
+      loadState = loadResult.state;
+    }
+
     const threshold = collectionThreshold();
-    const stateMessage = loadResult.state.code && historyErrorMessages[loadResult.state.code]
-      ? historyErrorMessages[loadResult.state.code]
-      : loadResult.state.message;
+    const stateMessage = loadState.code && historyErrorMessages[loadState.code]
+      ? historyErrorMessages[loadState.code]
+      : loadState.message;
     return {
       ...emptyHistory(to),
       startsAt: toDateTimeInput(from), endsAt: toDateTimeInput(to),
       loadSamples: load?.historySamples ?? [],
       events: [],
       thresholds: threshold === undefined ? [] : [{ hour: 0, value: threshold }],
-      loadState: { ...loadResult.state, message: stateMessage, from, to, thresholdKind: "current" as const },
+      loadState: { ...loadState, message: stateMessage, from, to, thresholdKind: "current" as const },
     };
   };
 

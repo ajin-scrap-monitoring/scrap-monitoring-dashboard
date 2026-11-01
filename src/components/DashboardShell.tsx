@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { applicationVersion } from "../application-version";
+import { AppLink } from "../app-link";
 import { ROUTES, hasAuthenticationSession } from "../app-routing";
 import type { DashboardDataSource } from "../data/dashboard-data-source";
 import type { DataAreaState, HeaderNotification, UserSession } from "../domain/dashboard";
@@ -146,13 +147,13 @@ export function DashboardHeader({ activePage, dataSource, initialNotifications, 
 
   return (
     <header className="topbar">
-      <a className="brand" href={ROUTES.monitoring} aria-label="AJIN SCRAP MONITORING 홈"><span className="brand-mark" aria-hidden="true" /><span>AJIN SCRAP MONITORING</span></a>
+      <AppLink className="brand" to={ROUTES.monitoring} aria-label="AJIN SCRAP MONITORING 홈"><span className="brand-mark" aria-hidden="true" /><span>AJIN SCRAP MONITORING</span></AppLink>
       <nav className="global-nav" aria-label="주요 메뉴" aria-hidden={sessionPending || undefined}>
-        {!sessionPending && ([["monitoring", "현황"], ["history", "이력"], ["recordings", "녹화 영상"], ["admin", "관리자"]] as const).filter(([page]) => page !== "admin" || canManage).map(([page, label]) => <a key={page} className={`nav-link ${activePage === page ? "active" : ""}`} href={ROUTES[page]} aria-current={activePage === page ? "page" : undefined}>{label}</a>)}
+        {!sessionPending && ([["monitoring", "현황"], ["history", "이력"], ["recordings", "녹화 영상"], ["admin", "관리자"]] as const).filter(([page]) => page !== "admin" || canManage).map(([page, label]) => <AppLink key={page} className={`nav-link ${activePage === page ? "active" : ""}`} to={ROUTES[page]} aria-current={activePage === page ? "page" : undefined}>{label}</AppLink>)}
       </nav>
       {sessionPending ? <div className="user-tools" aria-hidden="true" /> : isAuthenticated ? <div className="user-tools"><div className="header-popover-anchor">
-        <button className="icon-button notification-button" type="button" aria-label={notificationState.unreadCount === null ? "알림 조회 실패" : `알림 ${notificationState.unreadCount}건`} aria-expanded={notificationsOpen} onClick={toggleNotifications}>
-          <BellIcon />{(notificationState.unreadCount === null || notificationState.unreadCount > 0) && <span className="notification-badge">{notificationState.unreadCount ?? "?"}</span>}
+        <button className="icon-button notification-button" type="button" aria-label={notificationQueryState?.status === "loading" ? "알림 확인 중" : notificationState.unreadCount === null ? "알림 조회 실패" : `알림 ${notificationState.unreadCount}건`} aria-expanded={notificationsOpen} onClick={toggleNotifications}>
+          <BellIcon />{notificationQueryState?.status !== "loading" && (notificationState.unreadCount === null || notificationState.unreadCount > 0) && <span className="notification-badge">{notificationState.unreadCount ?? "?"}</span>}
         </button>
         {notificationsOpen && (popovers ? <popovers.NotificationsPopover
           dataSource={dataSource}

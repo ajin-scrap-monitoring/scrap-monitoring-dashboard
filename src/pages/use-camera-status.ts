@@ -86,9 +86,37 @@ export function useCameraStatus(
     }
 
     let pollTimer: ReturnType<typeof setTimeout> | undefined;
+    let checkTimer: ReturnType<typeof setInterval> | undefined;
+
+    const stopPolling = () => {
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = undefined;
+      }
+      if (checkTimer) {
+        clearInterval(checkTimer);
+        checkTimer = undefined;
+      }
+      controllerRef.current?.abort();
+      controllerRef.current = null;
+      inFlightRef.current = false;
+    };
+
+    const startCheckTimer = () => {
+      if (checkTimer) clearInterval(checkTimer);
+      checkTimer = setInterval(() => {
+        if (!active) return;
+        if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+        if (expiresAtRef.current > 0 && Date.now() >= expiresAtRef.current) {
+          expiresAtRef.current = 0;
+          setIsExpiredOrFailed(true);
+        }
+      }, 500);
+    };
 
     const poll = async () => {
       if (!active || inFlightRef.current) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       inFlightRef.current = true;
       const controller = new AbortController();
       controllerRef.current = controller;
@@ -127,7 +155,7 @@ export function useCameraStatus(
       } finally {
         inFlightRef.current = false;
         controllerRef.current = null;
-        if (active) {
+        if (active && (typeof document === "undefined" || document.visibilityState !== "hidden")) {
           pollTimer = setTimeout(() => {
             void poll();
           }, 2000);
@@ -135,25 +163,36 @@ export function useCameraStatus(
       }
     };
 
-    // 최초 1회 즉시 실행
-    void poll();
-
-    // 500ms마다 유효 시각 만료 여부 확인
-    const checkTimer = setInterval(() => {
+    const handleVisibilityChange = () => {
       if (!active) return;
-      if (expiresAtRef.current > 0 && Date.now() >= expiresAtRef.current) {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        stopPolling();
+      } else {
+        stopPolling();
+        setCurrentStatus(null);
+        setIsExpiredOrFailed(false);
+        setIsUnsupported(false);
         expiresAtRef.current = 0;
-        setIsExpiredOrFailed(true);
+        startCheckTimer();
+        void poll();
       }
-    }, 500);
+    };
+
+    if (typeof document === "undefined" || document.visibilityState !== "hidden") {
+      void poll();
+      startCheckTimer();
+    }
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+    }
 
     return () => {
       active = false;
-      if (pollTimer) clearTimeout(pollTimer);
-      if (checkTimer) clearInterval(checkTimer);
-      controllerRef.current?.abort();
-      controllerRef.current = null;
-      inFlightRef.current = false;
+      stopPolling();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      }
     };
   }, [dataSource, sessionUserId]);
 

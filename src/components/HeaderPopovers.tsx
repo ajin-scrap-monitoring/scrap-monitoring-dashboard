@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AppLink } from "../app-link";
 import { ROUTES, clearAuthentication } from "../app-routing";
 import type { DashboardDataSource } from "../data/dashboard-data-source";
 import type { DataAreaState, HeaderNotification, UserSession } from "../domain/dashboard";
@@ -81,11 +82,13 @@ export function NotificationsPopover({
     });
   };
 
+  const isNotificationLoading = queryState?.status === "loading";
+
   return (
     <section className="header-popover notifications-popover" aria-label="최근 알림" ref={popoverRef}>
       <div className="header-popover-head">
         <strong>최근 알림</strong>
-        <button type="button" disabled={localState.unreadCount === null} onClick={markAllNotificationsRead}>모두 읽음</button>
+        <button type="button" disabled={isNotificationLoading || localState.unreadCount === null} onClick={markAllNotificationsRead}>모두 읽음</button>
       </div>
       {queryState?.status === "error" && (
         <div className={`notification-unavailable${queryState.stale ? " has-previous" : ""}`} role="alert">
@@ -97,16 +100,22 @@ export function NotificationsPopover({
         </div>
       )}
       {actionError && <p role="alert">{actionError}</p>}
-      <div className="header-notification-list">
-        {notifications.map((notification) => (
-          <button key={notification.id} className={`header-notification ${notification.read ? "read" : ""}`} type="button" onClick={() => markNotificationRead(notification.id)}>
-            <span className={`header-notification-dot ${notification.level}`} />
-            <span><strong title={notification.title}>{notification.title}</strong><small title={notification.detail}>{notification.detail}</small></span>
-            <time>{notification.time}</time>
-          </button>
-        ))}
-      </div>
-      <a className="header-popover-link" href={ROUTES.history}>알림 이력에서 보기</a>
+      {isNotificationLoading ? (
+        <div className="header-popover-status" role="status">
+          <p>불러오는 중...</p>
+        </div>
+      ) : (
+        <div className="header-notification-list">
+          {notifications.map((notification) => (
+            <button key={notification.id} className={`header-notification ${notification.read ? "read" : ""}`} type="button" onClick={() => markNotificationRead(notification.id)}>
+              <span className={`header-notification-dot ${notification.level}`} />
+              <span><strong title={notification.title}>{notification.title}</strong><small title={notification.detail}>{notification.detail}</small></span>
+              <time>{notification.time}</time>
+            </button>
+          ))}
+        </div>
+      )}
+      <AppLink className="header-popover-link" to={ROUTES.history} onNavigate={onClose}>알림 이력에서 보기</AppLink>
     </section>
   );
 }
@@ -160,7 +169,7 @@ export function UserPopover({
         <strong title={displayName}>{displayName}</strong>
         <span>{role === "viewer" ? "조회 사용자" : "시스템 관리자"}</span>
       </div>
-      {role !== "viewer" && <a href={ROUTES.admin}>관리자 설정</a>}
+      {role !== "viewer" && <AppLink to={ROUTES.admin} onNavigate={onClose}>관리자 설정</AppLink>}
       <button type="button" onClick={() => void logout()}>로그아웃</button>
       {actionError && <p role="alert">{actionError}</p>}
     </section>

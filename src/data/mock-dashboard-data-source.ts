@@ -2,7 +2,14 @@ import type { DashboardData, DashboardStatus } from "../domain/dashboard";
 import { clearAuthentication, hasAuthenticationSession, setAuthenticated } from "../app-routing";
 import { dateTimeValue } from "../date-range";
 
-import type { DashboardDataRequestOptions, DashboardDataSource, DateRangeQuery } from "./dashboard-data-source";
+import type {
+  DashboardDataRequestOptions,
+  DashboardDataSource,
+  DashboardRoute,
+  DashboardRouteData,
+  DateRangeQuery,
+  MonitoringDetailsActivation,
+} from "./dashboard-data-source";
 import type { CameraStatusV2 } from "./camera-status-v2";
 import { createRecordingList } from "./recording-list";
 
@@ -333,6 +340,22 @@ export function createMockDashboardDataSource(scenario: MockScenario = "normal")
       if (scenario === "loading") await waitForMockLoading(options.signal);
       return withSession();
     },
+    loadRouteData: (route: DashboardRoute, options: { search: string; signal?: AbortSignal; revalidateSession?: boolean }): Promise<DashboardRouteData> => {
+      if (options.signal?.aborted) return Promise.reject(new DOMException("Synthetic request aborted.", "AbortError"));
+      if (route === "history") return Promise.resolve({ history: structuredClone(currentData.history) });
+      if (route === "recordings") return Promise.resolve({
+        recordings: structuredClone(currentData.recordings),
+        recordingsSource: "event",
+        recordingsState: { status: "ready" },
+      });
+      if (route === "admin") return Promise.resolve({ admin: structuredClone(currentData.admin) });
+      return Promise.resolve({});
+    },
+    isMonitoringDetailsReady: () => true,
+    activateMonitoringDetails: (): MonitoringDetailsActivation => ({
+      ready: Promise.resolve(),
+      release: () => {},
+    }),
     getCameraStatus: (signal?: AbortSignal): Promise<CameraStatusV2> => {
       if (signal?.aborted) return Promise.reject(new DOMException("Synthetic request aborted.", "AbortError"));
       if (scenario === "request-error") return Promise.reject(new Error("합성 데이터 요청 오류"));

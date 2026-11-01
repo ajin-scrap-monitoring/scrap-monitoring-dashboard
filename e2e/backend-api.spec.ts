@@ -5,8 +5,8 @@ import { notificationPageFixture } from "../src/test/api-contract-fixtures.js";
 
 import { installBackendApi, type MediaMode } from "./backend-api.js";
 
-test("이력에서 녹화로 이동할 때 사용자 영역과 수신 상태를 숨기고 조회 완료 후 표시한다", async ({ page }) => {
-  await installBackendApi(page);
+test("이력에서 녹화로 앱 내부 이동할 때 헤더와 수신 상태를 유지하고 녹화 목록 응답 전 본문 로딩 화면을 표시한다", async ({ page }) => {
+  const api = await installBackendApi(page);
   await page.addInitScript(() => {
     new MutationObserver(() => {
       if (document.querySelector("header .header-login-link")) document.documentElement.dataset.loginLinkSeen = "true";
@@ -14,34 +14,39 @@ test("이력에서 녹화로 이동할 때 사용자 영역과 수신 상태를 
   });
   await page.goto("/history?source=api");
   await expect(page.getByRole("button", { name: "사용자 메뉴", exact: true })).toBeVisible();
-  let releaseConfig = () => {};
-  let releaseSession = () => {};
-  const configGate = new Promise<void>((resolve) => { releaseConfig = resolve; });
-  const sessionGate = new Promise<void>((resolve) => { releaseSession = resolve; });
-  await page.route("**/runtime-config.json", async (route) => { await configGate; await route.fallback(); });
-  await page.route("**/api/v1/session", async (route) => { await sessionGate; await route.fallback(); });
+
+  let releaseRecordings = () => {};
+  const recordingsGate = new Promise<void>((resolve) => { releaseRecordings = resolve; });
+  let configRequested = false;
+
+  await page.route("**/runtime-config.json", async (route) => {
+    configRequested = true;
+    await route.fallback();
+  });
+  await page.route("**/api/v2/recordings/**", async (route) => {
+    await recordingsGate;
+    await route.fallback();
+  });
+
+  const sessionCallsBeforeNav = api.requests.filter((r) => r.pathname === "/api/v1/session").length;
+
   try {
     await page.getByRole("link", { name: "녹화 영상", exact: true }).click();
-    await expect(page.getByRole("main", { name: "대시보드 설정을 불러오는 중입니다.", exact: true })).toBeVisible();
-    await expect(page.locator(".global-nav a")).toHaveCount(0);
-    await expect(page.locator("header .user-tools")).toBeEmpty();
-    await expect(page.getByLabel("데이터 수신 상태")).toHaveCount(0);
-    releaseConfig();
     await expect(page.getByRole("main", { name: "데이터를 불러오는 중입니다.", exact: true })).toBeVisible();
-    await expect(page.locator(".global-nav a")).toHaveCount(0);
-    await expect(page.locator("header .user-tools")).toBeEmpty();
-    await expect(page.getByLabel("데이터 수신 상태")).toHaveCount(0);
-    await expect(page.getByText("수신 대기", { exact: true })).toHaveCount(0);
-    await expect(page.getByText("마지막 수신 없음", { exact: true })).toHaveCount(0);
-    releaseSession();
+    await expect(page.locator(".global-nav a")).toHaveCount(4);
+    await expect(page.locator(".global-nav a.active")).toHaveText("녹화 영상");
+    await expect(page.getByRole("button", { name: "사용자 메뉴", exact: true })).toBeVisible();
+    await expect(page.getByLabel("데이터 수신 상태")).toContainText("연결 정상");
+
+    releaseRecordings();
     await expect(page.getByRole("heading", { name: "녹화 영상", level: 1, exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "사용자 메뉴", exact: true })).toBeVisible();
     await expect(page.getByLabel("데이터 수신 상태")).toContainText("연결 정상");
-    await expect(page.locator("header .header-login-link")).toHaveCount(0);
+    expect(configRequested).toBe(false);
+    expect(api.requests.filter((r) => r.pathname === "/api/v1/session").length).toBe(sessionCallsBeforeNav);
     expect(await page.locator("html").getAttribute("data-login-link-seen")).toBeNull();
   } finally {
-    releaseConfig();
-    releaseSession();
+    releaseRecordings();
   }
 });
 
@@ -265,7 +270,8 @@ test("v2 영상 확대와 키보드 닫기는 단일 연결 및 자원 회수를
 
 for (const mode of ["silent", "unavailable", "invalid"] satisfies MediaMode[]) {
   test(`v2 영상 ${mode} 오류는 LIVE를 숨기고 버튼 없이 자동 재연결을 유지한다`, async ({ page }) => {
-    await page.clock.install();
+    await page.clock.install({ time: new Date("2026-10-16T00:00:00Z") });
+    await page.clock.pauseAt(new Date("2026-10-16T00:00:01Z"));
     await installBackendApi(page, { mediaMode: mode });
     await page.goto("/?source=api");
     await expect(page.locator(".kpi-value")).toHaveText("판단 불가");
@@ -346,4 +352,32 @@ test("v2 긴 계약 정보와 녹화 metadata는 모든 대상 너비에서 잘�
     expect(overflow.page).toBeLessThanOrEqual(0);
     expect(overflow.cards).toBeLessThanOrEqual(2);
   }
+});
+
+test("알림 응답 4초 지연 중에는 현황 본문이 먼저 표시되고 알림 확인 중을 표시한 뒤 badge가 나타난다", async ({ page }) => {
+  await installBackendApi(page, { notificationDelayMs: 4000 });
+  await page.goto("/?source=api");
+
+  await expect(page.getByRole("heading", { name: "스크랩 모니터링", level: 1 })).toBeVisible();
+  await expect(page.locator(".kpi-value")).toBeVisible();
+  const notificationButton = page.getByRole("button", { name: "알림 확인 중", exact: true });
+  await expect(notificationButton).toBeVisible();
+  await expect(notificationButton.locator(".notification-badge")).toHaveCount(0);
+
+  await expect(page.getByRole("button", { name: /알림 \d+건/ })).toBeVisible({ timeout: 6000 });
+  await expect(page.locator(".notification-badge")).toBeVisible();
+});
+
+test("load-history 3초 지연 중에는 현황 본문이 먼저 표시되고 차트는 로딩 중, 1시간 전 적재율은 확인 중을 표시한다", async ({ page }) => {
+  await installBackendApi(page, { loadHistoryDelayMs: 3000 });
+  await page.goto("/?source=api");
+
+  await expect(page.getByRole("heading", { name: "스크랩 모니터링", level: 1 })).toBeVisible();
+  await expect(page.locator(".kpi-value")).toBeVisible();
+  await expect(page.getByText("적재율 추이를 불러오는 중입니다.")).toBeVisible();
+  const pastLoadStat = page.locator(".mini-stat").filter({ hasText: "1시간 전 적재율" });
+  await expect(pastLoadStat).toContainText("확인 중");
+
+  await expect(page.getByRole("img", { name: "최근 24시간 대표 적재율 그래프" })).toBeVisible({ timeout: 5000 });
+  await expect(pastLoadStat).not.toContainText("확인 중");
 });

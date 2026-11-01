@@ -6,6 +6,7 @@ import type {
   DashboardStatus,
   DataAreaState,
   LidarProfile,
+  LoadHistorySample,
   MeasurementLayoutStatus,
   MonitoringSummary,
   Recording,
@@ -14,12 +15,15 @@ import type {
 } from "../domain/dashboard";
 
 import type {
+  DailyRecordingDeletion,
   DashboardDataRequestOptions,
   DashboardDataSource,
   DashboardDataUpdateListener,
-  DailyRecordingDeletion,
+  DashboardRoute,
+  DashboardRouteData,
   DateRangeQuery,
   HistoryEventQuery,
+  MonitoringDetailsActivation,
   NotificationRecipientInput,
   SessionCredentials,
 } from "./dashboard-data-source";
@@ -321,9 +325,7 @@ const emptyAdminData: DashboardData["admin"] = {
 export function createHttpDashboardDataSource({
   eventSourceFactory = (url) => new EventSource(url, { withCredentials: true }),
   fetchImplementation = window.fetch.bind(window),
-  locationSearch = () => window.location.search,
   onSessionExpired = () => window.location.assign("/login"),
-  route = () => window.location.pathname,
   apiContract = runtimeFeatureSelection ? "proposal" : "backend",
   monitoringVersion = runtimeFeatureSelection ? "v1" : configuredMonitoringVersion,
   pitId = "pit-01",
@@ -332,9 +334,7 @@ export function createHttpDashboardDataSource({
 }: {
   eventSourceFactory?: EventSourceFactory;
   fetchImplementation?: FetchImplementation;
-  locationSearch?: () => string;
   onSessionExpired?: () => void;
-  route?: () => string;
   apiContract?: "proposal" | "backend";
   monitoringVersion?: "v1" | "v2";
   pitId?: string;
@@ -357,8 +357,19 @@ export function createHttpDashboardDataSource({
   let notificationRefreshRequired = false;
   let collectionInsights: CollectionInsights | null = null;
   let collectionRequestedAt = -Infinity;
+  let lastCollectionSuccessAt = -Infinity;
+  let lastLoadHistorySuccessAt = -Infinity;
+  let monitoringDetailsRefCount = 0;
+  let monitoringDetailsTimer: number | undefined;
+  let monitoringDetailsController: AbortController | null = null;
+  let refreshingCollection = false;
+  let refreshingLoadHistory = false;
+  let lastSuccessfulRecordings: { userId?: string; source: "daily" | "event"; recordings: Recording[] } | null = null;
+  let dataVersion = 0;
+  let getDashboardDataVersion = 0;
+  let lastSnapshotServerTime: string | null = null;
   let monitoringScope: LoadHistoryScope | null = null;
-  let serverClock: { timestamp: number; receivedAt: number } | null = null;
+  let serverClock: { timestamp: number; receivedAt: number; rawServerTime: string } | null = null;
   let notificationActionsController = new AbortController();
   const listeners = new Set<DashboardDataUpdateListener>();
   const resetNotificationActions = () => {
@@ -367,7 +378,10 @@ export function createHttpDashboardDataSource({
   };
   const publishNotifications = () => {
     const data = currentData;
-    if (data) listeners.forEach((listener) => listener(cloneDashboardData(data)));
+    if (data) {
+      dataVersion += 1;
+      listeners.forEach((listener) => listener(cloneDashboardData(data)));
+    }
   };
   const pitPath = (path: string) => backendContract
     ? `${path}${path.includes("?") ? "&" : "?"}${new URLSearchParams({ pit_id: pitId })}` : path;
@@ -386,7 +400,7 @@ export function createHttpDashboardDataSource({
     if (monitoring.v2) applyCollectionInsights(monitoring, collectionInsights, snapshot.serverTime);
     if (monitoring.v2) {
       monitoringScope = { pitId, siteId: monitoring.v2.siteId, edgeId: monitoring.v2.edgeId };
-      serverClock = { timestamp: Date.parse(snapshot.serverTime), receivedAt: performance.now() };
+      serverClock = { timestamp: Date.parse(snapshot.serverTime), receivedAt: performance.now(), rawServerTime: snapshot.serverTime };
     }
     return monitoring;
   };
@@ -525,6 +539,59 @@ export function createHttpDashboardDataSource({
   const recentHistory = (to: string, signal?: AbortSignal) => requestV2LoadHistory(
     rfc3339AtOffset(Date.parse(to) - 24 * 3_600_000, displayTimeOffset), to, signal);
 
+  const refreshRecentLoadHistory = async (signal?: AbortSignal) => {
+    if (!currentData?.monitoring.v2 || !serverClock || refreshingLoadHistory) return;
+    refreshingLoadHistory = true;
+    const to = rfc3339AtOffset(serverClock.timestamp + performance.now() - serverClock.receivedAt, displayTimeOffset);
+    try {
+      const load = await recentHistory(to, signal);
+      if (signal?.aborted || !currentData) return;
+      lastLoadHistorySuccessAt = performance.now();
+      currentData.monitoring.loadHistory = load.monitoringSamples;
+      currentData.monitoring.loadHistoryState = { status: "ready", from: load.from, to: load.to };
+      updateLoadOneHourAgo(currentData.monitoring);
+      publishNotifications();
+    } catch (error) {
+      if (isAuthorizationError(error)) { publishAuthorizationError(error); return; }
+      if (signal?.aborted || !currentData) return;
+      currentData.monitoring.loadHistoryState = {
+        ...areaError(error, loadHistoryFailureMessage, currentData.monitoring.loadHistory.length > 0),
+        from: currentData.monitoring.loadHistoryState?.from, to: currentData.monitoring.loadHistoryState?.to,
+      };
+      updateLoadOneHourAgo(currentData.monitoring);
+      publishNotifications();
+    } finally { refreshingLoadHistory = false; }
+  };
+
+  const refreshCompletedCollection = async (signal?: AbortSignal) => {
+    if (refreshingCollection || performance.now() - collectionRequestedAt < MONITORING_REFRESH_MS) return;
+    refreshingCollection = true;
+    try {
+      if (currentData?.monitoring.v2) {
+        const summary = await getCollectionSummary(signal);
+        if (signal?.aborted || !currentData?.monitoring.v2) return;
+        lastCollectionSuccessAt = performance.now();
+        collectionInsights = summary;
+        const before = insightsSignature(currentData.monitoring);
+        applyCollectionInsights(currentData.monitoring, summary, currentData.monitoring.v2.serverTime);
+        if (before !== insightsSignature(currentData.monitoring) || currentData.monitoring.completedCollectionState?.status === "error") {
+          currentData.monitoring.completedCollectionState = readyState;
+          publishNotifications();
+        }
+      }
+    } catch (error) {
+      if (isAuthorizationError(error)) {
+        publishAuthorizationError(error);
+        return;
+      }
+      if (signal?.aborted) return;
+      if (currentData?.monitoring.v2) {
+        currentData.monitoring.completedCollectionState = areaError(error, collectionHistoryFailureMessage, collectionInsights !== null);
+        publishNotifications();
+      }
+    } finally { refreshingCollection = false; }
+  };
+
   // 이력 이벤트 표와 녹화 조회는 해당 화면에서 처음 쓸 때 불러온 모듈이 처리한다.
   let recordingsApiPromise: Promise<ReturnType<typeof import("./http-recordings-api").createRecordingsApi>> | null = null;
   const recordingsApi = () => {
@@ -532,6 +599,7 @@ export function createHttpDashboardDataSource({
       ApiError, backendContract, cameraId,
       collectionThreshold: () => currentData?.monitoring.summary.collectionThreshold,
       isAuthenticated: () => hasAuthenticatedSession && Boolean(csrfToken),
+      monitoringScope: () => monitoringScope,
       optionalArea, pitId, request, requestV2LoadHistory,
       serverNow: () => {
         if (!serverClock) throw new Error("A valid server time is required for daily recordings.");
@@ -590,6 +658,105 @@ export function createHttpDashboardDataSource({
     }
   };
 
+  const startMonitoringDetailsTimer = () => {
+    if (typeof window === "undefined" || monitoringDetailsTimer !== undefined) return;
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    monitoringDetailsTimer = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      void refreshRecentLoadHistory(monitoringDetailsController?.signal);
+      if (backendContract) void refreshCompletedCollection(monitoringDetailsController?.signal);
+    }, MONITORING_REFRESH_MS);
+  };
+
+  const stopMonitoringDetailsTimer = () => {
+    if (monitoringDetailsTimer !== undefined) {
+      window.clearInterval(monitoringDetailsTimer);
+      monitoringDetailsTimer = undefined;
+    }
+  };
+
+  const monitoringDetailsReferenceTime = (): string | null => {
+    if (serverClock && lastLoadHistorySuccessAt === -Infinity) return serverClock.rawServerTime;
+    if (serverClock) return rfc3339AtOffset(serverClock.timestamp + performance.now() - serverClock.receivedAt, displayTimeOffset);
+    return lastSnapshotServerTime;
+  };
+
+  const failLoadHistoryWithoutServerTime = (previousSamples: LoadHistorySample[]) => {
+    if (!currentData?.monitoring) return;
+    if (previousSamples.length > 0) currentData.monitoring.loadHistory = previousSamples;
+    currentData.monitoring.loadHistoryState = {
+      ...areaError(new Error("A server time is required for load history."), loadHistoryFailureMessage, previousSamples.length > 0),
+      from: currentData.monitoring.loadHistoryState?.from,
+      to: currentData.monitoring.loadHistoryState?.to,
+    };
+    updateLoadOneHourAgo(currentData.monitoring);
+    publishNotifications();
+  };
+
+  const queryMonitoringDetailsOnResume = (signal: AbortSignal) => {
+    const now = performance.now();
+    if (backendContract && now - lastCollectionSuccessAt >= MONITORING_REFRESH_MS) {
+      void refreshCompletedCollection(signal);
+    }
+    if (now - lastLoadHistorySuccessAt >= MONITORING_REFRESH_MS) {
+      const previousSamples = currentData?.monitoring.loadHistory ?? [];
+      if (currentData?.monitoring) {
+        currentData.monitoring.loadHistory = [];
+        currentData.monitoring.loadHistoryState = { status: "loading" };
+        updateLoadOneHourAgo(currentData.monitoring);
+        publishNotifications();
+      }
+      void (async () => {
+        const to = monitoringDetailsReferenceTime();
+        if (to === null) {
+          failLoadHistoryWithoutServerTime(previousSamples);
+          return;
+        }
+        try {
+          const load = await recentHistory(to, signal);
+          if (signal.aborted) return;
+          lastLoadHistorySuccessAt = performance.now();
+          if (currentData?.monitoring) {
+            currentData.monitoring.loadHistory = load.monitoringSamples;
+            currentData.monitoring.loadHistoryState = { status: "ready", from: load.from, to: load.to };
+            updateLoadOneHourAgo(currentData.monitoring);
+            publishNotifications();
+          }
+        } catch (error) {
+          if (signal.aborted) return;
+          if (isAuthorizationError(error)) {
+            publishAuthorizationError(error);
+            return;
+          }
+          if (currentData?.monitoring) {
+            if (previousSamples.length > 0) {
+              currentData.monitoring.loadHistory = previousSamples;
+            }
+            currentData.monitoring.loadHistoryState = {
+              ...areaError(error, loadHistoryFailureMessage, previousSamples.length > 0),
+              from: currentData.monitoring.loadHistoryState?.from,
+              to: currentData.monitoring.loadHistoryState?.to,
+            };
+            updateLoadOneHourAgo(currentData.monitoring);
+            publishNotifications();
+          }
+        }
+      })();
+    }
+  };
+
+  const handleMonitoringDetailsVisibility = () => {
+    if (typeof document === "undefined" || monitoringDetailsRefCount === 0) return;
+    if (document.visibilityState === "hidden") {
+      stopMonitoringDetailsTimer();
+    } else {
+      if (monitoringDetailsController) {
+        queryMonitoringDetailsOnResume(monitoringDetailsController.signal);
+      }
+      startMonitoringDetailsTimer();
+    }
+  };
+
   const source: DashboardDataSource = {
     monitoringVersion,
     supportsDailyRecordings,
@@ -612,63 +779,289 @@ export function createHttpDashboardDataSource({
     getDashboardData: async (options: DashboardDataRequestOptions = {}) => {
       resetNotificationActions();
       const session = await getSession(options.signal);
-      const path = route();
-      const monitoringDetails = !["/history", "/recordings", "/admin"].includes(path);
-      if (session === null && (useV2Monitoring || (backendContract && path === "/recordings"))) {
+      if (session === null && useV2Monitoring) {
         onSessionExpired();
         throw new ApiError(401, "로그인이 필요합니다.");
       }
       const snapshot = await request<ApiMonitoringSnapshot | ApiMonitoringSnapshotV2>(snapshotPath, { signal: options.signal });
+      lastSnapshotServerTime = snapshot.serverTime;
       const monitoring = mapMonitoring(snapshot, null);
       const reception = receivedSnapshot();
       const previous = session?.user.id === currentData?.session?.user.id ? currentData : null;
       const previousLoad = previous?.monitoring.v2?.siteId === monitoring.v2?.siteId
         && previous?.monitoring.v2?.edgeId === monitoring.v2?.edgeId ? previous?.monitoring : undefined;
-      const previousHistoryThresholds = useV2Monitoring ? [{ hour: 0, value: monitoring.summary.collectionThreshold }] : [];
-      const [notificationResult, historyResult, recordingsResult, adminResult, completionResult, recentHistoryResult] = await Promise.all([
-        optionalArea(getNotifications(session, options.signal), null, notificationFailureMessage, options.signal, previous?.monitoring.unreadNotificationCount != null),
-        path === "/history"
-          ? recordingsApi().then((api) => api.initialHistoryForRoute(snapshot.serverTime, displayTimeOffset, monitoring.summary.collectionThreshold))
-          : Promise.resolve({ chartEvents: [], endsAt: snapshot.serverTime, events: [], loadSamples: [], startsAt: snapshot.serverTime, thresholds: previousHistoryThresholds } as DashboardData["history"]),
-        path === "/recordings"
-          ? recordingsApi().then((api) => api.initialRecordingsForRoute(snapshot.serverTime, locationSearch(), displayTimeOffset, previous && previous.recordingsSource ? { recordings: previous.recordings, source: previous.recordingsSource } : null, options.signal))
-          : Promise.resolve({ recordings: [] as Recording[], recordingsList: undefined as RecordingList | undefined, recordingsTotal: undefined as number | undefined, recordingsSource: "event" as const, recordingsState: readyState, historyEndsAt: undefined as string | undefined }),
-        path === "/admin" && session?.user.role === "administrator"
-          ? loadAdminApi().then((api) => api.fetchAdminInitial(adminContext(), options.signal))
-          : Promise.resolve(emptyAdminData),
-        optionalArea(useV2Monitoring && backendContract && monitoringDetails ? getCollectionSummary(options.signal) : Promise.resolve(null),
-          previous ? collectionInsights : null, collectionHistoryFailureMessage, options.signal, previous !== null),
-        optionalArea(useV2Monitoring && monitoringDetails ? recentHistory(snapshot.serverTime, options.signal) : Promise.resolve(null), null,
-          loadHistoryFailureMessage, options.signal, Boolean(previousLoad?.loadHistory.length)),
-      ]);
-      Object.assign(monitoring, notificationResult.state.status === "ready"
-        ? notificationData(notificationResult.value)
-        : { headerNotifications: previous?.monitoring.headerNotifications ?? [], unreadNotificationCount: previous?.monitoring.unreadNotificationCount ?? null });
-      monitoring.notificationState = notificationResult.state;
-      monitoring.completedCollectionState = completionResult.state;
-      if (useV2Monitoring) {
-        monitoring.loadHistory = recentHistoryResult.value?.monitoringSamples ?? previousLoad?.loadHistory ?? [];
-        monitoring.loadHistoryState = { ...recentHistoryResult.state, from: recentHistoryResult.value?.from, to: recentHistoryResult.value?.to };
+      if (!previousLoad) {
+        lastLoadHistorySuccessAt = -Infinity;
       }
-      if (options.signal?.aborted) throw new DOMException("Dashboard request aborted.", "AbortError");
-      collectionInsights = completionResult.value;
-      notificationRefreshRequired = notificationResult.state.status === "error";
-      if (monitoring.v2) applyCollectionInsights(monitoring, collectionInsights, snapshot.serverTime);
+
+      monitoring.notificationState = { status: "loading" };
+      if (previous) {
+        monitoring.headerNotifications = previous.monitoring.headerNotifications;
+        monitoring.unreadNotificationCount = previous.monitoring.unreadNotificationCount;
+        monitoring.completedCollectionState = previous.monitoring.completedCollectionState;
+        monitoring.loadHistory = previousLoad?.loadHistory ?? [];
+        monitoring.loadHistoryState = previousLoad?.loadHistoryState;
+      } else {
+        monitoring.headerNotifications = [];
+        monitoring.unreadNotificationCount = null;
+      }
+      if (monitoring.v2 && collectionInsights) {
+        applyCollectionInsights(monitoring, collectionInsights, snapshot.serverTime);
+      }
       updateLoadOneHourAgo(monitoring);
+
+      const previousHistoryThresholds = useV2Monitoring ? [{ hour: 0, value: monitoring.summary.collectionThreshold }] : [];
+      const defaultHistory: DashboardData["history"] = {
+        chartEvents: [],
+        endsAt: snapshot.serverTime,
+        events: [],
+        loadSamples: [],
+        startsAt: snapshot.serverTime,
+        thresholds: previousHistoryThresholds,
+      };
+
       const nextData: DashboardData = {
         reception,
-        admin: adminResult,
-        history: recordingsResult.historyEndsAt ? { ...historyResult, endsAt: recordingsResult.historyEndsAt } : historyResult,
+        admin: emptyAdminData,
+        history: defaultHistory,
         lastMeasuredAt: timeOnly(snapshot.measuredAt, true),
         monitoring,
-        recordings: recordingsResult.recordings,
-        ...(recordingsResult.recordingsList && { recordingsList: recordingsResult.recordingsList, recordingsTotal: recordingsResult.recordingsTotal }),
-        recordingsSource: recordingsResult.recordingsSource,
-        recordingsState: recordingsResult.recordingsState,
+        recordings: [],
+        recordingsSource: "event",
+        recordingsState: readyState,
         session,
       };
       currentData = nextData;
+      getDashboardDataVersion = dataVersion;
+
+      const expectedRevision = notificationRevision;
+      const notificationFetchController = new AbortController();
+      const onAbort = () => notificationFetchController.abort();
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+      void (async () => {
+        try {
+          const notifications = await getNotifications(session, notificationFetchController.signal);
+          if (notificationFetchController.signal.aborted || options.signal?.aborted) return;
+          if (!currentData || currentData.session?.user.id !== session?.user.id) return;
+          if (notificationRevision !== expectedRevision) return;
+          currentData.monitoring = {
+            ...currentData.monitoring,
+            ...notificationData(notifications),
+            notificationState: readyState,
+          };
+          notificationRevision += 1;
+          notificationRefreshRequired = false;
+          publishNotifications();
+        } catch (error) {
+          if (notificationFetchController.signal.aborted || options.signal?.aborted) return;
+          if (!currentData || currentData.session?.user.id !== session?.user.id) return;
+          if (isAuthorizationError(error)) {
+            publishAuthorizationError(error);
+            return;
+          }
+          applyNotificationFailure(error);
+          publishNotifications();
+        } finally {
+          options.signal?.removeEventListener("abort", onAbort);
+        }
+      })();
+
+      if (options.signal?.aborted) throw new DOMException("Dashboard request aborted.", "AbortError");
       return cloneDashboardData(nextData);
+    },
+    loadRouteData: async (route: DashboardRoute, options: { search: string; signal?: AbortSignal; revalidateSession?: boolean }): Promise<DashboardRouteData> => {
+      if (options.signal?.aborted) throw new DOMException("Request aborted.", "AbortError");
+      let session = currentData !== null ? currentData.session : await getSession(options.signal);
+      if (options.revalidateSession) {
+        session = await getSession(options.signal);
+        if (session === null) {
+          onSessionExpired();
+          throw new ApiError(401, "로그인이 필요합니다.");
+        }
+        csrfToken = session.csrfToken ?? "";
+        hasAuthenticatedSession = true;
+        if (currentData && JSON.stringify(currentData.session) !== JSON.stringify(session)) {
+          currentData.session = session;
+          publishNotifications();
+        }
+      }
+      if (session === null && backendContract && route === "recordings") {
+        onSessionExpired();
+        throw new ApiError(401, "로그인이 필요합니다.");
+      }
+      const serverNowIso = (useV2Monitoring && serverClock)
+        ? rfc3339AtOffset(serverClock.timestamp + Math.max(0, performance.now() - serverClock.receivedAt), displayTimeOffset)
+        : lastSnapshotServerTime;
+      if (!serverNowIso) {
+        throw new Error("A valid server time is required to load route data.");
+      }
+
+      if (route === "history") {
+        const api = await recordingsApi();
+        if (options.signal?.aborted) throw new DOMException("Request aborted.", "AbortError");
+        const threshold = currentData?.monitoring.summary.collectionThreshold;
+        const history = api.initialHistoryForRoute(serverNowIso, displayTimeOffset, threshold);
+        if (options.signal?.aborted) throw new DOMException("Request aborted.", "AbortError");
+        return { history };
+      }
+
+      if (route === "recordings") {
+        const api = await recordingsApi();
+        if (options.signal?.aborted) throw new DOMException("Request aborted.", "AbortError");
+        const fallback = (lastSuccessfulRecordings && lastSuccessfulRecordings.userId === session?.user.id)
+          ? { recordings: lastSuccessfulRecordings.recordings, source: lastSuccessfulRecordings.source }
+          : null;
+        const result = await api.initialRecordingsForRoute(serverNowIso, options.search, displayTimeOffset, fallback, options.signal);
+        if (options.signal?.aborted) throw new DOMException("Request aborted.", "AbortError");
+        if (result.recordingsState.status === "ready") {
+          lastSuccessfulRecordings = { userId: session?.user.id, source: result.recordingsSource, recordings: result.recordings };
+        }
+        const historyEndsAt = result.historyEndsAt;
+        const threshold = currentData?.monitoring.summary.collectionThreshold;
+        const thresholds = useV2Monitoring && threshold !== undefined ? [{ hour: 0, value: threshold }] : [];
+        const history = historyEndsAt ? {
+          chartEvents: [],
+          endsAt: historyEndsAt,
+          events: [],
+          loadSamples: [],
+          startsAt: serverNowIso,
+          thresholds,
+        } : undefined;
+        return {
+          recordings: result.recordings,
+          ...(result.recordingsList && { recordingsList: result.recordingsList, recordingsTotal: result.recordingsTotal }),
+          recordingsSource: result.recordingsSource,
+          recordingsState: result.recordingsState,
+          ...(history && { history }),
+        };
+      }
+
+      if (route === "admin") {
+        if (session?.user.role === "administrator") {
+          const api = await loadAdminApi();
+          if (options.signal?.aborted) throw new DOMException("Request aborted.", "AbortError");
+          const admin = await api.fetchAdminInitial(adminContext(), options.signal);
+          if (options.signal?.aborted) throw new DOMException("Request aborted.", "AbortError");
+          return { admin };
+        }
+        return { admin: emptyAdminData };
+      }
+
+      return {};
+    },
+    isMonitoringDetailsReady: (): boolean => {
+      if (!useV2Monitoring || !backendContract) return true;
+      return performance.now() - lastCollectionSuccessAt < MONITORING_REFRESH_MS;
+    },
+    activateMonitoringDetails: (): MonitoringDetailsActivation => {
+      if (!useV2Monitoring) {
+        return { ready: Promise.resolve(), release: () => {} };
+      }
+      monitoringDetailsRefCount += 1;
+      if (monitoringDetailsRefCount === 1) {
+        monitoringDetailsController = new AbortController();
+        startMonitoringDetailsTimer();
+        if (typeof document !== "undefined") {
+          document.addEventListener("visibilitychange", handleMonitoringDetailsVisibility);
+        }
+      }
+      const signal = monitoringDetailsController!.signal;
+
+      let ready: Promise<void>;
+      if (backendContract) {
+        const elapsed = performance.now() - lastCollectionSuccessAt;
+        if (elapsed < MONITORING_REFRESH_MS) {
+          ready = Promise.resolve();
+        } else {
+          ready = (async () => {
+            try {
+              const summary = await getCollectionSummary(signal);
+              if (signal.aborted) return;
+              lastCollectionSuccessAt = performance.now();
+              collectionInsights = summary;
+              if (currentData?.monitoring) {
+                applyCollectionInsights(currentData.monitoring, summary, currentData.monitoring.v2?.serverTime ?? "");
+                currentData.monitoring.completedCollectionState = readyState;
+                publishNotifications();
+              }
+            } catch (error) {
+              if (signal.aborted) return;
+              if (isAuthorizationError(error)) {
+                publishAuthorizationError(error);
+              } else if (currentData?.monitoring) {
+                currentData.monitoring.completedCollectionState = areaError(error, collectionHistoryFailureMessage, collectionInsights !== null);
+                publishNotifications();
+              }
+            }
+          })();
+        }
+      } else {
+        ready = Promise.resolve();
+      }
+
+      const loadHistoryElapsed = performance.now() - lastLoadHistorySuccessAt;
+      if (loadHistoryElapsed >= MONITORING_REFRESH_MS) {
+        const previousSamples = currentData?.monitoring.loadHistory ?? [];
+        if (currentData?.monitoring) {
+          currentData.monitoring.loadHistory = [];
+          currentData.monitoring.loadHistoryState = { status: "loading" };
+          updateLoadOneHourAgo(currentData.monitoring);
+          publishNotifications();
+        }
+        void (async () => {
+          const to = monitoringDetailsReferenceTime();
+          if (to === null) {
+            failLoadHistoryWithoutServerTime(previousSamples);
+            return;
+          }
+          try {
+            const load = await recentHistory(to, signal);
+            if (signal.aborted) return;
+            lastLoadHistorySuccessAt = performance.now();
+            if (currentData?.monitoring) {
+              currentData.monitoring.loadHistory = load.monitoringSamples;
+              currentData.monitoring.loadHistoryState = { status: "ready", from: load.from, to: load.to };
+              updateLoadOneHourAgo(currentData.monitoring);
+              publishNotifications();
+            }
+          } catch (error) {
+            if (signal.aborted) return;
+            if (isAuthorizationError(error)) {
+              publishAuthorizationError(error);
+              return;
+            }
+            if (currentData?.monitoring) {
+              if (previousSamples.length > 0) {
+                currentData.monitoring.loadHistory = previousSamples;
+              }
+              currentData.monitoring.loadHistoryState = {
+                ...areaError(error, loadHistoryFailureMessage, previousSamples.length > 0),
+                from: currentData.monitoring.loadHistoryState?.from,
+                to: currentData.monitoring.loadHistoryState?.to,
+              };
+              updateLoadOneHourAgo(currentData.monitoring);
+              publishNotifications();
+            }
+          }
+        })();
+      }
+
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        monitoringDetailsRefCount -= 1;
+        if (monitoringDetailsRefCount === 0) {
+          stopMonitoringDetailsTimer();
+          if (typeof document !== "undefined") {
+            document.removeEventListener("visibilitychange", handleMonitoringDetailsVisibility);
+          }
+          monitoringDetailsController?.abort();
+          monitoringDetailsController = null;
+        }
+      };
+
+      return { ready, release };
     },
     getRecording,
     ...(supportsDailyRecordings ? {
@@ -711,16 +1104,16 @@ export function createHttpDashboardDataSource({
       catch { /* The accepted request is independent of notification refresh or cancellation. */ }
     },
     subscribe: (listener) => {
-      const monitoringDetails = !["/history", "/recordings", "/admin"].includes(route());
       const eventSource = eventSourceFactory(eventsPath);
       listeners.add(listener);
+      if (dataVersion > getDashboardDataVersion && currentData) {
+        listener(cloneDashboardData(currentData));
+      }
       const appliedEventIds = new Set<string>();
       let active = true;
       let checkingSession = false;
       let refreshingNotifications = false;
       let notificationsRefreshQueued = false;
-      let refreshingCollection = false;
-      let refreshingLoadHistory = false;
       let synchronizedNotificationId = currentData?.monitoring.v2?.operations?.notificationId ?? null;
       const sessionController = new AbortController();
       const notificationActionScope = notificationActionsController;
@@ -731,7 +1124,6 @@ export function createHttpDashboardDataSource({
         notificationActionScope.abort();
         csrfToken = "";
         hasAuthenticatedSession = false;
-        window.clearInterval(historyTimer);
         eventSource.close();
         onSessionExpired();
       };
@@ -743,35 +1135,8 @@ export function createHttpDashboardDataSource({
         active = false;
         sessionController.abort();
         notificationActionScope.abort();
-        window.clearInterval(historyTimer);
         eventSource.close();
       };
-      const refreshRecentLoadHistory = async () => {
-        if (!active || !currentData?.monitoring.v2 || !serverClock || refreshingLoadHistory) return;
-        refreshingLoadHistory = true;
-        const to = rfc3339AtOffset(serverClock.timestamp + performance.now() - serverClock.receivedAt, displayTimeOffset);
-        try {
-          const load = await recentHistory(to, sessionController.signal);
-          if (!active || !currentData) return;
-          currentData.monitoring.loadHistory = load.monitoringSamples;
-          currentData.monitoring.loadHistoryState = { status: "ready", from: load.from, to: load.to };
-          updateLoadOneHourAgo(currentData.monitoring);
-          listener(cloneDashboardData(currentData));
-        } catch (error) {
-          if (isAuthorizationError(error)) { failAuthorization(error); return; }
-          if (!active || sessionController.signal.aborted || !currentData) return;
-          currentData.monitoring.loadHistoryState = {
-            ...areaError(error, loadHistoryFailureMessage, currentData.monitoring.loadHistory.length > 0),
-            from: currentData.monitoring.loadHistoryState?.from, to: currentData.monitoring.loadHistoryState?.to,
-          };
-          updateLoadOneHourAgo(currentData.monitoring);
-          listener(cloneDashboardData(currentData));
-        } finally { refreshingLoadHistory = false; }
-      };
-      const historyTimer = useV2Monitoring && monitoringDetails ? window.setInterval(() => {
-        void refreshRecentLoadHistory();
-        if (backendContract) refreshCompletedCollection();
-      }, MONITORING_REFRESH_MS) : undefined;
       const isDuplicate = (event: Event) => {
         if (useV2Monitoring) return false;
         if (!(event instanceof MessageEvent) || !event.lastEventId) return false;
@@ -819,35 +1184,6 @@ export function createHttpDashboardDataSource({
           }
         })().finally(() => { refreshingNotifications = false; });
       };
-      const refreshCompletedCollection = () => {
-        if (!monitoringDetails || refreshingCollection || performance.now() - collectionRequestedAt < MONITORING_REFRESH_MS) return;
-        refreshingCollection = true;
-        void (async () => {
-          if (active && currentData?.monitoring.v2) {
-            try {
-              const summary = await getCollectionSummary(sessionController.signal);
-              if (!active || !currentData?.monitoring.v2) return;
-              collectionInsights = summary;
-              const before = insightsSignature(currentData.monitoring);
-              applyCollectionInsights(currentData.monitoring, summary, currentData.monitoring.v2.serverTime);
-              if (before !== insightsSignature(currentData.monitoring) || currentData.monitoring.completedCollectionState?.status === "error") {
-                currentData.monitoring.completedCollectionState = { status: "ready" };
-                listener(cloneDashboardData(currentData));
-              }
-            } catch (error) {
-              if (isAuthorizationError(error)) {
-                failAuthorization(error);
-                return;
-              }
-              if (sessionController.signal.aborted) return;
-              if (active && currentData?.monitoring.v2) {
-                currentData.monitoring.completedCollectionState = areaError(error, collectionHistoryFailureMessage, collectionInsights !== null);
-                listener(cloneDashboardData(currentData));
-              }
-            }
-          }
-        })().finally(() => { refreshingCollection = false; });
-      };
       eventSource.addEventListener("monitoring.snapshot", (event) => {
         if (!active || !currentData || !(event instanceof MessageEvent) || isDuplicate(event)) return;
         if (typeof event.data !== "string") return;
@@ -865,6 +1201,7 @@ export function createHttpDashboardDataSource({
         const unreadNotificationCount = currentData.monitoring.unreadNotificationCount;
         const sourceChanged = monitoring.v2 && currentData.monitoring.v2
           && (monitoring.v2.siteId !== currentData.monitoring.v2.siteId || monitoring.v2.edgeId !== currentData.monitoring.v2.edgeId);
+        if (sourceChanged) lastLoadHistorySuccessAt = -Infinity;
         currentData = {
           ...currentData,
           reception: receivedSnapshot(),
@@ -880,8 +1217,13 @@ export function createHttpDashboardDataSource({
         listener(cloneDashboardData(currentData));
         const notificationId = monitoring.v2?.operations?.notificationId;
         if (notificationRefreshRequired || (notificationId && notificationId !== synchronizedNotificationId)) refreshV2Notifications();
-        if (useV2Monitoring && monitoring.v2 && backendContract) refreshCompletedCollection();
-        if (useV2Monitoring && monitoringDetails && sourceChanged) void refreshRecentLoadHistory();
+        const detailsVisible = typeof document === "undefined" || document.visibilityState !== "hidden";
+        if (detailsVisible && useV2Monitoring && monitoring.v2 && backendContract && monitoringDetailsRefCount > 0 && monitoringDetailsController) {
+          void refreshCompletedCollection(monitoringDetailsController.signal);
+        }
+        if (detailsVisible && useV2Monitoring && monitoringDetailsRefCount > 0 && sourceChanged && monitoringDetailsController) {
+          void refreshRecentLoadHistory(monitoringDetailsController.signal);
+        }
       });
       eventSource.addEventListener("error", () => {
         if (!active) return;
@@ -982,7 +1324,6 @@ export function createHttpDashboardDataSource({
         listeners.delete(listener);
         if (listeners.size === 0) notificationActionScope.abort();
         sessionController.abort();
-        window.clearInterval(historyTimer);
         eventSource.close();
       };
     },

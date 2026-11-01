@@ -149,9 +149,10 @@ include /etc/nginx/includes/runtime-config.conf;
 
 snippet은 exact location에서 JSON 파일을 제공하고 `Cache-Control: no-store`를 적용한다.
 파일이 없으면 `404`를 반환하고 SPA fallback을 사용하지 않는다. API upstream과 TLS 설정은
-기존 Nginx 주입 경계를 유지한다. 설정은 다음 전체 페이지 로드에 적용하며 이미 열린 화면의
-대상을 자동으로 변경하지 않는다. 파일을 원자적으로 교체하면 single-file bind mount의
-새 inode를 반영하도록 컨테이너를 다시 생성한다. image 재빌드는 필요하지 않다.
+기존 Nginx 주입 경계를 유지한다. 설정은 전체 페이지 로드(document 탐색 또는 새로고침) 시에만
+다시 읽히며 앱 내부 화면 전환 중에는 다시 읽지 않는다. 이미 열린 화면의 대상을 자동으로 변경하지
+않는다. 파일을 원자적으로 교체하면 single-file bind mount의 새 inode를 반영하도록 컨테이너를
+다시 생성한다. image 재빌드는 필요하지 않다.
 
 `scripts/quick-start.sh`는 synthetic 모드에서 runtime 파일 없이 실행한다. HTTP data source를
 선택한 로컬 이미지는 `.env`의 `DASHBOARD_RUNTIME_CONFIG_FILE`을 같은 경로에 mount한다.

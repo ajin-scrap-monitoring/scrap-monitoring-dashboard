@@ -1,8 +1,13 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 
 import { App } from "./App";
+import { resetNavigationForTesting } from "./app-router";
 import { createMockDashboardDataSource } from "./data/mock-dashboard-data-source";
+
+beforeEach(() => {
+  resetNavigationForTesting();
+});
 
 test.each(["/history", "/recordings"])("%s의 최초 데이터 확인 중에는 로그인 링크나 사용자 메뉴를 표시하지 않는다", async (path) => {
   const data = await createMockDashboardDataSource().getDashboardData();
@@ -103,4 +108,301 @@ test("조회 사용자의 관리자 경로에는 권한 오류를 표시한다",
 
   expect(await screen.findByRole("main", { name: "접근 권한이 없습니다." })).toBeVisible();
   expect(screen.queryByRole("link", { name: /^관리자$/ })).not.toBeInTheDocument();
+});
+
+test("현황 화면 언마운트 시 activateMonitoringDetails의 release를 호출한다", async () => {
+  const data = await createMockDashboardDataSource().getDashboardData();
+  const release = vi.fn();
+  const activateMonitoringDetails = vi.fn(() => ({
+    ready: Promise.resolve(),
+    release,
+  }));
+  const dataSource = {
+    getDashboardData: () => Promise.resolve(data),
+    activateMonitoringDetails,
+  };
+  window.history.replaceState(null, "", "/");
+  const { unmount } = render(<App dataSource={dataSource} />);
+  expect(await screen.findByRole("main", { name: "스크랩 모니터링 대시보드" })).toBeVisible();
+  expect(activateMonitoringDetails).toHaveBeenCalled();
+  expect(release).not.toHaveBeenCalled();
+
+  unmount();
+  expect(release).toHaveBeenCalledOnce();
+});
+
+test.each([
+  { name: "60초 초과 재진입은 새 collection summary 응답 전까지 로딩 화면을 유지한다", stale: true },
+  { name: "60초 이내 재진입은 ready가 즉시 끝나 현황을 바로 표시한다", stale: false },
+])("$name", async ({ stale }) => {
+  const data = await createMockDashboardDataSource().getDashboardData();
+  let finishSecond: () => void = () => {};
+  let activations = 0;
+  const activateMonitoringDetails = vi.fn(() => {
+    activations += 1;
+    if (activations === 2 && stale) {
+      return { ready: new Promise<void>(resolve => { finishSecond = resolve; }), release: () => {} };
+    }
+    return { ready: Promise.resolve(), release: () => {} };
+  });
+  const dataSource = {
+    getDashboardData: () => Promise.resolve(data),
+    loadRouteData: vi.fn((route: string) => Promise.resolve(route === "history" ? { history: data.history } : {})),
+    activateMonitoringDetails,
+    isMonitoringDetailsReady: () => activations >= 1 && !stale,
+  };
+  window.history.replaceState(null, "", "/");
+  render(<App dataSource={dataSource} />);
+  expect(await screen.findByRole("main", { name: "스크랩 모니터링 대시보드" })).toBeVisible();
+
+  const { navigate } = await import("./app-router");
+  act(() => { navigate("/history"); });
+  expect(await screen.findByRole("main", { name: "스크랩 모니터링 이력" })).toBeVisible();
+
+  const loadingText = "데이터를 불러오는 중입니다.";
+  const mentionsLoading = (node: Node) => node.textContent?.includes(loadingText) === true
+    || (node instanceof Element && (node.getAttribute("aria-label") === loadingText || node.querySelector(`[aria-label="${loadingText}"]`) !== null));
+  const records: MutationRecord[] = [];
+  const observer = new MutationObserver(list => { records.push(...list); });
+  observer.observe(document.body, { childList: true, subtree: true });
+  act(() => { navigate("/"); });
+  await act(() => Promise.resolve());
+  records.push(...observer.takeRecords());
+  const loadingSeen = records.some(record => Array.from(record.addedNodes).some(mentionsLoading));
+  if (stale) {
+    expect(await screen.findByText("데이터를 불러오는 중입니다.")).toBeVisible();
+    expect(screen.queryByRole("main", { name: "스크랩 모니터링 대시보드" })).not.toBeInTheDocument();
+    act(() => { finishSecond(); });
+  }
+  expect(await screen.findByRole("main", { name: "스크랩 모니터링 대시보드" })).toBeVisible();
+  observer.disconnect();
+  if (!stale) expect(loadingSeen).toBe(false);
+  expect(activateMonitoringDetails).toHaveBeenCalledTimes(2);
+});
+
+test("알림 상태가 loading이면 알림 확인 중을 표시하고 badge를 숨기며 popover에서 불러오는 중을 표시한다", async () => {
+  const data = await createMockDashboardDataSource().getDashboardData();
+  data.session = { expiresAt: "2026-10-16T00:00:00Z", user: { displayName: "조회 사용자", id: "viewer-1", role: "viewer" } };
+  data.monitoring.notificationState = { status: "loading" };
+  data.monitoring.unreadNotificationCount = null;
+  window.history.replaceState(null, "", "/");
+
+  render(<App dataSource={{ getDashboardData: () => Promise.resolve(data) }} />);
+  expect(await screen.findByRole("main", { name: "스크랩 모니터링 대시보드" })).toBeVisible();
+
+  const button = screen.getByRole("button", { name: "알림 확인 중" });
+  expect(button).toBeVisible();
+  expect(button.querySelector(".notification-badge")).toBeNull();
+
+  fireEvent.click(button);
+  expect(await screen.findByText("불러오는 중...")).toBeVisible();
+  expect(screen.getByRole("button", { name: "모두 읽음" })).toBeDisabled();
+});
+
+test("4개 화면 이동 동안 getDashboardData와 subscribe는 1회이며, 각 화면 데이터는 이동마다 요청된다", async () => {
+  const data = await createMockDashboardDataSource().getDashboardData();
+  data.session = { expiresAt: "2026-10-16T00:00:00Z", user: { displayName: "관리자", id: "admin-1", role: "administrator" } };
+
+  const getDashboardData = vi.fn().mockResolvedValue(data);
+  const subscribe = vi.fn(() => () => {});
+  const loadRouteData = vi.fn().mockImplementation((route: string) => {
+    if (route === "history") return Promise.resolve({ history: data.history });
+    if (route === "recordings") return Promise.resolve({ recordings: data.recordings, recordingsState: { status: "ready" } });
+    if (route === "admin") return Promise.resolve({ admin: data.admin });
+    return Promise.resolve({});
+  });
+
+  const dataSource = {
+    getDashboardData,
+    subscribe,
+    loadRouteData,
+    activateMonitoringDetails: () => ({ ready: Promise.resolve(), release: () => {} }),
+  };
+
+  window.history.replaceState(null, "", "/");
+  render(<App dataSource={dataSource} />);
+
+  expect(await screen.findByRole("main", { name: "스크랩 모니터링 대시보드" })).toBeVisible();
+  expect(getDashboardData).toHaveBeenCalledTimes(1);
+  expect(subscribe).toHaveBeenCalledTimes(1);
+
+  // 이력으로 이동
+  const { navigate } = await import("./app-router");
+  act(() => {
+    navigate("/history");
+  });
+  expect(await screen.findByRole("main", { name: "스크랩 모니터링 이력" })).toBeVisible();
+  expect(loadRouteData).toHaveBeenCalledWith("history", expect.anything());
+
+  // 녹화 영상으로 이동
+  act(() => {
+    navigate("/recordings");
+  });
+  expect(await screen.findByRole("main", { name: "스크랩 모니터링 녹화 영상" })).toBeVisible();
+  expect(loadRouteData).toHaveBeenCalledWith("recordings", expect.anything());
+
+  // 관리자로 이동
+  act(() => {
+    navigate("/admin");
+  });
+  expect(await screen.findByRole("main", { name: "관리자 설정" })).toBeVisible();
+  expect(loadRouteData).toHaveBeenCalledWith("admin", expect.anything());
+
+  // 이동 후에도 getDashboardData와 subscribe는 여전히 1회
+  expect(getDashboardData).toHaveBeenCalledTimes(1);
+  expect(subscribe).toHaveBeenCalledTimes(1);
+});
+
+test("빠른 연속 이동에서 이전 화면 데이터 요청은 abort되고 늦은 결과는 무시된다", async () => {
+  const data = await createMockDashboardDataSource().getDashboardData();
+  const abortSignals: AbortSignal[] = [];
+
+  let resolveHistory = () => {};
+  const historyGate = new Promise((resolve) => { resolveHistory = () => resolve(undefined); });
+
+  const loadRouteData = vi.fn().mockImplementation((route: string, options: { signal: AbortSignal }) => {
+    abortSignals.push(options.signal);
+    if (route === "history") {
+      return historyGate.then(() => ({ history: data.history }));
+    }
+    if (route === "recordings") {
+      return Promise.resolve({ recordings: data.recordings, recordingsState: { status: "ready" } });
+    }
+    return Promise.resolve({});
+  });
+
+  const dataSource = {
+    getDashboardData: () => Promise.resolve(data),
+    subscribe: () => () => {},
+    loadRouteData,
+    activateMonitoringDetails: () => ({ ready: Promise.resolve(), release: () => {} }),
+  };
+
+  window.history.replaceState(null, "", "/");
+  render(<App dataSource={dataSource} />);
+  expect(await screen.findByRole("main", { name: "스크랩 모니터링 대시보드" })).toBeVisible();
+
+  const { navigate } = await import("./app-router");
+
+  act(() => {
+    navigate("/history");
+  });
+
+  // history 요청 진행 중인 상태에서 바로 recordings로 navigate
+  act(() => {
+    navigate("/recordings");
+  });
+
+  // history 요청의 signal은 abort되어야 함
+  expect(abortSignals[0].aborted).toBe(true);
+
+  // recordings 화면이 성공적으로 표시됨
+  expect(await screen.findByRole("main", { name: "스크랩 모니터링 녹화 영상" })).toBeVisible();
+
+  // 뒤늦게 history 응답이 도착해도 recordings 화면 유지
+  act(() => {
+    resolveHistory();
+  });
+
+  expect(screen.getByRole("main", { name: "스크랩 모니터링 녹화 영상" })).toBeVisible();
+});
+
+test("관리자 화면 앱 내부 진입 시 session을 재확인하고, 권한이 변경되었으면 접근 권한 없음을 표시한다", async () => {
+  const data = await createMockDashboardDataSource().getDashboardData();
+  data.session = { expiresAt: "2026-10-16T00:00:00Z", user: { displayName: "관리자", id: "admin-1", role: "administrator" } };
+
+  let subscriber: ((d: typeof data) => void) | null = null;
+
+  const loadRouteData = vi.fn().mockImplementation((route: string, options: { revalidateSession?: boolean }) => {
+    if (route === "admin" && options.revalidateSession) {
+      // revalidateSession 시 일반 사용자 역할로 변경 시뮬레이션
+      data.session = { expiresAt: "2026-10-16T00:00:00Z", user: { displayName: "일반사용자", id: "user-1", role: "viewer" } };
+      subscriber?.(data);
+      return Promise.resolve({ admin: { ...data.admin, recipients: [] } });
+    }
+    return Promise.resolve({});
+  });
+
+  const dataSource = {
+    getDashboardData: () => Promise.resolve(data),
+    subscribe: (fn: (d: typeof data) => void) => {
+      subscriber = fn;
+      return () => { subscriber = null; };
+    },
+    loadRouteData,
+    activateMonitoringDetails: () => ({ ready: Promise.resolve(), release: () => {} }),
+  };
+
+  window.history.replaceState(null, "", "/");
+  render(<App dataSource={dataSource} />);
+  expect(await screen.findByRole("main", { name: "스크랩 모니터링 대시보드" })).toBeVisible();
+
+  const { navigate } = await import("./app-router");
+  act(() => {
+    navigate("/admin");
+  });
+
+  expect(loadRouteData).toHaveBeenCalledWith("admin", expect.objectContaining({ revalidateSession: true }));
+  expect(await screen.findByRole("main", { name: "접근 권한이 없습니다." })).toBeVisible();
+});
+
+test("첫 화면 전 로딩은 메뉴를 숨기고 앱 내부 이동 로딩은 메뉴를 유지한다", async () => {
+  const data = await createMockDashboardDataSource().getDashboardData();
+  data.session = { expiresAt: "2026-10-16T00:00:00Z", user: { displayName: "운영자", id: "user-1", role: "administrator" } };
+
+  let resolveApp = () => {};
+  const appGate = new Promise((resolve) => { resolveApp = () => resolve(undefined); });
+
+  let resolveRecordings = () => {};
+  const recordingsGate = new Promise((resolve) => { resolveRecordings = () => resolve(undefined); });
+
+  const loadRouteData = vi.fn().mockImplementation((route: string) => {
+    if (route === "recordings") {
+      return recordingsGate.then(() => ({ recordings: data.recordings, recordingsState: { status: "ready" } }));
+    }
+    return Promise.resolve({});
+  });
+
+  const dataSource = {
+    getDashboardData: () => appGate.then(() => data),
+    subscribe: () => () => {},
+    loadRouteData,
+    activateMonitoringDetails: () => ({ ready: Promise.resolve(), release: () => {} }),
+  };
+
+  window.history.replaceState(null, "", "/");
+  render(<App dataSource={dataSource} />);
+
+  // 첫 화면 로딩 중: 메뉴와 사용자 도구 숨김
+  expect(screen.getByRole("main", { name: "데이터를 불러오는 중입니다." })).toBeVisible();
+  expect(document.querySelector(".global-nav")).toBeEmptyDOMElement();
+  expect(screen.queryByRole("button", { name: "사용자 메뉴" })).not.toBeInTheDocument();
+
+  // 첫 화면 로딩 완료
+  act(() => {
+    resolveApp();
+  });
+  expect(await screen.findByRole("main", { name: "스크랩 모니터링 대시보드" })).toBeVisible();
+  expect(document.querySelectorAll(".global-nav a")).toHaveLength(4);
+  expect(screen.getByRole("button", { name: "사용자 메뉴" })).toBeVisible();
+
+  // 앱 내부 이동: 녹화 영상으로 이동 (녹화 데이터 지연)
+  const { navigate } = await import("./app-router");
+  act(() => {
+    navigate("/recordings");
+  });
+
+  // 앱 내부 이동 로딩 중: 본문은 로딩 화면이지만 메뉴와 사용자 도구 유지
+  expect(screen.getByRole("main", { name: "데이터를 불러오는 중입니다." })).toBeVisible();
+  expect(document.querySelectorAll(".global-nav a")).toHaveLength(4);
+  expect(screen.getByRole("button", { name: "사용자 메뉴" })).toBeVisible();
+  // 활성 탭은 이동 대상 화면인 "녹화 영상"
+  const activeLink = document.querySelector(".global-nav a.active");
+  expect(activeLink?.textContent).toBe("녹화 영상");
+
+  // 녹화 데이터 완료
+  act(() => {
+    resolveRecordings();
+  });
+  expect(await screen.findByRole("main", { name: "스크랩 모니터링 녹화 영상" })).toBeVisible();
 });

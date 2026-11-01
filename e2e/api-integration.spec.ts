@@ -48,6 +48,7 @@ test("30일과 90일 조회는 v2 그래프와 운영 기록을 함께 표시하
   api.setLoadHistory(url => url.searchParams.get("from")?.startsWith("2026-07-") ? { status: 200, delayMs: 800, body: historyV2(url, monitoringV2StateFixture("UNAVAILABLE")) } : undefined);
   await page.goto("/history?source=api");
   await expect(page.locator(".history-chart")).toBeVisible();
+  await expect.poll(() => api.requests.filter(url => url.pathname === "/api/v2/monitoring/load-history").length).toBeGreaterThan(0);
   for (const days of [30, 90]) {
     const before = api.requests.filter(url => url.pathname === "/api/v2/monitoring/load-history").length;
     await page.getByRole("button", { name: `최근 ${days}일`, exact: true }).click();

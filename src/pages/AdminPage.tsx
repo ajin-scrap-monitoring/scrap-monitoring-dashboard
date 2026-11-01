@@ -305,7 +305,7 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
   return (
     <DashboardPageShell activePage="admin" dataSource={dataSource} headerNotifications={headerNotifications} headerUnreadCount={headerUnreadCount} notificationState={headerNotificationState} session={session}>
       <main className="admin-page" aria-label="관리자 설정">
-        <div className="page-heading"><h1>관리자 설정</h1></div>
+        <div className="page-heading"><h1 tabIndex={-1}>관리자 설정</h1></div>
         <div className="admin-content">
           <div className="admin-top">
             <section className="card threshold-card">

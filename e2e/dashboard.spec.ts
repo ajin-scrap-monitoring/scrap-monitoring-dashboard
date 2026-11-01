@@ -153,7 +153,7 @@ test("관리자 page chunk 지연 후 알림함은 준비된 화면에서 열린
   });
   try {
     await page.goto("/admin", { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("main", { name: "화면을 불러오는 중입니다." })).toBeVisible();
+    await expect(page.getByRole("main", { name: "데이터를 불러오는 중입니다." })).toBeVisible();
   } finally {
     releaseAdmin();
   }

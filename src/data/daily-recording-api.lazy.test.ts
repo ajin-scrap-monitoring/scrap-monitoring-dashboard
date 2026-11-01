@@ -36,7 +36,7 @@ afterEach(() => { vi.clearAllMocks(); });
 
 describe("날짜 녹화 API의 지연 로딩 경계", () => {
   test("Backend v2 현황 초기 조회도 날짜 module을 초기화하지 않는다", async () => {
-    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", route: () => "/",
+    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2",
       fetchImplementation: input => {
         const path = requestPath(input);
         const value = path === "/api/v1/session" ? sessionFixture

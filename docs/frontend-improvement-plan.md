@@ -10,4 +10,3 @@
 | 개발 및 verification 컨테이너 실행 | [개발 환경](development.md#개발과-검증-컨테이너) |
 | 시작 조건과 완료 및 원격 반영 절차 | [개발 워크플로우](development-workflow.md) |
 | 외부 데이터의 미구현과 책임 | [계약 매핑](contracts/backend/frontend-mapping.md#추가-계약-요청) |
-| 미착수 화면 전환 개선 | [성능 개선 계획](navigation-performance-plan.md) |
