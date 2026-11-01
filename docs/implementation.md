@@ -109,21 +109,30 @@ Programming Interface) 호환성을 검증한다.
 
 `src/app-router.ts`의 `useAppLocation`은 `useSyncExternalStore`로 브라우저의 `popstate`와 앱 내부 이동
 알림을 구독한다. `navigate(to, { replace? })`는 `history.pushState` 또는 `replaceState`를 호출하고
-구독자에게 알린다. push 이동 전에 현재 entry의 `history.state`에 scroll 위치를 저장하며 현재 위치와
-대상 경로의 pathname 및 search가 같으면 새 history entry를 만들지 않는다. `AppLink`는 왼쪽 클릭,
+구독자에게 알린다. 각 history entry는 `history.state`의 고유 key를 가지며 첫 document entry에도
+router가 key를 부여한다. router는 push 이동 직전과 `popstate`를 화면에 반영하기 전(이전 화면이
+DOM에 있는 동안)에 떠나는 entry의 scroll 위치를 key별로 메모리에 기억한다. 현재 위치와 대상 경로의
+pathname 및 search가 같으면 새 history entry를 만들지 않는다. `AppLink`는 왼쪽 클릭,
 보조키 없음, `target` 부재 또는 `_self`, `download` 없음 조건에서만 `preventDefault()` 후 `navigate`를
 수행한다. 화면 모듈 loader(`loadAdminPage`, `loadHistoryPage`, `loadRecordingsPage`)는
-`src/page-loaders.ts`로 분리해 lazy load와 선로딩에 공유하며, `AppLink`는 pointerenter와 focus
+`src/page-loaders.ts`로 분리해 화면 모듈 load와 선로딩에 공유하며, `AppLink`는 pointerenter와 focus
 이벤트에서 대상 화면 모듈을 미리 로드한다.
 
 화면 전환 시 push 이동은 새 화면이 렌더링된 뒤 맨 위로 scroll하고 새 화면의 h1(`tabIndex={-1}`)로
 focus를 이동한다. 프로그램 focus 시 외곽선은 숨기되 키보드 focus 표시(`:focus-visible`)는 유지한다.
-뒤로/앞으로 이동(popstate)은 history entry에 저장한 scroll 위치를 화면 렌더링 뒤 복원한다. 브라우저의
+뒤로/앞으로 이동(popstate)은 이동한 entry를 떠나기 직전에 기억한 scroll 위치를 화면 렌더링 뒤
+복원하며 기억한 위치가 없으면 맨 위로 둔다. 새로고침 뒤에는 기억한 위치를 복원하지 않는다. 브라우저의
 `history.scrollRestoration`은 `manual`로 설정한다. 관리자 화면으로 앱 내부 이동할 때는 session을
 재조회(`loadRouteData("admin", { revalidateSession: true })`)해 CSRF token과 session 정보를 갱신한다.
 session이 만료되었으면 로그인 화면으로 이동하고 역할이 `administrator`가 아니면 관리자 데이터 조회를
 생략하고 권한 없음 화면을 표시한다. 전체 페이지 첫 진입의 관리자 화면은 `getDashboardData`의 session을
 사용하므로 중복 조회하지 않는다.
+
+관리자, 이력, 녹화 화면 모듈은 별도 chunk이며 `usePageModule`이 모듈 load 상태를 화면 데이터
+로딩과 같은 대기 상태에 포함한다. 모듈과 데이터를 기다리는 동안은 "데이터를 불러오는 중입니다."
+로딩 화면을 표시하고 load가 끝난 모듈의 component를 Suspense 없이 직접 렌더링한다. 모듈 load
+실패는 다시 시도할 수 있는 오류 화면으로 표시한다. 로그인 화면은 별도 document 경로로 `React.lazy`와
+Suspense를 유지한다.
 
 `application-root.ts`는 `pagehide`에서 React root를 unmount해 영상, SSE와 진행 중인
 요청 및 timer를 정리한다. Back/forward cache에서 복원한 document는 `pageshow`의
@@ -156,7 +165,8 @@ snapshot만 대기하고 알림 응답을 기다리지 않고 반환한다. 알�
 반환하며, 이 경우 현황 화면은 로딩 화면을 그리지 않고 첫 render부터 현황을 표시한다. 마지막
 성공 뒤 60초가 지난 재진입은 새 collection summary 응답까지 로딩 화면을 유지한다. load-history 기준 시각은 서버 시각만 사용하며 서버 시각이 없으면 조회하지 않고 해당 영역을
 오류 상태로 둔다. 브라우저 탭이 숨겨지면(`document.visibilityState === "hidden"`) 현황 상세 갱신 timer를
-중지한다. 탭이 다시 표시되면 마지막 성공 시각 이후 60초가 지난 경우 collection summary와 최근
+중지하고 `monitoring.snapshot` SSE 수신이 유발하는 완료 조회 5개 요청(collection summary,
+fill forecast, profiles, active alerts, layout)과 source 변경 때의 load-history 조회도 보내지 않는다. 탭이 다시 표시되면 마지막 성공 시각 이후 60초가 지난 경우 collection summary와 최근
 24시간 load-history를 즉시 재조회하고 timer를 다시 시작한다. 60초가 지난 load-history 표본은
 비우고 loading 상태로 둔 뒤 조회한다. SSE 연결은 탭 숨김 중에도 유지한다. 카메라 상태 폴링
 (`useCameraStatus`) 역시 탭이 숨겨진 동안 폴링 timer를 멈추고 진행 중인 요청을 취소하며, 다시
@@ -215,7 +225,7 @@ Synthetic 영상과 썸네일은 `src/assets/camera-frame.png`를 사용하며 �
 
 첫 화면 표시 전의 runtime 설정, 최초 공통 데이터 로딩 중에는 메뉴 탭과 사용자 도구를
 숨기고 헤더 높이를 유지한다. 첫 화면이 표시된 뒤 앱 내부 화면 전환에서는 화면별 데이터 로딩과
-화면 모듈 로딩(Suspense fallback) 모두 확인된 session의 공통 헤더(메뉴, 사용자 도구, 알림)를
+화면 모듈 로딩 모두 확인된 session의 공통 헤더(메뉴, 사용자 도구, 알림)를
 유지하고 본문 영역만 로딩 화면으로 표시한다. 활성 메뉴는 이동 대상 화면으로 즉시 반영된다.
 알림 조회 중에는 헤더 알림 버튼에 badge 대신 "알림 확인 중"을 표시하고 popover에 로딩 상태를 표시한다.
 준비 뒤 확인한 session과 역할에 맞는 메뉴를 한 번에 표시한다. 조회 오류 화면은 확인된 사용자 정보를

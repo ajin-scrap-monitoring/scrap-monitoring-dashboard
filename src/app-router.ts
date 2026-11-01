@@ -17,6 +17,50 @@ if (typeof window !== "undefined" && "scrollRestoration" in window.history) {
 let currentNavigationType: NavigationType = "push";
 let hasNavigated = false;
 
+type ScrollPosition = { x: number; y: number };
+const ENTRY_KEY_FIELD = "entryKey";
+const entryScrolls = new Map<string, ScrollPosition>();
+let entryKeySequence = 0;
+let activeEntryKey = "";
+
+function createEntryKey(): string {
+  entryKeySequence += 1;
+  const random = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${entryKeySequence}`;
+  return `entry-${random}`;
+}
+
+function readHistoryState(): Record<string, unknown> {
+  const state = window.history.state as Record<string, unknown> | null;
+  return state !== null && typeof state === "object" ? state : {};
+}
+
+// 현재 history entry의 key를 반환하며 key가 없으면 replaceState로 부여한다.
+function ensureEntryKey(): string {
+  const state = readHistoryState();
+  const existing = state[ENTRY_KEY_FIELD];
+  if (typeof existing === "string" && existing !== "") return existing;
+  const key = createEntryKey();
+  window.history.replaceState({ ...state, [ENTRY_KEY_FIELD]: key }, "");
+  return key;
+}
+
+function rememberScrollOfActiveEntry() {
+  if (activeEntryKey === "") return;
+  entryScrolls.set(activeEntryKey, { x: window.scrollX, y: window.scrollY });
+}
+
+// 현재 history entry에서 마지막으로 떠나기 직전에 기억한 scroll 위치를 반환한다.
+export function getRememberedScroll(): ScrollPosition {
+  if (typeof window === "undefined") return { x: 0, y: 0 };
+  return entryScrolls.get(ensureEntryKey()) ?? { x: 0, y: 0 };
+}
+
+if (typeof window !== "undefined") {
+  activeEntryKey = ensureEntryKey();
+}
+
 export function getNavigationType(): NavigationType {
   return currentNavigationType;
 }
@@ -64,6 +108,9 @@ function getServerSnapshot(): AppLocation {
 
 if (typeof window !== "undefined") {
   window.addEventListener("popstate", () => {
+    // 이전 화면이 아직 DOM에 있는 동안 떠나는 entry의 scroll을 기억한다.
+    rememberScrollOfActiveEntry();
+    activeEntryKey = ensureEntryKey();
     hasNavigated = true;
     currentNavigationType = "popstate";
     getSnapshot();
@@ -106,7 +153,8 @@ export function navigate(to: string, options: NavigateOptions = {}) {
 
   hasNavigated = true;
   const nextUrl = `${targetPathname}${targetSearch}${url.hash}`;
-  const currentState = (window.history.state as Record<string, unknown> | null) ?? {};
+  activeEntryKey = ensureEntryKey();
+  const currentState = readHistoryState();
 
   if (options.replace) {
     currentNavigationType = "replace";
@@ -117,16 +165,10 @@ export function navigate(to: string, options: NavigateOptions = {}) {
     );
   } else {
     currentNavigationType = "push";
-    window.history.replaceState(
-      {
-        ...currentState,
-        scrollX: window.scrollX,
-        scrollY: window.scrollY,
-      },
-      "",
-    );
+    rememberScrollOfActiveEntry();
+    activeEntryKey = createEntryKey();
     window.history.pushState(
-      { navigationType: "push" },
+      { navigationType: "push", [ENTRY_KEY_FIELD]: activeEntryKey },
       "",
       nextUrl,
     );
@@ -137,6 +179,8 @@ export function navigate(to: string, options: NavigateOptions = {}) {
 }
 
 export function resetNavigationForTesting() {
+  entryScrolls.clear();
+  if (typeof window !== "undefined") activeEntryKey = ensureEntryKey();
   hasNavigated = false;
   currentNavigationType = "push";
   cachedLocation = {

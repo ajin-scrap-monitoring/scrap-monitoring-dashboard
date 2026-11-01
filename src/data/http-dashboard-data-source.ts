@@ -1217,10 +1217,11 @@ export function createHttpDashboardDataSource({
         listener(cloneDashboardData(currentData));
         const notificationId = monitoring.v2?.operations?.notificationId;
         if (notificationRefreshRequired || (notificationId && notificationId !== synchronizedNotificationId)) refreshV2Notifications();
-        if (useV2Monitoring && monitoring.v2 && backendContract && monitoringDetailsRefCount > 0 && monitoringDetailsController) {
+        const detailsVisible = typeof document === "undefined" || document.visibilityState !== "hidden";
+        if (detailsVisible && useV2Monitoring && monitoring.v2 && backendContract && monitoringDetailsRefCount > 0 && monitoringDetailsController) {
           void refreshCompletedCollection(monitoringDetailsController.signal);
         }
-        if (useV2Monitoring && monitoringDetailsRefCount > 0 && sourceChanged && monitoringDetailsController) {
+        if (detailsVisible && useV2Monitoring && monitoringDetailsRefCount > 0 && sourceChanged && monitoringDetailsController) {
           void refreshRecentLoadHistory(monitoringDetailsController.signal);
         }
       });

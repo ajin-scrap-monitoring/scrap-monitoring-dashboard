@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { AppLink } from "./app-link";
-import { isClientRoute, navigate, resetNavigationForTesting, useAppLocation } from "./app-router";
+import { getRememberedScroll, isClientRoute, navigate, resetNavigationForTesting, useAppLocation } from "./app-router";
 
 describe("app-router: client route 판별 및 AppLink 동작", () => {
   afterEach(() => {
@@ -98,21 +98,48 @@ describe("app-router: client route 판별 및 AppLink 동작", () => {
     expect(pushStateSpy).not.toHaveBeenCalled();
   });
 
-  test("navigate: push 이동 전에 현재 scroll 위치를 history.state에 저장한다", () => {
-    window.history.replaceState(null, "", "/");
-    Object.defineProperty(window, "scrollX", { configurable: true, value: 100 });
-    Object.defineProperty(window, "scrollY", { configurable: true, value: 250 });
-
-    const replaceStateSpy = vi.spyOn(window.history, "replaceState");
-    const pushStateSpy = vi.spyOn(window.history, "pushState");
+  test("첫 document entry와 push entry는 서로 다른 key를 history.state에 가진다", () => {
+    resetNavigationForTesting();
+    const firstKey = (window.history.state as { entryKey?: string }).entryKey;
+    expect(firstKey).toEqual(expect.any(String));
 
     navigate("/history");
+    const secondKey = (window.history.state as { entryKey?: string }).entryKey;
+    expect(secondKey).toEqual(expect.any(String));
+    expect(secondKey).not.toBe(firstKey);
+  });
 
-    expect(replaceStateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ scrollX: 100, scrollY: 250 }),
-      "",
-    );
-    expect(pushStateSpy).toHaveBeenCalled();
+  test("뒤로와 앞으로 이동은 각 entry를 떠나기 직전의 scroll 위치를 복원한다", async () => {
+    let scroll = { x: 0, y: 0 };
+    Object.defineProperty(window, "scrollX", { configurable: true, get: () => scroll.x });
+    Object.defineProperty(window, "scrollY", { configurable: true, get: () => scroll.y });
+    const popstate = () => new Promise<void>((resolve) => window.addEventListener("popstate", () => resolve(), { once: true }));
+    resetNavigationForTesting();
+
+    scroll = { x: 0, y: 150 };
+    navigate("/recordings");
+    expect(getRememberedScroll()).toEqual({ x: 0, y: 0 });
+    scroll = { x: 5, y: 320 };
+
+    const back = popstate();
+    window.history.back();
+    await back;
+    expect(window.location.pathname).toBe("/");
+    expect(getRememberedScroll()).toEqual({ x: 0, y: 150 });
+    scroll = { x: 0, y: 40 };
+
+    const forward = popstate();
+    window.history.forward();
+    await forward;
+    expect(window.location.pathname).toBe("/recordings");
+    expect(getRememberedScroll()).toEqual({ x: 5, y: 320 });
+
+    const backAgain = popstate();
+    window.history.back();
+    await backAgain;
+    expect(getRememberedScroll()).toEqual({ x: 0, y: 40 });
+    Reflect.deleteProperty(window, "scrollX");
+    Reflect.deleteProperty(window, "scrollY");
   });
 
   test("useAppLocation: popstate 이벤트를 구독하여 위치 변경을 감지한다", () => {

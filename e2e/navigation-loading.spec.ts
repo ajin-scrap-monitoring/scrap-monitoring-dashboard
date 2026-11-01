@@ -64,7 +64,7 @@ for (const [path, title, moduleName] of [
     await page.route(`**/assets/${moduleName}-*.js`, async route => { await gate; await route.continue(); });
     try {
       await page.goto(`${path}?source=api`, { waitUntil: "domcontentloaded" });
-      await expect(page.getByRole("main", { name: "화면을 불러오는 중입니다." })).toBeVisible();
+      await expect(page.getByRole("main", { name: "데이터를 불러오는 중입니다." })).toBeVisible();
       await expect(page.locator(".global-nav a")).toHaveCount(0);
       await expect(page.locator(".user-tools")).toBeEmpty();
       const pendingHeader = await page.locator(".topbar").boundingBox();

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { eventFixture } from "../src/test/api-contract-fixtures.js";
+import { monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
 import { installBackendApi, syntheticEventReplay } from "./backend-api.js";
 
 test("메뉴로 4개 화면을 2회 순환해도 document, config, snapshot 요청이 없고 session은 관리자 진입마다 재확인된다", async ({ page }) => {
@@ -249,4 +250,92 @@ test("현황과 다른 화면을 반복 이동해도 분리된 img와 SVG circle
   // 6바퀴 동안 누수가 있으면 바퀴 수에 비례해 늘어난다. 현재 화면의 요소 차이만 허용한다.
   expect(second.images).toBeLessThanOrEqual(first.images + 2);
   expect(second.circles).toBeLessThanOrEqual(first.circles + 10);
+});
+
+test("뒤로와 앞으로 이동은 각 화면을 떠나기 직전의 scroll 위치를 복원한다", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const api = await installBackendApi(page);
+  const id = "evt-alt-31";
+  api.setEventReplays([syntheticEventReplay({}, { eventId: id, occurredAt: "2026-10-12T00:00:00Z", windowFrom: "2026-10-11T23:59:30Z", windowTo: "2026-10-12T00:00:30Z" })]);
+  api.setHistoryEvents([{ ...eventFixture, occurredAt: "2026-10-12T00:00:00Z", recordingId: "legacy-id", recordingEventId: id } as unknown as typeof eventFixture]);
+
+  await page.goto("/history?source=api");
+  await expect(page.getByRole("heading", { name: "이력", level: 1, exact: true })).toBeVisible();
+  const videoLink = page.getByRole("link", { name: "영상 보기" }).first();
+  await expect(videoLink).toBeVisible();
+
+  const scrollTo150 = async () => {
+    await page.evaluate(() => window.scrollTo(0, 150));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(150);
+  };
+  await scrollTo150();
+  await videoLink.click();
+  await expect(page.getByRole("heading", { name: "녹화 영상", level: 1, exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await scrollTo150();
+
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "이력", level: 1, exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(150);
+
+  await page.goForward();
+  await expect(page.getByRole("heading", { name: "녹화 영상", level: 1, exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(150);
+});
+
+test("앱 내부 이동으로 관리자와 녹화를 처음 열 때 화면 불러오기 fallback 문구가 나타나지 않는다", async ({ page }) => {
+  await installBackendApi(page);
+  await page.addInitScript(() => {
+    const text = "화면을 불러오는 중입니다.";
+    const w = window as unknown as { __fallbackSeen: boolean };
+    w.__fallbackSeen = false;
+    new MutationObserver(() => {
+      if (document.body?.textContent?.includes(text)) w.__fallbackSeen = true;
+    }).observe(document, { childList: true, subtree: true, characterData: true });
+  });
+
+  await page.goto("/?source=api");
+  await expect(page.getByRole("heading", { name: "스크랩 모니터링", level: 1, exact: true })).toBeVisible();
+
+  await page.getByRole("link", { name: "관리자", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "관리자 설정", level: 1, exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "녹화 영상", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "녹화 영상", level: 1, exact: true })).toBeVisible();
+
+  expect(await page.evaluate(() => (window as unknown as { __fallbackSeen: boolean }).__fallbackSeen)).toBe(false);
+});
+
+test("탭이 숨겨진 동안 snapshot SSE를 받아도 현황 상세 요청이 없고 복귀 때 조회한다", async ({ page }) => {
+  const api = await installBackendApi(page);
+  await page.goto("/?source=api");
+  await expect(page.getByRole("heading", { name: "스크랩 모니터링", level: 1, exact: true })).toBeVisible();
+
+  const detailPaths = new Set([
+    "/api/v2/monitoring/collection-summary",
+    "/api/v2/monitoring/fill-forecast",
+    "/api/v2/monitoring/profiles",
+    "/api/v2/monitoring/active-alerts",
+    "/api/v2/monitoring/layout",
+    "/api/v2/monitoring/load-history",
+  ]);
+  const detailCount = () => api.requests.filter((request) => detailPaths.has(request.pathname)).length;
+  await expect.poll(detailCount).toBeGreaterThan(0);
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  const hiddenBaseline = detailCount();
+
+  const fresh = monitoringV2StateFixture("FRESH", 81);
+  await api.snapshot({ ...fresh, source: { ...fresh.source, site_id: "site-changed" } });
+  await api.snapshot(monitoringV2StateFixture("FRESH", 82));
+  await page.waitForTimeout(1500);
+  expect(detailCount()).toBe(hiddenBaseline);
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(detailCount).toBeGreaterThan(hiddenBaseline);
 });

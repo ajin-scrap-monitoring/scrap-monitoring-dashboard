@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 
-import { getNavigationType, useAppLocation, type AppLocation } from "./app-router";
+import { getNavigationType, getRememberedScroll, useAppLocation, type AppLocation } from "./app-router";
 import { ROUTES } from "./app-routing";
 import { ApplicationFooter, DashboardHeader, type DashboardPage } from "./components/DashboardShell";
 import { DashboardStatePage } from "./components/DashboardStatePage";
@@ -8,24 +8,20 @@ import type { DashboardDataSource } from "./data/dashboard-data-source";
 import { ApiError } from "./data/http-dashboard-data-source";
 import { useDashboardData } from "./data/use-dashboard-data";
 import { useRouteData } from "./data/use-route-data";
-import { loadAdminPage, loadHistoryPage, loadRecordingsPage } from "./page-loaders";
+import { getLoadedPageModule } from "./page-loaders";
+import { usePageModule } from "./use-page-module";
 import { MonitoringPage } from "./pages/MonitoringPage";
 import "./App.css";
 
 const LoginPage = lazy(() => import("./pages/LoginPage").then(module => ({ default: module.LoginPage })));
-const AdminPage = lazy(loadAdminPage);
-const HistoryPage = lazy(loadHistoryPage);
-const RecordingsPage = lazy(loadRecordingsPage);
 const loginPage = (dataSource: DashboardDataSource) => <Suspense fallback={<main className="login-page" aria-label="로그인 화면 준비 중" aria-busy="true" />}><LoginPage dataSource={dataSource} /></Suspense>;
 
 function RouteView({ children, routeKey }: { children: React.ReactNode; routeKey: string }) {
   useEffect(() => {
     const navType = getNavigationType();
     if (navType === "popstate") {
-      const state = (window.history.state as { scrollX?: unknown; scrollY?: unknown } | null) ?? null;
-      const scrollX = typeof state?.scrollX === "number" ? state.scrollX : 0;
-      const scrollY = typeof state?.scrollY === "number" ? state.scrollY : 0;
-      window.scrollTo(scrollX, scrollY);
+      const { x, y } = getRememberedScroll();
+      window.scrollTo(x, y);
     } else {
       window.scrollTo(0, 0);
       const heading = document.querySelector<HTMLElement>("main .page-heading h1");
@@ -52,10 +48,7 @@ function DashboardApplication({ dataSource, location }: { dataSource: DashboardD
         ? "admin"
         : "monitoring";
 
-  useEffect(() => {
-    const load = activePage === "admin" ? loadAdminPage : activePage === "history" ? loadHistoryPage : activePage === "recordings" ? loadRecordingsPage : undefined;
-    void load?.().catch(() => undefined);
-  }, [activePage]);
+  const { error: moduleError, isLoading: isModuleLoading, reload: reloadModule } = usePageModule(activePage);
 
   const { data: dashboardData, error: dashboardError, reload: reloadApp } = useDashboardData(dataSource);
   const isAppReady = dashboardData !== null;
@@ -106,8 +99,9 @@ function DashboardApplication({ dataSource, location }: { dataSource: DashboardD
   const statePageHeader = <DashboardHeader activePage={activePage} dataSource={dataSource} sessionPending={dashboardData === null} session={dashboardData?.session} initialNotifications={dashboardData?.monitoring.headerNotifications ?? []} initialUnreadCount={dashboardData?.monitoring.unreadNotificationCount} notificationState={dashboardData?.monitoring.notificationState} />;
   const loadingHeader = isInternalNavigation ? statePageHeader : pendingPageHeader;
 
-  const activeError = dashboardError ?? routeError;
+  const activeError = dashboardError ?? moduleError ?? routeError;
   const isPending = dashboardData === null
+    || isModuleLoading
     || (activePage === "monitoring" ? !monitoringDetailsReady : isRouteLoading);
 
   const routeKey = `${location.pathname}${location.search}`;
@@ -118,7 +112,7 @@ function DashboardApplication({ dataSource, location }: { dataSource: DashboardD
       : status === 403 ? "이 데이터를 조회할 권한이 없습니다. 계정 권한을 확인하세요."
         : activeError instanceof ApiError && activeError.code === "MONITORING_SOURCE_NOT_CONFIGURED" ? "Backend의 pit 연결 설정을 확인하세요."
           : "데이터 연결 상태를 확인한 뒤 다시 시도하세요.";
-    return <DashboardStatePage title={status === 403 ? "접근 권한이 없습니다." : "데이터를 불러올 수 없습니다."} description={description} onRetry={dashboardError ? reloadApp : reloadRoute} header={statePageHeader} footer={statePageFooter} reception={{ ...reception, status: "error" }} />;
+    return <DashboardStatePage title={status === 403 ? "접근 권한이 없습니다." : "데이터를 불러올 수 없습니다."} description={description} onRetry={dashboardError ? reloadApp : moduleError ? reloadModule : reloadRoute} header={statePageHeader} footer={statePageFooter} reception={{ ...reception, status: "error" }} />;
   }
 
   if (isPending) {
@@ -135,11 +129,9 @@ function DashboardApplication({ dataSource, location }: { dataSource: DashboardD
     return <DashboardStatePage title="접근 권한이 없습니다." description="관리자 권한이 있는 계정으로 로그인하세요." header={statePageHeader} footer={statePageFooter} />;
   }
 
-  const routeFallback = <DashboardStatePage title="화면을 불러오는 중입니다." description="요청한 화면을 준비하고 있습니다." header={loadingHeader} footer={statePageFooter} reception={dashboardData ? reception : undefined} />;
-
-  if (location.pathname === ROUTES.recordings) return <Suspense fallback={routeFallback}><RouteView routeKey={routeKey}><RecordingsPage key={routeKey} dataSource={dataSource} recordings={routeData?.recordings ?? []} recordingsState={routeData?.recordingsState ?? dashboardData.recordingsState} recordingsSource={routeData?.recordingsSource ?? dashboardData.recordingsSource} recordingsList={routeData?.recordingsList ?? dashboardData.recordingsList} recordingsTotal={routeData?.recordingsTotal ?? dashboardData.recordingsTotal} serverTime={monitoring.v2?.serverTime} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} headerNotificationState={monitoring.notificationState} reception={reception} queryEndsAt={routeData?.history?.endsAt ?? dashboardData.history.endsAt} session={dashboardData.session} /></RouteView></Suspense>;
-  if (location.pathname === ROUTES.history) return <Suspense fallback={routeFallback}><RouteView routeKey={routeKey}><HistoryPage key={routeKey} dataSource={dataSource} history={routeData?.history ?? dashboardData.history} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} headerNotificationState={monitoring.notificationState} reception={reception} session={dashboardData.session} /></RouteView></Suspense>;
-  if (location.pathname === ROUTES.admin) return <Suspense fallback={routeFallback}><RouteView routeKey={routeKey}><AdminPage key={routeKey} admin={routeData?.admin ?? dashboardData.admin} dataSource={dataSource} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} headerNotificationState={monitoring.notificationState} session={dashboardData.session} /></RouteView></Suspense>;
+  if (location.pathname === ROUTES.recordings) { const { RecordingsPage } = getLoadedPageModule("recordings")!; return <RouteView routeKey={routeKey}><RecordingsPage key={routeKey} dataSource={dataSource} recordings={routeData?.recordings ?? []} recordingsState={routeData?.recordingsState ?? dashboardData.recordingsState} recordingsSource={routeData?.recordingsSource ?? dashboardData.recordingsSource} recordingsList={routeData?.recordingsList ?? dashboardData.recordingsList} recordingsTotal={routeData?.recordingsTotal ?? dashboardData.recordingsTotal} serverTime={monitoring.v2?.serverTime} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} headerNotificationState={monitoring.notificationState} reception={reception} queryEndsAt={routeData?.history?.endsAt ?? dashboardData.history.endsAt} session={dashboardData.session} /></RouteView>; }
+  if (location.pathname === ROUTES.history) { const { HistoryPage } = getLoadedPageModule("history")!; return <RouteView routeKey={routeKey}><HistoryPage key={routeKey} dataSource={dataSource} history={routeData?.history ?? dashboardData.history} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} headerNotificationState={monitoring.notificationState} reception={reception} session={dashboardData.session} /></RouteView>; }
+  if (location.pathname === ROUTES.admin) { const { AdminPage } = getLoadedPageModule("admin")!; return <RouteView routeKey={routeKey}><AdminPage key={routeKey} admin={routeData?.admin ?? dashboardData.admin} dataSource={dataSource} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} headerNotificationState={monitoring.notificationState} session={dashboardData.session} /></RouteView>; }
   if (!monitoring.v2 && monitoring.status === "no-data") return <DashboardStatePage title="표시할 모니터링 데이터가 없습니다." description="조회 조건 또는 장비 데이터 수신 상태를 확인하세요." header={statePageHeader} footer={statePageFooter} />;
 
   return <RouteView routeKey={routeKey}><MonitoringPage key={routeKey} data={dashboardData} dataSource={dataSource} /></RouteView>;

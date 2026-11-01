@@ -367,6 +367,46 @@ describe("화면별 조회 범위와 요청 대기 제한", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  test("탭이 숨겨진 동안 snapshot SSE는 상세 5개와 load-history를 조회하지 않고 복귀 때 조회한다", async () => {
+    vi.useFakeTimers();
+    try {
+      const stream = new FakeEventSource();
+      const fetchImplementation = createV2ContractFetch();
+      const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2",
+        fetchImplementation, eventSourceFactory: () => stream as unknown as EventSource });
+      await source.getDashboardData();
+      const activation = source.activateMonitoringDetails!();
+      await activation.ready;
+      const unsubscribe = source.subscribe!(() => undefined);
+      const detailPaths = new Set(["/api/v2/monitoring/collection-summary", "/api/v2/monitoring/fill-forecast",
+        "/api/v2/monitoring/profiles", "/api/v2/monitoring/active-alerts", "/api/v2/monitoring/layout",
+        "/api/v2/monitoring/load-history"]);
+      const detailRequests = () => fetchImplementation.mock.calls.map(([input]) => inputUrl(input).pathname)
+        .filter(pathname => detailPaths.has(pathname));
+      expect(detailRequests().length).toBeGreaterThan(0);
+
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(120_000);
+      const hiddenBaseline = detailRequests().length;
+      const fresh = monitoringV2StateFixture("FRESH", 72);
+      const changedSource = { ...fresh, source: { ...fresh.source, site_id: "site-changed" } };
+      stream.emit("monitoring.snapshot", changedSource);
+      stream.emit("monitoring.snapshot", monitoringV2StateFixture("FRESH", 73));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(detailRequests()).toHaveLength(hiddenBaseline);
+
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(detailRequests().length).toBeGreaterThan(hiddenBaseline);
+      activation.release();
+      unsubscribe();
+    } finally {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    }
+  });
+
   test.each([false, true])("최근 완료 조회는 초기 요청과 실패(%s)를 포함해 1분 간격을 유지한다", async failed => {
     vi.useFakeTimers();
     const stream = new FakeEventSource();
