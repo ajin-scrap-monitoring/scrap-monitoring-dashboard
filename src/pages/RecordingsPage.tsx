@@ -8,6 +8,7 @@ import { Pagination } from "../components/Pagination";
 import { DateTimeField } from "../components/DateTimeField";
 import { DetailDialog } from "../components/DetailDialog";
 import { RecordingStatusDetails } from "../components/RecordingStatusDetails";
+import type { EventReplayControl } from "../components/EventReplayPlayer";
 import { seoulDateTime } from "../display-time";
 import { dateTimeValue, isValidDateTime, recentPeriods, recentRange } from "../date-range";
 import type { DashboardDataSource } from "../data/dashboard-data-source";
@@ -159,6 +160,8 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
   const closeDeletion = useCallback(() => setDeletion(null), [setDeletion]);
   const playerRef = useRef<HTMLVideoElement>(null);
   const expandedPlayerRef = useRef<HTMLVideoElement>(null);
+  const eventPlayerRef = useRef<EventReplayControl>(null);
+  const expandedEventPlayerRef = useRef<EventReplayControl>(null);
   const downloadController = useRef<AbortController | null>(null);
   type DownloadState = "idle" | "processing" | "complete";
   const [download, updateDownload, updateDownloadAfter] =
@@ -174,6 +177,13 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
         if (playerRef.current) playerRef.current.currentTime = expanded.currentTime;
         setPlaybackSeconds(expanded.currentTime);
       }
+    }
+    const expandedEvent = expandedEventPlayerRef.current;
+    if (expandedEvent) {
+      expandedEvent.pause();
+      const seconds = expandedEvent.seconds();
+      eventPlayerRef.current?.seekTo(seconds);
+      setPlaybackSeconds(seconds);
     }
     setRecordingOpen(false);
   }, []);
@@ -904,7 +914,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                     <div className="recording-stage">
                       <div className="recording-frame">
                         {selectedPlaybackAvailable && selectedRecording?.replay && replayPlayable(selectedRecording)
-                          ? <Suspense fallback={<div className="recording-media-unavailable" role="status">영상을 준비 중입니다.</div>}><EventReplayPlayer key={selectedKey} replay={selectedRecording.replay} label={`${selectedRecording.date} 이벤트 녹화 영상`} onError={() => setPlaybackError({ key: selectedKey, message: "영상을 재생하지 못했습니다. 접근 상태를 확인하세요." })} onPosition={setPlaybackSeconds} /></Suspense>
+                          ? <Suspense fallback={<div className="recording-media-unavailable" role="status">영상을 준비 중입니다.</div>}><EventReplayPlayer key={selectedKey} replay={selectedRecording.replay} label={`${selectedRecording.date} 이벤트 녹화 영상`} onError={() => setPlaybackError({ key: selectedKey, message: "영상을 재생하지 못했습니다. 접근 상태를 확인하세요." })} onPosition={seconds => { if (!recordingOpen) setPlaybackSeconds(seconds); }} controlRef={eventPlayerRef} /></Suspense>
                           : selectedPlaybackAvailable && selectedRecording?.daily?.playbackPath
                           ? <Suspense fallback={<div className="recording-media-unavailable" role="status">영상을 준비 중입니다.</div>}><DailyRecordingVideo key={selectedKey} videoRef={playerRef} path={selectedRecording.daily.playbackPath} label={`${selectedRecording.date} 녹화 영상`} onError={() => setPlaybackError({ key: selectedKey, message: "영상을 재생하지 못했습니다. 접근 상태를 확인하세요." })} onTimeUpdate={seconds => { if (!recordingOpen) setPlaybackSeconds(seconds); }} /></Suspense>
                           : selectedPlaybackAvailable && selectedRecording?.contentUrl
@@ -917,7 +927,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                           className="recording-expand"
                           type="button"
                           aria-label="녹화 영상 크게 보기"
-                          onClick={() => { playerRef.current?.pause(); setRecordingOpen(true); }}
+                          onClick={() => { playerRef.current?.pause(); eventPlayerRef.current?.pause(); setRecordingOpen(true); }}
                         >
                           <ExpandIcon />
                         </button>}
@@ -1026,7 +1036,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
             <button className="video-modal-close" type="button" aria-label="녹화 영상 닫기" onClick={closeRecording}>닫기</button>
             <div className="video-modal-frame">
               {selectedPlaybackAvailable && selectedRecording.replay && replayPlayable(selectedRecording)
-                ? <Suspense fallback={<div className="recording-media-unavailable" role="status">영상을 준비 중입니다.</div>}><EventReplayPlayer key={`${selectedKey}-expanded`} replay={selectedRecording.replay} label={`${selectedRecording.date} 이벤트 녹화 영상 확대`} initialSeconds={playbackSeconds} onError={() => setPlaybackError({ key: selectedKey, message: "영상을 재생하지 못했습니다. 접근 상태를 확인하세요." })} onPosition={setPlaybackSeconds} /></Suspense>
+                ? <Suspense fallback={<div className="recording-media-unavailable" role="status">영상을 준비 중입니다.</div>}><EventReplayPlayer key={`${selectedKey}-expanded`} replay={selectedRecording.replay} label={`${selectedRecording.date} 이벤트 녹화 영상 확대`} initialSeconds={playbackSeconds} controlRef={expandedEventPlayerRef} onError={() => setPlaybackError({ key: selectedKey, message: "영상을 재생하지 못했습니다. 접근 상태를 확인하세요." })} onPosition={setPlaybackSeconds} /></Suspense>
                 : selectedPlaybackAvailable && selectedRecording.daily?.playbackPath
                 ? <Suspense fallback={<div className="recording-media-unavailable" role="status">영상을 준비 중입니다.</div>}><DailyRecordingVideo key={`${selectedKey}-expanded`} videoRef={expandedPlayerRef} path={selectedRecording.daily.playbackPath} label={`${selectedRecording.date} 녹화 영상 확대`} initialTime={playbackSeconds} onError={() => setPlaybackError({ key: selectedKey, message: "영상 접근 상태를 확인하세요." })} onTimeUpdate={setPlaybackSeconds} /></Suspense>
                 : selectedPlaybackAvailable && selectedRecording.contentUrl

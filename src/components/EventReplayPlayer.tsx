@@ -1,10 +1,16 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useImperativeHandle, useRef, useState, type Ref } from "react";
 
 import type { EventReplay } from "../domain/dashboard";
 import { replayClock } from "../data/event-recordings";
 import DailyRecordingVideo from "./DailyRecordingVideo";
 
 type Position = { index: number; offset: number };
+
+export type EventReplayControl = {
+  pause: () => void;
+  seconds: () => number;
+  seekTo: (seconds: number) => void;
+};
 
 function locate(replay: EventReplay, seconds: number): Position {
   const last = replay.parts.length - 1;
@@ -15,10 +21,11 @@ function locate(replay: EventReplay, seconds: number): Position {
   return { index, offset: Math.min(part.endSeconds, part.startSeconds + (clamped - part.relativeStartSeconds)) };
 }
 
-export function EventReplayPlayer({ replay, label, initialSeconds = 0, onError, onPosition }: {
+export function EventReplayPlayer({ replay, label, initialSeconds = 0, controlRef, onError, onPosition }: {
   replay: EventReplay;
   label: string;
   initialSeconds?: number;
+  controlRef?: Ref<EventReplayControl>;
   onError: () => void;
   onPosition: (seconds: number) => void;
 }) {
@@ -55,6 +62,11 @@ export function EventReplayPlayer({ replay, label, initialSeconds = 0, onError, 
       report(replay.playbackSeconds);
     }
   };
+  useImperativeHandle(controlRef, () => ({
+    pause: () => { videoRef.current?.pause(); setPlaying(false); },
+    seconds: () => relative,
+    seekTo: seek,
+  }));
   const toggle = () => {
     const video = videoRef.current;
     if (!video) return;

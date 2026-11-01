@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { eventRecordingId, monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
 
 import { installBackendApi, partialEventReplayWithGaps, syntheticEventReplay } from "./backend-api.js";
+import { eventReplayPartFixture } from "../src/test/backend-contract-fixtures.js";
 import { syntheticDailyRecording } from "./daily-recording-api.js";
 
 const initial = { ...monitoringV2StateFixture("FRESH", 0), serverTime: "2026-10-15T09:30:00+09:00" };
@@ -306,4 +307,52 @@ test("세 viewport 모두에서 녹화 화면의 카드 배치를 유지하고 �
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
   }
+});
+
+test("이벤트 녹화 확대는 원본을 정지하고 이벤트 구간 위치를 주고받으며", async ({ page }) => {
+  const api = await installBackendApi(page, { initial });
+  await page.addInitScript(() => {
+    const canPlayType = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "canPlayType")?.value as (this: HTMLMediaElement, type: string) => CanPlayTypeResult;
+    HTMLMediaElement.prototype.canPlayType = function (type) {
+      return type === "application/vnd.apple.mpegurl" ? "" : canPlayType.call(this, type);
+    };
+  });
+  const id = syntheticDailyRecording.recording_id;
+  const second = (extra: Record<string, unknown>) => eventReplayPartFixture({ recordingId: id, playbackPath: `/media/daily-recordings/${id}/hls/index.m3u8`, fromAt: event.windowFrom, toAt: event.windowTo, ...extra });
+  api.setEventReplays([syntheticEventReplay({
+    state: "PARTIAL", requestedSeconds: 60, coveredSeconds: 2, playbackSeconds: 2,
+    parts: [second({ startSeconds: 0, endSeconds: 1, relativeStartSeconds: 0, relativeEndSeconds: 1 }), second({ startSeconds: 1, endSeconds: 2, relativeStartSeconds: 1, relativeEndSeconds: 2 })],
+  }, event)]);
+  await page.goto("/recordings?source=api&recordingSource=event");
+  const frame = page.locator(".recording-frame");
+  const baseVideo = frame.locator("video");
+  await expect(frame.locator(".event-replay")).toBeVisible();
+  await expect.poll(() => baseVideo.evaluate(element => (element as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(1);
+
+  await frame.getByRole("slider", { name: "재생 위치" }).fill("1");
+  await expect(frame.locator("time")).toHaveText("0:01 / 0:02");
+  await frame.getByRole("button", { name: "재생", exact: true }).click();
+  await expect.poll(() => baseVideo.evaluate(element => !(element as HTMLVideoElement).paused || (element as HTMLVideoElement).ended)).toBe(true);
+
+  await page.getByRole("button", { name: "녹화 영상 크게 보기" }).click();
+  const dialog = page.getByRole("dialog", { name: "녹화 영상 크게 보기" });
+  await expect(dialog.locator(".event-replay")).toBeVisible();
+  await expect(frame.getByRole("button", { name: "재생", exact: true })).toBeVisible();
+  expect(await baseVideo.evaluate(element => (element as HTMLVideoElement).paused)).toBe(true);
+  await page.waitForTimeout(700);
+  expect(await baseVideo.evaluate(element => (element as HTMLVideoElement).paused)).toBe(true);
+  const expandedSlider = dialog.getByRole("slider", { name: "재생 위치" });
+  const startValue = Number(await expandedSlider.inputValue());
+  expect(startValue).toBeGreaterThanOrEqual(1);
+  await expandedSlider.fill("0");
+  await expect(dialog.locator("time")).toHaveText("0:00 / 0:02");
+
+  await dialog.getByRole("button", { name: "녹화 영상 닫기" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(frame.locator("time")).toHaveText("0:00 / 0:02");
+  await expect(frame.getByRole("slider", { name: "재생 위치" })).toHaveValue("0");
+  expect(await baseVideo.evaluate(element => (element as HTMLVideoElement).paused)).toBe(true);
+  await page.waitForTimeout(700);
+  expect(await baseVideo.evaluate(element => (element as HTMLVideoElement).paused)).toBe(true);
+  await expect(frame.getByRole("button", { name: "재생", exact: true })).toBeVisible();
 });
