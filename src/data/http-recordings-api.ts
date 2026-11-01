@@ -10,8 +10,9 @@ import { eventRecordingIdentifier } from "./recording-values";
 import { listEveryPage } from "./list-every-page";
 import { maximumHistoryDays } from "./load-history-v2";
 import { createRecordingList, recordingsPerPage } from "./recording-list";
-import { eventRecordingPage, mapEventRecording, eventReplay } from "./event-recordings";
+import { eventRecordingPage, mapEventRecording, eventReplay, eventExportStatus, type EventExportStatus } from "./event-recordings";
 import { historyData, mapEvent, mapRecording } from "./history-recording-mapping";
+import { parseDailyMediaInfo, parseClipMediaInfo, type DailyMediaInfoResult, type ClipMediaInfoResult } from "./media-info-cache";
 
 const API_PATHS = {
   events: "/api/v1/events",
@@ -171,15 +172,34 @@ export function createRecordingsApi({
     return createRecordingList({
       startOf,
       ...(wantDaily && { loadDaily: async (signal?: AbortSignal) => (await getDailyApi()).queryRecordings({ ...query, recordingSource: "daily" }, signal) }),
-      ...(wantEvents && { loadEvents: async ({ page, pageSize }: { page: number; pageSize: number }, signal?: AbortSignal) => {
+      ...(wantEvents && { loadEvents: async ({ page, pageSize, snapshotToken, from: tokenFrom, to: tokenTo }, signal?: AbortSignal) => {
         const range = queryParameters(query);
-        const from = range.get("from") ?? "";
-        const to = range.get("to") ?? "";
+        const from = tokenFrom ?? range.get("from") ?? "";
+        const to = tokenTo ?? range.get("to") ?? "";
         if (Date.parse(to) - Date.parse(from) > 90 * 86_400_000) throw new ApiError(422, "이벤트 녹화는 최대 90일 범위까지 조회할 수 있습니다.", "RECORDING_RANGE_TOO_LARGE");
-        const parameters = new URLSearchParams({ pit_id: pitId, from, to, include_playback: "true" });
+        const parameters = new URLSearchParams({ pit_id: pitId, include_playback: "true" });
         if (query.eventCategory) parameters.set("category", query.eventCategory);
-        const result = eventRecordingPage(await request<unknown>(`/api/v2/recordings/events?${parameters}&page=${page}&pageSize=${pageSize}`, { signal }));
-        return { totalItems: result.totalItems, items: result.items.map((item) => mapEventRecording(item, undefined, null, result.asOf, displayTimeOffset)) };
+        parameters.set("page", String(page));
+        parameters.set("pageSize", String(pageSize));
+        if (snapshotToken) {
+          parameters.set("snapshot_token", snapshotToken);
+          if (from) parameters.set("from", from);
+          if (to) parameters.set("to", to);
+        } else {
+          parameters.set("stable", "true");
+          if (from) parameters.set("from", from);
+          if (to) parameters.set("to", to);
+        }
+        const result = eventRecordingPage(await request<unknown>(`/api/v2/recordings/events?${parameters}`, { signal }));
+        return {
+          totalItems: result.totalItems,
+          items: result.items.map((item) => mapEventRecording(item, undefined, null, result.asOf, displayTimeOffset)),
+          snapshotToken: result.snapshotToken,
+          snapshotExpiresAt: result.snapshotExpiresAt,
+          from: result.from,
+          to: result.to,
+          asOf: result.asOf,
+        };
       } }),
     });
   };
@@ -256,6 +276,55 @@ export function createRecordingsApi({
     return (await getDailyApi()).prepareExport(recordingId, signal);
   };
 
+  const prepareEventRecordingExport = async (
+    eventId: string,
+    options: { requestId: string; beforeSeconds?: number; afterSeconds?: number; retryFailed?: boolean },
+    signal?: AbortSignal,
+  ): Promise<EventExportStatus> => {
+    const body = JSON.stringify({
+      requestId: options.requestId,
+      beforeSeconds: options.beforeSeconds ?? 30,
+      afterSeconds: options.afterSeconds ?? 30,
+      retryFailed: options.retryFailed ?? false,
+    });
+    const response = await request<unknown>(`/api/v2/recordings/events/${encodeURIComponent(eventId)}/exports`, {
+      method: "POST",
+      body,
+      signal,
+    });
+    return eventExportStatus(response);
+  };
+
+  const getEventRecordingExportStatus = async (
+    statusPath: string,
+    signal?: AbortSignal,
+  ): Promise<EventExportStatus> => {
+    const response = await request<unknown>(statusPath, { signal });
+    return eventExportStatus(response);
+  };
+
+  const getDailyRecordingMediaInfo = async (
+    recordingId: string,
+    signal?: AbortSignal,
+  ): Promise<DailyMediaInfoResult> => {
+    const response = await request<unknown>(`/api/v2/recordings/daily/${encodeURIComponent(recordingId)}/media-info`, {
+      signal,
+      timeoutMs: 30000,
+    });
+    return parseDailyMediaInfo(response, recordingId);
+  };
+
+  const getClipMediaInfo = async (
+    clipId: string,
+    signal?: AbortSignal,
+  ): Promise<ClipMediaInfoResult> => {
+    const response = await request<unknown>(`/api/v1/media/clips/${encodeURIComponent(clipId)}/media-info`, {
+      signal,
+      timeoutMs: 30000,
+    });
+    return parseClipMediaInfo(response, clipId);
+  };
+
   const getRecordingCoverage = async (recordingId: string, signal?: AbortSignal) => {
     const { clipIdentifier, parseClipCoverage } = await import("./recording-coverage");
     if (!clipIdentifier.test(recordingId)) throw new Error("Recording coverage requires a media clip identifier.");
@@ -323,6 +392,9 @@ export function createRecordingsApi({
     deleteDailyRecording,
     getRecording,
     getRecordingCoverage,
+    getDailyRecordingMediaInfo,
+    getClipMediaInfo,
+    getEventRecordingExportStatus,
     initialHistory,
     initialHistoryForRoute,
     initialRecordings,
@@ -330,6 +402,7 @@ export function createRecordingsApi({
     openFirstRecordings,
     openRecordingList,
     prepareDailyRecordingExport,
+    prepareEventRecordingExport,
     queryHistory,
     queryHistoryEvents,
     queryRecordings,

@@ -103,7 +103,7 @@ describe("이벤트 녹화 목록의 재생 요약", () => {
 });
 
 describe("서버 페이지 단위 조회", () => {
-  test("녹화 이벤트 목록은 첫 화면에 서버 1페이지(20건)만 요청하고 전체 건수는 totalItems를 쓴다", async () => {
+  test("녹화 이벤트 목록은 첫 화면에 서버 1페이지(50건)만 요청하고 전체 건수는 totalItems를 쓴다", async () => {
     const page = (request: URL) => {
       const [number, size] = [Number(request.searchParams.get("page")), Number(request.searchParams.get("pageSize"))];
       const items = Array.from({ length: size }, (_, index) => eventRecordingFixture({ eventId: `evt-${number}-${size}-${index}`, windowFrom: new Date(Date.parse("2026-10-12T00:00:00Z") - ((number - 1) * size + index) * 60_000).toISOString(), windowTo: null }));
@@ -112,14 +112,14 @@ describe("서버 페이지 단위 조회", () => {
     const { source, requests } = dailySource({ search: "?recordingSource=event", override: url => url.pathname === "/api/v2/recordings/events" ? jsonResponse(page(url)) : undefined });
     const data = await source.getDashboardData();
     const listCalls = () => requests.filter(({ url }) => url.pathname === "/api/v2/recordings/events").map(({ url }) => `${url.searchParams.get("page")}/${url.searchParams.get("pageSize")}`);
-    expect(listCalls()).toEqual(["1/20"]);
-    expect(data.recordings).toHaveLength(20);
+    expect(listCalls()).toEqual(["1/50"]);
+    expect(data.recordings).toHaveLength(50);
     expect(data.recordingsTotal).toBe(1393);
     expect(data.recordingsList).toBeDefined();
     await data.recordingsList!.ensure(12);
-    expect(listCalls()).toEqual(["1/20"]);
+    expect(listCalls()).toEqual(["1/50"]);
     const next = await data.recordingsList!.ensure(150);
-    expect(listCalls().slice(0, 3)).toEqual(["1/20", "1/100", "2/100"]);
+    expect(listCalls().slice(0, 3)).toEqual(["1/50", "2/50", "3/50"]);
     expect(next.total).toBe(1393);
     expect(next.items.length).toBeGreaterThanOrEqual(150);
   });

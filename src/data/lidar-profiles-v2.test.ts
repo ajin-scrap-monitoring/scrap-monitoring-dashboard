@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { lidarProfilesFixture } from "../test/backend-contract-fixtures";
 
-import { parseLidarProfilesV2 } from "./lidar-profiles-v2";
+import { calculateUnmeasuredRanges, parseLidarProfilesV2 } from "./lidar-profiles-v2";
 
 type Sample = { positionRatio: number | null; height: number | null; valid: boolean; angleMdeg?: number; sourceIndex?: number };
 
@@ -56,5 +56,32 @@ describe("LiDAR profile 표본", () => {
   test("sensorId로 LiDAR 1과 2를 대응하며 배열 순서에 의존하지 않는다", () => {
     const [first, second] = parseLidarProfilesV2(profilesOf([{ positionRatio: 0, height: 100, valid: true }], [{ positionRatio: 1, height: 200, valid: true }]), "pit-01");
     expect([first.label, first.samples[0].height, second.label, second.samples[0].height]).toEqual(["LiDAR 1", 1, "LiDAR 2", 2]);
+  });
+
+  test("samples가 누락되었거나 null이면 계약 오류로 처리하고 samples=[]는 표본 없음으로 보존한다", () => {
+    const base = lidarProfilesFixture();
+    const missingSamples = { ...base, profiles: [{ ...base.profiles[0], samples: undefined }] };
+    expect(() => parseLidarProfilesV2(missingSamples, "pit-01")).toThrow("Unexpected v2 LiDAR profile contract.");
+
+    const nullSamples = { ...base, profiles: [{ ...base.profiles[0], samples: null }] };
+    expect(() => parseLidarProfilesV2(nullSamples, "pit-01")).toThrow("Unexpected v2 LiDAR profile contract.");
+
+    const emptySamples = { ...base, profiles: [{ ...base.profiles[0], sensorId: "lidar-a", samples: [] }, { ...base.profiles[1], sensorId: "lidar-b", samples: [] }] };
+    const [first, second] = parseLidarProfilesV2(emptySamples, "pit-01");
+    expect(first.samples).toEqual([]);
+    expect(second.samples).toEqual([]);
+  });
+});
+
+describe("calculateUnmeasuredRanges", () => {
+  test("가로축 길이의 1% 미만인 앞쪽 또는 뒤쪽 구간은 만들지 않는다 (경계 값 0.009, 0.01, 0.99, 0.991)", () => {
+    expect(calculateUnmeasuredRanges([{ positionRatio: 0.009 }, { positionRatio: 1.0 }])).toEqual([]);
+    expect(calculateUnmeasuredRanges([{ positionRatio: 0.01 }, { positionRatio: 1.0 }])).toEqual([
+      { side: "start", startRatio: 0, endRatio: 0.01, label: "미측정 A 0%~1%" },
+    ]);
+    expect(calculateUnmeasuredRanges([{ positionRatio: 0.0 }, { positionRatio: 0.99 }])).toEqual([
+      { side: "end", startRatio: 0.99, endRatio: 1, label: "미측정 B 99%~100%" },
+    ]);
+    expect(calculateUnmeasuredRanges([{ positionRatio: 0.0 }, { positionRatio: 0.991 }])).toEqual([]);
   });
 });

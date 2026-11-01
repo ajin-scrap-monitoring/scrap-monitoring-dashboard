@@ -49,14 +49,27 @@ export type DeviceStatus = {
   receivedLabel?: string;
 };
 
+export type ActiveAlertBasis = {
+  snapshotId: string;
+  dataState: "FRESH" | "STALE" | "UNAVAILABLE" | "UNKNOWN" | "NO_DATA";
+  filterState: "DISABLED" | "WARMING" | "READY" | "UNAVAILABLE";
+  inputSource: "EDGE_STATE" | "HEIGHT_SECTIONS";
+  measuredAt: string | null;
+  lastEvaluatedAt: string | null;
+  evaluationSource: "CURRENT_OBSERVATION" | "RECENT_PERSISTED" | null;
+  lastKnownState: "NORMAL" | "WARNING" | "CRITICAL" | null;
+  reasonCodes: string[];
+};
+
 export type ActiveHealthAlert = {
-  componentKind: "EDGE" | "LIDAR" | "MEASUREMENT";
+  componentKind: "EDGE" | "LIDAR" | "MEASUREMENT" | "CAMERA";
   componentName: string;
   componentId: string;
   state: string;
-  evidenceSource: "EDGE_STATUS" | "STATUS_FRESHNESS" | "CURRENT_MEASUREMENT";
+  evidenceSource: "EDGE_STATUS" | "STATUS_FRESHNESS" | "CURRENT_MEASUREMENT" | "MEDIA_CAMERA_STATUS";
   reasonCodes: string[];
   simulated: boolean | null;
+  validUntilAt?: string | null;
 };
 
 export type ActiveAlertCoverage = {
@@ -65,6 +78,9 @@ export type ActiveAlertCoverage = {
   componentId: string | null;
   state: "CHECKED" | "UNKNOWN" | "UNSUPPORTED";
   reasonCodes: string[];
+  evaluatedAt?: string | null;
+  evidenceSource?: "MEDIA_CAMERA_STATUS" | null;
+  validUntilAt?: string | null;
 };
 
 export type ActiveAlert = {
@@ -75,6 +91,7 @@ export type ActiveAlert = {
   title: string;
   // 활성 알림 API가 서버 최초 확인 시각을 제공한 경우만 설정하며 null은 시작 정보 없음이다. 값은 표시용 시각 문자열이다.
   startedAt?: string | null;
+  validUntilAt?: string | null;
   health?: ActiveHealthAlert;
 };
 
@@ -196,6 +213,7 @@ export type EventReplay = {
   unavailableIntervals: Array<{ startsAt: string; endsAt: string; kind: "GAP" | "UNCONFIRMED" | "FUTURE" | "MISSING" | "EXPIRED"; reasonCode: string }>;
   reasonCodes: string[];
   downloadReasonCode: string | null;
+  exportPath?: string | null;
 };
 
 export type EventPlaybackSummary = {
@@ -233,6 +251,9 @@ export type Recording = {
   replay?: EventReplay;
   // 목록 응답의 재생 요약이다. 상세 응답의 replay를 받으면 replay가 우선한다.
   playbackSummary?: EventPlaybackSummary;
+  occurredAt?: string;
+  exportPath?: string | null;
+  downloadReasonCode?: string | null;
   windowFrom?: string;
   windowTo?: string | null;
   codec: string;
@@ -390,6 +411,14 @@ export type DashboardData = {
       evaluationState: "NORMAL" | "WARNING" | "CRITICAL" | "UNKNOWN" | "ERROR";
       reasonCodes: string[];
       coverage: ActiveAlertCoverage[];
+      basis?: ActiveAlertBasis;
+      mismatch?: {
+        snapshotState: "NORMAL" | "WARNING" | "CRITICAL" | "UNKNOWN" | "ERROR";
+        alertState: "NORMAL" | "WARNING" | "CRITICAL" | "UNKNOWN" | "ERROR";
+        measuredAt: string | null;
+        lastEvaluatedAt: string | null;
+        reasonCodes: string[];
+      } | null;
     } | null;
     summary: MonitoringSummary;
     videoMode: "sample" | "webrtc" | "mjpeg";

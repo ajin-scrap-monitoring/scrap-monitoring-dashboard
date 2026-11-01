@@ -223,4 +223,29 @@ describe("날짜 마감과 export 및 보관 만료의 분리", () => {
     expect(dailyPlaybackPosition(item, "2026-10-13T15:00:10.000Z")).toBeNull();
     expect(dailyTimeState(item, "2026-10-13T15:00:10.000Z", afterClosure)).toBe("unavailable");
   });
+
+  test("deleted_at, cleanup_state, cleanup_completed_at, cleanup_error, space_reclaimed를 허용하고 domain에 보존한다", () => {
+    const item = closed({
+      status: "deleted",
+      playback_state: "unavailable",
+      playback_path: null,
+      deleted_at: "2026-10-15T10:00:00Z",
+      cleanup_state: "complete",
+      cleanup_completed_at: "2026-10-15T10:05:00Z",
+      cleanup_error: null,
+      space_reclaimed: null,
+    });
+    expect(item).toMatchObject({
+      deletedAt: "2026-10-15T10:00:00Z",
+      cleanupState: "complete",
+      cleanupCompletedAt: "2026-10-15T10:05:00Z",
+      cleanupError: null,
+      spaceReclaimed: null,
+    });
+  });
+
+  test("space_reclaimed가 null이 아니면 계약 오류로 처리한다", () => {
+    expect(() => closed({ space_reclaimed: true })).toThrow("Unexpected daily recording contract.");
+    expect(() => closed({ space_reclaimed: 1024 })).toThrow("Unexpected daily recording contract.");
+  });
 });

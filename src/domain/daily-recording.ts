@@ -24,4 +24,9 @@ export type DailyRecording = {
   expiresAt: string | null;
   exportExpiresAt: string | null;
   error: { code: string; message: string } | null;
+  deletedAt?: string | null;
+  cleanupState?: "pending" | "failed" | "complete" | null;
+  cleanupCompletedAt?: string | null;
+  cleanupError?: { code: string; message: string } | null;
+  spaceReclaimed?: null;
 };

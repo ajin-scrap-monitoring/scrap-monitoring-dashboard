@@ -82,3 +82,29 @@ test("재생 가능한 날짜 녹화의 MP4 실패를 녹화 실패와 구분하
   expect(view.container).not.toHaveTextContent("PRIVATE_EXPORT_DETAILS");
   expect(view.container).not.toHaveTextContent("녹화 영상을 생성하지 못했습니다.");
 });
+
+test("녹화 상태 상세 창에 파일 정리 상태(pending, failed, complete, null)를 표시한다", async () => {
+  const baseDaily = dailyRecording(dailyRecordingFixture, "camera-main");
+
+  // pending
+  const pendingDaily = { ...baseDaily, cleanupState: "pending" as const };
+  const { rerender } = render(<RecordingStatusDetails recording={{ ...await failedRecording(), daily: pendingDaily }} />);
+  fireEvent.click(screen.getByRole("button", { name: "재생 가능 상세" }));
+  expect(screen.getByText("파일 정리 상태")).toBeVisible();
+  expect(screen.getByText("파일 정리 중")).toBeVisible();
+
+  // failed
+  const failedDaily = { ...baseDaily, cleanupState: "failed" as const, cleanupError: { code: "CLEANUP_DISK_ERROR", message: "Failed" } };
+  rerender(<RecordingStatusDetails recording={{ ...await failedRecording(), daily: failedDaily }} />);
+  expect(screen.getByText("파일 정리 실패 (CLEANUP_DISK_ERROR)")).toBeVisible();
+
+  // complete
+  const completeDaily = { ...baseDaily, cleanupState: "complete" as const, cleanupCompletedAt: "2026-10-15T10:05:00Z" };
+  rerender(<RecordingStatusDetails recording={{ ...await failedRecording(), daily: completeDaily }} />);
+  expect(screen.getByText(/파일 정리 완료/)).toBeVisible();
+
+  // null
+  const nullDaily = { ...baseDaily, cleanupState: null };
+  rerender(<RecordingStatusDetails recording={{ ...await failedRecording(), daily: nullDaily }} />);
+  expect(screen.getByText("정보 없음")).toBeVisible();
+});

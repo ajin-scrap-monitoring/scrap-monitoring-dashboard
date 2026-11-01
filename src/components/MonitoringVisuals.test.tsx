@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
 
+import { calculateUnmeasuredRanges } from "../data/lidar-profiles-v2";
 import { LoadChart, MeasurementDiagram, ProfileChart } from "./MonitoringVisuals";
 
 test("측정 참고도의 SVG 태그, 좌표, 색상과 순서를 고정한다", () => {
@@ -160,4 +161,101 @@ test("STATE 기록이 없는 구간과 유효한 수치가 없는 판단을 구�
   expect(screen.getByText("최근 적재율 데이터가 없습니다.")).toBeVisible();
   rerender(<LoadChart threshold={80} samples={[{ ...sample, dataState: "UNAVAILABLE" }]} />);
   expect(screen.getByText("유효한 적재율 데이터가 없습니다.")).toBeVisible();
+});
+
+test("LiDAR 미측정 구간 계산: 앞쪽, 뒤쪽, 양쪽, 없음, 전체, 빈 표본", () => {
+  // 앞쪽만 미측정
+  const frontOnly = calculateUnmeasuredRanges([
+    { positionRatio: 0.13 },
+    { positionRatio: 1.0 },
+  ]);
+  expect(frontOnly).toEqual([
+    { side: "start", startRatio: 0, endRatio: 0.13, label: "미측정 A 0%~13%" },
+  ]);
+
+  // 뒤쪽만 미측정
+  const backOnly = calculateUnmeasuredRanges([
+    { positionRatio: 0.0 },
+    { positionRatio: 0.87 },
+  ]);
+  expect(backOnly).toEqual([
+    { side: "end", startRatio: 0.87, endRatio: 1, label: "미측정 B 87%~100%" },
+  ]);
+
+  // 양쪽 미측정
+  const both = calculateUnmeasuredRanges([
+    { positionRatio: 0.15 },
+    { positionRatio: 0.5 },
+    { positionRatio: 0.85 },
+  ]);
+  expect(both).toEqual([
+    { side: "start", startRatio: 0, endRatio: 0.15, label: "미측정 A 0%~15%" },
+    { side: "end", startRatio: 0.85, endRatio: 1, label: "미측정 B 85%~100%" },
+  ]);
+
+  // 없음 (전체 관측)
+  const none = calculateUnmeasuredRanges([
+    { positionRatio: 0.0 },
+    { positionRatio: 1.0 },
+  ]);
+  expect(none).toEqual([]);
+
+  // 전체 (위치 있는 표본이 하나도 없음)
+  const allUnmeasured = calculateUnmeasuredRanges([
+    { positionRatio: null },
+    { positionRatio: null },
+  ]);
+  expect(allUnmeasured).toEqual([
+    { side: "all", startRatio: 0, endRatio: 1, label: "미측정 0%~100%" },
+  ]);
+
+  // 빈 배열은 표본 없음 상태 유지 (미측정 영역 없음)
+  expect(calculateUnmeasuredRanges([])).toEqual([]);
+
+  // 경계 값: 가로축 길이 1% 미만(0.009, 0.991)은 제외, 1% 이상(0.01, 0.99)은 생성
+  expect(calculateUnmeasuredRanges([{ positionRatio: 0.009 }, { positionRatio: 1.0 }])).toEqual([]);
+  expect(calculateUnmeasuredRanges([{ positionRatio: 0.01 }, { positionRatio: 1.0 }])).toEqual([
+    { side: "start", startRatio: 0, endRatio: 0.01, label: "미측정 A 0%~1%" },
+  ]);
+  expect(calculateUnmeasuredRanges([{ positionRatio: 0.0 }, { positionRatio: 0.99 }])).toEqual([
+    { side: "end", startRatio: 0.99, endRatio: 1, label: "미측정 B 99%~100%" },
+  ]);
+  expect(calculateUnmeasuredRanges([{ positionRatio: 0.0 }, { positionRatio: 0.991 }])).toEqual([]);
+});
+
+test("ProfileChart 미측정 음영 표시와 선 끊김 유지", () => {
+  const { container } = render(
+    <ProfileChart
+      average="1.5 m"
+      color="blue"
+      label="LiDAR 1 단면 높이"
+      maximum="2.0 m"
+      minimum="1.0 m"
+      samples={[
+        { height: 1.0, positionRatio: 0.13 },
+        { height: null, positionRatio: 0.4 }, // valid=false / 결측: 선 끊김
+        { height: 1.8, positionRatio: 0.6 },
+        { height: 2.0, positionRatio: 0.87 },
+      ]}
+    />,
+  );
+
+  // SVG aria-label에 미측정 구간 비율 포함
+  const svg = container.querySelector("svg");
+  expect(svg?.getAttribute("aria-label")).toContain("미측정 A 0%~13%");
+  expect(svg?.getAttribute("aria-label")).toContain("미측정 B 87%~100%");
+
+  // 음영 사각형 및 title 확인
+  const unmeasuredZones = container.querySelectorAll(".profile-unmeasured-zones rect");
+  expect(unmeasuredZones).toHaveLength(2);
+  expect(unmeasuredZones[0].querySelector("title")?.textContent).toBe("미측정 A 0%~13%");
+  expect(unmeasuredZones[1].querySelector("title")?.textContent).toBe("미측정 B 87%~100%");
+
+  // 폭 24px 이상이면 미측정 텍스트 표시
+  const texts = container.querySelectorAll(".profile-unmeasured-zones text");
+  expect(texts.length).toBeGreaterThan(0);
+  expect(texts[0].textContent).toBe("미측정");
+
+  // 선 그래프가 2개로 끊김 (positionRatio 0.4 결측 때문)
+  expect(container.querySelectorAll(".profile-chart-line")).toHaveLength(2);
 });

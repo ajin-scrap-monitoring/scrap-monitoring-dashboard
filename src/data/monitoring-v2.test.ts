@@ -3,7 +3,7 @@ import { describe, expect, test, vi } from "vitest";
 import type { DashboardData } from "../domain/dashboard";
 import type { components } from "../generated/backend-contract";
 import { alertSettingsFixture, recipientPageFixture, sessionFixture, notificationPageFixture } from "../test/api-contract-fixtures";
-import { activeAlertsFixture, activeCoverageFixture, activeHealthAlertFixture, collectionSummaryFixture, eventRecordingFixture, eventRecordingPageFixture, eventReplayFixture, fillForecastFixture, lidarProfilesFixture, monitoringV2Fixture, monitoringV2StateFixture } from "../test/backend-contract-fixtures";
+import { activeAlertsBasisFixture, activeAlertsFixture, activeCoverageFixture, activeHealthAlertFixture, collectionSummaryFixture, eventRecordingFixture, eventRecordingPageFixture, eventReplayFixture, fillForecastFixture, lidarProfilesFixture, monitoringV2Fixture, monitoringV2StateFixture } from "../test/backend-contract-fixtures";
 
 import { ApiError, createHttpDashboardDataSource } from "./http-dashboard-data-source";
 import { monitoringV2Data, type ApiMonitoringSnapshotV2 } from "./monitoring-v2";
@@ -298,15 +298,30 @@ describe("Backend v2 모니터링", () => {
       expect(monitoring.alerts[0].time).toMatch(/^\d{2}:\d{2}$/);
       expect(monitoring.activeAlertsState?.evaluationState).toBe("CRITICAL");
     });
-    test("snapshot의 경보 평가와 다르면 이전 적재율 항목을 표시하지 않고 판정 불가로 구분한다", async () => {
+    test("basis.snapshotId가 같을 때 snapshot의 경보 평가와 다르면 mismatch를 기록하고 항목은 숨기지 않는다", async () => {
       const monitoring = await monitoringOf(activeAlertsFixture(), operations("NORMAL"));
-      expect(monitoring.alerts).toEqual([]);
-      expect(monitoring.activeAlertsState).toEqual({ evaluationState: "UNKNOWN", reasonCodes: [], coverage: [] });
+      expect(monitoring.alerts).toHaveLength(1);
+      expect(monitoring.activeAlertsState).toMatchObject({
+        evaluationState: "CRITICAL",
+        mismatch: {
+          snapshotState: "NORMAL",
+          alertState: "CRITICAL",
+        },
+      });
+    });
+    test("basis.snapshotId가 다르면 서로 다른 측정 시점으로 취급하여 판정 불일치로 처리하지 않는다", async () => {
+      const basis = { ...activeAlertsBasisFixture(), snapshotId: "different-snapshot-id" };
+      const monitoring = await monitoringOf(activeAlertsFixture({ basis }), operations("NORMAL"));
+      expect(monitoring.alerts).toHaveLength(1);
+      expect(monitoring.activeAlertsState).toMatchObject({
+        evaluationState: "CRITICAL",
+        mismatch: null,
+      });
     });
     test.each(["NORMAL", "WARNING", "UNKNOWN", "ERROR"] as const)("%s의 빈 목록은 평가 상태와 함께 보존한다", async (evaluationState) => {
       const monitoring = await monitoringOf(activeAlertsFixture({ evaluationState, items: [], reasonCodes: ["ALERT_NOTE"] }), operations(evaluationState));
       expect(monitoring.alerts).toEqual([]);
-      expect(monitoring.activeAlertsState).toEqual({ evaluationState, reasonCodes: ["ALERT_NOTE"], coverage: [] });
+      expect(monitoring.activeAlertsState).toMatchObject({ evaluationState, reasonCodes: ["ALERT_NOTE"], coverage: [] });
     });
     test("요청은 scope=ALL과 pit_id를 사용한다", async () => {
       const api = contract({ activeAlerts: activeAlertsFixture() });
@@ -337,15 +352,38 @@ describe("Backend v2 모니터링", () => {
         expect(monitoring.activeAlertsState?.coverage.map((entry) => `${entry.componentKind}:${entry.state}`)).toEqual(["CAMERA:UNSUPPORTED", "EDGE:CHECKED", "LIDAR:CHECKED", "LIDAR:UNKNOWN", "MEASUREMENT:CHECKED"]);
         expect(monitoring.activeAlertsState?.coverage[3]).toMatchObject({ componentName: "LiDAR 2", reasonCodes: ["LIDAR_STATUS_NOT_REPORTED"] });
       });
-      test("측정이 FRESH가 아니어도 장비 항목은 표시하고 적재율 항목은 숨긴다", async () => {
+      test("장비 항목으로 CAMERA 항목과 MEDIA_CAMERA_STATUS를 허용한다", async () => {
+        const cameraHealth = health({
+          id: "camera-01",
+          componentKind: "CAMERA",
+          componentId: "camera-main",
+          state: "INTERRUPTED",
+          evidenceSource: "MEDIA_CAMERA_STATUS",
+          validUntilAt: "2026-10-13T00:00:10Z",
+          startedAt: null,
+          startBasis: "UNKNOWN",
+        });
+        const monitoring = await monitoringOf(activeAlertsFixture({ items: [cameraHealth] }), operations("CRITICAL"));
+        expect(monitoring.alerts).toHaveLength(1);
+        expect(monitoring.alerts[0]).toMatchObject({
+          id: "camera-01",
+          detail: "카메라 INTERRUPTED",
+          health: {
+            componentKind: "CAMERA",
+            componentName: "카메라",
+            evidenceSource: "MEDIA_CAMERA_STATUS",
+            validUntilAt: "2026-10-13T00:00:10Z",
+          },
+        });
+      });
+      test("측정이 FRESH가 아니어도 활성 알림 항목을 그대로 표시한다", async () => {
         const stale = { ...monitoringV2StateFixture("STALE", 91.5), operations: { effectiveState: "CRITICAL" as const, lastKnownState: null, lastEvaluatedAt: null, lastAlertAt: null, notificationId: null } };
         const monitoring = await monitoringOf(activeAlertsFixture({ items: [activeAlertsFixture().items[0], health()] }), stale);
-        expect(monitoring.alerts.map((alert) => alert.id)).toEqual(["health:edge:pit-01:edge-01"]);
-        expect(monitoring.activeAlertsState?.evaluationState).toBe("UNKNOWN");
+        expect(monitoring.alerts.map((alert) => alert.id)).toEqual(["fill-critical:pit-01", "health:edge:pit-01:edge-01"]);
       });
       test.each([
         ["알 수 없는 type", { type: "camera_error" }],
-        ["알 수 없는 componentKind", { componentKind: "CAMERA" }],
+        ["알 수 없는 componentKind", { componentKind: "INVALID_KIND" }],
         ["알 수 없는 evidenceSource", { evidenceSource: "GUESS" }],
         ["잘못된 startBasis", { startBasis: "PHYSICAL_FAILURE" }],
       ])("%s는 계약 오류로 처리한다", async (_name, overrides) => {
@@ -809,7 +847,8 @@ describe("Backend v2 모니터링", () => {
     expect(api.urls[0].pathname).toBe("/api/v2/recordings/events");
     expect(api.urls[0].searchParams.get("category")).toBe("alert");
     expect(api.urls[0].searchParams.get("pit_id")).toBe("pit-01");
-    expect(api.urls[0].searchParams.get("pageSize")).toBe("20");
+    expect(api.urls[0].searchParams.get("pageSize")).toBe("50");
+    expect(api.urls[0].searchParams.get("stable")).toBe("true");
   });
   test("이벤트 녹화는 90일을 넘는 범위를 요청하지 않는다", async () => {
     const api = contract();

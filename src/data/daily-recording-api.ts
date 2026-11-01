@@ -33,7 +33,10 @@ function mapDailyRecording(daily: DailyRecording, now: number): Recording {
       : daily.status === "recording" || daily.status === "finalizing" || (daily.status !== "failed" && daily.playbackState === "pending") ? "processing" : "unavailable",
     tone: daily.status === "failed" || daily.exportState === "failed" ? "error" : daily.hasGaps ? "warning" : "complete",
     codec: missingValue, format: missingValue, frameRate: null, height: null, width: null,
-    retentionStartsAt: missingValue, retentionEndsAt: daily.expiresAt === null ? missingValue : wallClock(daily.expiresAt, true),
+    retentionStartsAt: missingValue,
+    retentionEndsAt: daily.status === "deleted" ? "삭제됨"
+      : daily.status === "expired" ? "만료됨"
+      : daily.expiresAt === null ? missingValue : wallClock(daily.expiresAt, true),
     size: byteSize(daily.sizeBytes), mediaStatus: daily.status, coverage: daily.coverage,
     gaps: daily.gaps.map(gap => ({ start: wallClock(gap.startsAt, true), end: wallClock(gap.endsAt, true) })),
     errorCode: daily.error?.code ?? null,

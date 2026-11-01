@@ -35,7 +35,7 @@ export function parseLidarProfilesV2(value: unknown, pitId: string): LidarProfil
   const bySensor = new Map<string, Record<string, unknown>>();
   for (const profile of value.profiles) {
     if (!record(profile) || typeof profile.sensorId !== "string" || bySensor.has(profile.sensorId)
-      || !nullableTimestamp(profile.measuredAt === undefined ? null : profile.measuredAt, true) || !(profile.samples === undefined || Array.isArray(profile.samples))
+      || !nullableTimestamp(profile.measuredAt === undefined ? null : profile.measuredAt, true) || !Array.isArray(profile.samples)
       || !["average", "minimum", "maximum", "filteredAverage"].every((key) => profile[key] === undefined || nullableNumber(profile[key]))
       || !(profile.calibrationState === undefined || calibrationStates.includes(profile.calibrationState as string))
       || !(profile.summaryValuePolicy === undefined || summaryPolicies.includes(profile.summaryValuePolicy as string))
@@ -58,4 +58,60 @@ export function parseLidarProfilesV2(value: unknown, pitId: string): LidarProfil
       ...(Array.isArray(profile.reasonCodes) && profile.reasonCodes.length > 0 && { reasonCodes: profile.reasonCodes as string[] }),
     };
   });
+}
+
+export type UnmeasuredRange = {
+  side: "start" | "end" | "all";
+  startRatio: number;
+  endRatio: number;
+  label: string;
+};
+
+export function calculateUnmeasuredRanges(
+  samples: readonly { positionRatio: number | null }[],
+): UnmeasuredRange[] {
+  if (samples.length === 0) return [];
+
+  const positioned = samples
+    .map((s) => s.positionRatio)
+    .filter((r): r is number => r !== null && Number.isFinite(r));
+
+  if (positioned.length === 0) {
+    return [
+      {
+        side: "all",
+        startRatio: 0,
+        endRatio: 1,
+        label: "미측정 0%~100%",
+      },
+    ];
+  }
+
+  const minRatio = Math.max(0, Math.min(1, Math.min(...positioned)));
+  const maxRatio = Math.max(0, Math.min(1, Math.max(...positioned)));
+
+  const ranges: UnmeasuredRange[] = [];
+
+  // 가로축 길이의 1% 미만인 앞쪽 또는 뒤쪽 구간은 생성하지 않는다.
+  if (minRatio >= 0.01) {
+    const endPercent = Math.round(minRatio * 100);
+    ranges.push({
+      side: "start",
+      startRatio: 0,
+      endRatio: minRatio,
+      label: `미측정 A 0%~${endPercent}%`,
+    });
+  }
+
+  if (1 - maxRatio >= 0.01) {
+    const startPercent = Math.round(maxRatio * 100);
+    ranges.push({
+      side: "end",
+      startRatio: maxRatio,
+      endRatio: 1,
+      label: `미측정 B ${startPercent}%~100%`,
+    });
+  }
+
+  return ranges;
 }

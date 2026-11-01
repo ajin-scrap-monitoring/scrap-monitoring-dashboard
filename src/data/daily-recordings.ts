@@ -116,6 +116,14 @@ export function dailyRecording(value: unknown, cameraId: string): DailyRecording
   const downloadPath = publicPath(item.download_path, `/media/daily-recordings/${id}/content?download=true`);
   if ((playbackPath !== null && playbackState !== "ready") || (downloadPath !== null && exportState !== "ready")) return fail();
 
+  const cleanupState = item.cleanup_state === undefined || item.cleanup_state === null ? null : choice(item.cleanup_state, ["pending", "failed", "complete"]);
+  const cleanupCompletedAt = item.cleanup_completed_at === undefined || item.cleanup_completed_at === null ? null : nullableTimestamp(item.cleanup_completed_at);
+  const cleanupError = item.cleanup_error === undefined || item.cleanup_error === null ? null : object(item.cleanup_error);
+  if (cleanupError !== null && (typeof cleanupError.code !== "string" || !/^[A-Z0-9_]{1,100}$/.test(cleanupError.code) || typeof cleanupError.message !== "string")) return fail();
+  const deletedAt = item.deleted_at === undefined || item.deleted_at === null ? null : nullableTimestamp(item.deleted_at);
+  if (item.space_reclaimed !== undefined && item.space_reclaimed !== null) return fail();
+  const spaceReclaimed = null;
+
   return {
     source: "daily", id, cameraId, recordingDate, timezone: "Asia/Seoul", windowStartsAt, windowEndsAt,
     status: choice(item.status, ["recording", "finalizing", "closed", "failed", "expired", "deleted"]),
@@ -129,6 +137,11 @@ export function dailyRecording(value: unknown, cameraId: string): DailyRecording
     downloadPath,
     sizeBytes, expiresAt: nullableTimestamp(item.expires_at), exportExpiresAt: nullableTimestamp(item.export_expires_at),
     error: error === null ? null : { code: text(error.code), message: "녹화 처리에 실패했습니다." },
+    deletedAt,
+    cleanupState,
+    cleanupCompletedAt,
+    cleanupError: cleanupError === null ? null : { code: text(cleanupError.code), message: "파일 정리에 실패했습니다." },
+    spaceReclaimed,
   };
 }
 

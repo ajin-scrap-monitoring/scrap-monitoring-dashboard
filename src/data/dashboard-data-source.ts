@@ -9,6 +9,9 @@ import type {
   RecordingList,
   UserSession,
 } from "../domain/dashboard";
+import type { EventExportStatus } from "./event-recordings";
+import type { ClipMediaInfoResult, DailyMediaInfoResult } from "./media-info-cache";
+import type { CameraStatusV2 } from "./camera-status-v2";
 
 export type DashboardDataRequestOptions = {
   signal?: AbortSignal;
@@ -61,6 +64,15 @@ export interface DashboardDataSource {
   getRecording?(recordingId: string, signal?: AbortSignal, source?: "daily" | "event"): Promise<DashboardData["recordings"][number] | null>;
   deleteDailyRecording?(recordingId: string, signal?: AbortSignal): Promise<DailyRecordingDeletion>;
   prepareDailyRecordingExport?(recordingId: string, signal?: AbortSignal): Promise<DashboardData["recordings"][number]>;
+  prepareEventRecordingExport?(
+    eventId: string,
+    options: { requestId: string; beforeSeconds?: number; afterSeconds?: number; retryFailed?: boolean },
+    signal?: AbortSignal,
+  ): Promise<EventExportStatus>;
+  getEventRecordingExportStatus?(statusPath: string, signal?: AbortSignal): Promise<EventExportStatus>;
+  getDailyRecordingMediaInfo?(recordingId: string, signal?: AbortSignal): Promise<DailyMediaInfoResult>;
+  getClipMediaInfo?(clipId: string, signal?: AbortSignal): Promise<ClipMediaInfoResult>;
+  getCameraStatus?(signal?: AbortSignal): Promise<CameraStatusV2>;
   getRecordingCoverage?(recordingId: string, signal?: AbortSignal): Promise<RecordingCoverageDetail>;
   markAllNotificationsRead?(): Promise<void>;
   markNotificationRead?(notificationId: string): Promise<void>;
