@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { installContractApi } from "./contract-api.js";
+import { brokenWordButtons } from "./text-wrap.js";
 import { recipientFixture, recipientPageFixture } from "../src/test/api-contract-fixtures.js";
 
 async function geometry(page: Page) {
@@ -194,4 +195,20 @@ test("경보 설정 저장 실패 시 alert_threshold_gap은 사전 알림 입�
   await expect(preAlertInput).toHaveAttribute("aria-invalid", "true");
   await expect(page.locator(".threshold-change p.admin-inline-feedback")).toHaveText("사전 알림 임계율은 수거 임계율 85%보다 최소 5%p 낮아야 합니다.");
   expect(await geometry(page)).toEqual(before);
+});
+
+test("관리자 화면의 버튼 문구는 어느 viewport에서도 단어 중간에서 줄바꿈되지 않는다", async ({ page }) => {
+  await installContractApi(page, { initiallyAuthenticated: true });
+  await page.goto("/admin?source=api");
+  const save = page.getByRole("button", { name: "수거 설정 저장" });
+  await expect(save).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  expect(await brokenWordButtons(page)).toEqual([]);
+  const text = await save.evaluate(element => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    return { buttonWidth: element.getBoundingClientRect().width, textWidth: range.getBoundingClientRect().width, overflow: element.scrollWidth - element.clientWidth };
+  });
+  expect(text.overflow).toBeLessThanOrEqual(0);
+  expect(text.textWidth).toBeLessThanOrEqual(text.buttonWidth);
 });

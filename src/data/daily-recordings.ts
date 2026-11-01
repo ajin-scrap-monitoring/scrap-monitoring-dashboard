@@ -63,47 +63,57 @@ export function dailyRecording(value: unknown, cameraId: string): DailyRecording
   if (item.timezone !== "Asia/Seoul" || start !== Date.parse(`${recordingDate}T00:00:00.000+09:00`)
     || end - start !== 86_400_000 || coverageUntil < start || coverageUntil > end) return fail();
 
+  // 항목마다 수천 개인 구간의 시각은 한 번만 해석해 검증에 재사용한다.
+  const gapStarts: number[] = [];
+  const gapEnds: number[] = [];
   const gaps = entries(item.gaps, (entry) => {
     const gap = object(entry);
-    return { startsAt: timestamp(gap.start_at), endsAt: timestamp(gap.end_at), reasonCode: text(gap.reason_code) };
+    const startsAt = timestamp(gap.start_at);
+    const endsAt = timestamp(gap.end_at);
+    gapStarts.push(timestampValue(startsAt));
+    gapEnds.push(timestampValue(endsAt));
+    return { startsAt, endsAt, reasonCode: text(gap.reason_code) };
   });
   let previousGapEnd = start;
-  for (const gap of gaps) {
-    const gapStart = timestampValue(gap.startsAt);
-    const gapEnd = timestampValue(gap.endsAt);
-    if (gapStart < previousGapEnd || gapEnd < gapStart || gapEnd > coverageUntil) return fail();
-    previousGapEnd = gapEnd;
+  for (let index = 0; index < gaps.length; index += 1) {
+    if (gapStarts[index] < previousGapEnd || gapEnds[index] < gapStarts[index] || gapEnds[index] > coverageUntil) return fail();
+    previousGapEnd = gapEnds[index];
   }
 
+  const intervalStarts: number[] = [];
+  const intervalEnds: number[] = [];
   const availableIntervals = entries(item.available_intervals, (entry) => {
     const interval = object(entry);
+    const startsAt = timestamp(interval.start_at);
+    const endsAt = timestamp(interval.end_at);
+    intervalStarts.push(timestampValue(startsAt));
+    intervalEnds.push(timestampValue(endsAt));
     return {
-      startsAt: timestamp(interval.start_at), endsAt: timestamp(interval.end_at),
+      startsAt, endsAt,
       playbackStartsAtSeconds: number(interval.playback_start_seconds), playbackEndsAtSeconds: number(interval.playback_end_seconds),
     };
   });
   let previousEnd = start;
   let previousPlaybackEnd = 0;
-  for (const interval of availableIntervals) {
-    const intervalStart = timestampValue(interval.startsAt);
-    const intervalEnd = timestampValue(interval.endsAt);
-    if (intervalStart < previousEnd || intervalEnd < intervalStart || intervalEnd > coverageUntil
+  for (let index = 0; index < availableIntervals.length; index += 1) {
+    const interval = availableIntervals[index];
+    if (intervalStarts[index] < previousEnd || intervalEnds[index] < intervalStarts[index] || intervalEnds[index] > coverageUntil
       || interval.playbackStartsAtSeconds !== previousPlaybackEnd
       || interval.playbackEndsAtSeconds <= interval.playbackStartsAtSeconds || interval.playbackEndsAtSeconds > 86_400) return fail();
-    previousEnd = intervalEnd;
+    previousEnd = intervalEnds[index];
     previousPlaybackEnd = interval.playbackEndsAtSeconds;
   }
   let gapIndex = 0;
-  for (const interval of availableIntervals) {
-    if (timestampValue(interval.startsAt) === timestampValue(interval.endsAt)) continue;
-    while (gapIndex < gaps.length && timestampValue(gaps[gapIndex].endsAt) <= timestampValue(interval.startsAt)) gapIndex += 1;
-    if (gapIndex < gaps.length && timestampValue(gaps[gapIndex].startsAt) < timestampValue(interval.endsAt)) return fail();
+  for (let index = 0; index < availableIntervals.length; index += 1) {
+    if (intervalStarts[index] === intervalEnds[index]) continue;
+    while (gapIndex < gaps.length && gapEnds[gapIndex] <= intervalStarts[index]) gapIndex += 1;
+    if (gapIndex < gaps.length && gapStarts[gapIndex] < intervalEnds[index]) return fail();
   }
   const recordedSeconds = number(item.recorded_seconds);
   const playableUntilAt = nullableTimestamp(item.playable_until_at);
   if (recordedSeconds > 86_400 || Math.abs(previousPlaybackEnd - recordedSeconds) > 0.001
     || (availableIntervals.length === 0 ? playableUntilAt !== null
-      : playableUntilAt === null || timestampValue(playableUntilAt) !== timestampValue(availableIntervals.at(-1)!.endsAt))) return fail();
+      : playableUntilAt === null || timestampValue(playableUntilAt) !== intervalEnds[intervalEnds.length - 1])) return fail();
   const hasGaps = boolean(item.has_gaps);
   if (hasGaps !== (gaps.length > 0)) return fail();
   const error = item.error === null ? null : object(item.error);

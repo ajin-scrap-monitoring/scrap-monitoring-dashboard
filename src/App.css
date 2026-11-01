@@ -23,7 +23,7 @@
 body { min-width: 1280px; min-height: 100vh; margin: 0; background: #f4f7fa; }
 
 button, a { font: inherit; }
-button { cursor: pointer; }
+button { cursor: pointer; word-break: keep-all; overflow-wrap: break-word; }
 
 .app-shell { display: flex; width: var(--monitor-shell-width); min-height: 100vh; min-width: 0; flex-direction: column; background: #f4f7fa; }
 

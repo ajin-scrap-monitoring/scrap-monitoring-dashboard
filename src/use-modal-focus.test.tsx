@@ -44,3 +44,31 @@ test("닫기 callback 변경은 포커스를 초기화하지 않고 최신 callb
   expect(oldClose).not.toHaveBeenCalled();
   expect(latestClose).toHaveBeenCalledTimes(1);
 });
+
+function MediaModal({ onClose = () => {} }: { onClose?: () => void }) {
+  const ref = useModalFocus<HTMLDivElement>(true, onClose);
+  return <div ref={ref} role="dialog"><button>닫기</button><video controls aria-label="영상" /><video aria-label="제어 없음" /></div>;
+}
+
+test("controls가 있는 video를 Tab과 Shift Tab 순환에 포함하고 video에서도 Escape로 닫는다", async () => {
+  const onClose = vi.fn();
+  render(<MediaModal onClose={onClose} />);
+  await act(async () => { await new Promise(resolve => window.setTimeout(resolve, 0)); });
+  const close = screen.getByRole("button", { name: "닫기" });
+  const video = screen.getByLabelText("영상");
+  const focusVideo = vi.spyOn(video, "focus");
+  const focusClose = vi.spyOn(close, "focus");
+  expect(close).toHaveFocus();
+  const backward = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true });
+  fireEvent(window, backward);
+  expect(backward.defaultPrevented).toBe(true);
+  expect(focusVideo).toHaveBeenCalledTimes(1);
+  const active = vi.spyOn(document, "activeElement", "get").mockReturnValue(video);
+  const forward = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+  fireEvent(window, forward);
+  expect(forward.defaultPrevented).toBe(true);
+  expect(focusClose).toHaveBeenCalledTimes(1);
+  fireEvent.keyDown(video, { key: "Escape" });
+  expect(onClose).toHaveBeenCalledTimes(1);
+  active.mockRestore();
+});

@@ -366,3 +366,37 @@ test("조회 사용자에게는 날짜 녹화 삭제를 표시하지 않는다",
   await expect(page.locator(".recording-frame video")).toBeVisible();
   await expect(page.getByRole("button", { name: "날짜 녹화 삭제" })).toHaveCount(0);
 });
+
+test("날짜 영상 확대 창은 Tab과 Shift Tab으로 영상 controls에 이동하고 영상에서도 Escape로 닫는다", async ({ page }) => {
+  await installBackendApi(page, { initial });
+  await page.addInitScript(() => {
+    const canPlayType = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "canPlayType")?.value as (this: HTMLMediaElement, type: string) => CanPlayTypeResult;
+    HTMLMediaElement.prototype.canPlayType = function (type) {
+      return type === "application/vnd.apple.mpegurl" ? "" : canPlayType.call(this, type);
+    };
+  });
+  await page.goto("/recordings?source=api");
+  const opener = page.getByRole("button", { name: "녹화 영상 크게 보기" });
+  await expect(opener).toBeVisible();
+  await expect.poll(() => page.locator(".recording-frame video").evaluate(element => (element as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(1);
+  await opener.focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "녹화 영상 크게 보기" });
+  const close = dialog.getByRole("button", { name: "녹화 영상 닫기" });
+  const video = dialog.locator("video");
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(video).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(video).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  await opener.press("Enter");
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+});

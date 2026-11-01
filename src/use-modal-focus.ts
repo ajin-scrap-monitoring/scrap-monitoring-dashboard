@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-const focusableSelector = ":is(a[href],button,input,select,textarea,[tabindex]):not(:disabled,[tabindex^='-'],[type='hidden'])";
+const focusableSelector = ":is(a[href],button,input,select,textarea,[tabindex],video[controls],audio[controls]):not(:disabled,[tabindex^='-'],[type='hidden'])";
 
 export function useModalFocus<T extends HTMLElement>(isOpen: boolean, onClose: () => void, selector?: string) {
   const modalRef = useRef<T>(null);

@@ -383,6 +383,8 @@ ID의 조합이다. 날짜 필터는 날짜만, 나머지 유형은 해당 이�
 `event-recordings.ts`는 이벤트 녹화 목록과 상세의 검증 및 화면 모델 변환, `daily-recordings.ts`는
 날짜와 확보 및 누락 및 압축 재생 시각의 검증, `daily-recording-api.ts`는 날짜 목록과 단건,
 export 및 삭제를 처리한다. `recording-coverage.ts`는 제안 모드의 clip 범위를 처리한다. 날짜 모듈은 필요할 때 로드하고 Media 내부 경로를 직접 요청하지 않는다.
+날짜 녹화 응답의 검증은 `gaps`와 `available_intervals`의 각 시각을 한 번만 해석하고, 날짜 형식
+검증 결과는 날짜별로 재사용한다.
 
 `DailyRecordingVideo`는 `hls.js/light`를 지연 로드하고 Media Source Extensions (MSE)
 지원 시 사용하며 미지원은 native HLS (HTTP Live Streaming)를 사용한다. MSE의 첫 위치와
@@ -393,8 +395,10 @@ redirect는 거부한다. 종료 및 선택 변경은 player, 요청과 Blob URL
 `EventReplayPlayer`는 이벤트 구간을 `parts`의 날짜 녹화 HLS로 이어서 재생한다. 원본 video
 controls 대신 재생 버튼과 0초부터 `playbackSeconds`까지의 재생바를 제공하며 part 사이의
 경계를 표시한다. 재생바 탐색은 해당 part의 날짜 녹화 안 위치로 변환하고, part의 끝에서
-다음 part의 시작으로 이동하며 마지막 part의 끝에서 정지한다. 확대 화면은 현재 재생바
-위치에서 시작한다.
+다음 part의 시작으로 이동하며 마지막 part의 끝에서 정지한다. 확대는 기본 player를 정지하고
+현재 재생바 위치에서 시작한다. 닫으면 확대 player를 정지하고 마지막 재생바 위치로 기본
+player를 이동시키며 기본 player는 정지 상태를 유지한다. 확대 중 기본 player의 위치
+보고는 표시 위치를 바꾸지 않는다.
 
 날짜 녹화 삭제는 administrator의 상세 화면에서만 표시한다. 녹화 중, 마감 중과 내보내기
 진행 중에는 숨기며 확인창은 같은 날짜 영상을 쓰는 이벤트 구간도 재생할 수 없게 됨을
@@ -405,7 +409,8 @@ controls 대신 재생 버튼과 0초부터 `playbackSeconds`까지의 재생바
 확대는 기본 player를 pause하고 같은 위치에서 시작한다. 확대 player가 frame을 확보하고
 seek가 끝난 경우에만 닫을 때 기본 player의 위치를 갱신한다. 확대 중 기본 player의
 time update는 표시 시각을 변경하지 않는다. Source 변경은 다운로드 재조회와 이전 완료
-표시를 취소한다. 제품의 HLS license는
+표시를 취소한다. 확대 창의 Tab과 Shift+Tab 순환에는 닫기 버튼과 `controls`가 있는
+video 및 audio를 포함하며 Escape는 focus 위치와 무관하게 창을 닫는다. 제품의 HLS license는
 `/usr/share/licenses/scrap-monitoring-dashboard/Hls-Apache-2.0.txt`에 포함한다.
 
 날짜 시간축은 확보, 누락, 미확인과 미래 구간을 구분한다. 확보 구간은 압축 재생 시각으로
@@ -487,6 +492,9 @@ source의 늦은 응답을 막는다. 테스트 접수 후 알림함을 재조�
 `Dropdown`은 방향키, Home, End, Enter와 Space를 지원하고 Escape는 변경 없이 닫는다.
 Tab과 바깥 클릭도 닫으며 긴 연락처는 기존 너비에서 생략하고 title로 원문을 제공한다.
 설정 패널의 닫기 및 focus 영역은 유지한다.
+
+버튼 문구는 한국어 단어 단위로 줄바꿈하며 단어 중간에서 끊지 않는다. 1280 CSS 픽셀 너비의
+"수거 설정 저장" 버튼도 버튼 크기를 바꾸지 않고 공백에서만 줄바꿈한다.
 
 ### 선택적 v1과 제안 검증
 
