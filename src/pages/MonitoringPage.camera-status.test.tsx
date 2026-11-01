@@ -417,4 +417,47 @@ describe("카메라 폴링 겹침 방지와 중단", () => {
     });
     expect(cameraMock).toHaveBeenCalledTimes(3);
   });
+
+  test("숨김 상태에서는 폴링 타이머가 멈추고 요청이 없으며, 다시 보이면 즉시 재조회한다", async () => {
+    vi.useFakeTimers();
+    const cameraMock = vi.fn().mockImplementation((signal?: AbortSignal) => {
+      if (signal?.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
+      return Promise.resolve(createCameraStatus({ state: "HEALTHY", validForSeconds: 5.0 }));
+    });
+    const dataSource: DashboardDataSource = {
+      ...baseDashboardData,
+      getCameraStatus: cameraMock,
+      getDashboardData: vi.fn(),
+    };
+
+    render(<MonitoringPage data={baseDashboardData} dataSource={dataSource} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(cameraMock).toHaveBeenCalledTimes(1);
+
+    // document를 hidden으로 변경
+    act(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    // 10초 경과 동안 추가 폴링 요청이 없어야 함
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(cameraMock).toHaveBeenCalledTimes(1);
+
+    // 다시 visible로 변경
+    act(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    // 즉시 재조회 발생
+    expect(cameraMock).toHaveBeenCalledTimes(2);
+
+    // 정리
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+  });
 });

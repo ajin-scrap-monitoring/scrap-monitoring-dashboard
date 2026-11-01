@@ -11,4 +11,3 @@
 | 데이터 변환, 의도적 비표시와 미구현 요청 | [화면 데이터 매핑](contracts/backend/frontend-mapping.md) |
 | 검증 계층과 자원 정리 | [검증 기준](testing.md) |
 | 원격 개발 및 읽기 중심 화면 확인 | [개발 환경](development.md#원격-개발-컨테이너) |
-| 미착수 화면 전환 개선 | [성능 개선 계획](navigation-performance-plan.md) |

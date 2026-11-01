@@ -393,3 +393,13 @@ test.each([
     expect(label).not.toHaveAttribute("title");
   }
 });
+
+test("loadHistoryState status가 loading이면 1시간 전 적재율에 '확인 중'을 표시한다", async () => {
+  const dataSource = createMockDashboardDataSource();
+  const data = await dataSource.getDashboardData();
+  data.monitoring.loadHistoryState = { status: "loading" };
+  const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
+  const miniStats = container.querySelectorAll(".status-details .mini-stat");
+  const pastLoadStat = Array.from(miniStats).find((el) => el.querySelector(".label")?.textContent === "1시간 전 적재율");
+  expect(pastLoadStat?.querySelector("strong")).toHaveTextContent("확인 중");
+});

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { AppLink } from "../app-link";
 import { ROUTES } from "../app-routing";
 import { v1MonitoringEnabled } from "../build-features";
 import { DashboardPageShell } from "../components/DashboardShell";
@@ -255,7 +256,7 @@ export function HistoryPage({ dataSource, history, headerNotifications, headerUn
   return (
     <DashboardPageShell activePage="history" dataSource={dataSource} headerNotifications={headerNotifications} headerUnreadCount={headerUnreadCount} notificationState={headerNotificationState} session={session}>
       <main className="history-page" aria-label="스크랩 모니터링 이력">
-        <div className="page-heading"><h1>이력</h1><DataReceptionMeta reception={reception} /></div>
+        <div className="page-heading"><h1 tabIndex={-1}>이력</h1><DataReceptionMeta reception={reception} /></div>
         <div className="history-content">
           <section className="card history-query">
             <div className="history-query-head"><SectionTitle>조회 조건</SectionTitle>{queryError ? <p id="history-query-error" role="alert" title={queryError}>{queryError}</p>
@@ -298,7 +299,7 @@ export function HistoryPage({ dataSource, history, headerNotifications, headerUn
               <tbody>{visibleEvents.length > 0 ? visibleEvents.map((event) => <tr key={event.id}>
                 <td>{event.time}</td><td>{event.type}</td><td>{event.status && <><span className={`event-dot ${event.tone}`} />{event.status}</>}</td>
                 <td><button className="detail-trigger" type="button" aria-label={`${event.time} ${event.type} ${eventTitle(event)} 상세 보기`} onClick={() => setEventSelection({ event, source: dataSource })}>{eventTitle(event)}</button></td>
-                <td>{event.recordingId ? <a href={`${ROUTES.recordings}?recordingId=${encodeURIComponent(event.recordingId)}`}>영상 보기</a> : "-"}</td>
+                <td>{event.recordingId ? <AppLink to={`${ROUTES.recordings}?recordingId=${encodeURIComponent(event.recordingId)}`}>영상 보기</AppLink> : "-"}</td>
               </tr>) : <tr><td className="table-empty" colSpan={5}>{eventsFailed ? "이벤트 이력을 조회하지 못했습니다." : eventsLoading ? "이벤트 이력을 불러오는 중입니다." : "조회된 이벤트가 없습니다."}</td></tr>}</tbody>
             </table></div>
             <Pagination ariaLabel="이벤트 이력 페이지" currentPage={eventPage} itemLabel="이벤트" onPageChange={changeEventPage} totalPages={totalEventPages} />
@@ -311,7 +312,7 @@ export function HistoryPage({ dataSource, history, headerNotifications, headerUn
           <p>{selectedEvent.detail ?? selectedEvent.content}</p>
         </div>
         <DetailFields fields={[["발생 시각", selectedEvent.time], ["이벤트 유형", selectedEvent.type], ...(selectedEvent.status ? [["상태", selectedEvent.status] as const] : []), ...(selectedEvent.extraFields ?? [])]} />
-        {selectedEvent.recordingId && <p><a className="history-recording-link" href={`${ROUTES.recordings}?recordingId=${encodeURIComponent(selectedEvent.recordingId)}`}>관련 녹화 확인</a></p>}
+        {selectedEvent.recordingId && <p><AppLink className="history-recording-link" to={`${ROUTES.recordings}?recordingId=${encodeURIComponent(selectedEvent.recordingId)}`}>관련 녹화 확인</AppLink></p>}
       </DetailDialog>}
     </DashboardPageShell>
   );

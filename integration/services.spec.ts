@@ -58,10 +58,12 @@ test("실제 Backend의 과거 적재율 값과 현재 임계율을 이력 그�
       return url.pathname === "/api/v2/monitoring/load-history"
         && Date.parse(url.searchParams.get("to") ?? "") - Date.parse(url.searchParams.get("from") ?? "") === 7 * 86_400_000;
     });
-    const snapshotResponse = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v2/monitoring/snapshot");
     await page.getByRole("link", { name: "이력", exact: true }).click();
     const history = await (await historyResponse).json() as components["schemas"]["LoadHistoryV2"];
-    const snapshot = await (await snapshotResponse).json() as components["schemas"]["MonitoringSnapshotV2"];
+    // 앱 내부 이동은 snapshot을 다시 요청하지 않으므로 현재 임계율은 API로 직접 확인한다.
+    const snapshotResponse = await page.request.get("/api/v2/monitoring/snapshot?pit_id=pit-01");
+    expect(snapshotResponse.ok()).toBe(true);
+    const snapshot = await snapshotResponse.json() as components["schemas"]["MonitoringSnapshotV2"];
     await expect(page.getByRole("heading", { name: "이력", exact: true })).toBeVisible();
     await expect(page.locator(".history-chart")).not.toContainText("유효한 적재율 데이터가 없습니다.");
     const points = await page.locator(".history-load-line").evaluateAll(paths => paths.flatMap(path =>

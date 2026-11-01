@@ -24,7 +24,7 @@ test("현재 분의 녹화 조회 종료를 올림하고 현황 전용 추이는
   const serverTime = "2026-10-15T12:34:50+09:00";
   const snapshot = { ...monitoringV2StateFixture("FRESH", 0), serverTime };
   const source = createHttpDashboardDataSource({
-    apiContract: "backend", monitoringVersion: "v2", route: () => "/recordings", locationSearch: () => "?recordingSource=event",
+    apiContract: "backend", monitoringVersion: "v2",
     fetchImplementation: input => {
       const url = inputUrl(input);
       requests.push(url);
@@ -36,9 +36,10 @@ test("현재 분의 녹화 조회 종료를 올림하고 현황 전용 추이는
       return jsonResponse({ detail: "Synthetic history failure" }, 503);
     },
   });
-  const data = await source.getDashboardData();
-  expect(data.recordings).toHaveLength(1);
-  expect(data.history.endsAt).toBe("2026-10-15T12:35");
+  await source.getDashboardData();
+  const routeData = await source.loadRouteData!("recordings", { search: "?recordingSource=event" });
+  expect(routeData.recordings).toHaveLength(1);
+  expect(routeData.history?.endsAt).toBe("2026-10-15T12:35");
   expect(requests.find(url => url.pathname === "/api/v2/recordings/events")?.searchParams.get("to")).toBe("2026-10-15T12:35:00+09:00");
   expect(requests.some(url => url.pathname === "/api/v2/monitoring/load-history")).toBe(false);
 });
@@ -48,15 +49,16 @@ describe("표시 시간대 Asia/Seoul 고정", () => {
     const requests: URL[] = [];
     const snapshot = { ...monitoringV2StateFixture("FRESH", 10), serverTime: "2026-10-13T00:00:10Z", measuredAt: "2026-10-13T00:00:05Z" };
     const base = createV2ContractFetch(url => url.pathname === "/api/v2/monitoring/snapshot" ? jsonResponse(snapshot) : undefined);
-    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", route: () => "/history",
+    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2",
       fetchImplementation: (input, init) => { requests.push(inputUrl(input)); return base(input, init); } });
     const data = await source.getDashboardData();
+    const routeData = await source.loadRouteData!("history", { search: "" });
     expect(data.lastMeasuredAt).toBe("09:00:05");
-    expect(data.history.endsAt).toBe("2026-10-13T09:00");
-    expect(data.history.startsAt).toBe("2026-10-06T09:00");
-    expect(data.history.loadState?.status).toBe("loading");
+    expect(routeData.history?.endsAt).toBe("2026-10-13T09:00");
+    expect(routeData.history?.startsAt).toBe("2026-10-06T09:00");
+    expect(routeData.history?.loadState?.status).toBe("loading");
     expect(requests.some((url) => url.pathname === "/api/v2/monitoring/load-history" || url.pathname === "/api/v1/events")).toBe(false);
-    const first = await source.queryHistory?.({ from: data.history.startsAt, to: data.history.endsAt });
+    const first = await source.queryHistory?.({ from: routeData.history!.startsAt, to: routeData.history!.endsAt });
     const history = requests.filter((url) => url.pathname === "/api/v2/monitoring/load-history").at(-1)!;
     expect(history.searchParams.get("to")).toBe("2026-10-13T09:00:00+09:00");
     expect(history.searchParams.get("from")).toBe("2026-10-06T09:00:00+09:00");
@@ -86,16 +88,17 @@ describe("표시 시간대 Asia/Seoul 고정", () => {
 
 describe("이벤트 녹화 목록의 재생 요약", () => {
   test("include_playback=true로 요청하고 항목의 playback을 상태와 길이에 반영하며 상세는 일괄 호출하지 않는다", async () => {
-    const { source, requests } = dailySource({ search: "?recordingSource=event", override: url => url.pathname === "/api/v2/recordings/events"
+    const { source, requests } = dailySource({ override: url => url.pathname === "/api/v2/recordings/events"
       ? jsonResponse(eventRecordingPageFixture([
         eventRecordingFixture({ eventId: "evt-a", playback: { state: "PARTIAL", playbackSeconds: 25, reasonCodes: [] } }),
         eventRecordingFixture({ eventId: "evt-b", playback: { state: "UNKNOWN", playbackSeconds: null, reasonCodes: ["MEDIA_UNAVAILABLE"] } }),
         eventRecordingFixture({ eventId: "evt-c", playback: null }),
       ])) : undefined });
-    const data = await source.getDashboardData();
+    await source.getDashboardData();
+    const routeData = await source.loadRouteData!("recordings", { search: "?recordingSource=event" });
     const listRequest = requests.find(({ url }) => url.pathname === "/api/v2/recordings/events")!;
     expect(listRequest.url.searchParams.get("include_playback")).toBe("true");
-    expect(data.recordings.map((item) => [item.id, item.playbackSummary?.state ?? null, item.duration])).toEqual([
+    expect(routeData.recordings!.map((item) => [item.id, item.playbackSummary?.state ?? null, item.duration])).toEqual([
       ["evt-a", "PARTIAL", "0:25"], ["evt-b", "UNKNOWN", "정보 없음"], ["evt-c", null, "정보 없음"],
     ]);
     expect(requests.filter(({ url }) => url.pathname.startsWith("/api/v2/recordings/events/"))).toHaveLength(0);
@@ -109,16 +112,17 @@ describe("서버 페이지 단위 조회", () => {
       const items = Array.from({ length: size }, (_, index) => eventRecordingFixture({ eventId: `evt-${number}-${size}-${index}`, windowFrom: new Date(Date.parse("2026-10-12T00:00:00Z") - ((number - 1) * size + index) * 60_000).toISOString(), windowTo: null }));
       return { ...eventRecordingPageFixture(items), page: { page: number, pageSize: size, totalItems: 1393, totalPages: Math.ceil(1393 / size) } };
     };
-    const { source, requests } = dailySource({ search: "?recordingSource=event", override: url => url.pathname === "/api/v2/recordings/events" ? jsonResponse(page(url)) : undefined });
-    const data = await source.getDashboardData();
+    const { source, requests } = dailySource({ override: url => url.pathname === "/api/v2/recordings/events" ? jsonResponse(page(url)) : undefined });
+    await source.getDashboardData();
+    const routeData = await source.loadRouteData!("recordings", { search: "?recordingSource=event" });
     const listCalls = () => requests.filter(({ url }) => url.pathname === "/api/v2/recordings/events").map(({ url }) => `${url.searchParams.get("page")}/${url.searchParams.get("pageSize")}`);
     expect(listCalls()).toEqual(["1/50"]);
-    expect(data.recordings).toHaveLength(50);
-    expect(data.recordingsTotal).toBe(1393);
-    expect(data.recordingsList).toBeDefined();
-    await data.recordingsList!.ensure(12);
+    expect(routeData.recordings).toHaveLength(50);
+    expect(routeData.recordingsTotal).toBe(1393);
+    expect(routeData.recordingsList).toBeDefined();
+    await routeData.recordingsList!.ensure(12);
     expect(listCalls()).toEqual(["1/50"]);
-    const next = await data.recordingsList!.ensure(150);
+    const next = await routeData.recordingsList!.ensure(150);
     expect(listCalls().slice(0, 3)).toEqual(["1/50", "2/50", "3/50"]);
     expect(next.total).toBe(1393);
     expect(next.items.length).toBeGreaterThanOrEqual(150);
@@ -220,12 +224,13 @@ test.each(["proposal", "backend"] as const)("%s의 촬영 시각은 확인한 �
 test.each(["proposal", "backend"] as const)("%s v1 이력 이벤트는 서버 제목과 내용을 별도로 보존한다", async (apiContract) => {
   const base = createContractFetch();
   const event = { ...eventPageFixture.items[0], title: "서버 이벤트 제목", detail: "서버가 제공한 상세 설명입니다." };
-  const source = createHttpDashboardDataSource({ apiContract, monitoringVersion: "v1", route: () => "/history",
+  const source = createHttpDashboardDataSource({ apiContract, monitoringVersion: "v1",
     fetchImplementation: (input, init) => inputUrl(input).pathname === "/api/v1/events"
       ? jsonResponse({ ...eventPageFixture, items: [event] }) : base.implementation(input, init),
   });
-  const initial = await source.getDashboardData();
-  expect(initial.history.eventsState?.status).toBe("loading");
+  await source.getDashboardData();
+  const routeData = await source.loadRouteData!("history", { search: "" });
+  expect(routeData.history?.eventsState?.status).toBe("loading");
   const page = await source.queryHistoryEvents!({ from: "2026-09-03T00:00", to: "2026-09-10T00:00", page: 0, pageSize: 8 });
   expect(page.events[0]).toMatchObject({ title: event.title, detail: event.detail, content: event.detail });
 });
@@ -300,17 +305,12 @@ function createV2ContractFetch(override?: (url: URL, init?: RequestInit) => Prom
 
 function dailySource({
   override,
-  search = "",
-  route = "/recordings",
 }: {
   override?: (url: URL, init?: RequestInit) => Promise<Response> | undefined;
-  search?: string;
-  route?: string;
 } = {}) {
   const requests: RecordedRequest[] = [];
   const base = createV2ContractFetch();
-  const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", route: () => route,
-    locationSearch: () => search,
+  const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2",
     fetchImplementation: (input, init) => {
       const url = inputUrl(input);
       requests.push({ url, init });
@@ -341,7 +341,7 @@ describe("화면별 조회 범위와 요청 대기 제한", () => {
     expect(onSessionExpired).toHaveBeenCalledOnce();
   });
 
-  test.each(["/history", "/recordings", "/admin"])("%s는 현황 전용 조회와 timer를 시작하지 않는다", async route => {
+  test.each(["history", "recordings", "admin"] as const)("%s는 현황 전용 조회와 timer를 시작하지 않는다", async route => {
     vi.useFakeTimers();
     const stream = new FakeEventSource();
     const base = createV2ContractFetch();
@@ -350,9 +350,10 @@ describe("화면별 조회 범위와 요청 대기 제한", () => {
       if (url.pathname === "/api/v2/recordings/daily") return jsonResponse({ items: [], next_cursor: null });
       return base(input, init);
     });
-    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", route: () => route,
+    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2",
       fetchImplementation, eventSourceFactory: () => stream as unknown as EventSource });
     await source.getDashboardData();
+    await source.loadRouteData!(route, { search: "" });
     const unsubscribe = source.subscribe!(() => undefined);
     const count = () => fetchImplementation.mock.calls.map(([input]) => inputUrl(input));
     const initial = count().length;
@@ -371,9 +372,11 @@ describe("화면별 조회 범위와 요청 대기 제한", () => {
     const stream = new FakeEventSource();
     const fetchImplementation = createV2ContractFetch(url => url.pathname === "/api/v2/monitoring/collection-summary"
       ? failed ? jsonResponse({}, 503) : jsonResponse(collectionSummaryFixture()) : undefined);
-    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", route: () => "/",
+    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2",
       fetchImplementation, eventSourceFactory: () => stream as unknown as EventSource });
     await source.getDashboardData();
+    const activation = source.activateMonitoringDetails!();
+    await activation.ready;
     const unsubscribe = source.subscribe!(() => undefined);
     const count = () => fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v2/monitoring/collection-summary").length;
     for (let i = 0; i < 20; i += 1) stream.emit("monitoring.snapshot", monitoringV2StateFixture("FRESH", 72));
@@ -384,6 +387,7 @@ describe("화면별 조회 범위와 요청 대기 제한", () => {
     for (let i = 0; i < 20; i += 1) stream.emit("monitoring.snapshot", monitoringV2StateFixture("FRESH", 72));
     await vi.advanceTimersByTimeAsync(0);
     expect(count()).toBe(2);
+    activation.release();
     unsubscribe();
     await vi.advanceTimersByTimeAsync(120_000);
     expect(count()).toBe(2);
@@ -402,12 +406,15 @@ describe("화면별 조회 범위와 요청 대기 제한", () => {
       return Promise.resolve(response);
     });
     const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+    let latestData: DashboardData | undefined;
+    source.subscribe?.(d => { latestData = d; });
     const pending = source.getDashboardData();
-    await vi.advanceTimersByTimeAsync(10_000);
     const data = await pending;
+    expect(data.monitoring.notificationState).toMatchObject({ status: "loading" });
+    await vi.advanceTimersByTimeAsync(10_000);
     expect(signal?.aborted).toBe(true);
     expect(data.monitoring.summary.loadPercent).toBe(72);
-    expect(data.monitoring.notificationState).toMatchObject({ status: "error", httpStatus: 504, code: "REQUEST_TIMEOUT" });
+    expect(latestData?.monitoring.notificationState).toMatchObject({ status: "error", httpStatus: 504, code: "REQUEST_TIMEOUT" });
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -421,9 +428,14 @@ describe("화면별 조회 범위와 요청 대기 제한", () => {
       return Promise.resolve(response);
     });
     const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation, onSessionExpired });
-    const rejected = expect(source.getDashboardData()).rejects.toMatchObject({ status });
+    let authError: { status: number; message: string } | undefined;
+    source.subscribe?.(d => {
+      if (d.authError) authError = d.authError;
+    });
+    const data = await source.getDashboardData();
+    expect(data.monitoring.notificationState).toMatchObject({ status: "loading" });
     await vi.advanceTimersByTimeAsync(10_000);
-    await rejected;
+    expect(authError?.status).toBe(status);
     expect(onSessionExpired).toHaveBeenCalledTimes(status === 401 ? 1 : 0);
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -472,16 +484,17 @@ describe("화면별 조회 범위와 요청 대기 제한", () => {
 describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", () => {
   test("v2 녹화 기본 진입은 날짜 목록만 조회하고 이벤트로 분류하지 않는다", async () => {
     const { source, requests } = dailySource();
-    const data = await source.getDashboardData();
+    await source.getDashboardData();
+    const routeData = await source.loadRouteData!("recordings", { search: "" });
     expect(source.supportsDailyRecordings).toBe(true);
-    expect(data.recordingsSource).toBe("daily");
-    expect(data.recordingsState?.status).toBe("ready");
-    expect(data.recordings[0]).toMatchObject({ id: dailyRecordingId, source: "daily", type: "날짜 녹화", status: "available",
+    expect(routeData.recordingsSource).toBe("daily");
+    expect(routeData.recordingsState?.status).toBe("ready");
+    expect(routeData.recordings![0]).toMatchObject({ id: dailyRecordingId, source: "daily", type: "날짜 녹화", status: "available",
       start: "2026-10-12 00:00:00", end: "2026-10-13 00:00:00", duration: "00:00:50", date: "2026-10-12",
       codec: "정보 없음", format: "정보 없음", frameRate: null, size: "정보 없음",
       contentUrl: `/media/daily-recordings/${dailyRecordingId}/hls/index.m3u8`,
       daily: { recordedSeconds: 50, hasGaps: true, exportState: "not_requested" } });
-    expect(data.recordings[0].downloadUrl).toBeUndefined();
+    expect(routeData.recordings![0].downloadUrl).toBeUndefined();
     expect(requests.some(({ url }) => url.pathname === "/api/v1/recordings")).toBe(false);
     const parameters = requests.find(({ url }) => url.pathname === "/api/v2/recordings/daily")!.url.searchParams;
     expect([...parameters.keys()].sort()).toEqual(["from_date", "limit", "to_date"]);
@@ -490,7 +503,7 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
   });
 
   test("전체 조회는 같은 ID도 source로 구분하고 서로 다른 시간대의 실제 시작 시각으로 정렬한다", async () => {
-    const { source, requests } = dailySource({ route: "/", override: url => url.pathname === "/api/v2/recordings/events"
+    const { source, requests } = dailySource({ override: url => url.pathname === "/api/v2/recordings/events"
       ? jsonResponse(eventRecordingPageFixture([eventRecordingFixture({ eventId: dailyRecordingId, windowFrom: "2026-10-11T23:00:00Z", windowTo: "2026-10-11T23:01:00Z" })])) : undefined });
     await source.getDashboardData();
     const signal = new AbortController().signal;
@@ -505,17 +518,18 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
   });
 
   test.each(["/api/v2/recordings/events", "/api/v2/recordings/daily"])("전체 조회의 %s 실패는 부분 결과를 반환하지 않는다", async path => {
-    const { source } = dailySource({ route: "/", override: url => url.pathname === path
+    const { source } = dailySource({ override: url => url.pathname === path
       ? jsonResponse({ detail: "Synthetic query failure" }, 503) : undefined });
     await source.getDashboardData();
     await expect(source.queryRecordings?.({ from: "2026-10-11T00:00", to: "2026-10-13T00:00", recordingSource: "all" })).rejects.toMatchObject({ status: 503 });
   });
 
   test.each([["?recordingSource=event"], [`?recordingId=${eventRecordingId}`]])("명시적인 이벤트 진입 %s는 v2 이벤트 목록 및 단건을 사용한다", async (search) => {
-    const { source, requests } = dailySource({ search });
-    const data = await source.getDashboardData();
-    expect(data.recordingsSource).toBe("event");
-    expect(data.recordings[0]).toMatchObject({ source: "event", type: "알림", id: eventRecordingId });
+    const { source, requests } = dailySource();
+    await source.getDashboardData();
+    const routeData = await source.loadRouteData!("recordings", { search });
+    expect(routeData.recordingsSource).toBe("event");
+    expect(routeData.recordings![0]).toMatchObject({ source: "event", type: "알림", id: eventRecordingId });
     expect(requests.some(({ url }) => url.pathname.startsWith("/api/v2/recordings/daily"))).toBe(search.includes("recordingId"));
     expect(requests.some(({ url }) => url.pathname.startsWith("/api/v1/recordings"))).toBe(false);
     expect(requests.some(({ url }) => url.pathname.startsWith("/api/v2/recordings/events"))).toBe(true);
@@ -524,7 +538,7 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
   test("한국 날짜 inclusive 조회 종료를 exclusive 날짜로 변환하고 opaque cursor를 그대로 전달한다", async () => {
     const cursor = "opaque+/cursor==";
     const nextId = "650e8400-e29b-41d4-a716-446655440000";
-    const { source, requests } = dailySource({ route: "/", override: url => url.pathname === "/api/v2/recordings/daily"
+    const { source, requests } = dailySource({ override: url => url.pathname === "/api/v2/recordings/daily"
       ? url.searchParams.get("cursor") === null
         ? jsonResponse({ items: [dailyRecordingFixture], next_cursor: cursor })
         : jsonResponse({ items: [{ ...dailyRecordingFixture, recording_id: nextId,
@@ -545,6 +559,7 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
     const { source, requests } = dailySource({ override: url => url.pathname === "/api/v2/monitoring/snapshot"
       ? jsonResponse({ ...monitoringV2StateFixture("FRESH", 0), serverTime: "2026-10-12T23:59:50+09:00" }) : undefined });
     await source.getDashboardData();
+    await source.loadRouteData!("recordings", { search: "" });
     expect(requests.find(({ url }) => url.pathname === "/api/v2/recordings/daily")?.url.searchParams.get("to_date")).toBe("2026-10-13");
   });
 
@@ -554,7 +569,7 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
     { from: "2026-10-12T99:99", to: "2026-10-12" },
     { from: "2026-10-12", to: "9999-12-31" },
   ])("유효하지 않은 날짜 구간 %j은 요청 전에 거부한다", async query => {
-    const { source, requests } = dailySource({ route: "/" });
+    const { source, requests } = dailySource();
     await source.getDashboardData();
     const before = requests.length;
     await expect(source.queryRecordings?.({ ...query, recordingSource: "daily" })).rejects.toThrow();
@@ -562,7 +577,7 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
   });
 
   test.each(["cursor", "identity"])("반복된 %s는 무한 조회 또는 중복 목록이 되지 않는다", async (duplicate) => {
-    const { source } = dailySource({ route: "/", override: url => url.pathname === "/api/v2/recordings/daily"
+    const { source } = dailySource({ override: url => url.pathname === "/api/v2/recordings/daily"
       ? jsonResponse({ items: duplicate === "identity" ? [dailyRecordingFixture] : [], next_cursor: "same-cursor" }) : undefined });
     await source.getDashboardData();
     await expect(source.queryRecordings?.({ from: "2026-10-12", to: "2026-10-12", recordingSource: "daily" })).rejects.toThrow("Unexpected");
@@ -571,7 +586,7 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
   test("후속 cursor 조회 취소는 마지막 응답을 적용하지 않는다", async () => {
     const controller = new AbortController();
     let page = 0;
-    const { source } = dailySource({ route: "/", override: url => {
+    const { source } = dailySource({ override: url => {
       if (url.pathname !== "/api/v2/recordings/daily") return undefined;
       page += 1;
       if (page === 2) controller.abort();
@@ -586,7 +601,8 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
   test.each([404, 503])("날짜 API %i는 이벤트 목록으로 대체하거나 서버 오류 원문을 표시하지 않는다", async status => {
     const { source, requests } = dailySource({ override: url => url.pathname === "/api/v2/recordings/daily"
       ? jsonResponse({ detail: "/private/media/path SECRET Traceback" }, status) : undefined });
-    const data = await source.getDashboardData();
+    await source.getDashboardData();
+    const data = await source.loadRouteData!("recordings", { search: "" });
     expect(data.recordings).toEqual([]);
     expect(data.recordingsState).toMatchObject({ status: "error", httpStatus: status });
     expect(data.recordingsState?.message).not.toMatch(/SECRET|Traceback|private/);
@@ -595,21 +611,23 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
 
   test.each([401, 403])("날짜 목록 권한 오류 %i는 부분 오류로 숨기지 않는다", async status => {
     const { source } = dailySource({ override: url => url.pathname === "/api/v2/recordings/daily" ? jsonResponse({ detail: "Denied" }, status) : undefined });
-    await expect(source.getDashboardData()).rejects.toMatchObject({ status });
+    await source.getDashboardData();
+    await expect(source.loadRouteData!("recordings", { search: "" })).rejects.toMatchObject({ status });
   });
 
   test("runtime camera 불일치와 범위 밖 날짜를 거부한다", async () => {
     for (const changes of [{ camera_id: "other-camera" }, { recording_date: "2020-01-01" }]) {
       const { source } = dailySource({ override: url => url.pathname === "/api/v2/recordings/daily"
         ? jsonResponse({ items: [{ ...dailyRecordingFixture, ...changes }], next_cursor: null }) : undefined });
-      const data = await source.getDashboardData();
-      expect(data.recordingsState?.status).toBe("error");
-      expect(data.recordings).toEqual([]);
+      await source.getDashboardData();
+      const routeData = await source.loadRouteData!("recordings", { search: "" });
+      expect(routeData.recordingsState?.status).toBe("error");
+      expect(routeData.recordings).toEqual([]);
     }
   });
 
   test("날짜 단건은 identity와 public 경로를 검사하고 기본 단건은 event에 유지한다", async () => {
-    const { source, requests } = dailySource({ route: "/" });
+    const { source, requests } = dailySource();
     await source.getDashboardData();
     expect(await source.getRecording?.(dailyRecordingId, undefined, "daily")).toMatchObject({ source: "daily", id: dailyRecordingId });
     expect(await source.getRecording?.(eventRecordingId)).toMatchObject({ source: "event" });
@@ -623,7 +641,7 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
       { recording_id: "650e8400-e29b-41d4-a716-446655440000", playback_path: "/media/daily-recordings/650e8400-e29b-41d4-a716-446655440000/hls/index.m3u8" },
       { camera_id: "other-camera" }, { playback_path: "https://private.example/index.m3u8" },
     ]) {
-      const { source } = dailySource({ route: "/", override: url => url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}`
+      const { source } = dailySource({ override: url => url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}`
         ? jsonResponse({ ...dailyRecordingFixture, ...changes }) : undefined });
       await source.getDashboardData();
       await expect(source.getRecording?.(dailyRecordingId, undefined, "daily")).rejects.toThrow("Unexpected");
@@ -683,7 +701,7 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
   });
 
   test("날짜 녹화 삭제는 CSRF와 DELETE로 요청하고 204를 삭제 완료로 처리한다", async () => {
-    const { source, requests } = dailySource({ route: "/", override: (url, init) => url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}` && init?.method === "DELETE"
+    const { source, requests } = dailySource({ override: (url, init) => url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}` && init?.method === "DELETE"
       ? Promise.resolve(new Response(null, { status: 204 })) : undefined });
     await source.getDashboardData();
     expect(await source.deleteDailyRecording?.(dailyRecordingId)).toEqual({ outcome: "deleted" });
@@ -694,7 +712,7 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
 
   test("삭제가 503이어도 재조회에서 이미 없으면 삭제 반영으로 구분하고 남아 있으면 오류를 유지한다", async () => {
     let remaining = false;
-    const { source } = dailySource({ route: "/", override: (url, init) => {
+    const { source } = dailySource({ override: (url, init) => {
       if (url.pathname !== `/api/v2/recordings/daily/${dailyRecordingId}`) return undefined;
       if (init?.method === "DELETE") return jsonResponse({ detail: "cleanup failed" }, 503);
       return remaining ? jsonResponse(dailyRecordingFixture) : jsonResponse({ detail: "not found" }, 404);
@@ -706,7 +724,7 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
   });
 
   test("삭제 409는 재시도 없이 그대로 전달한다", async () => {
-    const { source, requests } = dailySource({ route: "/", override: (url, init) => url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}` && init?.method === "DELETE"
+    const { source, requests } = dailySource({ override: (url, init) => url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}` && init?.method === "DELETE"
       ? jsonResponse({ detail: "recording" }, 409) : undefined });
     await source.getDashboardData();
     await expect(source.deleteDailyRecording?.(dailyRecordingId)).rejects.toMatchObject({ status: 409 });
@@ -755,25 +773,27 @@ test("녹화 목록과 단건의 UTC 시각은 조회 기준 offset으로 변환
     if (url.pathname === "/api/v1/recordings") return jsonResponse({ ...recordingPageFixture, items: [recording] });
     if (url.pathname.startsWith("/api/v1/recordings/")) return jsonResponse(recording);
   });
-  const source = createHttpDashboardDataSource({ apiContract: "proposal", monitoringVersion: "v2", route: () => "/recordings", locationSearch: () => "?recordingSource=event", fetchImplementation });
-  const data = await source.getDashboardData();
-  expect(data.recordings[0]).toMatchObject({ date: "2026-10-15", start: "2026-10-15 08:59:30", end: "2026-10-15 09:00:30", time: "08:59 - 09:00",
+  const source = createHttpDashboardDataSource({ apiContract: "proposal", monitoringVersion: "v2", fetchImplementation });
+  await source.getDashboardData();
+  const routeData = await source.loadRouteData!("recordings", { search: "?recordingSource=event" });
+  expect(routeData.recordings![0]).toMatchObject({ date: "2026-10-15", start: "2026-10-15 08:59:30", end: "2026-10-15 09:00:30", time: "08:59 - 09:00",
     retentionStartsAt: "2026-10-15 09:01:00", retentionEndsAt: "정보 없음", duration: "정보 없음", status: "unavailable", errorCode: "NO_FRAMES_AVAILABLE",
     gaps: [{ start: "2026-10-15 08:59:30", end: "2026-10-15 09:00:30" }] });
-  expect(data.recordings[0].contentUrl).toBeUndefined();
-  expect(data.recordings[0].downloadUrl).toBeUndefined();
-  expect(await source.getRecording?.(recording.id)).toEqual(data.recordings[0]);
+  expect(routeData.recordings![0].contentUrl).toBeUndefined();
+  expect(routeData.recordings![0].downloadUrl).toBeUndefined();
+  expect(await source.getRecording?.(recording.id)).toEqual(routeData.recordings![0]);
 });
 
 test("Backend optional 알림 설정은 계약의 default를 적용한다", async () => {
   const fetchFixture = createContractFetch();
   const settings = { version: alertSettingsFixture.version, collectionThresholdPercent: alertSettingsFixture.collectionThresholdPercent,
     preCollectionAlert: { thresholdPercent: alertSettingsFixture.preCollectionAlert.thresholdPercent } };
-  const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v1", route: () => "/admin", fetchImplementation: (input, init) =>
+  const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v1", fetchImplementation: (input, init) =>
     inputUrl(input).pathname === "/api/v1/settings/alerts" ? jsonResponse(settings) : fetchFixture.implementation(input, init),
   });
-  const data = await source.getDashboardData();
-  expect(data.admin.alertSettings).toMatchObject({ enabledEventTypes: ["collection_required", "measurement_error", "device_error"],
+  await source.getDashboardData();
+  const routeData = await source.loadRouteData!("admin", { search: "" });
+  expect(routeData.admin!.alertSettings).toMatchObject({ enabledEventTypes: ["collection_required", "measurement_error", "device_error"],
     maximumRepeatCount: 3, preCollectionAlert: { enabled: true }, recoveryNotificationEnabled: true, repeatIntervalMinutes: 30, sendDelayMinutes: 0 });
 });
 
@@ -783,8 +803,11 @@ test("읽음 시각이 생략된 Backend 알림은 읽지 않은 상태를 유�
   const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v1", fetchImplementation: (input, init) =>
     inputUrl(input).pathname === "/api/v1/notifications" ? jsonResponse(notifications) : fetchFixture.implementation(input, init),
   });
-  const data = await source.getDashboardData();
-  expect(data.monitoring.headerNotifications[0].read).toBe(false);
+  let latestData: DashboardData | undefined;
+  source.subscribe?.(d => { latestData = d; });
+  await source.getDashboardData();
+  await vi.waitFor(() => expect(latestData?.monitoring.notificationState?.status).toBe("ready"));
+  expect(latestData?.monitoring.headerNotifications[0].read).toBe(false);
 });
 
 describe("테스트 알림 이후 종 목록 동기화", () => {
@@ -885,8 +908,14 @@ describe("테스트 알림 이후 종 목록 동기화", () => {
     const unsubscribe = source.subscribe?.(listener);
     const pending = source.sendTestNotification!("recipient-contract-1", ["email"]);
     await vi.waitFor(() => expect(queries).toBe(2));
-    if (cancellation === "unsubscribe") unsubscribe?.();
-    else await source.getDashboardData();
+    if (cancellation === "unsubscribe") {
+      unsubscribe?.();
+    } else {
+      const callsBefore = listener.mock.calls.length;
+      await source.getDashboardData();
+      await vi.waitFor(() => expect(queries).toBe(3));
+      await vi.waitFor(() => expect(listener.mock.calls.length).toBeGreaterThan(callsBefore));
+    }
     listener.mockClear();
     complete(new Response(JSON.stringify({ ...notificationPageFixture, unreadCount: 99 })));
     await expect(pending).resolves.toBeUndefined();
@@ -901,27 +930,40 @@ describe("보조 조회의 오류 경계", () => {
       ? failure === "invalid" ? jsonResponse({ ...notificationPageFixture, items: [{ ...notificationPageFixture.items[0], title: null }] })
         : jsonResponse({ detail: "Notification query failed" }, failure as number) : undefined);
     const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+    let latestData: DashboardData | undefined;
+    source.subscribe?.(d => { latestData = d; });
     const data = await source.getDashboardData();
     expect(data.monitoring.summary.loadPercent).toBe(72);
     expect(data.monitoring.videoUrl).toBe("/media/cameras/camera-main/live");
     expect(data.monitoring.videoCapturedAt).toBeNull();
-    expect(data.monitoring.unreadNotificationCount).toBeNull();
-    expect(data.monitoring.notificationState).toMatchObject({ status: "error", stale: false });
-    expect(data.monitoring.loadHistoryState?.status).toBe("ready");
+    expect(data.monitoring.notificationState).toMatchObject({ status: "loading" });
+    await vi.waitFor(() => expect(latestData?.monitoring.notificationState?.status).toBe("error"));
+    expect(latestData?.monitoring.unreadNotificationCount).toBeNull();
+    expect(latestData?.monitoring.notificationState).toMatchObject({ status: "error", stale: false });
   });
 
   test.each([401, 403])("알림의 권한 오류 %i는 보조 조회 실패로 숨기지 않는다", async (status) => {
     const onSessionExpired = vi.fn();
     const fetchImplementation = createV2ContractFetch((url) => url.pathname === "/api/v1/notifications" ? jsonResponse({ detail: "Access denied" }, status) : undefined);
     const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation, onSessionExpired });
-    await expect(source.getDashboardData()).rejects.toMatchObject({ status });
+    let authError: { status: number; message: string } | undefined;
+    source.subscribe?.(d => {
+      if (d.authError) authError = d.authError;
+    });
+    await source.getDashboardData();
+    await vi.waitFor(() => expect(authError?.status).toBe(status));
     expect(onSessionExpired).toHaveBeenCalledTimes(status === 401 ? 1 : 0);
   });
 
   test.each([401, 403])("오류 body가 null이어도 권한 오류 %i를 보존한다", async (status) => {
     const fetchImplementation = createV2ContractFetch((url) => url.pathname === "/api/v1/notifications" ? jsonResponse(null, status) : undefined);
     const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation, onSessionExpired: () => undefined });
-    await expect(source.getDashboardData()).rejects.toMatchObject({ status });
+    let authError: { status: number; message: string } | undefined;
+    source.subscribe?.(d => {
+      if (d.authError) authError = d.authError;
+    });
+    await source.getDashboardData();
+    await vi.waitFor(() => expect(authError?.status).toBe(status));
   });
 
   test("새 경보의 알림 조회 실패는 이전 목록과 수를 유지하고 다음 snapshot에서 자동 복구한다", async () => {
@@ -955,6 +997,7 @@ describe("보조 조회의 오류 경계", () => {
     await source.getDashboardData();
     const listener = vi.fn<(data: DashboardData) => void>();
     const unsubscribe = source.subscribe?.(listener);
+    await vi.waitFor(() => expect(listener.mock.lastCall?.[0].monitoring.notificationState?.status).toBe("error"));
     failed = false;
     stream.emit("monitoring.snapshot", monitoringV2StateFixture("FRESH", 72));
     await vi.waitFor(() => expect(listener.mock.lastCall?.[0].monitoring.notificationState?.status).toBe("ready"));
@@ -981,17 +1024,26 @@ describe("보조 조회의 오류 경계", () => {
 
   test("녹화 목록 오류는 snapshot과 별도 상태로 남기며 최근 완료는 조회하지 않는다", async () => {
     const fetchImplementation = createV2ContractFetch((url) => ["/api/v2/monitoring/collection-summary", "/api/v2/recordings/daily"].includes(url.pathname) ? jsonResponse({}, 500) : undefined);
-    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation, route: () => "/recordings" });
+    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
     const data = await source.getDashboardData();
+    const routeData = await source.loadRouteData!("recordings", { search: "" });
     expect(data.monitoring.summary.loadPercent).toBe(72);
     expect(fetchImplementation.mock.calls.some(([input]) => inputUrl(input).pathname === "/api/v2/monitoring/collection-summary")).toBe(false);
-    expect(data.recordingsState).toMatchObject({ status: "error", httpStatus: 500 });
+    expect(routeData.recordingsState).toMatchObject({ status: "error", httpStatus: 500 });
   });
 
-  test.each([401, 403])("최근 완료 조회 권한 오류 %i는 초기화를 거부한다", async (status) => {
+  test.each([401, 403])("최근 완료 조회 권한 오류 %i는 권한 오류를 전달하고 ready를 해결한다", async (status) => {
     const fetchImplementation = createV2ContractFetch((url) => url.pathname === "/api/v2/monitoring/collection-summary" ? jsonResponse({}, status) : undefined);
     const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation, onSessionExpired: () => undefined });
-    await expect(source.getDashboardData()).rejects.toMatchObject({ status });
+    await source.getDashboardData();
+    let authStatus: number | undefined;
+    source.subscribe!((data) => {
+      if (data.authError) authStatus = data.authError.status;
+    });
+    const activation = source.activateMonitoringDetails!();
+    await expect(activation.ready).resolves.toBeUndefined();
+    expect(authStatus).toBe(status);
+    activation.release();
   });
 });
 
@@ -1012,52 +1064,88 @@ describe("v2 추이와 기존 이력의 독립 조회", () => {
     });
     const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
     const initial = await source.getDashboardData();
-    expect(initial.monitoring.loadHistory.length).toBeGreaterThan(0);
+    let latestData = initial;
+    source.subscribe!((d) => { latestData = d; });
+    await vi.waitFor(() => expect(latestData.monitoring.notificationState?.status).toBe("ready"));
+    const act1 = source.activateMonitoringDetails!();
+    await vi.waitFor(() => expect(latestData.monitoring.loadHistory.length).toBeGreaterThan(0));
+    act1.release();
+
     failed = true;
     const result = await source.getDashboardData();
     expect(result.monitoring.v2).toMatchObject({ siteId: nextSource.site_id, edgeId: nextSource.edge_id });
-    expect(result.monitoring.loadHistory).toEqual([]);
-    expect(result.monitoring.loadHistoryState).toMatchObject({ status: "error", stale: false, httpStatus: 503 });
-    expect(result.monitoring.unreadNotificationCount).toBe(initial.monitoring.unreadNotificationCount);
+    const act2 = source.activateMonitoringDetails!();
+    await vi.waitFor(() => expect(latestData.monitoring.loadHistoryState).toMatchObject({ status: "error", stale: false, httpStatus: 503 }));
+    expect(latestData.monitoring.loadHistory).toEqual([]);
+    expect(result.monitoring.unreadNotificationCount).toBe(latestData.monitoring.unreadNotificationCount);
+    act2.release();
+
     recovered = true;
-    const recovery = await source.getDashboardData();
-    expect(recovery.monitoring.loadHistory.length).toBeGreaterThan(0);
-    expect(recovery.monitoring.loadHistoryState?.status).toBe("ready");
+    await source.getDashboardData();
+    const act3 = source.activateMonitoringDetails!();
+    await vi.waitFor(() => expect(latestData.monitoring.loadHistoryState?.status).toBe("ready"));
+    expect(latestData.monitoring.loadHistory.length).toBeGreaterThan(0);
+    act3.release();
   });
 
   test("같은 source의 일시적인 추이 실패는 마지막 유효 곡선을 유지한다", async () => {
-    let failed = false;
-    const fetchImplementation = createV2ContractFetch(url => failed && url.pathname === "/api/v2/monitoring/load-history" ? jsonResponse({}, 503) : undefined);
-    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
-    const initial = await source.getDashboardData();
-    failed = true;
-    const result = await source.getDashboardData();
-    expect(result.monitoring.loadHistory).toEqual(initial.monitoring.loadHistory);
-    expect(result.monitoring.loadHistoryState).toMatchObject({ status: "error", stale: true, httpStatus: 503 });
-    const repeatedFailure = await source.getDashboardData();
-    expect(repeatedFailure.monitoring.loadHistory).toEqual(initial.monitoring.loadHistory);
-    expect(repeatedFailure.monitoring.loadHistoryState).toMatchObject({ status: "error", stale: true });
+    vi.useFakeTimers();
+    try {
+      let failed = false;
+      const fetchImplementation = createV2ContractFetch(url => failed && url.pathname === "/api/v2/monitoring/load-history" ? jsonResponse({}, 503) : undefined);
+      const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+      const initial = await source.getDashboardData();
+      let latestData = initial;
+      source.subscribe!((d) => { latestData = d; });
+      const act1 = source.activateMonitoringDetails!();
+      await vi.waitFor(() => expect(latestData.monitoring.loadHistory.length).toBeGreaterThan(0));
+      act1.release();
+      const initialHistory = latestData.monitoring.loadHistory;
+
+      failed = true;
+      await vi.advanceTimersByTimeAsync(60_001);
+      await source.getDashboardData();
+      const act2 = source.activateMonitoringDetails!();
+      await vi.waitFor(() => expect(latestData.monitoring.loadHistoryState).toMatchObject({ status: "error", stale: true, httpStatus: 503 }));
+      expect(latestData.monitoring.loadHistory).toEqual(initialHistory);
+      act2.release();
+
+      await vi.advanceTimersByTimeAsync(60_001);
+      await source.getDashboardData();
+      const act3 = source.activateMonitoringDetails!();
+      await vi.waitFor(() => expect(latestData.monitoring.loadHistoryState).toMatchObject({ status: "error", stale: true }));
+      expect(latestData.monitoring.loadHistory).toEqual(initialHistory);
+      act3.release();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("현재 상태가 NO_DATA여도 유효한 과거 0%와 generatedAt 좌표를 유지한다", async () => {
     const fetchImplementation = createV2ContractFetch((url) => url.pathname === "/api/v2/monitoring/snapshot" ? jsonResponse(monitoringV2StateFixture("NO_DATA")) : undefined);
     const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
     const data = await source.getDashboardData();
-    expect(data.monitoring.summary.loadPercent).toBeNull();
-    expect(data.monitoring.loadHistory[0].value).toBe(0);
-    expect(Date.parse(data.monitoring.loadHistory[0].measuredAt)).toBe(Date.parse(data.monitoring.loadHistory[0].generatedAt!));
+    let latestData = data;
+    source.subscribe!((d) => { latestData = d; });
+    const act = source.activateMonitoringDetails!();
+    await vi.waitFor(() => expect(latestData.monitoring.loadHistory.length).toBeGreaterThan(0));
+    expect(latestData.monitoring.summary.loadPercent).toBeNull();
+    expect(latestData.monitoring.loadHistory[0].value).toBe(0);
+    expect(Date.parse(latestData.monitoring.loadHistory[0].measuredAt)).toBe(Date.parse(latestData.monitoring.loadHistory[0].generatedAt!));
     const url = fetchImplementation.mock.calls.map(([input]) => inputUrl(input)).find((value) => value.pathname === "/api/v2/monitoring/load-history")!;
     expect(Date.parse(url.searchParams.get("to")!)).toBeLessThanOrEqual(Date.parse(monitoringV2StateFixture("NO_DATA").serverTime));
     expect(Date.parse(url.searchParams.get("to")!) - Date.parse(url.searchParams.get("from")!)).toBe(24 * 3_600_000);
+    act.release();
   });
 
   test.each(["load", "events"])("%s 실패는 다른 이력 영역의 응답을 보존한다", async (area) => {
     const fetchImplementation = createV2ContractFetch((url) => url.pathname === (area === "load" ? "/api/v2/monitoring/load-history" : "/api/v1/events")
       ? jsonResponse({}, 500) : undefined);
-    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation, route: () => "/history" });
+    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
     const data = await source.getDashboardData();
-    expect(data.history.loadState?.status).toBe("loading");
-    expect(data.history.eventsState?.status).toBe("loading");
+    const routeData = await source.loadRouteData!("history", { search: "" });
+    expect(routeData.history?.loadState?.status).toBe("loading");
+    expect(routeData.history?.eventsState?.status).toBe("loading");
     expect(data.monitoring.summary.loadPercent).toBe(72);
     const query = { from: "2026-10-12T09:00", to: "2026-10-13T09:00" };
     const [load, events] = await Promise.allSettled([source.queryHistory!(query), source.queryHistoryEvents!({ ...query, page: 0, pageSize: 8 })]);
@@ -1156,20 +1244,27 @@ describe("v2 추이와 기존 이력의 독립 조회", () => {
 
   test("SSE마다 추이를 다시 조회하지 않고 1분 timer와 구독 회수를 사용한다", async () => {
     vi.useFakeTimers();
-    const fetchImplementation = createV2ContractFetch();
-    const stream = new FakeEventSource();
-    const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation, eventSourceFactory: () => stream as unknown as EventSource });
-    await source.getDashboardData();
-    const listener = vi.fn<(data: DashboardData) => void>();
-    const unsubscribe = source.subscribe?.(listener);
-    stream.emit("monitoring.snapshot", monitoringV2StateFixture("FRESH", 72));
-    stream.emit("monitoring.snapshot", monitoringV2StateFixture("FRESH", 72));
-    expect(fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v2/monitoring/load-history")).toHaveLength(1);
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v2/monitoring/load-history")).toHaveLength(2);
-    unsubscribe?.();
-    await vi.advanceTimersByTimeAsync(120_000);
-    expect(fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v2/monitoring/load-history")).toHaveLength(2);
+    try {
+      const fetchImplementation = createV2ContractFetch();
+      const stream = new FakeEventSource();
+      const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation, eventSourceFactory: () => stream as unknown as EventSource });
+      await source.getDashboardData();
+      const listener = vi.fn<(data: DashboardData) => void>();
+      const unsubscribe = source.subscribe?.(listener);
+      const activation = source.activateMonitoringDetails!();
+      await activation.ready;
+      stream.emit("monitoring.snapshot", monitoringV2StateFixture("FRESH", 72));
+      stream.emit("monitoring.snapshot", monitoringV2StateFixture("FRESH", 72));
+      expect(fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v2/monitoring/load-history")).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v2/monitoring/load-history")).toHaveLength(2);
+      activation.release();
+      unsubscribe?.();
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v2/monitoring/load-history")).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -1203,10 +1298,11 @@ test.each([409, 412])("설정과 수신 대상 변경 충돌 %i는 성공 응답
   const base = createContractFetch();
   const fetchImplementation = (input: RequestInfo | URL, init?: RequestInit) => init?.method === "PUT" || init?.method === "PATCH"
     ? jsonResponse({ code: "version_conflict", detail: "Version conflict" }, status) : base.implementation(input, init);
-  const source = createHttpDashboardDataSource({ apiContract: "backend", fetchImplementation, route: () => "/admin" });
-  const data = await source.getDashboardData();
-  await expect(source.replaceAlertSettings?.(data.admin.alertSettings)).rejects.toMatchObject({ status, code: "version_conflict" });
-  await expect(source.updateNotificationRecipient?.(data.admin.recipients[0], data.admin.recipientSettings[data.admin.recipients[0].email]))
+  const source = createHttpDashboardDataSource({ apiContract: "backend", fetchImplementation });
+  await source.getDashboardData();
+  const routeData = await source.loadRouteData!("admin", { search: "" });
+  await expect(source.replaceAlertSettings?.(routeData.admin!.alertSettings)).rejects.toMatchObject({ status, code: "version_conflict" });
+  await expect(source.updateNotificationRecipient?.(routeData.admin!.recipients[0], routeData.admin!.recipientSettings[routeData.admin!.recipients[0].email]))
     .rejects.toMatchObject({ status, code: "version_conflict" });
 });
 
@@ -1232,9 +1328,13 @@ describe("HTTP 대시보드 데이터 소스", () => {
 
   test("관리자 경로의 계약 응답 전체를 화면 도메인 모델로 변환한다", async () => {
     const { implementation, requests } = createContractFetch();
-    const source = createHttpDashboardDataSource({ fetchImplementation: implementation, route: () => "/admin" });
+    const source = createHttpDashboardDataSource({ fetchImplementation: implementation });
+    let latestData: DashboardData | undefined;
+    source.subscribe?.(d => { latestData = d; });
 
     const data = await source.getDashboardData();
+    const routeData = await source.loadRouteData!("admin", { search: "" });
+    await vi.waitFor(() => expect(latestData?.monitoring.notificationState?.status).toBe("ready"));
 
     expect(data.session?.user.displayName).toBe("계약 관리자");
     expect(data.monitoring.summary).toMatchObject({
@@ -1247,10 +1347,10 @@ describe("HTTP 대시보드 데이터 소스", () => {
       { height: 1.2, positionRatio: 0 },
       { height: 2.4, positionRatio: 1 },
     ]);
-    expect(data.monitoring.headerNotifications[0]).toMatchObject({ id: "notification-contract-1", read: false });
-    expect(data.monitoring.unreadNotificationCount).toBe(1);
-    expect(data.admin.alertSettings.maximumRepeatCount).toBe(3);
-    expect(data.admin.recipients[0]).toMatchObject({ id: "recipient-contract-1", name: "계약 담당자" });
+    expect(latestData?.monitoring.headerNotifications[0]).toMatchObject({ id: "notification-contract-1", read: false });
+    expect(latestData?.monitoring.unreadNotificationCount).toBe(1);
+    expect(routeData.admin!.alertSettings.maximumRepeatCount).toBe(3);
+    expect(routeData.admin!.recipients[0]).toMatchObject({ id: "recipient-contract-1", name: "계약 담당자" });
     expect(requests.map(({ url }) => url.pathname)).toEqual(expect.arrayContaining([
       "/api/v1/session",
       "/api/v1/monitoring/snapshot",
@@ -1342,7 +1442,7 @@ describe("HTTP 대시보드 데이터 소스", () => {
 
   test("이력의 시간, 유형, 임계율 변경과 분 단위 이벤트 위치를 보존한다", async () => {
     const { implementation, requests } = createContractFetch({ authenticated: false });
-    const source = createHttpDashboardDataSource({ fetchImplementation: implementation, route: () => "/history" });
+    const source = createHttpDashboardDataSource({ fetchImplementation: implementation });
 
     await source.getDashboardData();
 
@@ -1365,7 +1465,7 @@ describe("HTTP 대시보드 데이터 소스", () => {
 
   test("녹화 메타데이터와 재생 및 다운로드 경로를 변환한다", async () => {
     const { implementation, requests } = createContractFetch({ authenticated: false });
-    const source = createHttpDashboardDataSource({ fetchImplementation: implementation, route: () => "/" });
+    const source = createHttpDashboardDataSource({ fetchImplementation: implementation });
     await source.getDashboardData();
 
     const recordings = await source.queryRecordings?.({ from: "2026-09-03T00:00", to: "2026-09-10T00:00" });
@@ -1389,21 +1489,20 @@ describe("HTTP 대시보드 데이터 소스", () => {
     const { implementation, requests } = createContractFetch({ authenticated: false });
     const source = createHttpDashboardDataSource({
       fetchImplementation: implementation,
-      locationSearch: () => "?recordingId=recording-contract-1",
-      route: () => "/recordings",
     });
 
-    const data = await source.getDashboardData();
+    await source.getDashboardData();
+    const routeData = await source.loadRouteData!("recordings", { search: "?recordingId=recording-contract-1" });
 
-    expect(data.recordings).toHaveLength(1);
-    expect(data.recordings[0].id).toBe("recording-contract-1");
+    expect(routeData.recordings).toHaveLength(1);
+    expect(routeData.recordings![0].id).toBe("recording-contract-1");
     expect(requests.some(({ url }) => url.pathname === "/api/v1/recordings/recording-contract-1")).toBe(true);
     expect(requests.some(({ url }) => url.pathname === "/api/v1/recordings" && url.searchParams.has("from"))).toBe(false);
   });
 
   test("로그인 요청과 session 종료 요청에 계약 body, Cookie 설정과 CSRF를 적용한다", async () => {
     const { implementation, requests } = createContractFetch({ authenticated: false });
-    const source = createHttpDashboardDataSource({ fetchImplementation: implementation, route: () => "/" });
+    const source = createHttpDashboardDataSource({ fetchImplementation: implementation });
 
     await source.createSession?.({ password: "contract-password", persistent: true, username: "contract-admin" });
     await source.deleteSession?.();
@@ -1432,7 +1531,7 @@ describe("HTTP 대시보드 데이터 소스", () => {
       }
       return base.implementation(input, init);
     });
-    const source = createHttpDashboardDataSource({ fetchImplementation: implementation, route: () => "/" });
+    const source = createHttpDashboardDataSource({ fetchImplementation: implementation });
 
     await expect(source.queryRecordings?.({ from: "2026-09-03T00:00", to: "2026-09-10T00:00" }))
       .rejects.toThrow("dashboard origin");
@@ -1440,14 +1539,15 @@ describe("HTTP 대시보드 데이터 소스", () => {
 
   test("상태 변경 요청에 CSRF와 ETag를 포함하고 계약 body를 전송한다", async () => {
     const { implementation, requests } = createContractFetch();
-    const source = createHttpDashboardDataSource({ fetchImplementation: implementation, route: () => "/admin" });
-    const data = await source.getDashboardData();
+    const source = createHttpDashboardDataSource({ fetchImplementation: implementation });
+    await source.getDashboardData();
+    const routeData = await source.loadRouteData!("admin", { search: "" });
 
     await source.markNotificationRead?.("notification-contract-1");
     await source.markAllNotificationsRead?.();
-    await source.replaceAlertSettings?.({ ...data.admin.alertSettings, maximumRepeatCount: 5 });
-    const updatedRecipient = await source.updateNotificationRecipient?.(data.admin.recipients[0], {
-      ...data.admin.recipientSettings["operator@example.com"],
+    await source.replaceAlertSettings?.({ ...routeData.admin!.alertSettings, maximumRepeatCount: 5 });
+    const updatedRecipient = await source.updateNotificationRecipient?.(routeData.admin!.recipients[0], {
+      ...routeData.admin!.recipientSettings["operator@example.com"],
       sms: false,
     });
     await source.sendTestNotification?.("recipient-contract-1", ["email", "sms"]);
@@ -1475,11 +1575,12 @@ describe("HTTP 대시보드 데이터 소스", () => {
       eventSourceFactory: () => fakeEventSource as unknown as EventSource,
       fetchImplementation: implementation,
       onSessionExpired,
-      route: () => "/",
     });
     await source.getDashboardData();
     const listener = vi.fn<(data: DashboardData) => void>();
     const unsubscribe = source.subscribe?.(listener);
+    await vi.waitFor(() => expect(listener).toHaveBeenCalled());
+    listener.mockClear();
 
     fakeEventSource.emit("monitoring.snapshot", { ...monitoringFixture, snapshotId: "snapshot-contract-2", summary: { ...monitoringFixture.summary, loadPercent: 77 } }, "event-101");
     fakeEventSource.emit("monitoring.snapshot", { ...monitoringFixture, snapshotId: "snapshot-contract-2", summary: { ...monitoringFixture.summary, loadPercent: 77 } }, "event-101");
@@ -1529,11 +1630,12 @@ describe("HTTP 대시보드 데이터 소스", () => {
     const source = createHttpDashboardDataSource({
       eventSourceFactory: () => fakeEventSource as unknown as EventSource,
       fetchImplementation: implementation,
-      route: () => "/",
     });
     await source.getDashboardData();
     const listener = vi.fn<(data: DashboardData) => void>();
     source.subscribe?.(listener);
+    await vi.waitFor(() => expect(listener).toHaveBeenCalled());
+    listener.mockClear();
 
     fakeEventSource.emit("stream.resync-required", { reason: "event_not_retained", snapshotPath: "/api/v1/monitoring/snapshot" }, "event-resync");
 
@@ -1583,7 +1685,7 @@ describe("HTTP 대시보드 데이터 소스", () => {
       }
       return base.implementation(input, init);
     });
-    const source = createHttpDashboardDataSource({ fetchImplementation: implementation, route: () => "/" });
+    const source = createHttpDashboardDataSource({ fetchImplementation: implementation });
 
     const data = await source.getDashboardData();
 
@@ -1608,16 +1710,17 @@ describe("HTTP 대시보드 데이터 소스", () => {
       }
       return base.implementation(input, init);
     });
-    const source = createHttpDashboardDataSource({ fetchImplementation: implementation, onSessionExpired, route: () => "/admin" });
-    const data = await source.getDashboardData();
+    const source = createHttpDashboardDataSource({ fetchImplementation: implementation, onSessionExpired });
+    await source.getDashboardData();
+    const routeData = await source.loadRouteData!("admin", { search: "" });
 
-    const conflict = await source.replaceAlertSettings!(data.admin.alertSettings).catch((error: unknown) => error);
+    const conflict = await source.replaceAlertSettings!(routeData.admin!.alertSettings).catch((error: unknown) => error);
     expect(conflict).toBeInstanceOf(ApiError);
     expect(conflict).toMatchObject({ code: "version_conflict", status: 412 });
     expect(onSessionExpired).not.toHaveBeenCalled();
 
     failureStatus = 401;
-    const expired = await source.replaceAlertSettings!(data.admin.alertSettings).catch((error: unknown) => error);
+    const expired = await source.replaceAlertSettings!(routeData.admin!.alertSettings).catch((error: unknown) => error);
     expect(expired).toBeInstanceOf(ApiError);
     expect(expired).toMatchObject({ code: "session_expired", status: 401 });
     expect(onSessionExpired).toHaveBeenCalledOnce();
@@ -1636,7 +1739,7 @@ describe("HTTP 대시보드 데이터 소스", () => {
       }
       return base.implementation(input, init);
     });
-    const source = createHttpDashboardDataSource({ fetchImplementation: implementation, route: () => "/" });
+    const source = createHttpDashboardDataSource({ fetchImplementation: implementation });
 
     expect((await source.getDashboardData()).session).not.toBeNull();
     expect((await source.getDashboardData()).session).toBeNull();
@@ -1644,5 +1747,329 @@ describe("HTTP 대시보드 데이터 소스", () => {
 
     const request = base.requests.find(({ url }) => url.pathname === "/api/v1/notifications/test");
     expect(new Headers(request?.init?.headers).has("X-CSRF-Token")).toBe(false);
+  });
+
+  describe("화면 전환 성능 개선 단계 A 계약 검증", () => {
+    test("알림과 load-history 응답을 붙잡아 둔 상태에서 getDashboardData가 반환하고 알림 응답 뒤 listener가 ready 상태를 받는다", async () => {
+      let resolveNotifications: (res: Response) => void = () => undefined;
+      let resolveHistory: (res: Response) => void = () => undefined;
+      let historyUrl: URL | undefined;
+      const fetchImplementation = createV2ContractFetch((url) => {
+        if (url.pathname === "/api/v1/notifications") {
+          return new Promise<Response>((resolve) => { resolveNotifications = resolve; });
+        }
+        if (url.pathname === "/api/v2/monitoring/load-history") {
+          historyUrl = url;
+          return new Promise<Response>((resolve) => { resolveHistory = resolve; });
+        }
+        return undefined;
+      });
+      const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+      let latestData: DashboardData | undefined;
+      source.subscribe?.((data) => { latestData = data; });
+
+      const data = await source.getDashboardData();
+      expect(data.monitoring.notificationState).toMatchObject({ status: "loading" });
+      expect(data.monitoring.summary.loadPercent).toBe(72);
+
+      resolveNotifications(await jsonResponse(notificationPageFixture));
+      await vi.waitFor(() => expect(latestData?.monitoring.notificationState?.status).toBe("ready"));
+      expect(latestData?.monitoring.unreadNotificationCount).toBe(1);
+
+      const activation = source.activateMonitoringDetails!();
+      await activation.ready;
+      expect(latestData?.monitoring.loadHistoryState?.status).toBe("loading");
+      resolveHistory(await jsonResponse(v2HistoryResponse(historyUrl!)));
+      await vi.waitFor(() => expect(latestData?.monitoring.loadHistoryState?.status).toBe("ready"));
+      activation.release();
+    });
+
+    test("반환 뒤 알림이 401이면 authError가 publish된다", async () => {
+      let resolveNotifications: (res: Response) => void = () => undefined;
+      const onSessionExpired = vi.fn();
+      const fetchImplementation = createV2ContractFetch((url) => {
+        if (url.pathname === "/api/v1/notifications") {
+          return new Promise<Response>((resolve) => { resolveNotifications = resolve; });
+        }
+        return undefined;
+      });
+      const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation, onSessionExpired });
+      let authError: { status: number; message: string } | undefined;
+      source.subscribe?.((data) => {
+        if (data.authError) authError = data.authError;
+      });
+
+      const data = await source.getDashboardData();
+      expect(data.monitoring.notificationState).toMatchObject({ status: "loading" });
+      resolveNotifications(new Response(JSON.stringify({ detail: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } }));
+      await vi.waitFor(() => expect(authError?.status).toBe(401));
+      expect(onSessionExpired).toHaveBeenCalledOnce();
+    });
+
+    test("SSE로 먼저 갱신된 알림을 늦은 초기 응답이 덮지 않는다", async () => {
+      let resolveNotifications: (res: Response) => void = () => undefined;
+      const stream = new FakeEventSource();
+      const fetchImplementation = createV2ContractFetch((url) => {
+        if (url.pathname === "/api/v1/notifications") {
+          return new Promise<Response>((resolve) => { resolveNotifications = resolve; });
+        }
+        return undefined;
+      });
+      const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation, eventSourceFactory: () => stream as unknown as EventSource });
+      let latestData: DashboardData | undefined;
+      source.subscribe?.((data) => { latestData = data; });
+
+      await source.getDashboardData();
+      const sseNotification = { ...notificationPageFixture.items[0], id: "sse-notif-1", title: "실시간 알림" };
+      stream.emit("notification.created", sseNotification);
+      await vi.waitFor(() => expect(latestData?.monitoring.headerNotifications[0]?.id).toBe("sse-notif-1"));
+
+      resolveNotifications(await jsonResponse({ ...notificationPageFixture, unreadCount: 99 }));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(latestData?.monitoring.unreadNotificationCount).not.toBe(99);
+      expect(latestData?.monitoring.headerNotifications[0]?.id).toBe("sse-notif-1");
+    });
+
+    test("activateMonitoringDetails: ready와 60초 재사용, release 타이머 정지 및 다중 참조 관리", async () => {
+      vi.useFakeTimers();
+      try {
+        const stream = new FakeEventSource();
+        const fetchImplementation = createV2ContractFetch();
+        const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation, eventSourceFactory: () => stream as unknown as EventSource });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((data) => { latestData = data; });
+        await source.getDashboardData();
+
+        const summaryCalls = () => fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v2/monitoring/collection-summary").length;
+        const historyCalls = () => fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v2/monitoring/load-history").length;
+
+        stream.emit("monitoring.snapshot", monitoringV2StateFixture("FRESH", 72));
+        expect(summaryCalls()).toBe(0);
+
+        const act1 = source.activateMonitoringDetails!();
+        expect(summaryCalls()).toBe(1);
+        await act1.ready;
+        await vi.waitFor(() => expect(latestData?.monitoring.completedCollectionState?.status).toBe("ready"));
+        expect(historyCalls()).toBe(1);
+
+        const act2 = source.activateMonitoringDetails!();
+        expect(summaryCalls()).toBe(1);
+        expect(historyCalls()).toBe(1);
+        await act2.ready;
+
+        act1.release();
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(summaryCalls()).toBe(2);
+        expect(historyCalls()).toBe(2);
+
+        act2.release();
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(summaryCalls()).toBe(2);
+        expect(historyCalls()).toBe(2);
+        expect(vi.getTimerCount()).toBe(0);
+
+        const act3 = source.activateMonitoringDetails!();
+        expect(summaryCalls()).toBe(3);
+        expect(historyCalls()).toBe(3);
+        await act3.ready;
+        act3.release();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("loadRouteData: 경로별 요청 집합, abort 시 AbortError reject, 녹화 오류 시 이전 목록 fallback", async () => {
+      const { source, requests } = dailySource();
+      await source.getDashboardData();
+
+      const beforeHistory = requests.length;
+      const historyData = await source.loadRouteData!("history", { search: "" });
+      expect(requests.length).toBe(beforeHistory);
+      expect(historyData.history).toBeDefined();
+
+      const recordingsData = await source.loadRouteData!("recordings", { search: "" });
+      expect(requests.some(({ url }) => url.pathname === "/api/v2/recordings/daily")).toBe(true);
+      expect(recordingsData.recordings).toHaveLength(1);
+
+      const adminData = await source.loadRouteData!("admin", { search: "" });
+      expect(requests.some(({ url }) => url.pathname === "/api/v1/settings/alerts")).toBe(true);
+      expect(adminData.admin?.recipients).toHaveLength(1);
+
+      const nonAdminSession = { ...sessionFixture, user: { ...sessionFixture.user, role: "operator" as const } };
+      const baseFetch = createContractFetch();
+      const nonAdminFetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (inputUrl(input).pathname === "/api/v1/session") return jsonResponse(nonAdminSession);
+        return baseFetch.implementation(input, init);
+      });
+      const nonAdminSource = createHttpDashboardDataSource({ fetchImplementation: nonAdminFetch });
+      let nonAdminLatest: DashboardData | undefined;
+      nonAdminSource.subscribe?.((d) => { nonAdminLatest = d; });
+      await nonAdminSource.getDashboardData();
+      await vi.waitFor(() => expect(nonAdminLatest?.monitoring.notificationState?.status).toBe("ready"));
+      const callsBefore = baseFetch.requests.length;
+      const nonAdminData = await nonAdminSource.loadRouteData!("admin", { search: "" });
+      expect(baseFetch.requests.length).toBe(callsBefore);
+      expect(nonAdminData.admin?.recipients).toEqual([]);
+
+      const controller = new AbortController();
+      controller.abort();
+      await expect(source.loadRouteData!("recordings", { search: "", signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
+
+      let failRecordings = false;
+      const { source: fallbackSource } = dailySource({
+        override: (url) => {
+          if (url.pathname === "/api/v2/recordings/daily" && failRecordings) {
+            return jsonResponse({ detail: "Server error" }, 500);
+          }
+          return undefined;
+        },
+      });
+      await fallbackSource.getDashboardData();
+      const firstRecordings = await fallbackSource.loadRouteData!("recordings", { search: "" });
+      expect(firstRecordings.recordings).toHaveLength(1);
+
+      failRecordings = true;
+      const fallbackRecordings = await fallbackSource.loadRouteData!("recordings", { search: "" });
+      expect(fallbackRecordings.recordingsState?.status).toBe("error");
+      expect(fallbackRecordings.recordingsState?.stale).toBe(true);
+      expect(fallbackRecordings.recordings).toEqual(firstRecordings.recordings);
+    });
+
+    test("loadRouteData: 임계율이 없는 snapshot에서 80이 나오지 않고 thresholds는 빈 배열이다", async () => {
+      const snapshotWithoutThreshold = {
+        ...monitoringFixture,
+        summary: {
+          ...monitoringFixture.summary,
+          collectionThresholdPercent: undefined as unknown as number,
+        },
+      };
+      const base = createContractFetch();
+      const source = createHttpDashboardDataSource({
+        apiContract: "backend",
+        monitoringVersion: "v1",
+        fetchImplementation: (input, init) => {
+          if (inputUrl(input).pathname === "/api/v1/monitoring/snapshot") {
+            return jsonResponse(snapshotWithoutThreshold);
+          }
+          return base.implementation(input, init);
+        },
+      });
+      await source.getDashboardData();
+
+      const historyData = await source.loadRouteData!("history", { search: "" });
+      expect(historyData.history?.thresholds).toEqual([]);
+
+      const recordingsData = await source.loadRouteData!("recordings", { search: "" });
+      expect(recordingsData.history?.thresholds).toEqual([]);
+    });
+
+    test("loadRouteData: snapshot이 없으면 브라우저 시계로 대체하지 않고 오류를 발생시킨다", async () => {
+      const base = createV2ContractFetch();
+      const source = createHttpDashboardDataSource({
+        apiContract: "backend",
+        monitoringVersion: "v2",
+        fetchImplementation: base,
+      });
+      await expect(source.loadRouteData!("history", { search: "" })).rejects.toThrow(
+        "A valid server time is required to load route data.",
+      );
+    });
+
+    test("activateMonitoringDetails: release 뒤 snapshot 수신에 의한 늦은 응답을 적용하지 않는다", async () => {
+      let releaseSummary = () => {};
+      const summaryGate = new Promise<void>((resolve) => { releaseSummary = resolve; });
+      const stream = new FakeEventSource();
+      const base = createV2ContractFetch((url) => {
+        if (url.pathname === "/api/v2/monitoring/collection-summary") {
+          return summaryGate.then(() => jsonResponse({ ...collectionSummaryFixture(), validUntil: "2026-10-15T15:00:00Z" }));
+        }
+        return undefined;
+      });
+      const source = createHttpDashboardDataSource({
+        apiContract: "backend",
+        monitoringVersion: "v2",
+        fetchImplementation: base,
+        eventSourceFactory: () => stream as unknown as EventSource,
+      });
+      let latestData: DashboardData | undefined;
+      source.subscribe?.((d) => { latestData = d; });
+      await source.getDashboardData();
+
+      const details = source.activateMonitoringDetails!();
+      stream.emit("monitoring.snapshot", { ...monitoringV2StateFixture("FRESH", 10), serverTime: "2026-10-15T12:00:00Z" });
+
+      details.release();
+      releaseSummary();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(latestData?.monitoring.completedCollectionState?.status).not.toBe("ready");
+    });
+
+    test("activateMonitoringDetails: document가 hidden이면 타이머 중지, visible 복귀 시 60초 지났으면 즉시 조회", async () => {
+      vi.useFakeTimers();
+      try {
+        let summaryRequests = 0;
+        const base = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/collection-summary") {
+            summaryRequests += 1;
+            return jsonResponse(collectionSummaryFixture);
+          }
+          return undefined;
+        });
+        const source = createHttpDashboardDataSource({
+          apiContract: "backend",
+          monitoringVersion: "v2",
+          fetchImplementation: base,
+        });
+        await source.getDashboardData();
+
+        const details = source.activateMonitoringDetails!();
+        await vi.advanceTimersByTimeAsync(10);
+        const initialRequests = summaryRequests;
+
+        Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+        document.dispatchEvent(new Event("visibilitychange"));
+
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(summaryRequests).toBe(initialRequests);
+
+        Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+        document.dispatchEvent(new Event("visibilitychange"));
+
+        expect(summaryRequests).toBeGreaterThan(initialRequests);
+
+        details.release();
+      } finally {
+        Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+        vi.useRealTimers();
+      }
+    });
+
+    test("loadRouteData: revalidateSession: true일 때 관리자 진입 시 session을 재확인하고, 세션 없으면 401 오류", async () => {
+      let currentSession: typeof sessionFixture | null = sessionFixture;
+      const onSessionExpired = vi.fn();
+      const base = createV2ContractFetch((url) => {
+        if (url.pathname === "/api/v1/session") {
+          return currentSession ? jsonResponse(currentSession) : jsonResponse({ detail: "Unauthorized" }, 401);
+        }
+        return undefined;
+      });
+      const source = createHttpDashboardDataSource({
+        apiContract: "backend",
+        monitoringVersion: "v2",
+        fetchImplementation: base,
+        onSessionExpired,
+      });
+      await source.getDashboardData();
+
+      const adminData = await source.loadRouteData!("admin", { search: "", revalidateSession: true });
+      expect(adminData.admin).toBeDefined();
+
+      currentSession = null;
+      await expect(
+        source.loadRouteData!("admin", { search: "", revalidateSession: true }),
+      ).rejects.toMatchObject({ status: 401 });
+      expect(onSessionExpired).toHaveBeenCalledTimes(1);
+    });
   });
 });

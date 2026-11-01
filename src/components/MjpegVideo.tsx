@@ -24,6 +24,10 @@ export function MjpegVideo({ alt, url, capturedAt, onSessionExpired = redirectTo
     let receivedAt: string | undefined;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     if (!image) return;
+    // 문서에서 빠진 img의 src를 바꾸면 Chromium이 viewport listener를 다시 등록해 img와 조상 DOM이 해제되지 않는다.
+    const clearSource = () => {
+      if (image.isConnected) image.removeAttribute("src");
+    };
     const releaseFrame = () => {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       objectUrl = undefined;
@@ -32,7 +36,7 @@ export function MjpegVideo({ alt, url, capturedAt, onSessionExpired = redirectTo
       if (!active || failed) return;
       failed = true;
       controller.abort();
-      image.removeAttribute("src");
+      clearSource();
       releaseFrame();
       setConnection({ key: url, attempt: current.attempt, connected: false });
       if (error instanceof MjpegResponseError && (error.status === 401 || error.status === 403)) {
@@ -53,7 +57,7 @@ export function MjpegVideo({ alt, url, capturedAt, onSessionExpired = redirectTo
     image.addEventListener("load", displayFrame);
     image.addEventListener("error", decodeFailed);
     void readMjpeg({ url, signal: controller.signal, onFrame: (frame) => {
-      if (!active || failed) return;
+      if (!active || failed || !image.isConnected) return;
       const previous = objectUrl;
       receivedAt = new Date().toISOString();
       objectUrl = URL.createObjectURL(frame);
@@ -66,7 +70,7 @@ export function MjpegVideo({ alt, url, capturedAt, onSessionExpired = redirectTo
       controller.abort();
       image.removeEventListener("load", displayFrame);
       image.removeEventListener("error", decodeFailed);
-      image.removeAttribute("src");
+      clearSource();
       releaseFrame();
     };
   }, [url, current.attempt, onSessionExpired]);

@@ -119,8 +119,9 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
     : "현재 활성 알림이 없습니다.";
   const layoutState = state ? layoutPresentation(monitoring.measurementLayout) : null;
   const valueLength = String(monitoring.summary.loadPercent ?? "").length;
+  const isLoadHistoryLoading = monitoring.loadHistoryState?.status === "loading";
   const pastLoad = monitoring.summary.loadOneHourAgo;
-  const pastLoadTitle = pastLoad
+  const pastLoadTitle = !isLoadHistoryLoading && pastLoad
     ? `관측 시각: ${seoulDisplayText(Date.parse(pastLoad.observedAt))}. ${pastLoad.dataState === "LIMITED" ? "제한된 데이터. " : ""}1시간 전 기준 시각 이전 1분 이내의 서버 이력입니다.`
     : undefined;
   const mismatch = alertsState?.mismatch;
@@ -137,7 +138,7 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
   return <DashboardPageShell activePage="monitoring" dataSource={dataSource} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} notificationState={monitoring.notificationState} session={session}>
     <main className="monitoring-page" aria-label="스크랩 모니터링 대시보드">
       <div className="page-heading">
-        <h1>스크랩 모니터링</h1>
+        <h1 tabIndex={-1}>스크랩 모니터링</h1>
         <DataReceptionMeta reception={data.reception} />
       </div>
       <div className="content">
@@ -167,7 +168,7 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
                 </div>
               </div>
               <div className="status-details">
-                <div className="mini-stat"><span className="label">1시간 전 적재율</span><strong title={pastLoadTitle}>{pastLoad ? `${pastLoad.value}%` : "정보 없음"}</strong></div>
+                <div className="mini-stat"><span className="label">1시간 전 적재율</span><strong title={pastLoadTitle}>{isLoadHistoryLoading ? "확인 중" : pastLoad ? `${pastLoad.value}%` : "정보 없음"}</strong></div>
                 <div className="mini-stat"><span className="label">최근 수거 후 경과</span><strong>{monitoring.summary.timeSinceCollection}</strong></div>
                 <div className="mini-stat"><span className="label">평균 수거 주기</span><strong>{monitoring.summary.averageCollectionCycle}</strong></div>
               </div>

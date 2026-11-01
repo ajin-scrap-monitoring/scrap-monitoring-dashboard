@@ -764,7 +764,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
     <DashboardPageShell activePage="recordings" dataSource={dataSource} headerNotifications={headerNotifications} headerUnreadCount={headerUnreadCount} notificationState={headerNotificationState} session={session}>
       <main className="recordings-page" aria-label="스크랩 모니터링 녹화 영상">
         <div className="page-heading">
-          <h1>녹화 영상</h1>
+          <h1 tabIndex={-1}>녹화 영상</h1>
           <DataReceptionMeta reception={reception} />
         </div>
         <div className="recordings-content">

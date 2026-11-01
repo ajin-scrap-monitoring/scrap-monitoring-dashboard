@@ -188,7 +188,6 @@ SIGKILL 등으로 정리하지 못한 실행은 출력된 `Recovery command`로 
 | [`docs/testing.md`](docs/testing.md) | 검사 계층, 빌드 예산, 통합 자원 회수와 리뷰 |
 | [`docs/deployment.md`](docs/deployment.md) | 이미지 책임, runtime 설정, Nginx와 TLS |
 | [`docs/development-workflow.md`](docs/development-workflow.md) | 작업 시작, 로컬 진행과 원격 반영 및 완료 조건 |
-| [`docs/navigation-performance-plan.md`](docs/navigation-performance-plan.md) | 미착수 화면 전환 및 성능 개선 계획 |
 | [`docs/contracts/README.md`](docs/contracts/README.md) | 외부 계약의 확인 순서와 정본 선택 |
 | [`docs/contracts/backend/README.md`](docs/contracts/backend/README.md) | 고정한 실제 서비스 계약과 통합 검증 경계 |
 | [`docs/contracts/backend/frontend-mapping.md`](docs/contracts/backend/frontend-mapping.md) | 화면 매핑, 의도적 비표시와 외부 미구현 및 요청 책임 |

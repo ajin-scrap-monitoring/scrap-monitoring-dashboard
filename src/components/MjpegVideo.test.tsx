@@ -189,3 +189,45 @@ test("정상 frame 복구는 연결을 유지하며 다음 수신 중단의 재�
   await act(() => vi.advanceTimersByTimeAsync(1));
   expect(reads).toHaveLength(5);
 });
+
+test("unmount cleanup은 문서에서 빠진 img의 src를 바꾸지 않고 Blob URL은 회수한다", () => {
+  const view = render(<MjpegVideo alt="live" url="/live" />);
+  const image = screen.getByAltText("live");
+  frame();
+  const removeAttribute = vi.spyOn(image, "removeAttribute");
+  view.unmount();
+  expect(image.isConnected).toBe(false);
+  expect(removeAttribute).not.toHaveBeenCalledWith("src");
+  expect(image.getAttribute("src")).toBe("blob:frame-1");
+  expect(revokeObjectURL).toHaveBeenCalledWith("blob:frame-1");
+  expect(reads[0].options.signal.aborted).toBe(true);
+});
+
+test("문서에서 빠진 뒤 cleanup 전에 도착한 frame과 unmount 뒤 frame은 src에 적용하지 않는다", () => {
+  const view = render(<MjpegVideo alt="live" url="/live" />);
+  const image = screen.getByAltText("live");
+  // React가 DOM을 제거한 직후 cleanup 전의 상태를 재현한다.
+  Object.defineProperty(image, "isConnected", { configurable: true, get: () => false });
+  frame();
+  expect(createObjectURL).not.toHaveBeenCalled();
+  expect(image.hasAttribute("src")).toBe(false);
+  view.unmount();
+  frame();
+  expect(createObjectURL).not.toHaveBeenCalled();
+  expect(image.hasAttribute("src")).toBe(false);
+});
+
+test("연결된 상태의 decode 실패와 오류는 src를 지우고 재연결한다", async () => {
+  render(<MjpegVideo alt="live" url="/live" />);
+  const image = screen.getByAltText("live");
+  frame();
+  expect(image).toHaveAttribute("src", "blob:frame-1");
+  fireEvent.error(image);
+  expect(image).not.toHaveAttribute("src");
+  await act(() => vi.advanceTimersByTimeAsync(250));
+  expect(reads).toHaveLength(2);
+  frame();
+  expect(image).toHaveAttribute("src", "blob:frame-2");
+  await act(() => { reads[1].reject(new Error("network")); return Promise.resolve(); });
+  expect(image).not.toHaveAttribute("src");
+});

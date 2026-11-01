@@ -53,10 +53,19 @@ export type DailyRecordingDeletion = {
   outcome: "deleted" | "reflected";
 };
 
+export type DashboardRoute = "monitoring" | "history" | "recordings" | "admin";
+export type DashboardRouteData = Partial<Pick<DashboardData,
+  "admin" | "history" | "recordings" | "recordingsList" | "recordingsTotal" | "recordingsSource" | "recordingsState">>;
+export type MonitoringDetailsActivation = { ready: Promise<void>; release: () => void };
+
 export interface DashboardDataSource {
   monitoringVersion?: "v1" | "v2";
   supportsDailyRecordings?: boolean;
   supportsEventRecordingRangeLimit?: boolean;
+  activateMonitoringDetails?(): MonitoringDetailsActivation;
+  /** 부수 효과 없이 현황 상세가 이미 준비되어 활성화 직후 바로 표시할 수 있는지 반환한다. */
+  isMonitoringDetailsReady?(): boolean;
+  loadRouteData?(route: DashboardRoute, options: { search: string; signal?: AbortSignal; revalidateSession?: boolean }): Promise<DashboardRouteData>;
   createNotificationRecipient?(input: NotificationRecipientInput): Promise<NotificationRecipientResult>;
   createSession?(credentials: SessionCredentials): Promise<UserSession>;
   deleteSession?(): Promise<void>;

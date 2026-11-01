@@ -77,9 +77,25 @@ export function historyV2(url: URL, snapshot: BackendSnapshot): components["sche
   };
 }
 
-export async function installBackendApi(page: Page, { initial = monitoringV2StateFixture("UNAVAILABLE"), authenticated = true, mediaMode = "healthy", runtimeConfig = true }: { initial?: BackendSnapshot; authenticated?: boolean; mediaMode?: MediaMode; runtimeConfig?: boolean } = {}) {
+export async function installBackendApi(page: Page, {
+  initial = monitoringV2StateFixture("UNAVAILABLE"),
+  authenticated = true,
+  mediaMode = "healthy",
+  runtimeConfig = true,
+  notificationDelayMs = 0,
+  loadHistoryDelayMs = 0,
+}: {
+  initial?: BackendSnapshot;
+  authenticated?: boolean;
+  mediaMode?: MediaMode;
+  runtimeConfig?: boolean;
+  notificationDelayMs?: number;
+  loadHistoryDelayMs?: number;
+} = {}) {
   let snapshot = initial;
   let sessionActive = authenticated;
+  let notificationDelay = notificationDelayMs;
+  let historyDelay = loadHistoryDelayMs;
   let eventReplays: EventReplayResponse[] = [syntheticEventReplay()];
   let historyEvents: Array<typeof eventPageFixture.items[number]> = [...eventPageFixture.items];
   let notifications: components["schemas"]["NotificationPage"] = notificationPageFixture;
@@ -195,7 +211,8 @@ export async function installBackendApi(page: Page, { initial = monitoringV2Stat
     }
     else if (url.pathname === "/api/v2/monitoring/load-history") {
       const override = loadHistory?.(url);
-      if (override?.delayMs) await new Promise((resolve) => setTimeout(resolve, override.delayMs));
+      const delay = override?.delayMs ?? historyDelay;
+      if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
       await (override ? json(override.body, override.status) : json(historyV2(url, snapshot)));
     }
     else if (url.pathname === "/api/v2/monitoring/active-alerts") await (activeAlerts === null ? json({ detail: "Unexpected fixture request" }, 501) : json(activeAlerts));
@@ -203,7 +220,10 @@ export async function installBackendApi(page: Page, { initial = monitoringV2Stat
     else if (url.pathname === "/api/v2/monitoring/profiles") await (profiles === null ? json({ detail: "Unexpected fixture request" }, 501) : json(profiles));
     else if (url.pathname === "/api/v2/monitoring/alerts") await json({ items: [], limit: 20, offset: Number(url.searchParams.get("offset") ?? 0), totalItems: 0 });
     else if (url.pathname === `/api/v1/config/pits/${encodeURIComponent(snapshot.pitId)}`) await json({ id: snapshot.pitId, name: "시험 pit", total_depth_cm: 300, warning_threshold_percent: 75, critical_threshold_percent: 85, updated_at: snapshot.serverTime });
-    else if (url.pathname === "/api/v1/notifications") await json(notifications);
+    else if (url.pathname === "/api/v1/notifications") {
+      if (notificationDelay) await new Promise((resolve) => setTimeout(resolve, notificationDelay));
+      await json(notifications);
+    }
     else if (url.pathname === "/api/v1/notifications/read-all") {
       notifications = { ...notifications, unreadCount: 0, items: notifications.items.map((item) => ({ ...item, readAt: "2026-10-13T00:00:10Z" })) };
       await route.fulfill({ status: 204 });
@@ -313,6 +333,8 @@ export async function installBackendApi(page: Page, { initial = monitoringV2Stat
     setClipMediaInfo: (clipId: string, info: unknown) => { clipMediaInfos.set(clipId, info); },
     setDailyMediaInfo: (recordingId: string, info: unknown) => { dailyMediaInfos.set(recordingId, info); },
     setLoadHistory: (next: typeof loadHistory) => { loadHistory = next; },
+    setNotificationDelay: (ms: number) => { notificationDelay = ms; },
+    setLoadHistoryDelay: (ms: number) => { historyDelay = ms; },
     async snapshot(next: BackendSnapshot) { snapshot = next; await page.evaluate((value) => window.backendFixture.emit("monitoring.snapshot", JSON.stringify(value)), next); },
   };
 }

@@ -102,9 +102,28 @@ Programming Interface) 호환성을 검증한다.
 개발 및 synthetic source의 선택 경계는 아래 데이터 소스 절을 따른다.
 
 `src/App.tsx`는 `/`, `/history`, `/recordings`, `/login`과 `/admin`을 분기한다.
-메뉴 이동은 document navigation이며 앱과 session 조회를 다시 시작한다. 이력, 녹화와
-관리자 모듈은 해당 화면의 초기 데이터 조회와 병렬로 로드하며 로그인 모듈은 로그인
-화면에서만 로드한다. Client-side routing과 화면 간 공통 캐시는 현재 구현에 포함하지 않는다.
+같은 origin의 `/`, `/history`, `/recordings`, `/admin`(query parameter 포함)은 `AppLink`와
+`navigate`를 통한 client-side 화면 전환을 지원한다. `/login`과 그 외 경로는 document 이동으로 동작한다.
+로그인 성공, 로그아웃, session 만료, MJPEG 401, 설정 오류 재시도의 `window.location.assign`과 `reload`는
+계정 전환 시 화면 데이터 격리를 위해 document 이동을 유지한다.
+
+`src/app-router.ts`의 `useAppLocation`은 `useSyncExternalStore`로 브라우저의 `popstate`와 앱 내부 이동
+알림을 구독한다. `navigate(to, { replace? })`는 `history.pushState` 또는 `replaceState`를 호출하고
+구독자에게 알린다. push 이동 전에 현재 entry의 `history.state`에 scroll 위치를 저장하며 현재 위치와
+대상 경로의 pathname 및 search가 같으면 새 history entry를 만들지 않는다. `AppLink`는 왼쪽 클릭,
+보조키 없음, `target` 부재 또는 `_self`, `download` 없음 조건에서만 `preventDefault()` 후 `navigate`를
+수행한다. 화면 모듈 loader(`loadAdminPage`, `loadHistoryPage`, `loadRecordingsPage`)는
+`src/page-loaders.ts`로 분리해 lazy load와 선로딩에 공유하며, `AppLink`는 pointerenter와 focus
+이벤트에서 대상 화면 모듈을 미리 로드한다.
+
+화면 전환 시 push 이동은 새 화면이 렌더링된 뒤 맨 위로 scroll하고 새 화면의 h1(`tabIndex={-1}`)로
+focus를 이동한다. 프로그램 focus 시 외곽선은 숨기되 키보드 focus 표시(`:focus-visible`)는 유지한다.
+뒤로/앞으로 이동(popstate)은 history entry에 저장한 scroll 위치를 화면 렌더링 뒤 복원한다. 브라우저의
+`history.scrollRestoration`은 `manual`로 설정한다. 관리자 화면으로 앱 내부 이동할 때는 session을
+재조회(`loadRouteData("admin", { revalidateSession: true })`)해 CSRF token과 session 정보를 갱신한다.
+session이 만료되었으면 로그인 화면으로 이동하고 역할이 `administrator`가 아니면 관리자 데이터 조회를
+생략하고 권한 없음 화면을 표시한다. 전체 페이지 첫 진입의 관리자 화면은 `getDashboardData`의 session을
+사용하므로 중복 조회하지 않는다.
 
 `application-root.ts`는 `pagehide`에서 React root를 unmount해 영상, SSE와 진행 중인
 요청 및 timer를 정리한다. Back/forward cache에서 복원한 document는 `pageshow`의
@@ -127,9 +146,27 @@ Programming Interface) 호환성을 검증한다.
 `src/generated/backend-contract.ts`, 제안 타입은 `src/generated/api-contract.ts`에 추적한다.
 
 `use-dashboard-data.ts`는 초기 조회, 취소, 오류, 재시도와 구독을 관리한다. 초기 조회가
-성공한 뒤 실시간 구독을 시작한다. HTTP adapter의 초기 조회는 session, monitoring snapshot과
-화면별 조회 순서이며 알림을 포함한 병렬 조회 묶음이 끝난 뒤 결과를 반환한다. 보조 조회의
-실패는 영역별 상태로 처리하지만 느린 응답의 대기까지 분리되어 있지는 않다.
+성공한 뒤 실시간 구독을 시작한다. HTTP adapter의 앱 공통 초기 조회는 session과 monitoring
+snapshot만 대기하고 알림 응답을 기다리지 않고 반환한다. 알림은 백그라운드에서 조회해
+결과를 발행한다. 화면별 초기 데이터는 `useRouteData`가 `loadRouteData`를 통해 화면 진입
+시점에 독립적으로 조회하며, 현황 상세(collection summary와 최근 24시간 load-history)는
+현황 화면이 `activateMonitoringDetails`를 활성화할 때만 조회하고 60초 이내 성공 결과를 재사용한다.
+현황 화면은 해제할 때 준비 완료 기록을 지우므로 재진입 때 이전 활성화의 완료 기록을 사용하지
+않는다. data source의 `isMonitoringDetailsReady`는 부수 효과 없이 마지막 성공 뒤 60초 이내인지
+반환하며, 이 경우 현황 화면은 로딩 화면을 그리지 않고 첫 render부터 현황을 표시한다. 마지막
+성공 뒤 60초가 지난 재진입은 새 collection summary 응답까지 로딩 화면을 유지한다. load-history 기준 시각은 서버 시각만 사용하며 서버 시각이 없으면 조회하지 않고 해당 영역을
+오류 상태로 둔다. 브라우저 탭이 숨겨지면(`document.visibilityState === "hidden"`) 현황 상세 갱신 timer를
+중지한다. 탭이 다시 표시되면 마지막 성공 시각 이후 60초가 지난 경우 collection summary와 최근
+24시간 load-history를 즉시 재조회하고 timer를 다시 시작한다. 60초가 지난 load-history 표본은
+비우고 loading 상태로 둔 뒤 조회한다. SSE 연결은 탭 숨김 중에도 유지한다. 카메라 상태 폴링
+(`useCameraStatus`) 역시 탭이 숨겨진 동안 폴링 timer를 멈추고 진행 중인 요청을 취소하며, 다시
+보이면 확인 중 상태로 초기화하고 즉시 재조회한다. 보조 조회의 실패는 영역별 상태로 처리한다.
+
+이력 화면의 적재율 그래프(`queryHistory`)는 성공한 load-history 결과를
+`(pit, site, edge, from, to)` 키 기준으로 60초 동안 최대 4개까지 메모리에 보관하고 동일한 키의
+요청은 재요청 없이 캐시 결과를 반환한다. 실패와 취소는 보관하지 않는다. 같은 기간에서 이벤트 유형만
+변경한 조회는 그래프 재요청 없이 즉시 완료한다. 이벤트 표 조회(`queryHistoryEvents`)는 캐시를
+적용하지 않는다.
 
 HTTP 요청은 응답 body 수신을 포함해 10초로 제한한다. 같은 화면 초기화 요청에 같은
 AbortSignal을 전달하고 화면 종료는 요청을 취소한다. Timeout은 `REQUEST_TIMEOUT`으로
@@ -176,11 +213,14 @@ Synthetic 영상과 썸네일은 `src/assets/camera-frame.png`를 사용하며 �
 
 ### 공통 헤더와 인증
 
-Runtime 설정, 최초 데이터와 화면 모듈의 로딩 중에는 메뉴 탭과 사용자 도구를 숨기고
-헤더 높이를 유지한다. 준비 뒤 확인한 session과 역할에 맞는 메뉴를 한 번에 표시한다.
-조회 오류 화면은 확인된 사용자 정보를 사용한다. 긴 사용자명은 title에 원문을 유지하고
-생략 표시한다. `viewer`의 기본 이름인 현장 운영자는 조회 사용자로 표시하며 다른 이름은
-Backend 응답을 유지한다.
+첫 화면 표시 전의 runtime 설정, 최초 공통 데이터 로딩 중에는 메뉴 탭과 사용자 도구를
+숨기고 헤더 높이를 유지한다. 첫 화면이 표시된 뒤 앱 내부 화면 전환에서는 화면별 데이터 로딩과
+화면 모듈 로딩(Suspense fallback) 모두 확인된 session의 공통 헤더(메뉴, 사용자 도구, 알림)를
+유지하고 본문 영역만 로딩 화면으로 표시한다. 활성 메뉴는 이동 대상 화면으로 즉시 반영된다.
+알림 조회 중에는 헤더 알림 버튼에 badge 대신 "알림 확인 중"을 표시하고 popover에 로딩 상태를 표시한다.
+준비 뒤 확인한 session과 역할에 맞는 메뉴를 한 번에 표시한다. 조회 오류 화면은 확인된 사용자 정보를
+사용한다. 긴 사용자명은 title에 원문을 유지하고 생략 표시한다. `viewer`의 기본 이름인 현장 운영자는
+조회 사용자로 표시하며 다른 이름은 Backend 응답을 유지한다.
 
 로그인 화면은 계정 로그인만 제공한다. 실제 v2 및 녹화 조회는 Backend session이 필요하고
 관리자 화면은 administrator 역할을 확인한다. API 401 또는 SSE `session.expired`는
