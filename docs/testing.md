@@ -65,19 +65,23 @@ Vitest는 `src/**/*.{test,spec}.{ts,tsx}`만 수집하고 jsdom에서 실행한�
 감시한다.
 
 Playwright는 `e2e/`의 브라우저 테스트를 1280 x 900, 1440 x 900과 1920 x 1080 Chromium 뷰포트에서
-실행한다. `pnpm run test:e2e`는 타입 검사와 운영 빌드의 크기 예산 검사를 완료한 뒤 synthetic
-데이터가 포함된 별도 빌드를 Vite preview 서버에서 검증한다. 운영 빌드 뒤
-`scripts/verify-build-output.mjs`가 초기와 전체 JavaScript, CSS, 웹폰트와 전체 정적 자산의
-크기 예산을 검사한다. 실패한 테스트의 screenshot과 trace는 Git에서 제외한
-`test-results/`에 저장한다.
+실행한다. `pnpm run test:e2e`는 타입 검사와 운영 빌드의 크기 기준 검사를 완료한 뒤
+`pnpm run test:e2e:browser`로 synthetic 데이터가 포함된 별도 빌드를 Vite preview 서버에서
+검증한다. `pnpm run test:e2e:browser`는 synthetic 빌드와 브라우저 테스트만 실행하며 CI의
+`browser` job이 project 인자와 함께 사용한다. 운영 빌드 뒤 `scripts/verify-build-output.mjs`가
+초기와 전체 JavaScript, CSS, 웹폰트와 전체 정적 자산의 크기 기준을 검사한다. 실패한 테스트의
+screenshot과 trace는 Git에서 제외한 `test-results/`에 저장한다.
 
-빌드 크기 예산은 초기 JavaScript 260 KiB, 전체 JavaScript 750 KiB, CSS 50 KiB, 웹폰트
-4 MiB와 전체 자산 5 MiB다. 날짜 녹화의 HLS light 모듈은 지연 로딩하며 전체 JavaScript 및
-자산 예산에 포함한다. production에서 선택한 모니터링 및 영상 구현 전체에 같은
-예산을 적용하며 초기 로딩과 전체 자산 예산은 별도로 유지한다.
+빌드 크기 기준은 초기 JavaScript 340 KiB, 전체 JavaScript 975 KiB, CSS 65 KiB, 웹폰트 4.9 MiB와
+전체 정적 자산 6.4 MiB다. 기준값은 main `8a9af44` 실측 크기에 1.3을 곱하고 KiB 단위는 5 KiB,
+MiB 단위는 0.1 MiB로 올린 값이다. 사설망 데스크톱 관리 화면 환경이므로 기준 초과는 비정상적인
+크기 급증을 알리는 경고로 전환해 병합을 차단하지 않는다. 기준 초과 시 GitHub Actions 환경에서는
+경고 annotation과 작업 요약 표를 출력하고 로컬에서는 경고 문구를 출력한다. 날짜 녹화의
+HLS light 모듈은 지연 로딩하며 전체 JavaScript 및 자산 기준에 포함한다. production에서 선택한
+모니터링 및 영상 구현 전체에 같은 기준을 적용하며 초기 로딩과 전체 자산 기준은 별도로 유지한다.
 녹화 상태의 hover, click과 키보드 상세 처리는 녹화 경로의 지연 로딩 코드에 포함하며
-전체 JavaScript 예산으로 관리한다.
-전체 JavaScript 예산은 Backend v2 API 연동 기능을 포함한 크기를 기준으로 한다.
+전체 JavaScript 기준으로 관리한다.
+전체 JavaScript 기준은 Backend v2 API 연동 기능을 포함한 크기를 기준으로 한다.
 
 현재 Playwright 테스트는 대시보드 진입, synthetic 실시간 갱신과 운영 주기 상태 전이, 상단 브랜드 이동, 알림함 읽음 처리와 닫기,
 사용자 메뉴와 로그인 및 로그아웃, 비로그인 화면 제한, 관리자 경로 제한, 적재율 이력의
@@ -178,15 +182,20 @@ artifact에 넣지 않는다. `private/`는 mode 700이며 원본 report와 로�
 | runtime 도구 및 production build | 각각 600초 |
 | runtime, TLS 및 reverse proxy 검사 | 각각 120초 |
 
-현재 CI는 공식 Playwright 컨테이너에서 frozen 설치, 정적 검사, 컴포넌트 테스트,
-검증 도구 테스트, 타입 검사, 프로덕션 빌드와 세 뷰포트의 브라우저 테스트를 실행한다. 별도 container
-job은 `linux/amd64` 이미지를 빌드한 뒤 Nginx 설정 문법, 읽기 전용 root file system에서
-Nginx 상태, SPA fallback, 보안 헤더, 자산 캐시, 라이선스 고지, source map과 런타임 빌드 도구
-부재를 검사한다. 같은 job은 테스트 전용 FastAPI 대역 컨테이너와 Docker DNS를 사용해 API
-reverse proxy, forwarded header와 request ID, API rate limit와 request body 제한, read timeout,
-즉시 전달되는 SSE와 buffering 비활성화, WHEP 형태의 `POST`, `PATCH` 및 `DELETE`, WebSocket
-Upgrade 호환성, upstream DNS 재해석과 구조화 access log를 검증한다. 테스트 전용 경로,
-upstream 이름, resolver와 timeout 값은 운영 계약이 아니다.
+현재 CI는 필수 검사 `CI`를 집계 job으로 두고 `static` job과 `browser` matrix job을 동시에
+실행한다. `static` job은 공식 Playwright 컨테이너에서 frozen 설치, 계약 검사, 정적 검사,
+컴포넌트 테스트, 검증 도구 테스트, 타입 검사, 프로덕션 빌드와 빌드 크기 검사를 실행한다.
+`browser` job은 같은 컨테이너에서 mock build 뒤 세 뷰포트(chromium-minimum, chromium-compact,
+chromium-primary)를 job 하나씩 나누어 브라우저 테스트를 실행하며 CI 환경의 worker는 2개다.
+집계 job은 `static`과 `browser`의 결과가 모두 성공일 때만 성공한다. 별도 container job은
+`linux/amd64` 이미지를 빌드한 뒤 Nginx 설정 문법, 읽기 전용 root file system에서 Nginx 상태,
+SPA fallback, 보안 헤더, 자산 캐시, 라이선스 고지, source map과 런타임 빌드 도구 부재를
+검사한다. 같은 job은 테스트 전용
+FastAPI 대역 컨테이너와 Docker DNS를 사용해 API reverse proxy, forwarded header와 request ID,
+API rate limit와 request body 제한, read timeout, 즉시 전달되는 SSE와 buffering 비활성화,
+WHEP 형태의 `POST`, `PATCH` 및 `DELETE`, WebSocket Upgrade 호환성, upstream DNS 재해석과
+구조화 access log를 검증한다. 테스트 전용 경로, upstream 이름, resolver와 timeout 값은
+운영 계약이 아니다.
 
 별도 `Service integration` job은 고정한 실제 서비스의 동일 검증 스크립트를 실행한다.
 job timeout은 35분이며 같은 workflow 및 ref의 이전 실행을 취소한다.

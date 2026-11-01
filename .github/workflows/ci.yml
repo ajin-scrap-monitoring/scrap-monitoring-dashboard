@@ -12,13 +12,13 @@ permissions:
   contents: read
 
 jobs:
-  ci:
-    name: CI
+  static:
+    name: Static checks
     runs-on: ubuntu-24.04
     container:
       image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
       options: --user 1001
-    timeout-minutes: 20
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -50,8 +50,69 @@ jobs:
       - name: Run tooling tests
         run: pnpm run test:tooling
 
-      - name: Build and run browser tests
-        run: pnpm run test:e2e
+      - name: Build production bundle
+        run: pnpm run build
+
+      - name: Verify build output size
+        run: pnpm run verify:build-output
+
+  browser:
+    name: Browser (${{ matrix.project }})
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+      options: --user 1001
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - chromium-minimum
+          - chromium-compact
+          - chromium-primary
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+
+      - name: Set up pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with:
+          cache: true
+          install: false
+
+      - name: Verify dependency installation
+        run: pnpm install --frozen-lockfile
+
+      - name: Run browser tests
+        run: pnpm run test:e2e:browser --project=${{ matrix.project }}
+
+  ci:
+    name: CI
+    runs-on: ubuntu-24.04
+    needs:
+      - static
+      - browser
+    if: always()
+    timeout-minutes: 5
+
+    steps:
+      - name: Aggregate status
+        env:
+          STATIC_RESULT: ${{ needs.static.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+        run: |
+          if [ "$STATIC_RESULT" != "success" ] || [ "$BROWSER_RESULT" != "success" ]; then
+            echo "static job result: $STATIC_RESULT"
+            echo "browser job result: $BROWSER_RESULT"
+            exit 1
+          fi
+          echo "All checks passed successfully."
 
   container:
     name: Container
