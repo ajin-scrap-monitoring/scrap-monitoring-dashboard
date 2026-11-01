@@ -367,7 +367,7 @@ test("조회 사용자에게는 날짜 녹화 삭제를 표시하지 않는다",
   await expect(page.getByRole("button", { name: "날짜 녹화 삭제" })).toHaveCount(0);
 });
 
-test("날짜 영상 확대 창은 Tab과 Shift Tab으로 영상 controls에 이동하고 영상에서도 Escape로 닫는다", async ({ page }) => {
+test("날짜 영상 확대 창은 Tab으로 영상 내부 controls에 이동하며 modal 밖으로 나가지 않고 영상에서도 Escape로 닫는다", async ({ page }) => {
   await installBackendApi(page, { initial });
   await page.addInitScript(() => {
     const canPlayType = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "canPlayType")?.value as (this: HTMLMediaElement, type: string) => CanPlayTypeResult;
@@ -388,7 +388,17 @@ test("날짜 영상 확대 창은 Tab과 Shift Tab으로 영상 controls에 이�
   await page.keyboard.press("Tab");
   await expect(video).toBeFocused();
   await page.keyboard.press("Tab");
-  await expect(close).toBeFocused();
+  await expect(close).not.toBeFocused();
+  await expect(video).toBeFocused();
+  const outside = [];
+  for (let index = 0; index < 12; index += 1) {
+    await page.keyboard.press("Tab");
+    // native controls의 끝에서 focus가 브라우저 UI로 나가면 activeElement는 body이며, 다음 Tab이 창 안으로 되돌린다.
+    outside.push(await page.evaluate(() => document.activeElement !== document.body && !document.querySelector(".video-modal")?.contains(document.activeElement)));
+  }
+  expect(outside).not.toContain(true);
+  await expect(dialog).toBeVisible();
+  await close.focus();
   await page.keyboard.press("Shift+Tab");
   await expect(video).toBeFocused();
   await page.keyboard.press("Escape");

@@ -410,7 +410,9 @@ player를 이동시키며 기본 player는 정지 상태를 유지한다. 확대
 seek가 끝난 경우에만 닫을 때 기본 player의 위치를 갱신한다. 확대 중 기본 player의
 time update는 표시 시각을 변경하지 않는다. Source 변경은 다운로드 재조회와 이전 완료
 표시를 취소한다. 확대 창의 Tab과 Shift+Tab 순환에는 닫기 버튼과 `controls`가 있는
-video 및 audio를 포함하며 Escape는 focus 위치와 무관하게 창을 닫는다. 제품의 HLS license는
+video 및 audio를 포함한다. focus가 해당 media 요소에 있으면 Tab을 가로채지 않아 브라우저가
+native controls로 focus를 옮기고, focus가 창 밖으로 나가면 이동 방향에 따라 창 안의 첫 요소
+또는 마지막 요소로 되돌린다. Escape는 focus 위치와 무관하게 창을 닫는다. 제품의 HLS license는
 `/usr/share/licenses/scrap-monitoring-dashboard/Hls-Apache-2.0.txt`에 포함한다.
 
 날짜 시간축은 확보, 누락, 미확인과 미래 구간을 구분한다. 확보 구간은 압축 재생 시각으로
