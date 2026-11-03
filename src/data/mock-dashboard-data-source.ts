@@ -10,6 +10,7 @@ import type {
   DateRangeQuery,
   MonitoringDetailsActivation,
 } from "./dashboard-data-source";
+import { eventExportStatus, type EventExportStatus } from "./event-recordings";
 import type { CameraStatusV2 } from "./camera-status-v2";
 import { createRecordingList } from "./recording-list";
 
@@ -294,6 +295,24 @@ function waitForMockLoading(signal?: AbortSignal) {
 
 export function createMockDashboardDataSource(scenario: MockScenario = "normal"): DashboardDataSource {
   let currentData = dashboardDataFor(scenario);
+  const exports = new Map<string, EventExportStatus>();
+  const cameraListeners = new Set<(status: CameraStatusV2, receivedAt: number) => void>();
+  let lastCamera: { status: CameraStatusV2; receivedAt: number } | null = null;
+  let cameraTimer: number | undefined;
+  let closeMockStream: (() => void) | null = null;
+  const publishCamera = () => {
+    const disconnected = scenario === "disconnected" || currentData.monitoring.status === "disconnected";
+    const now = new Date();
+    const status: CameraStatusV2 = {
+      pitId: "pit-01", cameraId: "camera-main", state: disconnected ? "INTERRUPTED" : "HEALTHY",
+      connectionState: disconnected ? "DISCONNECTED" : "CONNECTED", statusBasis: "ACCEPTED_JPEG_RECEIPT",
+      computedAt: now.toISOString(), assessedAt: now.toISOString(), validUntilAt: new Date(now.getTime() + 5000).toISOString(),
+      validForSeconds: 5, lastFrameReceivedAt: new Date(now.getTime() - 2000).toISOString(),
+      reasonCodes: disconnected ? ["CAMERA_STATUS_TIMEOUT"] : [],
+    };
+    lastCamera = { status, receivedAt: performance.now() };
+    cameraListeners.forEach(listener => listener(status, lastCamera!.receivedAt));
+  };
   const withSession = () => {
     currentData.reception = { status: "connected", lastReceivedAt: new Date().toISOString() };
     currentData.session = hasAuthenticationSession() ? {
@@ -331,6 +350,9 @@ export function createMockDashboardDataSource(scenario: MockScenario = "normal")
       });
     },
     deleteSession: () => {
+      closeMockStream?.();
+      lastCamera = null;
+      exports.clear();
       clearAuthentication();
       return Promise.resolve();
     },
@@ -356,24 +378,34 @@ export function createMockDashboardDataSource(scenario: MockScenario = "normal")
       ready: Promise.resolve(),
       release: () => {},
     }),
-    getCameraStatus: (signal?: AbortSignal): Promise<CameraStatusV2> => {
-      if (signal?.aborted) return Promise.reject(new DOMException("Synthetic request aborted.", "AbortError"));
-      if (scenario === "request-error") return Promise.reject(new Error("합성 데이터 요청 오류"));
-      const isDisconnected = scenario === "disconnected" || currentData.monitoring.status === "disconnected";
-      const now = new Date();
-      return Promise.resolve({
-        pitId: "pit-01",
-        cameraId: "camera-main",
-        state: isDisconnected ? "INTERRUPTED" : "HEALTHY",
-        connectionState: isDisconnected ? "DISCONNECTED" : "CONNECTED",
-        statusBasis: "ACCEPTED_JPEG_RECEIPT",
-        computedAt: now.toISOString(),
-        assessedAt: now.toISOString(),
-        validUntilAt: new Date(now.getTime() + 5000).toISOString(),
-        validForSeconds: 5.0,
-        lastFrameReceivedAt: new Date(now.getTime() - 2000).toISOString(),
-        reasonCodes: isDisconnected ? ["CAMERA_STATUS_TIMEOUT"] : [],
-      });
+    subscribeCameraStatus: (listener) => {
+      cameraListeners.add(listener);
+      if (lastCamera) listener(lastCamera.status, lastCamera.receivedAt);
+      return () => { cameraListeners.delete(listener); };
+    },
+    findEventRecordingExport: async (eventId, options, signal) => {
+      await Promise.resolve();
+      if (signal?.aborted) throw new DOMException("Synthetic request aborted.", "AbortError");
+      if (!currentData.recordings.some(recording => recording.id === eventId)) throw Object.assign(new Error("이벤트를 찾을 수 없습니다."), { status: 404 });
+      return structuredClone(exports.get(`${eventId}:${options.beforeSeconds}:${options.afterSeconds}`) ?? null);
+    },
+    prepareEventRecordingExport: async (eventId, options, signal) => {
+      await Promise.resolve();
+      if (signal?.aborted) throw new DOMException("Synthetic request aborted.", "AbortError");
+      if (!currentData.recordings.some(recording => recording.id === eventId)) throw Object.assign(new Error("이벤트를 찾을 수 없습니다."), { status: 404 });
+      const key = `${eventId}:${options.beforeSeconds ?? 30}:${options.afterSeconds ?? 30}`;
+      const existing = exports.get(key);
+      if (existing?.status === "ready") return structuredClone(existing);
+      const status = eventExportStatus({ eventId, requestId: options.requestId, statusPath: `/api/v2/recordings/events/${eventId}/exports/${options.requestId}`, status: "ready", downloadPath: "/media/clips/synthetic-export/content?download=true", gaps: [] });
+      exports.set(key, status);
+      return structuredClone(status);
+    },
+    getEventRecordingExportStatus: async (path, signal) => {
+      await Promise.resolve();
+      if (signal?.aborted) throw new DOMException("Synthetic request aborted.", "AbortError");
+      const status = [...exports.values()].find(value => value.statusPath === path);
+      if (!status) throw Object.assign(new Error("작업을 찾을 수 없습니다."), { status: 404 });
+      return structuredClone(status);
     },
     markAllNotificationsRead: () => {
       currentData.monitoring.headerNotifications.forEach((notification) => { notification.read = true; });
@@ -434,22 +466,27 @@ export function createMockDashboardDataSource(scenario: MockScenario = "normal")
       return Promise.resolve(structuredClone(currentData.admin.alertSettings));
     },
     sendTestNotification: () => Promise.resolve(),
-    subscribe: scenario === "live-update" ? (listener) => {
-      const timeout = window.setTimeout(() => {
+    subscribe: (listener) => {
+      closeMockStream?.();
+      publishCamera();
+      cameraTimer = window.setInterval(publishCamera, 2000);
+      const timers: number[] = [];
+      if (scenario === "live-update") timers.push(window.setTimeout(() => {
         currentData = liveUpdateDashboardData();
         listener(withSession());
-      }, 1200);
-      return () => window.clearTimeout(timeout);
-    } : scenario === "operation-cycle" ? (listener) => {
-      const timers = [0, 1, 2, 3, 4].map((step) => window.setTimeout(
-        () => {
-          currentData = step === 4 ? dashboardDataFor("normal") : operationCycleData(step);
-          listener(withSession());
-        },
-        (step + 1) * 500,
-      ));
-      return () => timers.forEach((timer) => window.clearTimeout(timer));
-    } : undefined,
+      }, 1200));
+      if (scenario === "operation-cycle") timers.push(...[0, 1, 2, 3, 4].map(step => window.setTimeout(() => {
+        currentData = step === 4 ? dashboardDataFor("normal") : operationCycleData(step);
+        listener(withSession());
+      }, (step + 1) * 500)));
+      const close = () => {
+        timers.forEach(timer => window.clearTimeout(timer));
+        window.clearInterval(cameraTimer);
+        cameraTimer = undefined;
+      };
+      closeMockStream = close;
+      return close;
+    },
     updateNotificationRecipient: (recipient, settings) => {
       const index = currentData.admin.recipients.findIndex((item) => item.id === recipient.id);
       const updated = { ...recipient, enabled: settings.enabled, version: `"recipient-v${Number(recipient.version.replace(/\D/g, "") || "1") + 1}"` };

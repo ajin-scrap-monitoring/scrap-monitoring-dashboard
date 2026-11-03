@@ -273,6 +273,7 @@ test.each([
     source: "daily" as const,
     daily: {
       source: "daily" as const,
+      view: "full" as const,
       id: "550e8400-e29b-41d4-a716-446655440000",
       cameraId: "camera-main",
       recordingDate: "2026-10-12",

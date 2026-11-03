@@ -111,10 +111,13 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
   const currentAlertPage = Math.min(alertPage, totalAlertPages - 1);
   const visibleRows = rows.slice(currentAlertPage * alertsPerPage, (currentAlertPage + 1) * alertsPerPage);
   const activeCount = alertsKnown ? monitoring.alerts.length : 0;
-  const alertCount = !state ? `${monitoring.alerts.length}건` : !alertsState ? "정보 없음"
+  const alertsReconnecting = state?.streamState === "reconnecting";
+  const alertsLoading = !alertsReconnecting && monitoring.activeAlertsAreaState?.status === "loading";
+  const alertCount = !state ? `${monitoring.alerts.length}건` : !alertsState ? alertsLoading ? "확인 중" : "확인 불가"
     : `${activeCount}건${unconfirmed.length > 0 ? ` / 확인 불가 ${unconfirmed.length}` : ""}`;
   const alertEmptyMessage = !state ? "활성 알림이 없습니다."
-    : !alertsState ? "활성 여부를 확인할 수 있는 알림 정보가 없습니다."
+    : !alertsState ? alertsReconnecting ? "실시간 연결이 복구되면 활성 알림을 다시 표시합니다."
+      : alertsLoading ? "활성 알림을 확인하고 있습니다." : "활성 알림을 불러오지 못했습니다."
     : alertsState.evaluationState === "WARNING" ? "사전 경보가 꺼져 있어 표시할 항목이 없습니다."
     : "현재 활성 알림이 없습니다.";
   const layoutState = state ? layoutPresentation(monitoring.measurementLayout) : null;
@@ -132,7 +135,7 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
       mismatch.reasonCodes.length > 0 ? `사유: ${mismatch.reasonCodes.join(", ")}` : ""].filter(Boolean).join(" / ")
     : undefined;
   const basisTitle = alertsState?.basis?.measuredAt
-    ? `근거 측정 시각: ${seoulDisplayText(Date.parse(alertsState.basis.measuredAt))}`
+    ? `적재율 판정 근거 측정 시각: ${seoulDisplayText(Date.parse(alertsState.basis.measuredAt))}`
     : undefined;
 
   return <DashboardPageShell activePage="monitoring" dataSource={dataSource} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} notificationState={monitoring.notificationState} session={session}>

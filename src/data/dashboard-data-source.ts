@@ -73,6 +73,11 @@ export interface DashboardDataSource {
   getRecording?(recordingId: string, signal?: AbortSignal, source?: "daily" | "event"): Promise<DashboardData["recordings"][number] | null>;
   deleteDailyRecording?(recordingId: string, signal?: AbortSignal): Promise<DailyRecordingDeletion>;
   prepareDailyRecordingExport?(recordingId: string, signal?: AbortSignal): Promise<DashboardData["recordings"][number]>;
+  findEventRecordingExport?(
+    eventId: string,
+    options: { beforeSeconds: number; afterSeconds: number },
+    signal?: AbortSignal,
+  ): Promise<EventExportStatus | null>;
   prepareEventRecordingExport?(
     eventId: string,
     options: { requestId: string; beforeSeconds?: number; afterSeconds?: number; retryFailed?: boolean },
@@ -81,7 +86,7 @@ export interface DashboardDataSource {
   getEventRecordingExportStatus?(statusPath: string, signal?: AbortSignal): Promise<EventExportStatus>;
   getDailyRecordingMediaInfo?(recordingId: string, signal?: AbortSignal): Promise<DailyMediaInfoResult>;
   getClipMediaInfo?(clipId: string, signal?: AbortSignal): Promise<ClipMediaInfoResult>;
-  getCameraStatus?(signal?: AbortSignal): Promise<CameraStatusV2>;
+  subscribeCameraStatus?(listener: (status: CameraStatusV2, receivedAt: number) => void): () => void;
   getRecordingCoverage?(recordingId: string, signal?: AbortSignal): Promise<RecordingCoverageDetail>;
   markAllNotificationsRead?(): Promise<void>;
   markNotificationRead?(notificationId: string): Promise<void>;

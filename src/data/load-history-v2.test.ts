@@ -128,3 +128,41 @@ test("최대 1441개 bucket과 정확히 90일까지의 조회 범위와 긴 집
     expect(parseLoadHistoryV2(response, scope).monitoringSamples).toHaveLength(expectedCount);
   }
 });
+
+test("view=chart 응답은 assessmentId 생략을 허용하고 metadata에 assessmentId key를 생성하지 않으며 0과 null, simulated를 보존한다", () => {
+  const response = fixture();
+  (response as Record<string, unknown>).view = "chart";
+  response.samples.forEach((sample) => {
+    delete (sample as Record<string, unknown>).assessmentId;
+    delete (sample as Record<string, unknown>).observationId;
+    delete (sample as Record<string, unknown>).methodVersion;
+  });
+  (response.samples[0] as Record<string, unknown>).simulated = true;
+  response.samples[0].valuePercent = 0;
+  response.samples[0].valid = true;
+  response.samples[1].valuePercent = null;
+  response.samples[1].valid = false;
+
+  const result = parseLoadHistoryV2(response, scope);
+  expect(result.monitoringSamples).toHaveLength(4);
+  expect(result.monitoringSamples[0].value).toBe(0);
+  expect(result.monitoringSamples[0].simulated).toBe(true);
+  expect(result.monitoringSamples[1].value).toBeNull();
+  expect("assessmentId" in result.monitoringSamples[0]).toBe(false);
+  expect("assessmentId" in result.historySamples[0]).toBe(false);
+});
+
+test("잘못된 view 값은 계약 오류로 거부한다", () => {
+  const response = fixture();
+  (response as Record<string, unknown>).view = "invalid_view";
+  expect(() => parseLoadHistoryV2(response, scope)).toThrow("Unexpected v2 load history");
+});
+
+test("view가 없거나 full이면 assessmentId 누락 시 거부한다", () => {
+  for (const view of [undefined, "full"]) {
+    const response = fixture();
+    if (view !== undefined) (response as Record<string, unknown>).view = view;
+    delete (response.samples[0] as Record<string, unknown>).assessmentId;
+    expect(() => parseLoadHistoryV2(response, scope)).toThrow("Unexpected v2 load history");
+  }
+});

@@ -39,7 +39,7 @@ import { parseCameraStatusV2, type CameraStatusV2 } from "./camera-status-v2";
 import { updateLoadOneHourAgo } from "./load-one-hour-ago";
 import { parseLoadHistoryV2, type LoadHistoryScope } from "./load-history-v2";
 import { configuredLiveVideoMode, configuredMonitoringVersion, mjpegPlaybackEnabled, runtimeFeatureSelection, v1MonitoringEnabled, v2MonitoringEnabled, whepPlaybackEnabled } from "../build-features";
-import { missingValue, pathWithId, rfc3339AtOffset, timeOnly, timestamp, wallClock } from "./contract-values";
+import { record, missingValue, pathWithId, rfc3339AtOffset, timeOnly, timestamp, wallClock } from "./contract-values";
 
 // 관리자 화면 전용 요청과 변환은 해당 화면에서 처음 쓸 때 불러온다.
 const loadAdminApi = () => import("./admin-api");
@@ -114,7 +114,6 @@ type CollectionInsights = {
   collection: CollectionSummary;
   forecast: FillForecast | null;
   profiles: LidarProfile[] | null;
-  activeAlerts: ActiveFillAlerts | null;
   layout: MeasurementLayoutStatus | null;
 };
 
@@ -131,7 +130,9 @@ function applyForecast(summary: MonitoringSummary, forecast: FillForecast | null
   }
 }
 
-function applyCollectionInsights(monitoring: DashboardData["monitoring"], insights: CollectionInsights | null, serverTime: string) {
+type SnapshotAlerts = { snapshot: NonNullable<DashboardData["monitoring"]["v2"]>; alerts: ActiveFillAlerts };
+
+function applyCollectionInsights(monitoring: DashboardData["monitoring"], insights: CollectionInsights | null, serverTime: string, paired: SnapshotAlerts | null) {
   const measuring = monitoring.v2?.dataState === "FRESH";
   const { summary } = monitoring;
   applyForecast(summary, insights?.forecast ?? null, serverTime, measuring);
@@ -141,11 +142,10 @@ function applyCollectionInsights(monitoring: DashboardData["monitoring"], insigh
     : collection.averageCycleSeconds === null ? "자료 부족" : durationText(collection.averageCycleSeconds);
   monitoring.lidarProfiles = measuring && insights?.profiles ? insights.profiles : [];
   monitoring.measurementLayout = insights ? insights.layout : undefined;
-  const reported = insights?.activeAlerts ?? null;
-  const currentSnapshotId = monitoring.v2?.snapshotId;
-  const sameBasis = reported !== null && currentSnapshotId !== undefined && reported.basis.snapshotId === currentSnapshotId;
-  const snapshotEffectiveState = monitoring.v2?.operations?.effectiveState ?? "UNKNOWN";
-  const isMismatch = sameBasis && snapshotEffectiveState !== reported.evaluationState;
+  const sameScope = paired && paired.snapshot.siteId === monitoring.v2?.siteId && paired.snapshot.edgeId === monitoring.v2?.edgeId;
+  const reported = sameScope ? paired.alerts : null;
+  const snapshotEffectiveState = paired?.snapshot.operations?.effectiveState ?? "UNKNOWN";
+  const isMismatch = reported !== null && snapshotEffectiveState !== reported.evaluationState;
   monitoring.alerts = reported?.items.map((alert) => ({
     ...alert,
     time: timeOnly(alert.time),
@@ -356,6 +356,14 @@ export function createHttpDashboardDataSource({
   let notificationRevision = 0;
   let notificationRefreshRequired = false;
   let collectionInsights: CollectionInsights | null = null;
+  let snapshotAlerts: SnapshotAlerts | null = null;
+  let snapshotAlertsAreaState: DataAreaState = { status: "loading" };
+  let closeMonitoringStream: (() => void) | null = null;
+  let snapshotAlertsSequence = 0;
+  let snapshotAlertsInFlight: number | null = null;
+  let lastForcedAlertsAt = -Infinity;
+  let lastCameraStatus: { status: CameraStatusV2; receivedAt: number } | null = null;
+  const cameraListeners = new Set<(status: CameraStatusV2, receivedAt: number) => void>();
   let collectionRequestedAt = -Infinity;
   let lastCollectionSuccessAt = -Infinity;
   let lastLoadHistorySuccessAt = -Infinity;
@@ -386,7 +394,7 @@ export function createHttpDashboardDataSource({
   const pitPath = (path: string) => backendContract
     ? `${path}${path.includes("?") ? "&" : "?"}${new URLSearchParams({ pit_id: pitId })}` : path;
   const snapshotPath = pitPath(useV2Monitoring ? "/api/v2/monitoring/snapshot" : V1_MONITORING_PATHS.snapshot);
-  const eventsPath = pitPath(useV2Monitoring ? "/api/v2/monitoring/events" : V1_MONITORING_PATHS.events);
+  const eventsPath = pitPath(useV2Monitoring ? "/api/v2/monitoring/events?include_camera_status=true" : V1_MONITORING_PATHS.events);
   const mapMonitoring = (snapshot: ApiMonitoringSnapshot | ApiMonitoringSnapshotV2, notifications: ApiNotificationPage | null) => {
     const monitoring = useV2Monitoring
       ? { ...monitoringV2Data(snapshot, pitId), ...notificationData(notifications) }
@@ -397,7 +405,10 @@ export function createHttpDashboardDataSource({
       monitoring.videoUrl = `/media/cameras/${encodeURIComponent(cameraId)}/live`;
       monitoring.videoStatus = "available";
     }
-    if (monitoring.v2) applyCollectionInsights(monitoring, collectionInsights, snapshot.serverTime);
+    if (monitoring.v2) {
+      applyCollectionInsights(monitoring, collectionInsights, snapshot.serverTime, snapshotAlerts);
+      monitoring.activeAlertsAreaState = snapshotAlertsAreaState;
+    }
     if (monitoring.v2) {
       monitoringScope = { pitId, siteId: monitoring.v2.siteId, edgeId: monitoring.v2.edgeId };
       serverClock = { timestamp: Date.parse(snapshot.serverTime), receivedAt: performance.now(), rawServerTime: snapshot.serverTime };
@@ -503,26 +514,66 @@ export function createHttpDashboardDataSource({
     publishNotifications();
   };
 
+  const refreshSnapshotAlerts = async (signal?: AbortSignal) => {
+    const sequence = ++snapshotAlertsSequence;
+    snapshotAlertsInFlight = sequence;
+    const scope = monitoringScope && { ...monitoringScope };
+    try {
+      const value = await request<unknown>(pitPath("/api/v2/monitoring/snapshot-with-alerts?scope=ALL"), { signal });
+      if (!record(value)) throw new Error("Unexpected snapshot-with-alerts contract.");
+      const snapshot = monitoringV2Data(value.snapshot, pitId).v2!;
+      const alerts = parseActiveAlertsV2(value.activeAlerts, pitId);
+      if (!scope || snapshot.siteId !== scope.siteId || snapshot.edgeId !== scope.edgeId
+        || snapshot.siteId !== monitoringScope?.siteId || snapshot.edgeId !== monitoringScope?.edgeId
+        || snapshot.snapshotId !== alerts.basis.snapshotId || !record(value.activeAlerts)
+        || Date.parse(snapshot.serverTime) !== Date.parse(String(value.activeAlerts.computedAt))) {
+        throw new Error("Unexpected snapshot-with-alerts basis or source.");
+      }
+      if (signal?.aborted || sequence !== snapshotAlertsSequence || monitoringDetailsRefCount === 0) return;
+      snapshotAlerts = { snapshot, alerts };
+      snapshotAlertsAreaState = readyState;
+    } catch (error) {
+      if (signal?.aborted || sequence !== snapshotAlertsSequence || monitoringDetailsRefCount === 0) return;
+      snapshotAlerts = null;
+      snapshotAlertsAreaState = areaError(error, "활성 알림을 불러오지 못했습니다.", false);
+      if (isAuthorizationError(error)) { publishAuthorizationError(error); return; }
+    } finally {
+      if (snapshotAlertsInFlight === sequence) snapshotAlertsInFlight = null;
+    }
+    if (signal?.aborted || sequence !== snapshotAlertsSequence || !currentData?.monitoring.v2) return;
+    currentData.monitoring.activeAlertsAreaState = snapshotAlertsAreaState;
+    applyCollectionInsights(currentData.monitoring, collectionInsights, currentData.monitoring.v2.serverTime, snapshotAlerts);
+    publishNotifications();
+  };
+
+  const refreshChangedSnapshotAlerts = (signal?: AbortSignal) => {
+    if (!snapshotAlerts || snapshotAlertsInFlight !== null || performance.now() - lastForcedAlertsAt < 5000
+      || currentData?.monitoring.v2?.operations?.effectiveState === snapshotAlerts.snapshot.operations?.effectiveState) return;
+    lastForcedAlertsAt = performance.now();
+    void refreshSnapshotAlerts(signal);
+  };
+
   const getCollectionSummary = async (signal?: AbortSignal) => {
     collectionRequestedAt = performance.now();
     const optional = <T,>(operation: Promise<T>) => operation.catch((error: unknown) => {
       if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError") || isAuthorizationError(error)) throw error;
       return null;
     });
-    const [collection, forecast, profiles, activeAlerts, layout] = await Promise.all([
+    // 활성 알림은 자기 영역 상태로 따로 반영하므로 현황 본문 표시 조건(이 Promise)에 넣지 않는다.
+    void refreshSnapshotAlerts(signal);
+    const [collection, forecast, profiles, layout] = await Promise.all([
       request<unknown>(pitPath("/api/v2/monitoring/collection-summary"), { signal }).then((value) => parseCollectionSummaryV2(value, pitId)),
       optional(request<unknown>(pitPath("/api/v2/monitoring/fill-forecast"), { signal }).then((value) => parseFillForecastV2(value, pitId))),
       optional(request<unknown>(pitPath("/api/v2/monitoring/profiles"), { signal }).then((value) => parseLidarProfilesV2(value, pitId))),
-      optional(request<unknown>(pitPath("/api/v2/monitoring/active-alerts?scope=ALL"), { signal }).then((value) => parseActiveAlertsV2(value, pitId))),
       optional(request<unknown>(pitPath("/api/v2/monitoring/layout"), { signal }).then((value) => parseMeasurementLayoutV2(value, pitId))),
     ]);
-    return { collection, forecast, profiles, activeAlerts, layout };
+    return { collection, forecast, profiles, layout };
   };
 
   const requestV2LoadHistory = async (from: string, to: string, signal?: AbortSignal) => {
     if (!monitoringScope) throw new Error("Monitoring source is not initialized.");
     const scope = { ...monitoringScope };
-    const parameters = new URLSearchParams({ pit_id: pitId, from, to });
+    const parameters = new URLSearchParams({ pit_id: pitId, from, to, view: "chart" });
     const response = await request<unknown>(`/api/v2/monitoring/load-history?${parameters}`, { signal, timeoutMs: LOAD_HISTORY_TIMEOUT_MS })
       .catch((error: unknown) => {
         throw error instanceof ApiError && error.code === "REQUEST_TIMEOUT" ? new ApiError(error.status, error.message, "HISTORY_CLIENT_TIMEOUT") : error;
@@ -573,7 +624,7 @@ export function createHttpDashboardDataSource({
         lastCollectionSuccessAt = performance.now();
         collectionInsights = summary;
         const before = insightsSignature(currentData.monitoring);
-        applyCollectionInsights(currentData.monitoring, summary, currentData.monitoring.v2.serverTime);
+        applyCollectionInsights(currentData.monitoring, summary, currentData.monitoring.v2.serverTime, snapshotAlerts);
         if (before !== insightsSignature(currentData.monitoring) || currentData.monitoring.completedCollectionState?.status === "error") {
           currentData.monitoring.completedCollectionState = readyState;
           publishNotifications();
@@ -775,6 +826,8 @@ export function createHttpDashboardDataSource({
       notificationActionsController.abort();
       csrfToken = "";
       hasAuthenticatedSession = false;
+      closeMonitoringStream?.();
+      lastCameraStatus = null;
     },
     getDashboardData: async (options: DashboardDataRequestOptions = {}) => {
       resetNotificationActions();
@@ -806,7 +859,7 @@ export function createHttpDashboardDataSource({
         monitoring.unreadNotificationCount = null;
       }
       if (monitoring.v2 && collectionInsights) {
-        applyCollectionInsights(monitoring, collectionInsights, snapshot.serverTime);
+        applyCollectionInsights(monitoring, collectionInsights, snapshot.serverTime, snapshotAlerts);
       }
       updateLoadOneHourAgo(monitoring);
 
@@ -980,7 +1033,7 @@ export function createHttpDashboardDataSource({
               lastCollectionSuccessAt = performance.now();
               collectionInsights = summary;
               if (currentData?.monitoring) {
-                applyCollectionInsights(currentData.monitoring, summary, currentData.monitoring.v2?.serverTime ?? "");
+                applyCollectionInsights(currentData.monitoring, summary, currentData.monitoring.v2?.serverTime ?? "", snapshotAlerts);
                 currentData.monitoring.completedCollectionState = readyState;
                 publishNotifications();
               }
@@ -1058,6 +1111,8 @@ export function createHttpDashboardDataSource({
           }
           monitoringDetailsController?.abort();
           monitoringDetailsController = null;
+          snapshotAlertsSequence += 1;
+          snapshotAlertsInFlight = null;
         }
       };
 
@@ -1068,14 +1123,16 @@ export function createHttpDashboardDataSource({
       deleteDailyRecording: async (recordingId: string, signal?: AbortSignal): Promise<DailyRecordingDeletion> => (await recordingsApi()).deleteDailyRecording(recordingId, signal),
       prepareDailyRecordingExport: async (recordingId: string, signal?: AbortSignal) => (await recordingsApi()).prepareDailyRecordingExport(recordingId, signal),
     } : {}),
+    findEventRecordingExport: async (eventId, options, signal) => (await recordingsApi()).findEventRecordingExport(eventId, options, signal),
     prepareEventRecordingExport: async (eventId, options, signal) => (await recordingsApi()).prepareEventRecordingExport(eventId, options, signal),
     getEventRecordingExportStatus: async (statusPath, signal) => (await recordingsApi()).getEventRecordingExportStatus(statusPath, signal),
     getDailyRecordingMediaInfo: async (recordingId, signal) => (await recordingsApi()).getDailyRecordingMediaInfo(recordingId, signal),
     getClipMediaInfo: async (clipId, signal) => (await recordingsApi()).getClipMediaInfo(clipId, signal),
-    getCameraStatus: async (signal?: AbortSignal): Promise<CameraStatusV2> => {
-      const value = await request<unknown>(pitPath("/api/v2/monitoring/camera-status"), { signal });
-      return parseCameraStatusV2(value, pitId);
-    },
+    ...(useV2Monitoring ? { subscribeCameraStatus: (listener: (status: CameraStatusV2, receivedAt: number) => void) => {
+      cameraListeners.add(listener);
+      if (lastCameraStatus) listener(lastCameraStatus.status, lastCameraStatus.receivedAt);
+      return () => { cameraListeners.delete(listener); };
+    } } : {}),
     getRecordingCoverage: async (recordingId, signal) => (await recordingsApi()).getRecordingCoverage(recordingId, signal),
     markAllNotificationsRead: async () => {
       const session = currentData?.session;
@@ -1117,6 +1174,12 @@ export function createHttpDashboardDataSource({
       let synchronizedNotificationId = currentData?.monitoring.v2?.operations?.notificationId ?? null;
       const sessionController = new AbortController();
       const notificationActionScope = notificationActionsController;
+      closeMonitoringStream = () => {
+        active = false;
+        sessionController.abort();
+        notificationActionScope.abort();
+        eventSource.close();
+      };
       const expireSession = () => {
         if (!active) return;
         active = false;
@@ -1124,6 +1187,7 @@ export function createHttpDashboardDataSource({
         notificationActionScope.abort();
         csrfToken = "";
         hasAuthenticatedSession = false;
+        lastCameraStatus = null;
         eventSource.close();
         onSessionExpired();
       };
@@ -1184,6 +1248,14 @@ export function createHttpDashboardDataSource({
           }
         })().finally(() => { refreshingNotifications = false; });
       };
+      if (useV2Monitoring) eventSource.addEventListener("monitoring.camera-status", (event) => {
+        if (!active || !hasAuthenticatedSession || !(event instanceof MessageEvent) || typeof event.data !== "string") return;
+        let status: CameraStatusV2;
+        try { status = parseCameraStatusV2(JSON.parse(event.data), pitId); }
+        catch { return; }
+        lastCameraStatus = { status, receivedAt: performance.now() };
+        cameraListeners.forEach((subscriber) => subscriber(status, lastCameraStatus!.receivedAt));
+      });
       eventSource.addEventListener("monitoring.snapshot", (event) => {
         if (!active || !currentData || !(event instanceof MessageEvent) || isDuplicate(event)) return;
         if (typeof event.data !== "string") return;
@@ -1219,7 +1291,9 @@ export function createHttpDashboardDataSource({
         if (notificationRefreshRequired || (notificationId && notificationId !== synchronizedNotificationId)) refreshV2Notifications();
         const detailsVisible = typeof document === "undefined" || document.visibilityState !== "hidden";
         if (detailsVisible && useV2Monitoring && monitoring.v2 && backendContract && monitoringDetailsRefCount > 0 && monitoringDetailsController) {
+          // 60초가 지난 상세를 먼저 갱신한다. 이 갱신이 결합 조회를 시작하면 판정 변경 재조회는 생략된다.
           void refreshCompletedCollection(monitoringDetailsController.signal);
+          refreshChangedSnapshotAlerts(monitoringDetailsController.signal);
         }
         if (detailsVisible && useV2Monitoring && monitoringDetailsRefCount > 0 && sourceChanged && monitoringDetailsController) {
           void refreshRecentLoadHistory(monitoringDetailsController.signal);

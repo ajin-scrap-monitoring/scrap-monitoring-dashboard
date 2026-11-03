@@ -4,6 +4,7 @@ import type { DashboardData, DataAreaState, LidarProfile } from "../domain/dashb
 import { calculateUnmeasuredRanges } from "../data/lidar-profiles-v2";
 import { seoulClock } from "../display-time";
 import { timeAxisTicks } from "../chart-time-axis";
+import { simulationLabel } from "../simulation-label";
 import { SectionTitle } from "./DashboardPrimitives";
 
 export function UnsupportedChart({ label, reason, statusLabel = "미지원" }: { label: string; reason: string; statusLabel?: string }) {
@@ -146,6 +147,7 @@ export function LoadChart({ samples, threshold, state, thresholdKind }: { sample
   const previousResult = state?.status === "error" && state.stale === true && plottedSamples.some((sample) => sample.value !== null);
   const unavailable = (state?.status === "error" && !previousResult) || state?.status === "unsupported" || state?.status === "loading";
   const sampleSegments = contiguousSegments(unavailable ? [] : plottedSamples, (sample) => sample.y !== null);
+  const simulation = unavailable ? null : simulationLabel(plottedSamples);
   const tickHours = lastTimestamp - firstTimestamp <= 6 * 3_600_000 ? 1 : 3;
   const xTicks = hasTimestampRange
     ? timeAxisTicks(firstTimestamp, lastTimestamp, tickHours, clockOffsetMinutes).map(timestamp => ({
@@ -167,7 +169,7 @@ export function LoadChart({ samples, threshold, state, thresholdKind }: { sample
         : orderedSamples.some((sample) => sample.dataState !== "NO_DATA") ? "유효한 적재율 데이터가 없습니다." : "최근 적재율 데이터가 없습니다.";
 
   return (
-    <svg className="chart-svg" viewBox="0 0 430 175" preserveAspectRatio="none" role="img" aria-label="최근 24시간 대표 적재율 그래프">
+    <svg className="chart-svg" viewBox="0 0 430 175" preserveAspectRatio="none" role="img" aria-label={`최근 24시간 대표 적재율 그래프${simulation ? ` (${simulation})` : ""}`}>
       <g stroke="#e2e8ef" strokeWidth="1">
         {yTickValues.map((value) => (
           <path key={`grid-h-${value}`} d={`M40 ${toY(value).toFixed(1)}H410`} />
@@ -188,6 +190,7 @@ export function LoadChart({ samples, threshold, state, thresholdKind }: { sample
       <path d={`M40 ${toY(threshold)}H410`} stroke="#607086" strokeDasharray="5 5" strokeOpacity="0.58" strokeWidth="1.5" />
       {previousResult && <text x="225" y="12" fill="#61708a" fontSize="9" textAnchor="middle">이전 조회 결과 / 갱신 실패</text>}
       <text x="408" y="12" fill="#526278" fontSize="10" fontWeight="600" textAnchor="end">{thresholdKind === "current" ? "현재 임계율" : "수거 임계율"} {threshold}%</text>
+      {simulation && <text className="load-chart-simulation" x="40" y="12" fill="#61708a" fontSize="10">{simulation}</text>}
       {sampleSegments.length > 0 ? sampleSegments.map((segment, index) => {
         const linePath = segment.map((sample, sampleIndex) => `${sampleIndex === 0 ? "M" : "L"}${sample.x} ${sample.y}`).join(" ");
         return <g key={`load-segment-${index}`}>

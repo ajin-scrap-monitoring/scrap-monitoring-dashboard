@@ -43,7 +43,17 @@ export async function installDailyRecordingApi(page: Page, authenticated: () => 
       if (failedList) { await route.fulfill({ status: 503, json: { detail: "Synthetic list failure" } }); return; }
       const from = url.searchParams.get("from_date") ?? "";
       const to = url.searchParams.get("to_date") ?? "";
-      await route.fulfill({ json: { items: recordings.filter(item => item.recording_date >= from && item.recording_date < to), next_cursor: null } });
+      const isSummary = url.searchParams.get("view") === "summary";
+      const filtered = recordings.filter(item => item.recording_date >= from && item.recording_date < to);
+      const items = isSummary ? filtered.map(item => {
+        const { gaps, available_intervals, ...rest } = item;
+        return {
+          ...rest,
+          gap_count: gaps.length,
+          available_interval_count: available_intervals.length,
+        };
+      }) : filtered;
+      await route.fulfill({ json: { items, next_cursor: null, ...(isSummary && { view: "summary" }) } });
       return;
     }
     const id = url.pathname.split("/")[5];

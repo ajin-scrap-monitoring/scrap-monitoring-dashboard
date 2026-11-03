@@ -49,7 +49,7 @@ test("실제 Backend의 과거 적재율 값과 현재 임계율을 이력 그�
         },
       });
       expect(response.ok()).toBe(true);
-      expected.push({ assessmentId, percent });
+      expected.push({ generatedAt, percent });
     }
     await page.setViewportSize({ width: 1920, height: 1080 });
     await login(page);
@@ -59,7 +59,10 @@ test("실제 Backend의 과거 적재율 값과 현재 임계율을 이력 그�
         && Date.parse(url.searchParams.get("to") ?? "") - Date.parse(url.searchParams.get("from") ?? "") === 7 * 86_400_000;
     });
     await page.getByRole("link", { name: "이력", exact: true }).click();
-    const history = await (await historyResponse).json() as components["schemas"]["LoadHistoryV2"];
+    const history = await (await historyResponse).json() as components["schemas"]["ChartHistoryV2"];
+    // 화면은 그래프용 응답을 쓰며 근거 식별 문자열은 응답에 포함되지 않는다.
+    expect(history.view).toBe("chart");
+    expect(history.samples.some(sample => "assessmentId" in sample || "observationId" in sample || "methodVersion" in sample)).toBe(false);
     // 앱 내부 이동은 snapshot을 다시 요청하지 않으므로 현재 임계율은 API로 직접 확인한다.
     const snapshotResponse = await page.request.get("/api/v2/monitoring/snapshot?pit_id=pit-01");
     expect(snapshotResponse.ok()).toBe(true);
@@ -70,7 +73,8 @@ test("실제 Backend의 과거 적재율 값과 현재 임계율을 이력 그�
       [...(path.getAttribute("d") ?? "").matchAll(/[ML]([\d.e+-]+) ([\d.e+-]+)/g)].map(match => ({ x: Number(match[1]), y: Number(match[2]) }))));
     expect(points).toHaveLength(history.samples.filter(sample => sample.valid && sample.valuePercent !== null).length);
     for (const item of expected) {
-      const sample = history.samples.find(sample => sample.assessmentId === item.assessmentId);
+      const sample = history.samples.find(sample => sample.generatedAt !== null && sample.generatedAt !== undefined
+        && Date.parse(sample.generatedAt) === Date.parse(item.generatedAt));
       expect(sample).toMatchObject({ valuePercent: item.percent, valid: item.percent !== null });
       if (item.percent === null || !sample?.generatedAt) continue;
       const x = 58 + 1842 * (Date.parse(sample.generatedAt) - Date.parse(history.from)) / (Date.parse(history.to) - Date.parse(history.from));
@@ -137,7 +141,7 @@ test("실제 session과 Edge v2 판단 불가, MJPEG 연결 및 확대 종료", 
   });
   expect(pageWidth.content).toBeLessThanOrEqual(pageWidth.width);
   await expect.poll(() => image.evaluate((element) => (element as unknown as { naturalWidth: number }).naturalWidth)).toBe(320);
-  expect(urls.some((url) => url.includes("/api/v2/monitoring/events?pit_id=pit-01"))).toBe(true);
+  expect(urls.some((url) => url.includes("/api/v2/monitoring/events?include_camera_status=true&pit_id=pit-01"))).toBe(true);
   expect(urls.some((url) => url.includes("/webrtc/"))).toBe(false);
   await page.getByRole("button", { name: "실시간 영상 크게 보기" }).click();
   await expect(page.getByRole("dialog", { name: "실시간 영상 크게 보기" })).toBeVisible();
@@ -178,6 +182,13 @@ test("실제 v2 수신 API, SSE와 적재율 추이에서 0%, STALE, session 종
     const response = await backend.post("/api/edge/v2/" + endpoint, { data: payload, headers: { Authorization: "Bearer " + (process.env.SYNC_EDGE_TOKEN ?? ""), "Idempotency-Key": payload.message_id } });
     expect(response.ok()).toBe(true);
   };
+  const cameraStatusRequests: string[] = [];
+  const eventUrls: URL[] = [];
+  page.on("request", request => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v2/monitoring/camera-status") cameraStatusRequests.push(request.url());
+    if (url.pathname === "/api/v2/monitoring/events") eventUrls.push(url);
+  });
   try {
     await send("status", status);
     const assessment = {
@@ -193,18 +204,15 @@ test("실제 v2 수신 API, SSE와 적재율 추이에서 0%, STALE, session 종
     const camera = page.locator(".device").filter({ has: page.getByText("카메라", { exact: true }) });
     await expect(camera.locator(".status-text")).toHaveText("정상");
     await expect(camera.locator(".status-text")).toHaveAttribute("title", /프레임 수신 기준 상태/);
-    const cameraStatusResponse = await page.request.get("/api/v2/monitoring/camera-status?pit_id=pit-01");
-    expect(cameraStatusResponse.status(), "Authenticated v2 camera-status response").toBe(200);
-    const cameraStatusData = await cameraStatusResponse.json() as Record<string, unknown>;
-    expect(cameraStatusData).toMatchObject({
-      state: "HEALTHY",
-      connectionState: "CONNECTED",
-    });
-    expect(typeof cameraStatusData.validForSeconds).toBe("number");
+    await expect(camera.locator(".status-text")).toHaveAttribute("title", /프레임 수신 시각/);
+    expect(cameraStatusRequests).toHaveLength(0);
+    expect(eventUrls).toHaveLength(1);
+    expect(eventUrls[0].searchParams.get("include_camera_status")).toBe("true");
     await send("assessments", assessment);
     await expect(page.locator(".kpi-value")).toHaveText("0%");
     const pastLoad = page.locator(".status-details > div").filter({ hasText: "1시간 전 적재율" }).locator("strong");
     await expect(pastLoad).toHaveText("60%");
+    await expect(page.locator(".alarm-status")).toHaveText("경고 기준 미만");
     const snapshotResponse = await page.request.get("/api/v2/monitoring/snapshot?pit_id=pit-01");
     expect(snapshotResponse.status(), "Authenticated v2 snapshot response").toBe(200);
     const confirmedSnapshot = await snapshotResponse.json() as components["schemas"]["MonitoringSnapshotV2"];
@@ -225,7 +233,6 @@ test("실제 v2 수신 API, SSE와 적재율 추이에서 0%, STALE, session 종
     expect(Date.parse(zeroSample?.generatedAt ?? "")).toBe(Date.parse(assessment.generated_at));
     expect(Date.parse(zeroSample?.observedAt ?? "")).toBe(Date.parse(assessment.observed_to));
     expect(confirmedSnapshot.operations?.effectiveState).toBe("NORMAL");
-    await expect(page.locator(".alarm-status")).toHaveText("경고 기준 미만");
     const criticalAt = new Date().toISOString();
     await send("assessments", { ...assessment, ...envelope("edge_assessment"), assessment_id: randomUUID(), observed_from: criticalAt, observed_to: criticalAt, fill_estimate: { ratio: 0.95, method_version: "synthetic-browser-method" } });
     await expect(page.locator(".kpi-value")).toHaveText("95%");
@@ -235,9 +242,12 @@ test("실제 v2 수신 API, SSE와 적재율 추이에서 0%, STALE, session 종
     expect(alertResponse.ok()).toBe(true);
     const alerts = await alertResponse.json() as components["schemas"]["V2AlertPage"];
     expect(alerts.items).toHaveLength(1);
-    const allAlertsResponse = await page.request.get("/api/v2/monitoring/active-alerts?pit_id=pit-01&scope=ALL");
-    expect(allAlertsResponse.status(), "Authenticated v2 active-alerts scope=ALL response").toBe(200);
-    const allAlerts = await allAlertsResponse.json() as components["schemas"]["ActiveFillAlertPageV2"];
+    const allAlertsResponse = await page.request.get("/api/v2/monitoring/snapshot-with-alerts?pit_id=pit-01&scope=ALL");
+    expect(allAlertsResponse.status(), "Authenticated v2 snapshot-with-alerts response").toBe(200);
+    const combined = await allAlertsResponse.json() as components["schemas"]["MonitoringSnapshotWithAlertsV2"];
+    expect(combined.snapshot.snapshotId).toBe(combined.activeAlerts.basis.snapshotId);
+    expect(Date.parse(combined.snapshot.serverTime)).toBe(Date.parse(combined.activeAlerts.computedAt));
+    const allAlerts = combined.activeAlerts;
     expect(allAlerts).toMatchObject({ pitId: "pit-01", scope: "ALL", evaluationState: "CRITICAL" });
     expect(allAlerts.items?.some(item => item.type === "collection_required")).toBe(true);
     expect(allAlerts.coverage?.find(entry => entry.componentKind === "CAMERA")).toMatchObject({ state: "CHECKED", reasonCodes: ["FRAME_RECEIVED"] });
@@ -309,7 +319,7 @@ test("실제 v2 수신 API, SSE와 적재율 추이에서 0%, STALE, session 종
     await expect(page).toHaveURL(/\/login$/);
     expect((await page.request.get("/api/v2/monitoring/alerts?pit_id=pit-01")).status()).toBe(401);
     expect((await page.request.get("/api/v2/monitoring/load-history?pit_id=pit-01")).status()).toBe(401);
-    for (const path of ["/api/v2/monitoring/active-alerts?pit_id=pit-01&scope=ALL", "/api/v2/monitoring/layout?pit_id=pit-01"]) {
+    for (const path of ["/api/v2/monitoring/snapshot-with-alerts?pit_id=pit-01&scope=ALL", "/api/v2/monitoring/layout?pit_id=pit-01"]) {
       expect((await page.request.get(path)).status()).toBe(401);
     }
   } finally { await backend.dispose(); }

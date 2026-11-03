@@ -1,11 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
-import type { DailyRecording } from "../data/daily-recordings";
+import type { DailyRecordingFull } from "../data/daily-recordings";
 import { DailyRecordingTimeline } from "./DailyRecordingTimeline";
 
-const item: DailyRecording = {
-  source: "daily", id: "daily-01", cameraId: "camera-main", recordingDate: "2026-10-14", timezone: "Asia/Seoul",
+const item: DailyRecordingFull = {
+  source: "daily", view: "full", id: "daily-01", cameraId: "camera-main", recordingDate: "2026-10-14", timezone: "Asia/Seoul",
   windowStartsAt: "2026-10-13T15:00:00.000Z", windowEndsAt: "2026-10-14T15:00:00.000Z", status: "recording", coverage: null,
   hasGaps: true, coverageAsOfAt: "2026-10-13T17:00:00.000Z", playableUntilAt: "2026-10-13T17:00:00.000Z", recordedSeconds: 5400,
   gaps: [{ startsAt: "2026-10-13T15:30:00.000Z", endsAt: "2026-10-13T16:00:00.000Z", reasonCode: "CAMERA_DISCONNECTED" }],
@@ -54,7 +54,7 @@ test("원인 없는 과거 구간은 누락으로 추측하지 않고 미확인 
 });
 
 test("wall-clock 길이가 없는 관측점은 확보 시간으로 늘리지 않고 재생 시작점만 연결한다", () => {
-  const observed = { ...item, availableIntervals: [{ startsAt: "2026-10-13T15:10:00.000Z", endsAt: "2026-10-13T15:10:00.000Z", playbackStartsAtSeconds: 0, playbackEndsAtSeconds: 2 }], recordedSeconds: 2, playableUntilAt: "2026-10-13T15:10:00.000Z", gaps: [], hasGaps: false } satisfies DailyRecording;
+  const observed = { ...item, availableIntervals: [{ startsAt: "2026-10-13T15:10:00.000Z", endsAt: "2026-10-13T15:10:00.000Z", playbackStartsAtSeconds: 0, playbackEndsAtSeconds: 2 }], recordedSeconds: 2, playableUntilAt: "2026-10-13T15:10:00.000Z", gaps: [], hasGaps: false } satisfies DailyRecordingFull;
   const onSeek = vi.fn();
   render(<DailyRecordingTimeline recording={observed} now={now} onSeek={onSeek} />);
   const point = screen.getByRole("button", { name: "확보 시점 00:10:00, 재생" });
@@ -80,7 +80,7 @@ test("재생 준비 중에는 확보된 범위를 표시하되 seek를 제공하
 
 test("종료된 날짜의 시간축을 재사용해도 보관 만료 시각 이후에는 재생을 차단한다", () => {
   const end = Date.parse(item.windowEndsAt);
-  const recording: DailyRecording = { ...item, status: "closed", expiresAt: new Date(end + 1000).toISOString() };
+  const recording: DailyRecordingFull = { ...item, status: "closed", expiresAt: new Date(end + 1000).toISOString() };
   const onSeek = vi.fn();
   const view = render(<DailyRecordingTimeline recording={recording} now={end} onSeek={onSeek} />);
   expect(screen.getAllByRole("button").length).toBeGreaterThan(0);
@@ -90,7 +90,7 @@ test("종료된 날짜의 시간축을 재사용해도 보관 만료 시각 이�
 });
 
 test("조회 날짜가 아직 시작되지 않았으면 시작 경계의 관측점을 확보 시점으로 앞당기지 않는다", () => {
-  const recording: DailyRecording = { ...item, availableIntervals: [{ startsAt: item.windowStartsAt, endsAt: item.windowStartsAt, playbackStartsAtSeconds: 0, playbackEndsAtSeconds: 2 }], gaps: [], recordedSeconds: 2 };
+  const recording: DailyRecordingFull = { ...item, availableIntervals: [{ startsAt: item.windowStartsAt, endsAt: item.windowStartsAt, playbackStartsAtSeconds: 0, playbackEndsAtSeconds: 2 }], gaps: [], recordedSeconds: 2 };
   render(<DailyRecordingTimeline recording={recording} now={Date.parse(item.windowStartsAt) - 1000} onSeek={vi.fn()} />);
   expect(screen.queryByRole("button")).not.toBeInTheDocument();
   expect(screen.getByRole("img", { name: "아직 도래하지 않은 구간 00:00:00 ~ 24:00:00" })).toBeInTheDocument();
@@ -100,7 +100,7 @@ test("많은 확보 및 누락 구간은 모든 경계를 유지하면서 표시
   const count = 8000;
   const start = Date.parse(item.windowStartsAt);
   const at = (seconds: number) => new Date(start + seconds * 1000).toISOString();
-  const recording: DailyRecording = { ...item, status: "closed", coverage: "partial", coverageAsOfAt: item.windowEndsAt,
+  const recording: DailyRecordingFull = { ...item, status: "closed", coverage: "partial", coverageAsOfAt: item.windowEndsAt,
     availableIntervals: Array.from({ length: count }, (_, index) => ({ startsAt: at(index * 3), endsAt: at(index * 3 + 1), playbackStartsAtSeconds: index, playbackEndsAtSeconds: index + 1 })),
     gaps: Array.from({ length: count }, (_, index) => ({ startsAt: at(index * 3 + 1), endsAt: at(index * 3 + 3), reasonCode: "SYNTHETIC_GAP" })),
     recordedSeconds: count, playableUntilAt: at((count - 1) * 3 + 1) };
@@ -145,7 +145,7 @@ test("많은 확보 및 누락 구간은 모든 경계를 유지하면서 표시
 test("많은 관측점도 확보된 시간으로 늘리지 않고 pointer와 키보드 재생에 연결한다", () => {
   const start = Date.parse(item.windowStartsAt);
   const intervals = Array.from({ length: 300 }, (_, index) => ({ startsAt: new Date(start + index * 100_000).toISOString(), endsAt: new Date(start + index * 100_000).toISOString(), playbackStartsAtSeconds: index, playbackEndsAtSeconds: index + 1 }));
-  const recording: DailyRecording = { ...item, status: "closed", availableIntervals: intervals, gaps: [], coverageAsOfAt: item.windowEndsAt, recordedSeconds: 300 };
+  const recording: DailyRecordingFull = { ...item, status: "closed", availableIntervals: intervals, gaps: [], coverageAsOfAt: item.windowEndsAt, recordedSeconds: 300 };
   const onSeek = vi.fn();
   const view = render(<DailyRecordingTimeline recording={recording} now={Date.parse(item.windowEndsAt)} onSeek={onSeek} />);
   expect(view.container.querySelector("path.daily-recording-range-available")).toBeNull();

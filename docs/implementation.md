@@ -163,14 +163,15 @@ snapshot만 대기하고 알림 응답을 기다리지 않고 반환한다. 알�
 현황 화면은 해제할 때 준비 완료 기록을 지우므로 재진입 때 이전 활성화의 완료 기록을 사용하지
 않는다. data source의 `isMonitoringDetailsReady`는 부수 효과 없이 마지막 성공 뒤 60초 이내인지
 반환하며, 이 경우 현황 화면은 로딩 화면을 그리지 않고 첫 render부터 현황을 표시한다. 마지막
-성공 뒤 60초가 지난 재진입은 새 collection summary 응답까지 로딩 화면을 유지한다. load-history 기준 시각은 서버 시각만 사용하며 서버 시각이 없으면 조회하지 않고 해당 영역을
-오류 상태로 둔다. 브라우저 탭이 숨겨지면(`document.visibilityState === "hidden"`) 현황 상세 갱신 timer를
-중지하고 `monitoring.snapshot` SSE 수신이 유발하는 완료 조회 5개 요청(collection summary,
-fill forecast, profiles, active alerts, layout)과 source 변경 때의 load-history 조회도 보내지 않는다. 탭이 다시 표시되면 마지막 성공 시각 이후 60초가 지난 경우 collection summary와 최근
-24시간 load-history를 즉시 재조회하고 timer를 다시 시작한다. 60초가 지난 load-history 표본은
-비우고 loading 상태로 둔 뒤 조회한다. SSE 연결은 탭 숨김 중에도 유지한다. 카메라 상태 폴링
-(`useCameraStatus`) 역시 탭이 숨겨진 동안 폴링 timer를 멈추고 진행 중인 요청을 취소하며, 다시
-보이면 확인 중 상태로 초기화하고 즉시 재조회한다. 보조 조회의 실패는 영역별 상태로 처리한다.
+성공 뒤 60초가 지난 재진입은 새 collection summary 응답까지 로딩 화면을 유지한다. 활성 알림 결합 조회는
+이 대기에 포함하지 않고 활성 알림 카드만 확인 중으로 둔다. load-history 기준 시각은 서버 시각만
+사용하며 서버 시각이 없으면 조회하지 않고 해당 영역을 오류 상태로 둔다. 브라우저 탭이 숨겨지면(`document.visibilityState === "hidden"`) 현황 상세 갱신 timer를
+중지하고 `monitoring.snapshot` SSE 수신이 유발하는 60초 경과 상세 갱신, 판정 변경의 결합 재조회와
+source 변경의 load-history 조회도 보내지 않는다.
+탭이 다시 표시되면 마지막 성공 시각 이후 60초가 지난 경우 현황 보조 조회와 최근 24시간
+load-history를 즉시 재조회하고 timer를 다시 시작한다. 60초가 지난 load-history 표본은 비우고
+loading 상태로 둔 뒤 조회한다. SSE 연결은 탭 숨김 중에도 유지한다. 보조 조회의 실패는
+영역별 상태로 처리한다.
 
 이력 화면의 적재율 그래프(`queryHistory`)는 성공한 load-history 결과를
 `(pit, site, edge, from, to)` 키 기준으로 60초 동안 최대 4개까지 메모리에 보관하고 동일한 키의
@@ -258,7 +259,10 @@ token을 사용한다. Synthetic 로그인은 `sessionStorage`를 사용하고 �
 ### 현황 화면
 
 `monitoring-v2.ts`는 판단 및 장비 상태를 변환하고 `load-history-v2.ts`는 source와
-bucket 및 결측을 검사한다. `load-one-hour-ago.ts`는 같은 이력의 과거 관측을 선택하며
+bucket 및 결측을 검사한다. `load-history-v2.ts`는 `view=chart` 응답 시 표본의
+`assessmentId`, `observationId`, `methodVersion` 생략을 허용하고 metadata에
+`assessmentId` key를 생성하지 않으며, `view` 부재 또는 `"full"`인 경우 `assessmentId`만
+검증한다. `load-one-hour-ago.ts`는 같은 이력의 과거 관측을 선택하며
 초기 조회, snapshot과 약 1분 간격 조회에 적용한다. Source 변경과 조회 실패는 값을 지우고
 별도 요청이나 장기 저장소는 사용하지 않는다. 수치와 상태의 해석은
 [화면 데이터 매핑](contracts/backend/frontend-mapping.md)이 정본이다.
@@ -273,12 +277,12 @@ A~B 가로축 배치를 유지하고, `positionRatio`가 있는 표본의 최솟
 표본 위치가 없으면 전체를 미측정 처리한다. `active-alerts-v2.ts`는 필수
 `basis` 객체와 필수 `coverage` 배열을 검증하고, 장비 항목의 `CAMERA` 및 `MEDIA_CAMERA_STATUS`를
 허용하며 카메라 항목 이름은 "카메라"로 지정한다. 선택 필드인 `validUntilAt`, `evaluatedAt`,
-`evidenceSource`를 보존한다. HTTP adapter는 이 응답들을 하나의 묶음으로 조회해 약 1분마다
-갱신하며, 보조 조회의 실패는 해당 값만 정보 없음으로 표시하고 인증 오류는 숨기지 않는다.
-예상 도달은 `validUntil` 경과와 재연결 중에 숨긴다. 활성 알림은 `basis.snapshotId`가 현재
-snapshot의 `snapshotId`와 같을 때 두 판정이 다르면 "현재 판정과 활성 알림 판정이 다름" 보조
-안내를 활성 알림 카드에 표시하고 항목은 숨기지 않는다. ID가 다르면 서로 다른 측정 시점으로
-취급해 active-alerts의 평가 상태와 항목을 그대로 표시하고 근거 측정 시각을 title로 제공한다.
+`evidenceSource`를 보존한다. HTTP adapter는 snapshot-with-alerts의 snapshot을 기존 v2
+snapshot 검사로, activeAlerts를 `parseActiveAlertsV2`로 검사한다. 결합 요청마다 순번을 부여해
+가장 최근 시작한 요청만 적용하며 현황 상세 release 뒤의 응답은 적용하지 않는다. 같은
+snapshotId의 응답도 적용한다. 결합 조회와 판정 비교의 근거 및 강제 재조회 조건은
+[활성 알림 매핑](contracts/backend/frontend-mapping.md#활성-알림)을 따른다.
+예상 도달은 `validUntil` 경과와 재연결 중에 숨긴다.
 적재율 활성 알림 평가 상태가 `UNKNOWN` 또는 `ERROR`이면 "적재율 판정 불가"로 표시하고
 `lastKnownState`가 있으면 보조 표기한다. 장비 활성 알림은 평가 상태와 무관하게 표시한다.
 `error-body.ts`는 Backend의 3가지 오류 본문을 하나의 코드, 메시지와 검증 항목으로 정규화한다.
@@ -293,11 +297,12 @@ snapshot의 `snapshotId`와 같을 때 두 판정이 다르면 "현재 판정과
 원본 판단 사유와 capability는 모델에 보존하되 별도 진단 버튼은 제공하지 않는다.
 
 장비 카드는 장비명과 보고된 상태만 표시하고 scan 및 진행 시각과 latency는 표시하지
-않는다. 카메라 행은 `useCameraStatus`를 통해 `GET /api/v2/monitoring/camera-status`를 2초
-간격으로 폴링해 상태를 갱신한다. 상태 유효 시간은 응답 수신 브라우저 시각에 `validForSeconds`를
-더한 시각(최대 5초)까지며, 만료되거나 조회 실패 시 "확인 불가"로 전환한다. 상태(HEALTHY 정상,
-INTERRUPTED 수신 중단, UNKNOWN 확인 불가, UNSUPPORTED 미지원)와 프레임 수신 시각, 연결 상태
-및 사유 코드를 title로 제공한다. 501 미지원 환경에서는 snapshot 서비스 보고로 대체한다.
+않는다. 카메라 행의 `useCameraStatus`는 data source의 `subscribeCameraStatus`를 구독한다.
+HTTP data source는 앱 공용 SSE에서 검사한 마지막 카메라 상태와 단조 시계의 수신 시각을
+보관하고 새 구독자에게 즉시 전달한다. 화면 종료는 카메라 구독만 해제하며 화면 이동은 SSE를
+다시 연결하지 않는다. 숨김 탭은 기한 검사 timer를 멈추고 다시 보이면 즉시 기한을 판정한다.
+로그아웃과 session.expired는 SSE를 닫는다. 상태 표시와 수신 유효 기한은
+[카메라 상태 매핑](contracts/backend/frontend-mapping.md#카메라-상태)을 따른다.
 확인한 코드는 한국어로 변환하고 알 수 없는 코드는 원문을 표시한다.
 실측 좌표가 없는 측정 영역은 참고도이며 측정선의 끝점은 표면과 벽면의 경계에 맞춘다.
 A 및 B 원의 중심은 끝점에 있고 반투명 면은 센서와 측정선 전체를 연결한다.
@@ -380,11 +385,18 @@ ID의 조합이다. 날짜 필터는 날짜만, 나머지 유형은 해당 이�
 페이지를 그대로 쓴다. v1 녹화 목록은 서버 페이지 정렬 계약이 없어 한 번에 가져온다.
 `queryRecordings`는 전체 목록이 필요한 다른 기능을 위해 모든 페이지를 조회하는 별도 경로로 유지한다.
 
-`event-recordings.ts`는 이벤트 녹화 목록과 상세의 검증 및 화면 모델 변환, `daily-recordings.ts`는
-날짜와 확보 및 누락 및 압축 재생 시각의 검증, `daily-recording-api.ts`는 날짜 목록과 단건,
-export 및 삭제를 처리한다. `recording-coverage.ts`는 제안 모드의 clip 범위를 처리한다. 날짜 모듈은 필요할 때 로드하고 Media 내부 경로를 직접 요청하지 않는다.
-날짜 녹화 응답의 검증은 `gaps`와 `available_intervals`의 각 시각을 한 번만 해석하고, 날짜 형식
-검증 결과는 날짜별로 재사용한다.
+`domain/daily-recording.ts`의 `DailyRecording`은 구간 배열을 포함하는 `DailyRecordingFull`과
+구간 수만 포함하는 `DailyRecordingSummary`의 판별 가능한 union(`view: "full" | "summary"`)으로
+정의한다. `event-recordings.ts`는 이벤트 녹화 목록과 상세의 검증 및 화면 모델 변환,
+`daily-recordings.ts`는 날짜 녹화의 full 및 summary parser 분기와 확보 및 누락 및 압축 재생
+시각의 검증, `daily-recording-api.ts`는 날짜 목록과 단건, export 및 삭제를 처리한다.
+`daily-recording-api.ts`의 목록 조회는 `view=summary`를 전달하고 요약 응답의 `gap_count`,
+`available_interval_count` 및 `has_gaps` 일치를 검증하며 목록 단계의 `Recording.gaps`는 undefined로
+둔다. 녹화 화면(`RecordingsPage.tsx`)은 요약 녹화 선택 시 단건 상세 GET으로 full 녹화를 받아
+목록 항목을 교체하기 전까지 재생 로딩 상태를 표시하고 timeline 및 누락 구간 버튼 표시를 유보한다.
+`recording-coverage.ts`는 제안 모드의 clip 범위를 처리한다. 날짜 모듈은 필요할 때 로드하고 Media
+내부 경로를 직접 요청하지 않는다. 날짜 녹화 응답의 검증은 `gaps`와 `available_intervals`의 각 시각을
+한 번만 해석하고, 날짜 형식 검증 결과는 날짜별로 재사용한다.
 
 `DailyRecordingVideo`는 `hls.js/light`를 지연 로드하고 Media Source Extensions (MSE)
 지원 시 사용하며 미지원은 native HLS (HTTP Live Streaming)를 사용한다. MSE의 첫 위치와
@@ -437,14 +449,13 @@ Graphics)의 path로 묶으며 모든 원본 경계와 누락을 유지한다. �
 이벤트 창은 요청 구간, 요청 및 확보와 재생 길이, 누락 구간의 시작과 종료 시각 및 종류와 사유 코드를 표시한다.
 날짜 창은 녹화 날짜와 누락 구간의 시작 및 종료 시각과 사유 코드를 표시한다.
 구간별 누락 원인은 API에서 제공하지 않는다는 문구는 v1 clip 상세에만 유지한다.
-날짜와 이벤트 썸네일은 계약에 없어 같은 크기의 빈 미리보기를 사용한다. 이벤트 구간 다운로드는
-`POST /api/v2/recordings/events/{event_id}/exports`로 구간 파일 준비를 요청하고 3초 간격으로
-`statusPath`를 폴링한다. `requestId`를 생성 및 재사용하며 실패 시 `retryFailed: true`로 다시
-추출하고 삭제 및 만료 시 새 `requestId`로 새로 준비한다. 저장값을 복원할 때는 `requestId`의 UUID
-형식과 `statusPath`가 `/api/v2/recordings/events/{eventId}/exports/{requestId}`인지 검증하며, 일치하지
-않으면 삭제하고 없는 것으로 처리한다. 세션 동안 메모리 맵과 `localStorage`
-(`scrap-dashboard:event-export:v1:<user.id>:<eventId>:30:30`, 7일 유효)에 상태를 보존해 새로고침
-후에도 복구한다. 녹화 중 상태에 누락 여부를 덧붙이지 않으며 시간축과 상세에서 확인한다.
+날짜와 이벤트 썸네일은 계약에 없어 같은 크기의 빈 미리보기를 사용한다.
+`RecordingsPage`는 이벤트 선택 시 `findEventRecordingExport`로 서버 작업을 복구한다.
+선택 변경은 조회와 준비 요청을 abort하고 늦은 응답을 무시한다. 복구와 POST 응답의 requestId는
+이후 명시 재시도에 사용하고 상태 조회는 응답 statusPath를 사용한다. 서버 조회 복구, 요청별 UUID와
+상태 및 다운로드 조건과 영상 없는 이벤트(`EVENT_RECORDING_UNAVAILABLE`)의 안내는
+[녹화 매핑](contracts/backend/frontend-mapping.md#녹화)을 따른다.
+녹화 중 상태에 누락 여부를 덧붙이지 않으며 시간축과 상세에서 확인한다.
 
 녹화 정보 카드의 비디오 코덱, 해상도, 화면 비율, 프레임 속도와 파일 용량은 날짜 녹화의 경우
 `GET /api/v2/recordings/daily/{recording_id}/media-info`, 이벤트 녹화는 구간 파일이 ready이고
@@ -466,7 +477,8 @@ file이 null이면 "날짜 MP4 준비 전", 이벤트 준비 전이면 "구간 �
 complete: "파일 정리 완료" 및 완료 시각, null: "정보 없음")를 표시한다. `space_reclaimed`는 숫자나
 회수 완료로 표시하지 않는다.
 
-단건은 선택 및 조회 때 확인하고 이벤트 구간의 `PROCESSING`, 날짜의 recording 및
+단건은 선택 및 조회 때 확인한다. `recordingId` 직접 링크로 연 녹화는 화면 진입 조회가 받은 단건을 첫
+확인으로 재사용한다. 이벤트 구간의 `PROCESSING`, 날짜의 recording 및
 finalizing과 export processing에서만 2초 간격으로 갱신한다. 일시적인 네트워크 오류와
 HTTP 408, 429, 500, 502, 503, 504는 2초, 4초와 8초 간격으로 최대 세 번 재시도한다.
 확인된 재생은 유지하되 다운로드와 준비는 재확인 전 제한한다. 권한 오류, 삭제와 만료는

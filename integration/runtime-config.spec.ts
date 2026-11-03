@@ -35,7 +35,7 @@ test("같은 production 이미지에 주입한 두 runtime 설정으로 실제 B
       const snapshots = api.requests.filter((url) => url.pathname === "/api/v2/monitoring/snapshot");
       expect(snapshots.length).toBeGreaterThan(0);
       expect(snapshots.every((url) => url.searchParams.get("pit_id") === config.pitId)).toBe(true);
-      await expect.poll(() => page.evaluate(() => window.backendFixture.eventUrls()[0])).toBe(`/api/v2/monitoring/events?pit_id=${encodeURIComponent(config.pitId)}`);
+      await expect.poll(() => page.evaluate(() => window.backendFixture.eventUrls()[0])).toBe(`/api/v2/monitoring/events?include_camera_status=true&pit_id=${encodeURIComponent(config.pitId)}`);
       await expect.poll(() => page.evaluate(() => sessionStorage.getItem("runtime-test-camera"))).toBe(`/media/cameras/${config.cameraId}/live`);
       await expect(page.locator(".live-indicator")).toBeVisible();
     } finally { await context.close(); await request.dispose(); }
@@ -89,7 +89,7 @@ test("runtime 대상 변경은 열린 화면을 유지하고 같은 Browser의 �
     .filter((url) => url.pathname === "/api/v2/monitoring/snapshot");
   expect(requestsAfterReload.length).toBeGreaterThan(0);
   expect(requestsAfterReload.every((url) => url.searchParams.get("pit_id") === "pit-example")).toBe(true);
-  await expect.poll(() => page.evaluate(() => window.backendFixture.eventUrls()[0])).toBe("/api/v2/monitoring/events?pit_id=pit-example");
+  await expect.poll(() => page.evaluate(() => window.backendFixture.eventUrls()[0])).toBe("/api/v2/monitoring/events?include_camera_status=true&pit_id=pit-example");
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("runtime-test-camera"))).toBe("/media/cameras/camera-example/live");
   await expect(page.locator(".live-indicator")).toBeVisible();
 });

@@ -157,7 +157,7 @@ test("녹화 화면 영상 재생 중 다른 화면으로 이동하면 영상, o
   }))).toEqual({ videos: 0, objectUrls: 0 });
 });
 
-test("탭이 숨겨지면 load-history와 camera-status 요청이 멈추고, 다시 보이면 재개된다", async ({ page }) => {
+test("탭이 숨겨지면 load-history 요청이 멈추고 카메라는 GET 없이 SSE를 유지한다", async ({ page }) => {
   const api = await installBackendApi(page);
   await page.goto("/?source=api");
   await expect(page.getByRole("heading", { name: "스크랩 모니터링", level: 1, exact: true })).toBeVisible();
@@ -183,8 +183,9 @@ test("탭이 숨겨지면 load-history와 camera-status 요청이 멈추고, 다
     document.dispatchEvent(new Event("visibilitychange"));
   });
 
-  // 표시 복귀 후 camera-status 즉시 재조회로 요청 수 증가 확인
-  await expect.poll(() => api.requests.filter((r) => r.pathname === "/api/v2/monitoring/camera-status").length).toBeGreaterThan(cameraRequestsBefore);
+  expect(cameraRequestsBefore).toBe(0);
+  expect(api.requests.filter(r => r.pathname === "/api/v2/monitoring/camera-status")).toHaveLength(0);
+  expect(await page.evaluate(() => window.backendFixture.eventUrls().length)).toBe(1);
 });
 
 test("메뉴로 현황 -> 이력 -> 현황 이동 때 로딩 화면이 나타나지 않는다", async ({ page }) => {
@@ -314,7 +315,7 @@ test("탭이 숨겨진 동안 snapshot SSE를 받아도 현황 상세 요청이 
     "/api/v2/monitoring/collection-summary",
     "/api/v2/monitoring/fill-forecast",
     "/api/v2/monitoring/profiles",
-    "/api/v2/monitoring/active-alerts",
+    "/api/v2/monitoring/snapshot-with-alerts",
     "/api/v2/monitoring/layout",
     "/api/v2/monitoring/load-history",
   ]);

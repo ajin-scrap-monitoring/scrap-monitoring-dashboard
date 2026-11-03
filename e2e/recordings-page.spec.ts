@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { eventRecordingId, monitoringV2StateFixture } from "../src/test/backend-contract-fixtures.js";
 
-import { installBackendApi, partialEventReplayWithGaps, syntheticEventReplay } from "./backend-api.js";
+import { installBackendApi, partialEventReplayWithGaps, syntheticEventReplay, unavailableEventReplay } from "./backend-api.js";
 import { eventReplayPartFixture } from "../src/test/backend-contract-fixtures.js";
 import { syntheticDailyRecording } from "./daily-recording-api.js";
 
@@ -179,6 +179,8 @@ test("gaps에 사유 코드가 있는 날짜 녹화의 누락 구간 버튼과 �
 });
 
 test("이벤트 구간 다운로드: 준비 -> 준비 중 -> 다운로드 및 failed -> 다시 추출", async ({ page }) => {
+  const exportPosts: string[] = [];
+  page.on("request", request => { if (request.method() === "POST" && new URL(request.url()).pathname.endsWith("/exports")) exportPosts.push(request.url()); });
   const eventId = "20261015-000000-alert";
   const api = await installBackendApi(page, { initial });
   api.setEventReplays([
@@ -195,10 +197,16 @@ test("이벤트 구간 다운로드: 준비 -> 준비 중 -> 다운로드 및 fa
   await expect(prepareButton).toBeVisible();
 
   // 1. 구간 파일 준비 클릭 -> 202 접수 및 ready 전환
+  expect(exportPosts).toHaveLength(0);
   await prepareButton.click();
   await expect(page.getByText("구간 파일이 준비되었습니다. (4.0 KB)")).toBeVisible();
   const downloadButton = page.getByRole("button", { name: "다운로드", exact: true });
   await expect(downloadButton).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "다운로드", exact: true })).toBeVisible();
+  expect(exportPosts).toHaveLength(1);
+  expect(api.requests.filter(url => url.pathname.endsWith("/exports") && url.searchParams.get("before_seconds") === "30").length).toBeGreaterThanOrEqual(2);
 
   // 2. failed 상태 시 다시 추출 버튼 동작
   const failedRequestId = "c0ffee00-1111-2222-3333-444455556666";
@@ -219,17 +227,7 @@ test("이벤트 구간 다운로드: 준비 -> 준비 중 -> 다운로드 및 fa
     gaps: [],
   });
 
-  // localStorage에 failed 요청 설정 후 새로고침하여 복원 상태 테스트
-  await page.evaluate(({ id, path, reqId }) => {
-    const value = JSON.stringify({
-      requestId: reqId,
-      statusPath: path,
-      savedAt: Date.now(),
-    });
-    localStorage.setItem(`scrap-dashboard:event-export:v1:user-contract:${id}:30:30`, value);
-    localStorage.setItem(`scrap-dashboard:event-export:v1:anonymous:${id}:30:30`, value);
-  }, { id: eventId, path: exportPath, reqId: failedRequestId });
-
+  // 서버 조회로 failed 작업을 복구한다.
   await page.reload();
   await page.locator(".recording-item").first().click();
 
@@ -355,4 +353,25 @@ test("이벤트 녹화 확대는 원본을 정지하고 이벤트 구간 위치�
   await page.waitForTimeout(700);
   expect(await baseVideo.evaluate(element => (element as HTMLVideoElement).paused)).toBe(true);
   await expect(frame.getByRole("button", { name: "재생", exact: true })).toBeVisible();
+});
+
+test("영상 없는 이벤트 선택 시 안내 문구를 표시하고 POST 요청을 하지 않는다", async ({ page }) => {
+  const api = await installBackendApi(page, { initial });
+  const exportPosts: string[] = [];
+  page.on("request", request => { if (request.method() === "POST" && new URL(request.url()).pathname.endsWith("/exports")) exportPosts.push(request.url()); });
+  const unavailableEvent = unavailableEventReplay({}, { ...event, eventId: "20261014-unavailable-item" });
+  api.setEventReplays([syntheticEventReplay({}, event), unavailableEvent]);
+  await page.goto("/recordings?source=api&recordingSource=event");
+  await expect(page.locator(".recording-item")).toHaveCount(2);
+
+  await page.locator(".recording-item").filter({ hasText: "영상 없음" }).click();
+
+  await expect(page.locator(".recording-download")).toContainText("이 구간에 확보된 녹화 영상이 없어 구간 파일을 준비할 수 없습니다.");
+  const downloadButton = page.locator(".recording-download").getByRole("button", { name: "다운로드 불가" });
+  await expect(downloadButton).toBeDisabled();
+  await expect(downloadButton).toHaveAttribute("title", /NO_VIDEO_RECORDED/);
+
+  // 기존 작업 조회 GET은 보내고, 새 준비 POST는 보내지 않는다.
+  await expect.poll(() => api.requests.filter(url => url.pathname.endsWith("/20261014-unavailable-item/exports")).length).toBe(1);
+  expect(exportPosts).toHaveLength(0);
 });

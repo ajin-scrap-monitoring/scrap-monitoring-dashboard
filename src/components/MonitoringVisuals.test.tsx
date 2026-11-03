@@ -259,3 +259,16 @@ test("ProfileChart 미측정 음영 표시와 선 끊김 유지", () => {
   // 선 그래프가 2개로 끊김 (positionRatio 0.4 결측 때문)
   expect(container.querySelectorAll(".profile-chart-line")).toHaveLength(2);
 });
+
+test("최근 적재율 그래프는 서버가 simulated로 표시한 표본에 시뮬레이션 표기를 붙인다", () => {
+  const sample = (hour: number, value: number | null, simulated: boolean) => ({ measuredAt: `2026-09-09T${String(hour).padStart(2, "0")}:00:00+09:00`, time: `${hour}:00`, value, simulated });
+  const { container, rerender } = render(<LoadChart threshold={80} samples={[sample(9, 44, true), sample(10, null, false), sample(11, 48, true)]} />);
+  expect(container.querySelector(".load-chart-simulation")).toHaveTextContent("시뮬레이션");
+  expect(screen.getByRole("img", { name: "최근 24시간 대표 적재율 그래프 (시뮬레이션)" })).toBeInTheDocument();
+  rerender(<LoadChart threshold={80} samples={[sample(9, 44, true), sample(11, 48, false)]} />);
+  expect(container.querySelector(".load-chart-simulation")).toHaveTextContent("시뮬레이션 포함");
+  rerender(<LoadChart threshold={80} samples={[sample(9, 44, false), sample(11, 48, false)]} />);
+  expect(container.querySelector(".load-chart-simulation")).toBeNull();
+  rerender(<LoadChart threshold={80} state={{ status: "loading" }} samples={[sample(9, 44, true)]} />);
+  expect(container.querySelector(".load-chart-simulation")).toBeNull();
+});

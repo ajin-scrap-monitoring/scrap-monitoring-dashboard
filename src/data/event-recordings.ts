@@ -16,6 +16,7 @@ const downloadReasonCodes = [
   "EVENT_EXPORT_NOT_REQUESTED",
   "EVENT_WINDOW_NOT_CLOSED",
   "EVENT_EXPORT_RANGE_TOO_LONG",
+  "EVENT_RECORDING_UNAVAILABLE",
 ] as const;
 const missingValue = "정보 없음";
 const listStatus = { AVAILABLE: "available", PARTIAL: "available", PROCESSING: "processing", UNAVAILABLE: "unavailable", UNKNOWN: "processing" } as const;
