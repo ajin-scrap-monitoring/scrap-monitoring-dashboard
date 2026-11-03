@@ -38,7 +38,7 @@ Frontend는 다음 5개 규칙으로 제공된 응답을 연결한다. 외부 �
 
 | 식별자 | 제공 정보 | Frontend 적용 규칙 |
 | --- | --- | --- |
-| `FE-DATA-01` | `GET /api/v2/monitoring/camera-status` 응답 | 2초 간격 폴링 및 브라우저 수신 시각 기준 validForSeconds(최대 5초) 유효 시간 적용, 만료나 실패 시 확인 불가로 전환, 501 미지원 환경은 snapshot 서비스 보고로 대체 |
+| `FE-DATA-01` | `monitoring.camera-status` SSE 이벤트 | 수신한 상태와 프레임 수신 시각 및 사유 코드 연결, [카메라 상태](#카메라-상태)의 유효 기한 적용 |
 | `FE-DATA-02` | 상위 연결 상태와 마지막 sensor snapshot | REPORTING일 때 현재 센서 상태 사용, Server-Sent Events (SSE) 연결 오류에는 장비 행을 확인 불가로 표시하고 원본 보고 보존 |
 | `FE-DATA-03` | 날짜 녹화의 `export_state`와 오류 코드 | HTTP Live Streaming (HLS) 재생과 MP4 준비 실패 구분, 기존 다운로드 안내와 상태 상세에 비동기 실패 및 재진입 결과 반영 |
 | `FE-DATA-04` | 날짜 녹화의 오류 코드 | 공개 계약의 `[A-Z0-9_]` 1~100자 표시, 서버 처리 로그는 노출하지 않음 |
@@ -68,9 +68,10 @@ Backend는 장비 보고가 30초 이상 없으면 연결 상태를 UNKNOWN으�
 
 ## 현황 화면
 
-Backend 기준은 manifest의 revision이다. 현황 보조 조회 4개(`fill-forecast`,
-`collection-summary`, `profiles`, `active-alerts`)와 측정 영역의 `layout`은 약 1분 간격으로 함께 조회하며 각각
-실패해도 해당 값만 정보 없음으로 표시한다. 401과 403은 숨기지 않는다.
+Backend 기준은 manifest의 revision이다. 현황 보조 조회는 5개(`fill-forecast`,
+`collection-summary`, `profiles`, `snapshot-with-alerts`, `layout`)이며 60초 간격으로 갱신한다.
+활성 알림 조회 실패는 활성 알림 영역의 오류로 표시하고 나머지 보조 조회 실패는 해당 값만
+정보 없음으로 표시한다. 401과 403은 숨기지 않는다.
 
 | 기존 항목 | 제공 정보 | 평가 | 연결 또는 남은 계약 |
 | --- | --- | --- | --- |
@@ -86,9 +87,9 @@ Backend 기준은 manifest의 revision이다. 현황 보조 조회 4개(`fill-fo
 | 측정 영역 | 제공 정보 없음 | 추가 계약 필요 | 참고도 유지, 실측 좌표계와 센서 및 측정선 연결 |
 | 최근 24시간 적재율 | `/api/v2/monitoring/load-history` | 변환 사용 | [적재율 추이](#적재율-추이) |
 | LiDAR 1, LiDAR 2 | `/api/v2/monitoring/profiles` | 변환 사용 | [LiDAR 높이 곡선](#lidar-높이-곡선) |
-| 활성 알림 | `/api/v2/monitoring/active-alerts` | 변환 사용 | [활성 알림](#활성-알림) |
+| 활성 알림 | `/api/v2/monitoring/snapshot-with-alerts` | 변환 사용 | [활성 알림](#활성-알림) |
 | 센서 상태 | `deviceStatus.snapshot.sensors` | 변환 사용 | `lidar-a`는 LiDAR 1, `lidar-b`는 LiDAR 2로 표시하며 원래 ID와 상태 보존, scan 시각으로 latency를 추정하지 않음 |
-| 엣지 및 카메라 상태 | `connection_state`, `effective_state`, `/api/v2/monitoring/camera-status` | 변환 사용 | 엣지는 보고된 상태 반영, 카메라는 camera-status API(HEALTHY 정상, INTERRUPTED 수신 중단, UNKNOWN 확인 불가, UNSUPPORTED 미지원) 및 프레임 수신 시각과 사유 코드 연결, 501 미지원 환경은 snapshot 서비스로 대체 |
+| 엣지 및 카메라 상태 | `connection_state`, `effective_state`, `monitoring.camera-status` | 변환 사용 | 엣지는 snapshot의 보고 상태, 카메라는 [카메라 상태](#카메라-상태)의 독립 관측 사용 |
 | 카메라 latency | 제공 정보 없음 | 추가 계약 필요 | `last_progress_at`으로 추정하지 않음 |
 
 `summary.loadPercent`는 이미 percent 단위이므로 다시 100을 곱하지 않는다.
@@ -102,6 +103,17 @@ snapshot, `profiles`, `fill-forecast`와 `load-history`가 `simulated=true`를 �
 조회하거나 표시하지 않는다. 센서의 FRESH는 최근 scan 수신 기준이며 적재율 산출 성공이나
 driver 서비스의 전체 건강 상태를 의미하지 않는다.
 
+### 카메라 상태
+
+앱 공용 `/api/v2/monitoring/events?pit_id=...&include_camera_status=true` SSE의
+`monitoring.camera-status` 이벤트를 사용한다. 카메라 상태 GET과 장애 중 대체 GET은 보내지 않는다.
+상태는 HEALTHY 정상, INTERRUPTED 수신 중단, UNKNOWN 확인 불가, UNSUPPORTED 미지원이다.
+`lastFrameReceivedAt`은 프레임 수신 시각이며 연결 상태와 사유 코드를 함께 표시한다.
+유효 기한은 단조 시계의 수신 시각에 `min(validForSeconds, 5)`초를 더한 시각이다.
+`validForSeconds`가 없거나 0이면 즉시 확인 불가이며 이벤트가 끊겨도 기한을 연장하지 않는다.
+같은 상태의 새 이벤트는 수신 기한을 갱신한다. 첫 카메라 이벤트를 받기 전에는 snapshot의 카메라
+service 상태를 표시한다. 카메라 관측은 LiDAR 측정 시각과 독립적이다.
+
 ### 1시간 전 적재율
 
 최근 24시간 이력에서 같은 source의 과거 관측을 선택한다. 기준 시각은 snapshot의
@@ -113,17 +125,27 @@ driver 서비스의 전체 건강 상태를 의미하지 않는다.
 
 ## 적재율 추이
 
-현황의 최근 24시간과 이력 그래프는 `/api/v2/monitoring/load-history`를 사용한다.
-`bucket_seconds`는 전달하지 않고 서버의 자동 간격 선택(60, 300, 900, 3600, 7200, 21600,
+현황의 최근 24시간과 이력 그래프는 `/api/v2/monitoring/load-history`에 `view=chart`를 전달해
+조회한다. `bucket_seconds`는 전달하지 않고 서버의 자동 간격 선택(60, 300, 900, 3600, 7200, 21600,
 86400초)을 사용한다. 한 요청의 범위는 최대 90일이며 표본 상한은 1,441개다. 구간 수는
 `ceil(to/간격) - floor(from/간격)`이고 양 끝 구간은 요청 범위로 잘린다. 90일 조회는 서버 처리 상한 20초에
-가까운 시간이 걸릴 수 있어 이 요청만 25초 timeout을 사용하고 조회 중 안내를 표시한다. 서버가 compact 모드로 응답하면 유효한 표본의
-`generatedAt`과 `observedAt`이 null일 수 있다. 이 표본은 bucket 위치로 표시하고 시각을
-만들어 채우지 않는다. 응답의 `inputSource`, `valuePolicy`와 `simulated`는 보존한다.
-유효한 0과 결측을 구분하며 `valid=false`와 null은 선을 연결하지 않는다.
-90일을 넘는 기간은 요청 전에 안내하고 요청하지 않는다. 422 `HISTORY_*` 코드와 503
-`HISTORY_QUERY_TIMEOUT`은 빈 그래프 대신 코드별 안내로 표시하며 자동 재시도하지 않는다.
-현재 임계율은 참고선이며 과거에 적용된 임계율이 아니다.
+도달할 수 있으므로 이 요청만 25초 timeout을 사용하고 조회 중 안내를 표시한다.
+
+응답 `view`가 `"chart"`이면 표본의 `assessmentId`, `observationId`, `methodVersion`을 요구하지
+않으며 결과 metadata에 `assessmentId` key를 만들지 않는다. 응답 `view`가 없거나 `"full"`이면
+세 필드를 요구하고 metadata에 `assessmentId`를 포함한다. 그 외의 `view` 값은 계약 오류로 거절한다.
+시각, 구간 경계, 값 범위, `valid`, `dataState`, `reasonCodes`, `inputSource`, `valuePolicy`,
+`simulated`, 표본 수 검사는 두 형식에 동일하게 적용한다. 서버가 compact 모드로 응답하면 유효한
+표본의 `generatedAt`과 `observedAt`이 null일 수 있다. 이 표본은 bucket 위치로 표시하고 시각을
+만들어 채우지 않는다. 응답의 `inputSource`, `valuePolicy`와 `simulated`는 보존한다. 값이 있는
+표본이 모두 `simulated=true`이면 "시뮬레이션", 일부만 true이면 "시뮬레이션 포함"을 그래프 왼쪽 위와
+그래프 접근성 이름에 표시한다.
+
+유효한 0%는 보존하고 결측(null)과 `valid=false`는 선을 연결하지 않는다. 이전 값으로 채우지
+않으며 전체 범위 재조회 방식을 유지한다. 90일을 넘는 기간은 요청 전에 안내하고 요청하지 않는다.
+422 `HISTORY_*` 코드와 503 `HISTORY_QUERY_TIMEOUT`은 빈 그래프나 0% 대신 이력 화면에서 안내 문구로,
+현황 그래프에서 오류 상태로 표시하며 자동 재시도하지 않는다. 현재 임계율은 참고선이며 과거에
+적용된 임계율이 아니다.
 
 ## 표시 시간대
 
@@ -163,19 +185,25 @@ A -> B이며 그래프 왼쪽 -> 오른쪽이다. 임의로 반전하지 않는�
 
 ## 활성 알림
 
-`/api/v2/monitoring/active-alerts?scope=ALL`은 적재율 경보 항목(`pre_collection_alert`,
+`/api/v2/monitoring/snapshot-with-alerts?pit_id=...&scope=ALL`의 `activeAlerts`는 적재율 경보 항목(`pre_collection_alert`,
 `collection_required`)과 장비 항목(`device_error`, `measurement_error`)의 합집합을 제공한다.
 장비 항목의 `componentKind`에 `CAMERA`, `evidenceSource`에 `MEDIA_CAMERA_STATUS`를 허용하며
 카메라 항목 이름은 "카메라"다. 항목과 coverage의 선택 필드 `validUntilAt`, coverage의
 `evaluatedAt`, `evidenceSource`를 허용하고 보존한다. `coverage`는 필수 배열이며 누락이나
 null이면 계약 오류로 처리한다.
 
-`basis.snapshotId`가 현재 snapshot의 `snapshotId`와 같으면 같은 근거다. 이때 두 판정이
-다르면 활성 알림 카드에 "현재 판정과 활성 알림 판정이 다름" 보조 문구(title에 두 값,
-측정 시각, 평가 시각, 사유 코드 포함)로 표시하고 항목은 숨기지 않는다. ID가 다르면 서로 다른
-측정 시점의 결과로 취급하며 판정 불일치로 처리하지 않고 active-alerts 응답 자체의
-`evaluationState`와 항목을 그대로 표시한다. 근거 측정 시각(`basis.measuredAt`, Asia/Seoul)은
-보조 정보(title)로 둔다.
+결합 응답의 `snapshot`과 `activeAlerts`를 같은 근거로 사용한다. `snapshot.pitId`와 source의
+site 및 edge가 현재 monitoring scope와 같고 `snapshot.snapshotId === activeAlerts.basis.snapshotId`와
+`snapshot.serverTime` 및 `activeAlerts.computedAt`의 같은 시각이 성립해야 한다. 위반하면 활성 알림
+영역을 오류로 처리한다. 활성 알림 카드와 판정 비교는 결합 응답의 snapshot만 사용하며, 적재율과
+장비 상태는 SSE snapshot을 사용한다. 결합 응답의 두 판정이 다르면 기존 보조 문구와 상세 title을
+표시한다. `basis.measuredAt`은 "적재율 판정 근거 측정 시각"이며 카메라 항목은 자기
+`evaluatedAt`을 사용한다.
+
+결합 조회는 현황 상세 갱신(60초)과 함께 실행한다. 현황 상세가 활성이고 화면이 보일 때 SSE의
+`operations.effectiveState`가 마지막 결합 응답의 판정과 다르면 결합 조회만 즉시 요청한다. 동시에 한 요청만 진행하고 강제 조회 시작 간격은
+최소 5초다. collection-summary, fill-forecast, profiles와 layout은 이 조건으로 요청하지 않는다.
+SSE 재연결 중에는 활성 알림 항목을 숨기고 연결 복구 뒤 다시 표시한다고 안내한다.
 
 `evaluationState`가 `UNKNOWN` 또는 `ERROR`이면 "적재율 판정 불가"로 표시하고,
 `basis.lastKnownState`가 있으면 "마지막 판정 NORMAL" 같은 보조 표기를 붙인다.
@@ -251,15 +279,26 @@ v2 경보와 수거 판단 목록(`/api/v2/monitoring/alerts`, `collection-event
 
 | 기존 항목 | 제공 정보 | 평가 | 연결 또는 남은 계약 |
 | --- | --- | --- | --- |
-| 날짜 녹화 | `/api/v2/recordings/daily`, 단건, `exports` | 직접 사용 | 실제 확보와 누락 구간 시간축, HLS 재생, 지난 날짜의 MP4 준비 |
+| 날짜 녹화 | `/api/v2/recordings/daily` 목록(`view=summary`), 단건 상세(`view=full`), `exports` | 변환 사용 | 목록은 `view=summary` 요약(`gap_count`, `available_interval_count`)과 `has_gaps` 기반 tone 계산, 선택 시 단건 상세로 구간 배열(`gaps`, `available_intervals`) 수신 후 timeline 및 재생 확정, HLS 재생, 지난 날짜의 MP4 준비 |
 | 날짜 녹화 삭제 | `DELETE /api/v2/recordings/daily/{recording_id}` | 직접 사용 | 관리자 전용, 확인창, CSRF |
 | 이벤트 녹화 목록 | `/api/v2/recordings/events` | 변환 사용 | `stable=true`, `pageSize=50` 고정, `snapshot_token` 기반 페이징, `snapshotExpiresAt`과 `asOf` 차이 기반 로컬 만료 계산 및 ensure당 합산 1회 재시작 제한, `occurredAt` 내림차순 정렬, `include_playback=true`의 `playback` 요약(`UNKNOWN` 포함, 길이 null은 정보 없음) |
 | 이벤트 구간 재생 | `/api/v2/recordings/events/{event_id}`의 `parts` | 변환 사용 | 날짜 녹화 HLS를 구간별로 이어서 재생 |
 | 시작, 종료, 길이, 형식 | 이벤트 상세 | 변환 사용 | 길이는 `playbackSeconds`, 형식은 HLS |
-| 보관 만료 | 날짜 녹화 상세의 `expires_at`, `status` | 변환 사용 | `status`가 deleted 또는 expired면 "삭제됨" 또는 "만료됨" 표시, 이벤트는 `parts`의 모든 날짜 녹화 중 가장 빠른 만료를 사용하며 하나라도 확인하지 못하면 정보 없음 |
+| 보관 만료 | 날짜 녹화의 `expires_at`, `status` | 변환 사용 | `status`가 deleted 또는 expired면 "삭제됨" 또는 "만료됨" 표시, 이벤트는 `parts`의 날짜별 요약 목록(`view=summary`)에서 찾은 모든 날짜 녹화 중 가장 빠른 만료를 사용하며 하나라도 확인하지 못하면 정보 없음 |
 | codec, 해상도, frame rate | `/api/v2/recordings/daily/{recording_id}/media-info`, `/api/v1/media/clips/{clip_id}/media-info` | 직접 사용 | 날짜 녹화는 file 정보와 segments(상세 창/title), 이벤트는 export 완료 후 clip media-info 연동 |
-| 이벤트 구간 용량과 MP4 | `POST /api/v2/recordings/events/{event_id}/exports`, `GET statusPath` | 직접 사용 | 구간 파일 준비 요청, 3초 폴링, 준비 완료 시 downloadPath 다운로드, 오류 code 우선 안내, 새로고침 복구용 requestId와 statusPath 브라우저 저장(A-10 제공 전) |
+| 이벤트 구간 용량과 MP4 | `GET/POST /api/v2/recordings/events/{event_id}/exports`, `GET statusPath` | 직접 사용 | 서버 조회 복구와 명시 준비 및 재시도, 응답 requestId 및 statusPath 사용 |
 | 미리보기 썸네일 | 제공 정보 없음 | 추가 계약 필요 | 미리보기 없음 표시 |
+
+날짜 녹화 목록은 `GET /api/v2/recordings/daily`에 `view=summary`를 전달해 요청하며
+`next_cursor` 페이징 시에도 같은 파라미터를 유지한다. 목록 응답의 `view`가 `"summary"`이면
+요약 parser를 사용하고, `gap_count`와 `available_interval_count`는 0 이상 정수여야 하며
+`has_gaps`는 `gap_count > 0`과 같아야 한다. 요약 항목에 `gaps`나 `available_intervals`가
+포함되면 계약 오류로 처리한다. `view`가 없거나 `"full"`이면 기존 parser로 구간 배열을 검증한다.
+목록 단계의 `Recording.gaps`는 빈 배열 대신 undefined로 두고 tone은 `has_gaps`로 계산한다.
+녹화 항목 선택 시 `GET /api/v2/recordings/daily/{recording_id}` 상세를 호출해 full 녹화로
+교체하기 전에는 timeline, 누락 구간 버튼, 재생 버튼을 확정하지 않고 로딩 표시를 유지한다.
+상세 수신 전에는 "누락 없음", "영상 없음", "전체 구간 확보"를 표시하지 않는다. 삭제, 다운로드
+준비, 보관 만료와 cleanup 표시는 단건 상세 결과를 사용한다.
 
 날짜 녹화는 `deleted_at`, `cleanup_state`(pending, failed, complete, null), `cleanup_completed_at`,
 `cleanup_error`, `space_reclaimed`를 수신 및 보존한다. `status`가 deleted 또는 expired면
@@ -268,6 +307,31 @@ v2 경보와 수거 판단 목록(`/api/v2/monitoring/alerts`, `collection-event
 상세 창은 파일 정리 상태(pending: "파일 정리 중", failed: "파일 정리 실패" 및 오류 코드, complete:
 "파일 정리 완료" 및 완료 시각, null: "정보 없음")를 표시한다. `space_reclaimed`는 숫자나 회수
 완료로 표시하지 않는다.
+
+이벤트 선택은 `GET /api/v2/recordings/events/{event_id}/exports`에 `before_seconds=30`과
+`after_seconds=30`을 전달해 기존 작업을 복구한다. JSON null은 작업 없음, 404는 이벤트 없음이다.
+조회 중에는 "확인 중" 버튼을 비활성화하고 404는 준비를 차단한다. 다른 조회 실패는 기존 작업
+확인 실패를 알리고, 상세에 `exportPath`가 있는 이벤트만 명시 준비를 허용한다. 브라우저의 export
+localStorage 기억은 사용하지 않는다.
+조회, 진입과 재생만으로 POST를 보내지 않는다. 첫 준비와 deleted 및 expired의 새 준비는 새
+UUID (Universally Unique Identifier), failed의 명시 재시도는 응답 `requestId`와
+`retryFailed=true`를 사용한다. POST가 다른 requestId를 반환해도 응답 값을 이후 요청에 사용한다.
+POST가 5xx나 네트워크 오류로 응답을 잃으면 기존 작업을 한 번 조회해 pending, collecting, processing 또는
+ready 작업을 이어서 표시하고, 그런 작업이 없으면 오류를 안내한다.
+`pending`, `collecting`, `processing`은 준비 중이며 응답 `statusPath`를 3초 간격으로 조회한다.
+상태 조회가 5xx나 네트워크 오류로 실패하면 준비 중 표시를 유지하고 2초, 4초, 8초 간격으로 최대
+3회 재시도한다. 조회 성공은 연속 실패 횟수를 초기화한다. 4xx 또는 재시도 소진은 오류를 안내하고
+자동 조회를 중단한다. `ready`, `deleted`, `expired`, `failed`, `blocked`도 자동 조회를 중단한다.
+`ready`이고 `downloadPath`가 있을 때만 다운로드한다. 선택, 계정, data source 변경과 화면 종료는
+상태 조회와 재시도 timer를 취소하고 늦은 응답을 무시한다.
+
+이벤트 녹화의 `downloadReasonCodes`에 `EVENT_RECORDING_UNAVAILABLE`을 허용한다. 진행 중인 export
+작업이 없고 `exportPath`가 null이며 `downloadReasonCode`가 `EVENT_RECORDING_UNAVAILABLE`이면
+"이 구간에 확보된 녹화 영상이 없어 구간 파일을 준비할 수 없습니다."를 표시하고 버튼을
+"다운로드 불가"로 비활성화한다. 버튼 title에는 상세의 `reasonCodes`와 `unavailableIntervals`의
+개수와 종류를 표시한다. 화면 진입, 선택, 재생으로 POST를 전송하지 않으며 `PARTIAL`, `PROCESSING`처럼
+`exportPath`가 있는 상태의 준비 버튼과 진행 중이거나 준비된 export 작업 표시는 이 안내보다 우선한다.
+ready이고 coverage가 partial인 파일의 "일부 구간 누락" 표시를 유지한다.
 
 이벤트 구간 파일 준비 요청 실패와 상태 조회의 errorCode(failed, blocked)는 HTTP status보다
 오류 code를 우선해 사용자 안내 문구로 변환한다. 알려진 오류 code(RECORDING_NOT_FOUND_IN_RANGE,
@@ -283,7 +347,11 @@ EVENT_WINDOW_IN_FUTURE, MEDIA_UNAVAILABLE, MEDIA_TIMEOUT 등)는 정의된 code�
 이벤트 재생 시간축의 위치다. 한 part가 끝나면 다음 part로 이동하고 마지막 part의 끝에서
 정지한다. `unavailableIntervals`는 재생하지 않는 구간이며 하루 또는 이벤트 구간 전체가
 녹화되었다고 가정하지 않는다. 날짜 녹화를 삭제하면 같은 날짜 영상을 쓰는 이벤트 구간도
-재생할 수 없다. 이벤트 상세의 `unavailableIntervals` 또는 날짜 녹화의 `gaps`가 1개 이상이면 녹화 정보 카드의 누락 구간 버튼으로 녹화 범위 상세 창을 연다. 이벤트 창은 요청 구간(`windowFrom` ~ `windowTo`), 요청 길이, 확보 길이, 재생 길이와 각 구간의 시작 및 종료 시각, 종류(GAP, UNCONFIRMED, FUTURE, MISSING, EXPIRED)와 `reasonCode`를 표시한다. 날짜 창은 녹화 날짜와 `gaps`의 시작 및 종료 시각과 `reason_code`를 표시한다.
+재생할 수 없다. 이벤트 상세의 `unavailableIntervals` 또는 날짜 녹화의 `gaps`가 1개 이상이면
+녹화 정보 카드의 누락 구간 버튼으로 녹화 범위 상세 창을 연다. 이벤트 창은 요청 구간(`windowFrom` ~
+`windowTo`), 요청 길이, 확보 길이, 재생 길이와 각 구간의 시작 및 종료 시각, 종류(GAP,
+UNCONFIRMED, FUTURE, MISSING, EXPIRED)와 `reasonCode`를 표시한다. 날짜 창은 녹화 날짜와
+`gaps`의 시작 및 종료 시각과 `reason_code`를 표시한다.
 
 ## 추가 계약 요청
 
@@ -302,14 +370,15 @@ Backend와 Media Service에 전달할 요청 항목을 관리한다. 제공되�
 | R-13 | 알림 실제 발송 | Backend, 운영 | 대기 |
 | A-01 | 시뮬레이션 `lidar-b` 측정선 위치가 현장 기준과 다름 | Backend | 대기 |
 | A-02 | 대기 중인 이전 요청의 담당과 예정 시점 | Backend | 대기 |
-| A-07 | 적재율 이력 조회의 응답 시간 | Backend | 대기 |
+| A-07 | 적재율 이력 조회의 응답 시간 | Backend | 반영 |
 | A-09 | 이벤트 녹화 목록의 정렬 기준과 페이지 안정성 | Backend | 반영 |
-| A-10 | 이벤트 구간 export의 기존 작업 조회와 같은 계정, 이벤트, 문맥의 중복 생성 방지 | Backend | 대기 |
+| A-10 | 이벤트 구간 export의 기존 작업 조회와 같은 계정, 이벤트, 문맥의 중복 생성 방지 | Backend | 반영 |
 | A-11 | 녹화 파일 정보(codec, 해상도, frame rate)의 파일 완성 시점 측정과 저장값 반환 | Backend, Media Service | 대기 |
-| A-12 | 현재 판정과 활성 알림을 같은 snapshot 근거로 비교하는 방법 | Backend | 대기 |
-| A-13 | 카메라 상태의 기존 실시간 연결(SSE) 전달 | Backend | 대기 |
-| A-14 | 영상이 없는 이벤트의 `exportPath` 제공 조건 | Backend | 대기 |
+| A-12 | 현재 판정과 활성 알림을 같은 snapshot 근거로 비교하는 방법 | Backend | 반영 |
+| A-13 | 카메라 상태의 기존 실시간 연결(SSE) 전달 | Backend | 반영 |
+| A-14 | 영상이 없는 이벤트의 `exportPath` 제공 조건 | Backend | 반영 |
 | A-15 | 녹화 저장 위치와 저장 용량 정책 | Backend, Media Service | 대기 |
+| A-16 | 구간 파일 조각 경계의 짧은 공백을 누락으로 집계하는 기준 | Media Service | 대기 |
 
 ### 이력 및 녹화 영상의 일괄 협의 항목
 

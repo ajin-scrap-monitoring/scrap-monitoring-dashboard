@@ -149,3 +149,56 @@ describe("http-recordings-api: v2 queryHistory 메모리 캐시", () => {
     expect(requestV2LoadHistory).toHaveBeenCalledTimes(6);
   });
 });
+
+describe("이벤트 export 서버 복구", () => {
+  function apiWith(request: <T>(path: string, init?: RequestInit) => Promise<T>) {
+    return createRecordingsApi({ ApiError, backendContract: true, cameraId: "camera-main", pitId: "pit-01",
+      collectionThreshold: () => undefined, isAuthenticated: () => true,
+      optionalArea: async (operation) => ({ value: await operation, state: { status: "ready" } }),
+      request, requestV2LoadHistory: () => Promise.resolve({ historySamples: [] }), serverNow: () => 0,
+      supportsDailyRecordings: false, useV2Monitoring: true });
+  }
+  test("JSON null과 작업 객체를 구분하고 eventId 불일치를 거절한다", async () => {
+    const request = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce({ eventId: "event", requestId: "server", statusPath: "/status/server", status: "collecting" })
+      .mockResolvedValueOnce({ eventId: "other", requestId: "server", statusPath: "/status/server", status: "ready" });
+    const api = apiWith(request); const signal = new AbortController().signal;
+    expect(await api.findEventRecordingExport("event", { beforeSeconds: 30, afterSeconds: 30 }, signal)).toBeNull();
+    expect(request).toHaveBeenCalledWith("/api/v2/recordings/events/event/exports?before_seconds=30&after_seconds=30", { signal });
+    expect(await api.findEventRecordingExport("event", { beforeSeconds: 30, afterSeconds: 30 })).toMatchObject({ requestId: "server", status: "collecting" });
+    await expect(api.findEventRecordingExport("event", { beforeSeconds: 30, afterSeconds: 30 })).rejects.toThrow("identifier");
+  });
+  test("404는 작업 없음으로 바꾸지 않고 이벤트 없음 오류로 전달한다", async () => {
+    const request = vi.fn().mockRejectedValue(new ApiError(404, "EVENT_NOT_FOUND", "EVENT_NOT_FOUND"));
+    await expect(apiWith(request).findEventRecordingExport("event", { beforeSeconds: 30, afterSeconds: 30 })).rejects.toMatchObject({ status: 404, code: "EVENT_NOT_FOUND" });
+  });
+});
+
+describe("이벤트 녹화 보관 만료일 조회", () => {
+  test("구간 배열이 큰 날짜 상세 대신 같은 날짜의 요약 목록에서 보관 만료일을 읽는다", async () => {
+    const { eventReplayFixture, eventReplayPartFixture } = await import("../test/backend-contract-fixtures");
+    const { dailyRecordingFixture, dailyRecordingId } = await import("../test/daily-recording-fixtures");
+    const { gaps: _gaps, available_intervals: _intervals, ...summaryBase } = dailyRecordingFixture;
+    void _gaps; void _intervals;
+    const summary = { ...summaryBase, gap_count: 1, available_interval_count: 2 };
+    const paths: string[] = [];
+    const request = vi.fn((path: string) => {
+      paths.push(path);
+      if (path.startsWith("/api/v2/recordings/events/")) return Promise.resolve(eventReplayFixture({
+        parts: [eventReplayPartFixture({ recordingId: dailyRecordingId, playbackPath: `/media/daily-recordings/${dailyRecordingId}/hls/index.m3u8` })],
+      }));
+      if (path.startsWith("/api/v2/recordings/daily?")) return Promise.resolve({ view: "summary", items: [summary], next_cursor: null });
+      return Promise.reject(new ApiError(404, "unexpected"));
+    });
+    const api = createRecordingsApi({ ApiError, backendContract: true, cameraId: "camera-main", pitId: "pit-01",
+      collectionThreshold: () => undefined, isAuthenticated: () => true,
+      optionalArea: async (operation) => ({ value: await operation, state: { status: "ready" } }),
+      request: request as unknown as <T>(path: string, init?: RequestInit) => Promise<T>,
+      requestV2LoadHistory: () => Promise.resolve({ historySamples: [] }),
+      serverNow: () => Date.parse("2026-10-13T00:00:00Z"), supportsDailyRecordings: true, useV2Monitoring: true });
+    const recording = await api.getRecording("evt-alert-contract-1");
+    expect(recording?.retentionEndsAt).toBe("2026-11-13 00:00:00");
+    expect(paths.some((path) => path.startsWith(`/api/v2/recordings/daily/${dailyRecordingId}`))).toBe(false);
+    const list = new URL(paths.find((path) => path.startsWith("/api/v2/recordings/daily?"))!, "https://dashboard.example");
+    expect(Object.fromEntries(list.searchParams)).toMatchObject({ from_date: "2026-10-12", to_date: "2026-10-13", view: "summary" });
+  });
+});

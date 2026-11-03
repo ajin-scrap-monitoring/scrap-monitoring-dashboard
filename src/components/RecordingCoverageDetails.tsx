@@ -25,7 +25,7 @@ export default function RecordingCoverageDetails({
   recording?: Recording;
 }) {
   const isEvent = Boolean(recording?.replay && recording.replay.unavailableIntervals.length > 0);
-  const isDaily = Boolean(recording?.daily && recording.daily.gaps.length > 0);
+  const isDaily = Boolean(recording?.daily && recording.daily.view === "full" && recording.daily.gaps.length > 0);
 
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<{ attempt: number; source?: DashboardDataSource; recordingId?: string; detail?: RecordingCoverageDetail; error?: string }>();
@@ -67,7 +67,7 @@ export default function RecordingCoverageDetails({
     </>;
   }
 
-  if (isDaily && recording?.daily) {
+  if (isDaily && recording?.daily && recording.daily.view === "full") {
     const daily = recording.daily;
     return <>
       <DetailFields fields={[

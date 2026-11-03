@@ -1,11 +1,11 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { DashboardDataSource } from "../data/dashboard-data-source";
 import type { CameraStatusV2 } from "../data/camera-status-v2";
 import type { DashboardData, UserSession } from "../domain/dashboard";
 import { MonitoringPage } from "./MonitoringPage";
-import { buildCameraDisplay } from "./use-camera-status";
+import { buildCameraDisplay, useCameraStatus } from "./use-camera-status";
 
 afterEach(() => {
   cleanup();
@@ -125,339 +125,112 @@ describe("카메라 상태 행 표시 및 헬퍼 함수", () => {
     expect(expired.title).toContain("카메라 상태 확인 불가");
   });
 
-  test("MonitoringPage 렌더링 시 카메라 행 상태와 title이 올바르게 표시된다", async () => {
-    const cameraMock = vi.fn().mockResolvedValue(
-      createCameraStatus({
-        state: "HEALTHY",
-        connectionState: "CONNECTED",
-        lastFrameReceivedAt: "2026-11-01T08:59:58Z",
-      }),
-    );
-    const dataSource: DashboardDataSource = {
-      getDashboardData: () => Promise.resolve(baseDashboardData),
-      getCameraStatus: cameraMock,
-    };
-
-    render(<MonitoringPage data={baseDashboardData} dataSource={dataSource} />);
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    const cameraCell = screen.getByText("카메라").closest(".device")!;
-    const statusText = cameraCell.querySelector(".status-text")!;
-    expect(statusText).toHaveTextContent("정상");
-    expect(statusText.className).toContain("ok");
-    expect(statusText.getAttribute("title")).toContain("프레임 수신 기준");
-    expect(statusText.getAttribute("title")).toContain("프레임 수신 시각");
-    expect(statusText.getAttribute("title")).toContain("연결 상태: 연결됨");
+  test("MonitoringPage는 SSE 카메라 상태의 프레임 수신 시각을 표시한다", () => {
+    const stream = cameraSource();
+    stream.emit(createCameraStatus());
+    render(<MonitoringPage data={baseDashboardData} dataSource={stream.source} />);
+    const status = screen.getByText("카메라").closest(".device")!.querySelector(".status-text")!;
+    expect(status).toHaveTextContent("정상");
+    expect(status.getAttribute("title")).toContain("프레임 수신 시각");
   });
 });
 
-describe("카메라 상태 유효 시간 만료와 실패 시 확인 불가 전환", () => {
+function cameraSource() {
+  let cached: { status: CameraStatusV2; receivedAt: number } | null = null;
+  const listeners = new Set<(status: CameraStatusV2, receivedAt: number) => void>();
+  const release = vi.fn();
+  const subscribe = vi.fn((listener: (status: CameraStatusV2, receivedAt: number) => void) => {
+    listeners.add(listener);
+    if (cached) listener(cached.status, cached.receivedAt);
+    return () => { listeners.delete(listener); release(); };
+  });
+  const source: DashboardDataSource = { getDashboardData: () => Promise.resolve(baseDashboardData), subscribeCameraStatus: subscribe };
+  return { source, subscribe, release, emit(status: CameraStatusV2) {
+    cached = { status, receivedAt: performance.now() };
+    listeners.forEach(listener => listener(status, cached!.receivedAt));
+  } };
+}
+
+describe("카메라 SSE 수신 기한과 구독 수명", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(performance, "now").mockImplementation(() => Date.now());
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
   });
 
-  test("validForSeconds 만료 시 이전 정상 상태를 유지하지 않고 확인 불가로 전환된다", async () => {
-    const cameraMock = vi.fn().mockResolvedValue(
-      createCameraStatus({
-        state: "HEALTHY",
-        validForSeconds: 1.0, // 1초 유효
-      }),
-    );
-    const dataSource: DashboardDataSource = {
-      getDashboardData: () => Promise.resolve(baseDashboardData),
-      getCameraStatus: cameraMock,
-    };
-
-    render(<MonitoringPage data={baseDashboardData} dataSource={dataSource} />);
-
-    // 첫 요청 완료
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-
-    const cameraCell = screen.getByText("카메라").closest(".device")!;
-    const statusText = cameraCell.querySelector(".status-text")!;
-    expect(statusText).toHaveTextContent("정상");
-
-    // 다음 폴링(2초 후) 전에 유효 시간(1초) 만료 검사(500ms 주기) 트리거
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1100);
-    });
-
-    expect(statusText).toHaveTextContent("확인 불가");
-    expect(statusText.getAttribute("title")).toContain("카메라 상태 확인 불가");
+  test("이벤트로 갱신하고 같은 상태의 새 이벤트도 수신 기한을 연장한다", async () => {
+    const stream = cameraSource();
+    const { result } = renderHook(() => useCameraStatus(stream.source, "user"));
+    // 첫 이벤트 전에는 판정하지 않는다(snapshot의 장비 표시 유지).
+    expect(result.current).toBeNull();
+    act(() => stream.emit(createCameraStatus()));
+    expect(result.current?.statusText).toBe("정상");
+    await act(() => vi.advanceTimersByTimeAsync(4000));
+    act(() => stream.emit(createCameraStatus()));
+    await act(() => vi.advanceTimersByTimeAsync(4000));
+    expect(result.current?.statusText).toBe("정상");
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(result.current?.statusText).toBe("확인 불가");
   });
 
-  test("조회 실패 시 이전 정상을 유지하지 않고 확인 불가로 표시된다", async () => {
-    let shouldFail = false;
-    const cameraMock = vi.fn().mockImplementation(() => {
-      if (shouldFail) {
-        return Promise.reject(new Error("Network Error"));
-      }
-      return Promise.resolve(createCameraStatus({ state: "HEALTHY", validForSeconds: 5.0 }));
-    });
-    const dataSource: DashboardDataSource = {
-      getDashboardData: () => Promise.resolve(baseDashboardData),
-      getCameraStatus: cameraMock,
-    };
-
-    render(<MonitoringPage data={baseDashboardData} dataSource={dataSource} />);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-
-    const cameraCell = screen.getByText("카메라").closest(".device")!;
-    const statusText = cameraCell.querySelector(".status-text")!;
-    expect(statusText).toHaveTextContent("정상");
-
-    // 실패 유도 후 2초 경과 (다음 폴링)
-    shouldFail = true;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2000);
-    });
-
-    expect(statusText).toHaveTextContent("확인 불가");
+  test.each([null, 0])("validForSeconds=%s이면 즉시 확인 불가다", (validForSeconds) => {
+    const stream = cameraSource();
+    stream.emit(createCameraStatus({ validForSeconds }));
+    const { result } = renderHook(() => useCameraStatus(stream.source, "user"));
+    expect(result.current?.statusText).toBe("확인 불가");
   });
 
-  test("validForSeconds가 null이면 즉시 만료되어 확인 불가로 표시된다", async () => {
-    const cameraMock = vi.fn().mockResolvedValue(
-      createCameraStatus({
-        state: "HEALTHY",
-        validForSeconds: null,
-      }),
-    );
-    const dataSource: DashboardDataSource = {
-      getDashboardData: () => Promise.resolve(baseDashboardData),
-      getCameraStatus: cameraMock,
-    };
-
-    render(<MonitoringPage data={baseDashboardData} dataSource={dataSource} />);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-
-    const cameraCell = screen.getByText("카메라").closest(".device")!;
-    const statusText = cameraCell.querySelector(".status-text")!;
-    expect(statusText).toHaveTextContent("확인 불가");
-  });
-});
-
-describe("카메라 폴링 겹침 방지와 중단", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
+  test("SSE 이벤트가 끊기면 마지막 수신의 기한에 만료된다", async () => {
+    const stream = cameraSource();
+    const { result } = renderHook(() => useCameraStatus(stream.source, "user"));
+    act(() => stream.emit(createCameraStatus({ validForSeconds: 1 })));
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(result.current?.statusText).toBe("확인 불가");
+    expect(stream.subscribe).toHaveBeenCalledTimes(1);
   });
 
-  test("응답이 늦어도 요청이 겹치지 않고 완료 후 2초 뒤에 다음 요청이 수행된다", async () => {
-    let pendingResolve: ((value: CameraStatusV2) => void) | null = null;
-    const cameraMock = vi.fn().mockImplementation(() => {
-      return new Promise<CameraStatusV2>((resolve) => {
-        pendingResolve = resolve;
-      });
-    });
-
-    const dataSource: DashboardDataSource = {
-      getDashboardData: () => Promise.resolve(baseDashboardData),
-      getCameraStatus: cameraMock,
-    };
-
-    render(<MonitoringPage data={baseDashboardData} dataSource={dataSource} />);
-
-    // 첫 요청 시작
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    expect(cameraMock).toHaveBeenCalledTimes(1);
-
-    // 3초가 지나도 아직 첫 응답이 오지 않았으므로 중복 요청이 발생하지 않음
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3000);
-    });
-    expect(cameraMock).toHaveBeenCalledTimes(1);
-
-    // 첫 응답 완료
-    await act(async () => {
-      pendingResolve!(createCameraStatus());
-      await Promise.resolve();
-    });
-
-    // 완료 후 1초 경과 (아직 2초 안 됨)
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000);
-    });
-    expect(cameraMock).toHaveBeenCalledTimes(1);
-
-    // 완료 후 총 2초 경과 -> 두 번째 요청 시작
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000);
-    });
-    expect(cameraMock).toHaveBeenCalledTimes(2);
+  test("화면 재진입은 보관한 수신 시각을 사용하고 구독을 해제한다", async () => {
+    const stream = cameraSource();
+    stream.emit(createCameraStatus());
+    const first = renderHook(() => useCameraStatus(stream.source, "user"));
+    expect(first.result.current?.statusText).toBe("정상");
+    first.unmount();
+    expect(stream.release).toHaveBeenCalledTimes(1);
+    await act(() => vi.advanceTimersByTimeAsync(4000));
+    const second = renderHook(() => useCameraStatus(stream.source, "user"));
+    expect(second.result.current?.statusText).toBe("정상");
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(second.result.current?.statusText).toBe("확인 불가");
+    second.unmount();
+    expect(stream.release).toHaveBeenCalledTimes(2);
   });
 
-  test("화면을 언마운트하면 폴링이 멈추고 진행 중인 요청이 abort된다", async () => {
-    let capturedSignal: AbortSignal | null = null;
-    const cameraMock = vi.fn().mockImplementation((signal?: AbortSignal) => {
-      capturedSignal = signal ?? null;
-      return new Promise<CameraStatusV2>(() => {});
-    });
-
-    const dataSource: DashboardDataSource = {
-      getDashboardData: () => Promise.resolve(baseDashboardData),
-      getCameraStatus: cameraMock,
-    };
-
-    const { unmount } = render(<MonitoringPage data={baseDashboardData} dataSource={dataSource} />);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    expect(cameraMock).toHaveBeenCalledTimes(1);
-    const signal = capturedSignal as AbortSignal | null;
-    expect(signal?.aborted).toBe(false);
-
-    // 언마운트
-    unmount();
-    expect(signal?.aborted).toBe(true);
-
-    // 시간 경과 후에도 추가 요청 없음
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(5000);
-    });
-    expect(cameraMock).toHaveBeenCalledTimes(1);
+  test("같은 사용자 session 객체의 재생성은 구독을 늘리지 않고 로그아웃은 구독을 해제한다", () => {
+    const stream = cameraSource();
+    const initialProps: { user: string | null } = { user: "user" };
+    const view = renderHook(({ user }) => useCameraStatus(stream.source, user), { initialProps });
+    view.rerender({ user: "user" });
+    expect(stream.subscribe).toHaveBeenCalledTimes(1);
+    view.rerender({ user: null });
+    expect(stream.release).toHaveBeenCalledTimes(1);
+    expect(view.result.current).toBeNull();
   });
 
-  test("내용이 같은 새 session 객체로 다시 렌더링해도 요청이 늘지 않고 2초 간격을 유지한다", async () => {
-    const cameraMock = vi.fn().mockResolvedValue(
-      createCameraStatus({ state: "HEALTHY", validForSeconds: 5.0 }),
-    );
-    const dataSource: DashboardDataSource = {
-      getDashboardData: () => Promise.resolve(baseDashboardData),
-      getCameraStatus: cameraMock,
-    };
-
-    const initialSession: UserSession = {
-      expiresAt: "2026-11-01T12:00:00Z",
-      user: { displayName: "테스트 사용자", id: "user-test", role: "viewer" },
-    };
-
-    const view = render(
-      <MonitoringPage
-        data={{ ...baseDashboardData, session: initialSession }}
-        dataSource={dataSource}
-      />,
-    );
-
-    // 최초 1회 요청 완료
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    expect(cameraMock).toHaveBeenCalledTimes(1);
-
-    // 1초 경과 (2초 폴링 전)
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000);
-    });
-    expect(cameraMock).toHaveBeenCalledTimes(1);
-
-    // 내용이 같지만 다른 객체 참조를 가진 session으로 리렌더링
-    const newSessionSameContent: UserSession = {
-      expiresAt: "2026-11-01T12:00:00Z",
-      user: { displayName: "테스트 사용자", id: "user-test", role: "viewer" },
-    };
-    expect(newSessionSameContent).not.toBe(initialSession);
-
-    view.rerender(
-      <MonitoringPage
-        data={{ ...baseDashboardData, session: newSessionSameContent }}
-        dataSource={dataSource}
-      />,
-    );
-
-    // 리렌더 직후에도 즉시 요청이 실행되지 않고 1회 유지
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    expect(cameraMock).toHaveBeenCalledTimes(1);
-
-    // 1초 더 경과 (첫 완료 후 총 2초 시점) -> 2초 간격에 맞춰 2번째 요청 수행
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000);
-    });
-    expect(cameraMock).toHaveBeenCalledTimes(2);
-
-    // 다시 1초 경과 후 또 다른 새 session 객체로 리렌더링
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000);
-    });
-    expect(cameraMock).toHaveBeenCalledTimes(2);
-
-    const anotherSessionSameContent: UserSession = {
-      expiresAt: "2026-11-01T12:00:00Z",
-      user: { displayName: "테스트 사용자", id: "user-test", role: "viewer" },
-    };
-    view.rerender(
-      <MonitoringPage
-        data={{ ...baseDashboardData, session: anotherSessionSameContent }}
-        dataSource={dataSource}
-      />,
-    );
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    expect(cameraMock).toHaveBeenCalledTimes(2);
-
-    // 1초 더 경과 (2번째 완료 후 총 2초 시점) -> 3번째 요청 수행
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000);
-    });
-    expect(cameraMock).toHaveBeenCalledTimes(3);
-  });
-
-  test("숨김 상태에서는 폴링 타이머가 멈추고 요청이 없으며, 다시 보이면 즉시 재조회한다", async () => {
-    vi.useFakeTimers();
-    const cameraMock = vi.fn().mockImplementation((signal?: AbortSignal) => {
-      if (signal?.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
-      return Promise.resolve(createCameraStatus({ state: "HEALTHY", validForSeconds: 5.0 }));
-    });
-    const dataSource: DashboardDataSource = {
-      ...baseDashboardData,
-      getCameraStatus: cameraMock,
-      getDashboardData: vi.fn(),
-    };
-
-    render(<MonitoringPage data={baseDashboardData} dataSource={dataSource} />);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    expect(cameraMock).toHaveBeenCalledTimes(1);
-
-    // document를 hidden으로 변경
+  test("숨김 탭은 기한 timer를 멈추고 다시 보일 때 즉시 만료를 판정한다", async () => {
+    const stream = cameraSource();
+    stream.emit(createCameraStatus());
+    const { result } = renderHook(() => useCameraStatus(stream.source, "user"));
     act(() => {
       Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
       document.dispatchEvent(new Event("visibilitychange"));
     });
-
-    // 10초 경과 동안 추가 폴링 요청이 없어야 함
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
-    });
-    expect(cameraMock).toHaveBeenCalledTimes(1);
-
-    // 다시 visible로 변경
+    expect(vi.getTimerCount()).toBe(0);
+    await act(() => vi.advanceTimersByTimeAsync(6000));
+    expect(result.current?.statusText).toBe("정상");
     act(() => {
       Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
       document.dispatchEvent(new Event("visibilitychange"));
     });
-
-    // 즉시 재조회 발생
-    expect(cameraMock).toHaveBeenCalledTimes(2);
-
-    // 정리
-    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    expect(result.current?.statusText).toBe("확인 불가");
   });
 });

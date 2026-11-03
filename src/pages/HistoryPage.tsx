@@ -15,6 +15,7 @@ import type { DashboardDataSource } from "../data/dashboard-data-source";
 import type { DashboardData, DataAreaState, DataReception, EventCategory, HeaderNotification, HistoryEvent, HistoryEventPage, HistoryLoadSample, UserSession } from "../domain/dashboard";
 import { useLatestRequest } from "../use-latest-request";
 import { timeAxisTicks } from "../chart-time-axis";
+import { simulationLabel } from "../simulation-label";
 
 const historyEventsPerPage = 8;
 
@@ -67,6 +68,7 @@ function HistoryLoadChart({ chartEvents, loadSamples: samples, startsAt, endsAt,
   if (segment.length) segments.push(segment);
   const previousResult = loadState?.status === "error" && loadState.stale === true && segments.length > 0;
   const unavailable = (loadState?.status === "error" && !previousResult) || loadState?.status === "unsupported" || loadState?.status === "loading";
+  const simulation = unavailable ? null : simulationLabel(samples);
   const rangeGuidance = loadState?.status === "error" && loadState.code?.startsWith("HISTORY_") === true ? loadState.message : undefined;
   const emptyMessage = loadState?.status === "unsupported" ? loadState.message ?? "적재율 추이는 최대 90일까지 조회할 수 있습니다."
     : loadState?.status === "error" ? rangeGuidance ?? "적재율 이력을 조회하지 못했습니다."
@@ -94,7 +96,7 @@ function HistoryLoadChart({ chartEvents, loadSamples: samples, startsAt, endsAt,
   const selectedLoad = activeLoadIndex === null ? null : samples[activeLoadIndex] ?? null;
   const loadTooltipX = selectedLoad ? Math.max(left + 8, Math.min(toX(selectedLoad.hour) - 130, right - 340)) : 0;
   return (
-    <svg className="history-chart" viewBox="0 0 1960 230" role="img" aria-label="조회 기간 대표 적재율 변화 그래프">
+    <svg className="history-chart" viewBox="0 0 1960 230" role="img" aria-label={`조회 기간 대표 적재율 변화 그래프${simulation ? ` (${simulation})` : ""}`}>
       <g stroke="#e2e8ef" strokeWidth="1">
         {[0, 20, 40, 60, 80, 100].map((value) => <path key={value} d={`M${left} ${toY(value)}H${right}`} />)}
       </g>
@@ -105,6 +107,7 @@ function HistoryLoadChart({ chartEvents, loadSamples: samples, startsAt, endsAt,
       {thresholdPath && <path d={thresholdPath} stroke="#607086" strokeDasharray="6 6" strokeWidth="1.5" fill="none" />}
       {thresholdPath && currentThreshold !== undefined && <text x={right} y="48" fill="#526278" fontSize="14" fontWeight="600" textAnchor="end">현재 임계율 {currentThreshold}%</text>}
       {previousResult && <text x="980" y="45" textAnchor="middle" fill="#61708a" fontSize="12">이전 조회 결과 / 갱신 실패</text>}
+      {simulation && <text className="history-chart-simulation" x={left} y="48" fill="#61708a" fontSize="14">{simulation}</text>}
       {!unavailable && segments.length > 0 ? segments.map((points, index) => {
         const path = points.map((sample, sampleIndex) => `${sampleIndex === 0 ? "M" : "L"}${toX(sample.hour)} ${toY(sample.value)}`).join(" ");
         return <g key={`history-load-${index}`}><path d={`${path}V${bottom}H${toX(points[0].hour)}Z`} fill="#f58a07" fillOpacity="0.1" /><path className="history-load-line" d={path} fill="none" stroke="#f58a07" strokeWidth="4" />{points.length === 1 && <circle cx={toX(points[0].hour)} cy={toY(points[0].value)} r="2.5" fill="#f58a07" />}</g>;

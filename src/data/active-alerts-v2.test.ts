@@ -15,7 +15,7 @@ describe("parseActiveAlertsV2", () => {
         componentId: "camera-main",
         state: "INTERRUPTED",
         evaluatedAt: "2026-10-13T00:00:05Z",
-        measuredAt: null,
+        measuredAt: "2026-10-12T23:59:00Z",
         startedAt: null,
         startBasis: "UNKNOWN",
         evidenceSource: "MEDIA_CAMERA_STATUS",
@@ -37,6 +37,7 @@ describe("parseActiveAlertsV2", () => {
       id: "alert-camera-1",
       title: "카메라 수신 이상",
       detail: "카메라 INTERRUPTED",
+      time: "2026-10-13T00:00:05Z",
       startedAt: null,
       validUntilAt: "2026-10-13T00:00:10Z",
       health: {

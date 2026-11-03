@@ -151,7 +151,7 @@ test("현황 장비는 상태만 표시하고 scan 시각과 수신 시각 및 �
   await expect(page.getByRole("dialog", { name: "모니터링 상태 상세", exact: true })).toHaveCount(0);
 });
 
-test("카메라 service의 모든 상태와 오래된 장비 보고를 기존 카드 배치에서 구분한다", async ({ page }) => {
+test("카메라 SSE 수신 전에는 snapshot의 카메라 service 상태와 오래된 장비 보고를 기존 카드 배치에서 구분한다", async ({ page }) => {
   const snapshot = deviceSnapshot();
   const initial = { ...snapshot, deviceStatus: { ...snapshot.deviceStatus, snapshot: {
     ...snapshot.deviceStatus.snapshot!, services: [{ service: "camera-edge", state: "HEALTHY" as const, last_progress_at: snapshot.serverTime, reason_codes: [] }],
@@ -187,6 +187,22 @@ test("카메라 service의 모든 상태와 오래된 장비 보고를 기존 �
   await expect(card.locator("time, .device-meta")).toHaveCount(0);
   await expect(page.locator(".monitoring-grid > .card")).toHaveCount(8);
   expect(await card.boundingBox()).toEqual(before);
+});
+
+test("카메라 SSE 상태는 snapshot의 장비 service 상태와 독립적으로 표시한다", async ({ page }) => {
+  const initial = deviceSnapshot();
+  const api = await installBackendApi(page, { initial });
+  await api.setCameraStatus(cameraStatusFixture());
+  await page.goto("/?source=api");
+  const camera = page.locator(".device").filter({ has: page.getByText("카메라", { exact: true }) }).locator(".status-text");
+  const sensor = page.locator(".device").filter({ has: page.getByText("LiDAR 1", { exact: true }) }).locator(".status-text");
+  await expect(camera).toHaveText("정상");
+  await api.snapshot({ ...initial, deviceStatus: { ...initial.deviceStatus, connection_state: "UNKNOWN", effective_state: "UNKNOWN", reason_codes: ["STATUS_NOT_RECEIVED"] } });
+  await expect(camera).toHaveText("정상");
+  await expect(sensor).toHaveText("확인 불가");
+  await api.setCameraStatus(cameraStatusFixture({ state: "UNKNOWN", connectionState: "UNKNOWN" }));
+  await expect(camera).toHaveText("확인 불가");
+  expect(api.requests.filter(url => url.pathname.endsWith("/camera-status"))).toHaveLength(0);
 });
 
 test("분과 초가 있는 최근 24시간 조회도 시간축만 정각 눈금으로 표시한다", async ({ page }) => {
@@ -291,6 +307,8 @@ test("활성 알림은 장비 항목과 확인 불가 구성 요소를 같은 �
   }));
   await expect(page.locator(".monitoring-grid > .card")).toHaveCount(8);
   await expect(card.locator(".alert-count")).toHaveText("2건 / 확인 불가 2");
+  expect(api.requests.filter(url => url.pathname.endsWith("/active-alerts"))).toHaveLength(0);
+  expect(api.requests.filter(url => url.pathname.endsWith("/snapshot-with-alerts"))).toHaveLength(1);
   const before = await geometry();
   expect(before.length).toBeGreaterThan(0);
   await expect(card.getByText("Edge 장치 상태 이상")).toBeVisible();
@@ -461,7 +479,7 @@ test("LiDAR 프로필의 관측 범위 밖을 미측정 음영과 글자로 표�
 
 test("카메라 상태가 HEALTHY에서 INTERRUPTED 및 확인 불가로 전환되고 카드 배치를 유지한다", async ({ page }) => {
   const api = await installBackendApi(page, { initial: monitoringV2StateFixture("FRESH", 72.5) });
-  api.setCameraStatus(cameraStatusFixture());
+  await api.setCameraStatus(cameraStatusFixture());
   await page.goto("/?source=api");
   await page.evaluate(() => document.fonts.ready);
 
@@ -484,7 +502,7 @@ test("카메라 상태가 HEALTHY에서 INTERRUPTED 및 확인 불가로 전환�
   expect(initialGeometry!.height).toBeGreaterThan(0);
 
   // INTERRUPTED 전환
-  api.setCameraStatus({
+  await api.setCameraStatus({
     pitId: "pit-01",
     cameraId: "camera-main",
     state: "INTERRUPTED",
@@ -502,9 +520,14 @@ test("카메라 상태가 HEALTHY에서 INTERRUPTED 및 확인 불가로 전환�
   await expect(statusText).toHaveClass(/error/);
   await expect(statusText).toHaveAttribute("title", /사유: CAMERA_STATUS_TIMEOUT/);
 
-  // 응답 실패(503) 시 확인 불가 전환
-  api.setCameraStatus(503);
-  await expect(statusText).toHaveText("확인 불가");
+  // SSE 이벤트가 끊긴 뒤 수신 기한이 지나면 확인 불가다.
+  await api.setCameraStatus(null);
+  await page.evaluate(() => window.backendFixture.emit("error", ""));
+  await expect(statusText).toHaveText("확인 불가", { timeout: 7000 });
+  expect(api.requests.filter(url => url.pathname.endsWith("/camera-status"))).toHaveLength(0);
+  const urls = await page.evaluate(() => window.backendFixture.eventUrls());
+  expect(urls).toHaveLength(1);
+  expect(new URL(urls[0], "https://dashboard.example").searchParams.get("include_camera_status")).toBe("true");
   await expect(statusText).toHaveAttribute("title", /카메라 상태 확인 불가/);
 
   // 카드 크기 및 배치 유지 확인

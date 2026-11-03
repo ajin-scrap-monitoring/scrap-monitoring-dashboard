@@ -410,3 +410,28 @@ test("날짜 영상 확대 창은 Tab으로 영상 내부 controls에 이동하�
   await expect(dialog).toHaveCount(0);
   await expect(opener).toBeFocused();
 });
+
+test("날짜 녹화는 요약 목록(view=summary)으로 목록을 받고 선택 시 상세 GET으로 timeline을 표시한다", async ({ page }) => {
+  const api = await installBackendApi(page, { initial });
+  await page.goto("/recordings?source=api");
+  await expect(page.locator(".recording-frame video")).toBeVisible();
+
+  const listRequests = api.daily.requests.filter(req => {
+    const url = new URL(req.url());
+    return url.pathname === "/api/v2/recordings/daily";
+  });
+  expect(listRequests.length).toBeGreaterThan(0);
+  const firstListUrl = new URL(listRequests[0].url());
+  expect(firstListUrl.searchParams.get("view")).toBe("summary");
+
+  const detailRequests = api.daily.requests.filter(req => {
+    const url = new URL(req.url());
+    return url.pathname === `/api/v2/recordings/daily/${syntheticDailyRecording.recording_id}`;
+  });
+  expect(detailRequests.length).toBeGreaterThan(0);
+
+  const timeline = page.getByRole("region", { name: "날짜 녹화 범위" });
+  await expect(timeline).toBeVisible();
+  await expect(timeline).toContainText("부분 저장");
+  await expect(timeline.getByRole("img", { name: "누락 구간 00:00:01 ~ 00:00:11", exact: true })).toBeVisible();
+});

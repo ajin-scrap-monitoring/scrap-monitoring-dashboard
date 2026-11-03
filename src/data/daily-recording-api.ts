@@ -38,7 +38,9 @@ function mapDailyRecording(daily: DailyRecording, now: number): Recording {
       : daily.status === "expired" ? "만료됨"
       : daily.expiresAt === null ? missingValue : wallClock(daily.expiresAt, true),
     size: byteSize(daily.sizeBytes), mediaStatus: daily.status, coverage: daily.coverage,
-    gaps: daily.gaps.map(gap => ({ start: wallClock(gap.startsAt, true), end: wallClock(gap.endsAt, true) })),
+    ...(daily.view === "full" ? {
+      gaps: daily.gaps.map(gap => ({ start: wallClock(gap.startsAt, true), end: wallClock(gap.endsAt, true) })),
+    } : {}),
     errorCode: daily.error?.code ?? null,
   };
 }
@@ -60,7 +62,7 @@ function dailyDateParameters(query: DateRangeQuery) {
   if (from > inclusiveTo) throw new Error("Recording dates are reversed.");
   const to = new Date(Date.parse(`${inclusiveTo}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(to)) throw new Error("A valid Korean recording date is required.");
-  return new URLSearchParams({ from_date: from, to_date: to, limit: "100" });
+  return new URLSearchParams({ from_date: from, to_date: to, limit: "100", view: "summary" });
 }
 
 export function createDailyRecordingApi({ ApiError, cameraId, isAuthenticated, request, serverNow }: DailyRecordingApiOptions) {

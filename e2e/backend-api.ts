@@ -38,25 +38,69 @@ export function partialEventReplayWithGaps(overrides: Record<string, unknown> = 
   });
   return { ...base, effectiveTo: base.event.windowTo, parts: [part], ...overrides };
 }
+export function unavailableEventReplay(overrides: Record<string, unknown> = {}, event: Record<string, unknown> = {}): EventReplayResponse {
+  const base = eventReplayFixture({
+    state: "UNAVAILABLE",
+    requestedSeconds: 60,
+    coveredSeconds: 0,
+    playbackSeconds: 0,
+    exportPath: null,
+    downloadReasonCode: "EVENT_RECORDING_UNAVAILABLE",
+    reasonCodes: ["NO_VIDEO_RECORDED"],
+    unavailableIntervals: [
+      { fromAt: "2026-10-12T00:59:30Z", toAt: "2026-10-12T01:00:30Z", kind: "MISSING", reasonCode: "NO_RECORDING" },
+    ],
+  }, {
+    eventId: "20261012-005930-unavailable",
+    title: "영상 없는 이벤트",
+    ...event,
+  });
+  return { ...base, effectiveTo: base.event.windowTo, parts: [], ...overrides };
+}
 export type MediaMode = "healthy" | "silent" | "slow-start" | "interrupted" | "invalid" | "unavailable" | "unauthorized";
 export type BrowserControl = {
+  camera: (value: unknown) => void;
   emit: (type: string, data: string) => void;
   eventUrls: () => string[];
   metrics: () => { streams: number; videos: number; objectUrls: number; attempts: number };
 };
 
 declare global {
-  interface Window { backendFixture: BrowserControl }
+  interface Window { backendFixture: BrowserControl; syntheticCameraStatus?: unknown }
 }
 
-export function historyV2(url: URL, snapshot: BackendSnapshot): components["schemas"]["LoadHistoryV2"] {
+export function historyV2(url: URL, snapshot: BackendSnapshot): components["schemas"]["LoadHistoryV2"] | components["schemas"]["ChartHistoryV2"] {
   const until = Date.parse(url.searchParams.get("to") ?? snapshot.serverTime);
   const since = Date.parse(url.searchParams.get("from") ?? new Date(until - 86_400_000).toISOString());
   // Backend와 같이 응답 상한 1,441 구간을 만족하는 가장 작은 간격을 고른다.
   const bucketSeconds = ([60, 300, 900, 3600, 7200, 21600, 86400] as const).find((seconds) => Math.ceil(until / (seconds * 1000)) - Math.floor(since / (seconds * 1000)) <= 1441) ?? 86400;
   const interval = bucketSeconds * 1000;
   const first = Math.floor(since / interval) * interval;
-  return {
+  const isChart = url.searchParams.get("view") === "chart";
+  if (isChart) {
+    const chartResponse: components["schemas"]["ChartHistoryV2"] = {
+      schemaVersion: "2", pitId: snapshot.pitId, source: snapshot.source,
+      from: new Date(since).toISOString(), to: new Date(until).toISOString(), bucketSeconds,
+      selectionPolicy: "LATEST_STATE_PER_BUCKET",
+      view: "chart",
+      samples: Array.from({ length: Math.ceil((until - first) / interval) }, (_, index) => {
+        const start = Math.max(since, first + index * interval);
+        const end = Math.min(until, first + (index + 1) * interval);
+        const missing = index % 7 === 3;
+        const generatedAt = new Date(start + Math.floor((end - start) / 2)).toISOString();
+        return {
+          bucketStartAt: new Date(start).toISOString(), bucketEndAt: new Date(end).toISOString(),
+          generatedAt: missing ? null : generatedAt, observedAt: missing ? null : generatedAt,
+          valid: !missing,
+          valuePercent: missing ? null : index % 5 === 0 ? 0 : 68.5,
+          dataState: missing ? "NO_DATA" : index % 5 === 1 ? "LIMITED" : "AVAILABLE",
+          reasonCodes: missing ? ["STATE_NOT_RECEIVED"] : [],
+        };
+      }),
+    };
+    return chartResponse;
+  }
+  const fullResponse: components["schemas"]["LoadHistoryV2"] = {
     schemaVersion: "2", pitId: snapshot.pitId, source: snapshot.source,
     from: new Date(since).toISOString(), to: new Date(until).toISOString(), bucketSeconds,
     selectionPolicy: "LATEST_STATE_PER_BUCKET",
@@ -68,13 +112,15 @@ export function historyV2(url: URL, snapshot: BackendSnapshot): components["sche
       return {
         bucketStartAt: new Date(start).toISOString(), bucketEndAt: new Date(end).toISOString(),
         generatedAt: missing ? null : generatedAt, observedAt: missing ? null : generatedAt,
-        assessmentId: missing ? null : `assessment-${index}`, valid: !missing,
+        assessmentId: missing ? null : `assessment-${index}`,
+        valid: !missing,
         valuePercent: missing ? null : index % 5 === 0 ? 0 : 68.5,
         dataState: missing ? "NO_DATA" : index % 5 === 1 ? "LIMITED" : "AVAILABLE",
         reasonCodes: missing ? ["STATE_NOT_RECEIVED"] : [],
       };
     }),
   };
+  return fullResponse;
 }
 
 export async function installBackendApi(page: Page, {
@@ -96,11 +142,10 @@ export async function installBackendApi(page: Page, {
   let sessionActive = authenticated;
   let notificationDelay = notificationDelayMs;
   let historyDelay = loadHistoryDelayMs;
-  let eventReplays: EventReplayResponse[] = [syntheticEventReplay()];
+  let eventReplays: EventReplayResponse[] = [syntheticEventReplay(), unavailableEventReplay()];
   let historyEvents: Array<typeof eventPageFixture.items[number]> = [...eventPageFixture.items];
   let notifications: components["schemas"]["NotificationPage"] = notificationPageFixture;
   let collectionSummary: ReturnType<typeof collectionSummaryFixture> = collectionSummaryFixture();
-  let cameraStatus: unknown = null;
   const exportStatuses = new Map<string, unknown>();
   const clipMediaInfos = new Map<string, unknown>();
   const dailyMediaInfos = new Map<string, unknown>();
@@ -118,16 +163,26 @@ export async function installBackendApi(page: Page, {
     const objectUrls = new Set<string>();
     let attempts = 0;
     let currentSnapshot: unknown = initialSnapshot;
+    const emitCamera = (stream: SyntheticEventSource) => {
+      if (window.syntheticCameraStatus && typeof window.syntheticCameraStatus === "object") {
+        stream.dispatchEvent(new MessageEvent("monitoring.camera-status", { data: JSON.stringify(window.syntheticCameraStatus) }));
+      }
+    };
     class SyntheticEventSource extends EventTarget {
+      cameraTimer: ReturnType<typeof setInterval>;
       constructor(url: string) {
         super();
         eventUrls.push(url);
         streams.add(this);
+        this.cameraTimer = setInterval(() => emitCamera(this), 2000);
         queueMicrotask(() => {
-          if (streams.has(this)) this.dispatchEvent(new MessageEvent("monitoring.snapshot", { data: JSON.stringify(currentSnapshot) }));
+          if (streams.has(this)) {
+            this.dispatchEvent(new MessageEvent("monitoring.snapshot", { data: JSON.stringify(currentSnapshot) }));
+            emitCamera(this);
+          }
         });
       }
-      close() { streams.delete(this); }
+      close() { clearInterval(this.cameraTimer); streams.delete(this); }
     }
     Object.defineProperty(window, "EventSource", { configurable: true, value: SyntheticEventSource });
     const nativeCreate = URL.createObjectURL.bind(URL);
@@ -187,6 +242,7 @@ export async function installBackendApi(page: Page, {
     window.backendFixture = {
       emit(type, data) { for (const stream of streams) stream.dispatchEvent(new MessageEvent(type, { data })); },
       eventUrls() { return [...eventUrls]; },
+      camera(value: unknown) { window.syntheticCameraStatus = value; streams.forEach(emitCamera); },
       metrics() { return { streams: streams.size, videos: videos.size, objectUrls: objectUrls.size, attempts }; },
     };
   }, { initialSnapshot: initial, mode: mediaMode });
@@ -200,22 +256,13 @@ export async function installBackendApi(page: Page, {
       await (sessionActive ? json(sessionFixture) : json({ detail: "Unauthorized" }, 401));
     } else if (!sessionActive) await json({ detail: "Unauthorized" }, 401);
     else if (url.pathname === "/api/v2/monitoring/snapshot") await json(snapshot);
-    else if (url.pathname === "/api/v2/monitoring/camera-status") {
-      if (cameraStatus === null) await json({ detail: "Camera status unavailable" }, 501);
-      else if (typeof cameraStatus === "number") await json({ detail: "Camera error" }, cameraStatus);
-      else if (typeof cameraStatus === "object" && cameraStatus && "status" in cameraStatus) {
-        const errorStatus = (cameraStatus as Record<string, unknown>).status;
-        if (typeof errorStatus === "number") await json({ detail: "Camera error" }, errorStatus);
-        else await json(cameraStatus);
-      } else await json(cameraStatus);
-    }
     else if (url.pathname === "/api/v2/monitoring/load-history") {
       const override = loadHistory?.(url);
       const delay = override?.delayMs ?? historyDelay;
       if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
       await (override ? json(override.body, override.status) : json(historyV2(url, snapshot)));
     }
-    else if (url.pathname === "/api/v2/monitoring/active-alerts") await (activeAlerts === null ? json({ detail: "Unexpected fixture request" }, 501) : json(activeAlerts));
+    else if (url.pathname === "/api/v2/monitoring/snapshot-with-alerts") await (activeAlerts === null ? json({ detail: "Unexpected fixture request" }, 501) : json({ snapshot, activeAlerts }));
     else if (url.pathname === "/api/v2/monitoring/layout") await (layout === null ? json({ detail: "Layout unavailable" }, 503) : json(layout));
     else if (url.pathname === "/api/v2/monitoring/profiles") await (profiles === null ? json({ detail: "Unexpected fixture request" }, 501) : json(profiles));
     else if (url.pathname === "/api/v2/monitoring/alerts") await json({ items: [], limit: 20, offset: Number(url.searchParams.get("offset") ?? 0), totalItems: 0 });
@@ -306,6 +353,11 @@ export async function installBackendApi(page: Page, {
         };
         exportStatuses.set(statusPath, status);
         await json(status, 202);
+      } else if (url.pathname.endsWith("/exports")) {
+        const eventId = decodeURIComponent(url.pathname.split("/")[5] ?? "");
+        const existing = [...exportStatuses.values()].reverse().find(value => typeof value === "object" && value !== null && "eventId" in value && value.eventId === eventId);
+        if (!eventReplays.some(value => value.event.eventId === eventId)) await json({ detail: "EVENT_NOT_FOUND" }, 404);
+        else await json(existing ?? null);
       } else {
         const status = exportStatuses.get(url.pathname);
         if (status) await json(status);
@@ -328,7 +380,10 @@ export async function installBackendApi(page: Page, {
     setActiveAlerts: (next: unknown) => { activeAlerts = next; },
     setLayout: (next: unknown) => { layout = next; },
     setProfiles: (next: unknown) => { profiles = next; },
-    setCameraStatus: (next: unknown) => { cameraStatus = next; },
+    setCameraStatus: async (next: unknown) => {
+      await page.addInitScript(value => { window.syntheticCameraStatus = value; }, next);
+      await page.evaluate(value => { window.backendFixture?.camera(value); }, next);
+    },
     setExportStatus: (statusPath: string, status: unknown) => { exportStatuses.set(statusPath, status); },
     setClipMediaInfo: (clipId: string, info: unknown) => { clipMediaInfos.set(clipId, info); },
     setDailyMediaInfo: (recordingId: string, info: unknown) => { dailyMediaInfos.set(recordingId, info); },

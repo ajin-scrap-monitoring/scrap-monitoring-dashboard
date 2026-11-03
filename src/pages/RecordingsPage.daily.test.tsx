@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { dailyRecording } from "../data/daily-recordings";
 import { createMockDashboardDataSource } from "../data/mock-dashboard-data-source";
+import type { DailyRecordingFull, DailyRecordingSummary } from "../domain/daily-recording";
 import type { Recording } from "../domain/dashboard";
 import { dailyRecordingFixture } from "../test/daily-recording-fixtures";
 import { RecordingsPage } from "./RecordingsPage";
@@ -217,4 +218,85 @@ test("삭제 409는 확인창에 안내하고 목록을 유지하며 일반 사�
   render(<RecordingsPage {...props} dataSource={dataSource} session={{ expiresAt: "2026-10-14T00:00:00Z", user: { displayName: "조회자", id: "viewer", role: "viewer" } }} />);
   await screen.findByLabelText("날짜 녹화 영상");
   expect(screen.queryByRole("button", { name: "날짜 녹화 삭제" })).not.toBeInTheDocument();
+});
+
+test("요약 항목 선택 시 상세 GET 뒤에만 timeline과 누락 구간이 표시되고 상세 전에는 '누락 없음'이나 '영상 없음'이 표시되지 않는다", async () => {
+  const { data, recording: fullRecording, props } = await fixture();
+  const fullDaily = fullRecording.daily as DailyRecordingFull;
+  const summaryDaily: DailyRecordingSummary = {
+    source: fullDaily.source,
+    id: fullDaily.id,
+    cameraId: fullDaily.cameraId,
+    recordingDate: fullDaily.recordingDate,
+    timezone: fullDaily.timezone,
+    windowStartsAt: fullDaily.windowStartsAt,
+    windowEndsAt: fullDaily.windowEndsAt,
+    status: fullDaily.status,
+    coverage: fullDaily.coverage,
+    hasGaps: true,
+    coverageAsOfAt: fullDaily.coverageAsOfAt,
+    playableUntilAt: fullDaily.playableUntilAt,
+    recordedSeconds: fullDaily.recordedSeconds,
+    playbackState: fullDaily.playbackState,
+    playbackProtocol: fullDaily.playbackProtocol,
+    playbackPath: fullDaily.playbackPath,
+    exportAllowed: fullDaily.exportAllowed,
+    exportState: fullDaily.exportState,
+    downloadPath: fullDaily.downloadPath,
+    sizeBytes: fullDaily.sizeBytes,
+    expiresAt: fullDaily.expiresAt,
+    exportExpiresAt: fullDaily.exportExpiresAt,
+    error: fullDaily.error,
+    deletedAt: fullDaily.deletedAt,
+    cleanupState: fullDaily.cleanupState,
+    cleanupCompletedAt: fullDaily.cleanupCompletedAt,
+    cleanupError: fullDaily.cleanupError,
+    spaceReclaimed: fullDaily.spaceReclaimed,
+    view: "summary",
+    gapCount: 1,
+    availableIntervalCount: 2,
+  };
+
+  const summaryRecording: Recording = {
+    ...fullRecording,
+    daily: summaryDaily,
+    gaps: undefined,
+  };
+
+  let resolveDetail!: (value: Recording) => void;
+  const detailPromise = new Promise<Recording>((resolve) => {
+    resolveDetail = resolve;
+  });
+  const getRecording = vi.fn().mockImplementation(() => detailPromise);
+  const dataSource = {
+    supportsDailyRecordings: true,
+    getDashboardData: () => Promise.resolve(data),
+    getRecording,
+  };
+
+  render(
+    <RecordingsPage
+      {...props}
+      recordings={[summaryRecording]}
+      dataSource={dataSource}
+    />,
+  );
+
+  expect(getRecording).toHaveBeenCalledWith(summaryRecording.id, expect.any(AbortSignal), "daily");
+
+  expect(screen.queryByRole("region", { name: "날짜 녹화 범위" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "누락 구간" })).not.toBeInTheDocument();
+  expect(screen.queryByText("누락 없음")).not.toBeInTheDocument();
+  expect(screen.queryByText("영상 없음")).not.toBeInTheDocument();
+  expect(screen.queryByText("전체 구간 확보")).not.toBeInTheDocument();
+  expect(screen.queryByText("재생 가능한 영상이 없습니다.")).not.toBeInTheDocument();
+  expect(screen.getByText("영상을 준비 중입니다.")).toBeInTheDocument();
+
+  await act(async () => {
+    resolveDetail(fullRecording);
+    await Promise.resolve();
+  });
+
+  expect(await screen.findByRole("region", { name: "날짜 녹화 범위" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "누락 구간" })).toBeInTheDocument();
 });

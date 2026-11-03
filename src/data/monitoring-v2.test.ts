@@ -27,7 +27,7 @@ function contract({ authenticated = true, snapshot = monitoringV2Fixture, collec
     if (url.pathname === "/api/v2/monitoring/collection-summary") return Promise.resolve(json(collectionSummary));
     if (url.pathname === "/api/v2/monitoring/fill-forecast") return Promise.resolve(json(fillForecast));
     if (url.pathname === "/api/v2/monitoring/profiles") return Promise.resolve(json(profiles));
-    if (url.pathname === "/api/v2/monitoring/active-alerts") return Promise.resolve(json(activeAlerts));
+    if (url.pathname === "/api/v2/monitoring/snapshot-with-alerts") return Promise.resolve(json({ snapshot, activeAlerts }));
     if (url.pathname === "/api/v2/recordings/events") return Promise.resolve(json(eventRecordingPageFixture()));
     if (url.pathname === `/api/v2/recordings/events/${eventRecordingFixture().eventId}`) return Promise.resolve(json(eventReplayFixture()));
     if (url.pathname === "/api/v1/settings/alerts") return Promise.resolve(json(alertSettingsFixture));
@@ -340,14 +340,11 @@ describe("Backend v2 모니터링", () => {
         },
       });
     });
-    test("basis.snapshotId가 다르면 서로 다른 측정 시점으로 취급하여 판정 불일치로 처리하지 않는다", async () => {
+    test("결합 응답의 basis.snapshotId가 다르면 활성 알림을 오류로 처리한다", async () => {
       const basis = { ...activeAlertsBasisFixture(), snapshotId: "different-snapshot-id" };
       const monitoring = await monitoringOf(activeAlertsFixture({ basis }), operations("NORMAL"));
-      expect(monitoring.alerts).toHaveLength(1);
-      expect(monitoring.activeAlertsState).toMatchObject({
-        evaluationState: "CRITICAL",
-        mismatch: null,
-      });
+      expect(monitoring.alerts).toEqual([]);
+      expect(monitoring.activeAlertsState).toBeNull();
     });
     test.each(["NORMAL", "WARNING", "UNKNOWN", "ERROR"] as const)("%s의 빈 목록은 평가 상태와 함께 보존한다", async (evaluationState) => {
       const monitoring = await monitoringOf(activeAlertsFixture({ evaluationState, items: [], reasonCodes: ["ALERT_NOTE"] }), operations(evaluationState));
@@ -361,7 +358,7 @@ describe("Backend v2 모니터링", () => {
       const activation = source.activateMonitoringDetails!();
       await activation.ready;
       activation.release();
-      const url = api.urls.find((candidate) => candidate.pathname === "/api/v2/monitoring/active-alerts");
+      const url = api.urls.find((candidate) => candidate.pathname === "/api/v2/monitoring/snapshot-with-alerts");
       expect(Object.fromEntries(url!.searchParams)).toEqual({ scope: "ALL", pit_id: "pit-01" });
     });
     describe("장비와 측정 항목", () => {
@@ -888,7 +885,7 @@ describe("Backend v2 모니터링", () => {
     expect(initial.monitoring.videoUrl).toBe("/media/cameras/camera-main/live");
     const updates: DashboardData[] = [];
     const unsubscribe = source.subscribe?.((value) => updates.push(value));
-    expect(factory).toHaveBeenCalledWith("/api/v2/monitoring/events?pit_id=pit-01");
+    expect(factory).toHaveBeenCalledWith("/api/v2/monitoring/events?include_camera_status=true&pit_id=pit-01");
     const fresh = { ...monitoringV2StateFixture("FRESH", 0), operations: {
       effectiveState: "NORMAL" as const, lastKnownState: "NORMAL" as const, lastEvaluatedAt: null, lastAlertAt: null, notificationId: null,
     } };

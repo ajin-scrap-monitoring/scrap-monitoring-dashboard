@@ -407,6 +407,7 @@ export type DashboardData = {
     loadHistory: LoadHistorySample[];
     status: DashboardStatus;
     v2?: MonitoringV2;
+    activeAlertsAreaState?: DataAreaState;
     activeAlertsState?: {
       evaluationState: "NORMAL" | "WARNING" | "CRITICAL" | "UNKNOWN" | "ERROR";
       reasonCodes: string[];

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { DashboardDataSource } from "../data/dashboard-data-source";
 import type { CameraConnectionState, CameraStatusV2 } from "../data/camera-status-v2";
@@ -72,131 +72,38 @@ export function useCameraStatus(
   dataSource: DashboardDataSource | undefined,
   sessionUserId: string | null,
 ): CameraDisplay | null {
-  const [currentStatus, setCurrentStatus] = useState<CameraStatusV2 | null>(null);
-  const [isExpiredOrFailed, setIsExpiredOrFailed] = useState(false);
-  const [isUnsupported, setIsUnsupported] = useState(false);
-  const expiresAtRef = useRef<number>(0);
-  const inFlightRef = useRef(false);
-  const controllerRef = useRef<AbortController | null>(null);
+  const [display, setDisplay] = useState<{ source: DashboardDataSource; userId: string; value: CameraDisplay } | null>(null);
 
   useEffect(() => {
+    if (!dataSource?.subscribeCameraStatus || !sessionUserId) return;
     let active = true;
-    if (!dataSource?.getCameraStatus || !sessionUserId) {
-      return () => { active = false; };
-    }
-
-    let pollTimer: ReturnType<typeof setTimeout> | undefined;
-    let checkTimer: ReturnType<typeof setInterval> | undefined;
-
-    const stopPolling = () => {
-      if (pollTimer) {
-        clearTimeout(pollTimer);
-        pollTimer = undefined;
-      }
-      if (checkTimer) {
-        clearInterval(checkTimer);
-        checkTimer = undefined;
-      }
-      controllerRef.current?.abort();
-      controllerRef.current = null;
-      inFlightRef.current = false;
+    let latest: CameraStatusV2 | null = null;
+    let expiresAt = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      timer = undefined;
+      if (!active || document.visibilityState === "hidden") return;
+      const remaining = expiresAt - performance.now();
+      setDisplay({ source: dataSource, userId: sessionUserId, value: buildCameraDisplay(latest, remaining <= 0) });
+      if (remaining > 0) timer = setTimeout(check, remaining);
     };
-
-    const startCheckTimer = () => {
-      if (checkTimer) clearInterval(checkTimer);
-      checkTimer = setInterval(() => {
-        if (!active) return;
-        if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
-        if (expiresAtRef.current > 0 && Date.now() >= expiresAtRef.current) {
-          expiresAtRef.current = 0;
-          setIsExpiredOrFailed(true);
-        }
-      }, 500);
-    };
-
-    const poll = async () => {
-      if (!active || inFlightRef.current) return;
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
-      inFlightRef.current = true;
-      const controller = new AbortController();
-      controllerRef.current = controller;
-
-      try {
-        const result = await dataSource.getCameraStatus!(controller.signal);
-        if (!active) return;
-        setIsUnsupported(false);
-        const now = Date.now();
-        const validSeconds =
-          result.validForSeconds != null
-            ? Math.min(Math.max(0, result.validForSeconds), 5)
-            : 0;
-
-        if (validSeconds > 0) {
-          expiresAtRef.current = now + validSeconds * 1000;
-          setCurrentStatus(result);
-          setIsExpiredOrFailed(false);
-        } else {
-          // validForSeconds가 없거나 0이면 즉시 만료
-          expiresAtRef.current = 0;
-          setCurrentStatus(result);
-          setIsExpiredOrFailed(true);
-        }
-      } catch (error) {
-        if (!active) return;
-        if (controller.signal.aborted) return;
-        const status = error && typeof error === "object" && "status" in error ? Number(error.status) : 0;
-        if (status === 501) {
-          setIsUnsupported(true);
-          setCurrentStatus(null);
-          return;
-        }
-        expiresAtRef.current = 0;
-        setIsExpiredOrFailed(true);
-      } finally {
-        inFlightRef.current = false;
-        controllerRef.current = null;
-        if (active && (typeof document === "undefined" || document.visibilityState !== "hidden")) {
-          pollTimer = setTimeout(() => {
-            void poll();
-          }, 2000);
-        }
-      }
-    };
-
-    const handleVisibilityChange = () => {
+    const unsubscribe = dataSource.subscribeCameraStatus((status, receivedAt) => {
       if (!active) return;
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-        stopPolling();
-      } else {
-        stopPolling();
-        setCurrentStatus(null);
-        setIsExpiredOrFailed(false);
-        setIsUnsupported(false);
-        expiresAtRef.current = 0;
-        startCheckTimer();
-        void poll();
-      }
-    };
-
-    if (typeof document === "undefined" || document.visibilityState !== "hidden") {
-      void poll();
-      startCheckTimer();
-    }
-
-    if (typeof document !== "undefined") {
-      document.addEventListener("visibilitychange", handleVisibilityChange);
-    }
-
+      latest = status;
+      expiresAt = receivedAt + Math.min(status.validForSeconds ?? 0, 5) * 1000;
+      check();
+    });
+    document.addEventListener("visibilitychange", check);
     return () => {
       active = false;
-      stopPolling();
-      if (typeof document !== "undefined") {
-        document.removeEventListener("visibilitychange", handleVisibilityChange);
-      }
+      unsubscribe();
+      if (timer !== undefined) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", check);
     };
   }, [dataSource, sessionUserId]);
 
-  if (!dataSource?.getCameraStatus || !sessionUserId || isUnsupported) return null;
-  if (currentStatus === null && !isExpiredOrFailed) return null;
-  return buildCameraDisplay(currentStatus, isExpiredOrFailed);
+  if (!dataSource?.subscribeCameraStatus || !sessionUserId) return null;
+  // 첫 카메라 이벤트를 받기 전에는 판정하지 않고 snapshot의 장비 표시를 유지한다.
+  return display?.source === dataSource && display.userId === sessionUserId ? display.value : null;
 }

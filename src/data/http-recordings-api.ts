@@ -277,10 +277,17 @@ export function createRecordingsApi({
     let retentionEndsAt: string | null = null;
     if (supportsDailyRecordings) {
       const ids = [...new Set(replay.parts.map((part) => part.recordingId))];
-      const expirations = await Promise.all(ids.map(async (id) => {
-        try { return (await (await getDailyApi()).getRecording(id, signal)).daily?.expiresAt ?? null; }
-        catch (error) { if (signal?.aborted) throw error; return null; }
-      }));
+      // 보관 만료일만 필요하므로 구간 배열이 큰 날짜 상세 대신 해당 날짜의 요약 목록에서 찾는다.
+      const dates = [...new Set(replay.parts.map((part) => part.recordingDate))];
+      const summaries = new Map<string, Recording[] | null>(await Promise.all(dates.map(async (date): Promise<[string, Recording[] | null]> => {
+        try { return [date, await (await getDailyApi()).queryRecordings({ from: date, to: date, recordingSource: "daily" }, signal)]; }
+        catch (error) { if (signal?.aborted) throw error; return [date, null]; }
+      })));
+      const expirations = ids.map((id) => {
+        const date = replay.parts.find((part) => part.recordingId === id)?.recordingDate;
+        const recording = date === undefined ? undefined : summaries.get(date)?.find((item) => item.id.toLowerCase() === id.toLowerCase());
+        return recording?.daily?.expiresAt ?? null;
+      });
       const known = expirations.filter((value): value is string => value !== null);
       if (known.length === ids.length && known.length > 0) retentionEndsAt = known.reduce((earliest, value) => Date.parse(value) < Date.parse(earliest) ? value : earliest);
     }
@@ -324,6 +331,19 @@ export function createRecordingsApi({
 
   const prepareDailyRecordingExport = async (recordingId: string, signal?: AbortSignal) => {
     return (await getDailyApi()).prepareExport(recordingId, signal);
+  };
+
+  const findEventRecordingExport = async (
+    eventId: string,
+    options: { beforeSeconds: number; afterSeconds: number },
+    signal?: AbortSignal,
+  ): Promise<EventExportStatus | null> => {
+    const parameters = new URLSearchParams({ before_seconds: String(options.beforeSeconds), after_seconds: String(options.afterSeconds) });
+    const response = await request<unknown>(`/api/v2/recordings/events/${encodeURIComponent(eventId)}/exports?${parameters}`, { signal });
+    if (response === null) return null;
+    const status = eventExportStatus(response);
+    if (status.eventId !== eventId) throw new Error("Unexpected event export event identifier.");
+    return status;
   };
 
   const prepareEventRecordingExport = async (
@@ -445,6 +465,7 @@ export function createRecordingsApi({
     getDailyRecordingMediaInfo,
     getClipMediaInfo,
     getEventRecordingExportStatus,
+    findEventRecordingExport,
     initialHistory,
     initialHistoryForRoute,
     initialRecordings,

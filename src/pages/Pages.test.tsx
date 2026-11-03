@@ -170,6 +170,30 @@ test("녹화 A를 다시 선택하면 새 단건 확인 전에는 이전 영상 
   expect(screen.getByRole("button", { name: "다운로드 불가" })).toBeDisabled();
 });
 
+test("직접 링크로 연 녹화는 화면 진입 조회가 받은 상세를 재사용하고 진행 중이면 2초 뒤 다시 확인한다", async () => {
+  const data = await createMockDashboardDataSource().getDashboardData();
+  const recording = { ...data.recordings[0], sample: false, contentUrl: `/media/${data.recordings[0].id}.mp4` };
+  window.history.replaceState(null, "", `/recordings?recordingId=${recording.id}`);
+  const getRecording = vi.fn(() => Promise.resolve(recording));
+  const dataSource = { getDashboardData: vi.fn(), getRecording };
+  const view = render(<RecordingsPage dataSource={dataSource} recordings={[recording]} recordingsState={{ status: "ready" }} headerNotifications={[]} reception={data.reception} />);
+  await act(() => Promise.resolve());
+  expect(getRecording).not.toHaveBeenCalled();
+  expect(view.container.querySelector("video")).toHaveAttribute("src", recording.contentUrl);
+  view.unmount();
+
+  vi.useFakeTimers();
+  try {
+    const processing = { ...recording, status: "processing" as const, contentUrl: undefined };
+    const polling = vi.fn(() => Promise.resolve(processing));
+    render(<RecordingsPage dataSource={{ getDashboardData: vi.fn(), getRecording: polling }} recordings={[processing]} recordingsState={{ status: "ready" }} headerNotifications={[]} reception={data.reception} />);
+    await act(() => vi.advanceTimersByTimeAsync(1900));
+    expect(polling).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(200));
+    expect(polling).toHaveBeenCalledTimes(1);
+  } finally { vi.useRealTimers(); }
+});
+
 test("빈 이력, 녹화 목록과 알림 대상에 명시적인 상태를 표시한다", async () => {
   const data = await createMockDashboardDataSource("empty-lists").getDashboardData();
   const { unmount } = render(<HistoryPage history={data.history} headerNotifications={[]} reception={data.reception} />);

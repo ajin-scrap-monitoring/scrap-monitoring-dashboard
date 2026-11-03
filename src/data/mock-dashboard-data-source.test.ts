@@ -102,3 +102,35 @@ test("operation-cycle 시나리오는 수거와 장애 상태 전이를 순서�
   ]);
   unsubscribe?.();
 });
+
+test("합성 export는 서버 조회와 응답 requestId 재사용 및 문맥 구분을 제공한다", async () => {
+  const source = createMockDashboardDataSource();
+  const eventId = (await source.getDashboardData()).recordings[0].id;
+  const context = { beforeSeconds: 30, afterSeconds: 30 };
+  expect(await source.findEventRecordingExport!(eventId, context)).toBeNull();
+  const first = await source.prepareEventRecordingExport!(eventId, { ...context, requestId: "first" });
+  expect(await source.findEventRecordingExport!(eventId, context)).toEqual(first);
+  expect(await source.prepareEventRecordingExport!(eventId, { ...context, requestId: "new" })).toEqual(first);
+  expect(await source.findEventRecordingExport!(eventId, { beforeSeconds: 10, afterSeconds: 10 })).toBeNull();
+  expect(await source.getEventRecordingExportStatus!(first.statusPath)).toEqual(first);
+  await expect(source.findEventRecordingExport!("missing", context)).rejects.toMatchObject({ status: 404 });
+});
+
+test("합성 카메라 상태는 앱 구독 동안 갱신되고 화면 재진입에 마지막 수신을 전달한다", async () => {
+  vi.useFakeTimers();
+  const source = createMockDashboardDataSource();
+  const close = source.subscribe!(vi.fn());
+  const first = vi.fn(); const leave = source.subscribeCameraStatus!(first);
+  expect(first).toHaveBeenCalledTimes(1);
+  leave();
+  await vi.advanceTimersByTimeAsync(2000);
+  const next = vi.fn(); const off = source.subscribeCameraStatus!(next);
+  expect(next).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(next).toHaveBeenCalledTimes(2);
+  expect(first).toHaveBeenCalledTimes(1);
+  await source.deleteSession!();
+  await vi.advanceTimersByTimeAsync(4000);
+  expect(next).toHaveBeenCalledTimes(2);
+  off(); close();
+});

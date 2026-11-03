@@ -83,7 +83,7 @@ export function parseActiveAlertsV2(value: unknown, pitId: string): ActiveFillAl
         id: item.id,
         title: item.title,
         level: item.severity as ActiveAlert["level"],
-        time: (item.measuredAt as string | null | undefined) ?? item.evaluatedAt,
+        time: item.componentKind === "CAMERA" ? item.evaluatedAt : (item.measuredAt as string | null | undefined) ?? item.evaluatedAt,
         startedAt: serverStart(item),
         ...(item.validUntilAt !== undefined && { validUntilAt: item.validUntilAt as string | null }),
       };

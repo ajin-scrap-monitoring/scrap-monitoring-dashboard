@@ -19,7 +19,6 @@ import { dailyPlaybackTimestamp, dailyRecordingAvailability } from "../data/dail
 import { byteSize } from "../data/recording-values";
 import { wallClock } from "../data/contract-values";
 import type { EventExportStatus } from "../data/event-recordings";
-import { clearStoredExport, getStoredExport, saveStoredExport } from "../data/event-export-memory";
 import {
   getCachedClipMediaInfo,
   getCachedDailyMediaInfo,
@@ -49,9 +48,14 @@ function retryableRecordingError(error: unknown) {
 }
 
 function recordingKey(recording: Recording) { return `${recording.source ?? "event"}:${recording.id}`; }
+// 상세를 다시 확인해야 하는 진행 중 상태다.
+function detailStillChanging(recording: Recording | null | undefined) {
+  return recording?.status === "processing" || recording?.mediaStatus === "collecting" || recording?.mediaStatus === "processing"
+    || recording?.daily?.status === "recording" || recording?.daily?.status === "finalizing" || recording?.daily?.exportState === "processing";
+}
 
 function dailyTimestamp(recording: Recording, seconds: number) {
-  const at = recording.daily ? dailyPlaybackTimestamp(recording.daily, seconds) : null;
+  const at = recording.daily && recording.daily.view === "full" ? dailyPlaybackTimestamp(recording.daily, seconds) : null;
   return at ? recordingTimeFormat.format(new Date(at)) : null;
 }
 
@@ -136,15 +140,22 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
   const [coverageRecordingId, setCoverageRecordingId] = useState<string | null>(null);
   const closeCoverage = useCallback(() => setCoverageRecordingId(null), []);
   const [recordingPage, setRecordingPage] = useState(0);
-  const [detailState, setDetailState] = useState<{ source?: DashboardDataSource; key?: string; ready: boolean; fresh?: boolean; error?: string }>({ ready: false });
+  // 직접 링크로 연 녹화는 화면 진입 조회가 방금 받은 상세이므로 첫 상세 조회로 재사용한다.
+  const [routeDetailSeed] = useState(() => requestedRecording && recordingsState?.status === "ready"
+    ? { source: dataSource, key: recordingKey(requestedRecording), recording: requestedRecording } : null);
+  const routeDetail = useRef(routeDetailSeed);
+  const [detailState, setDetailState] = useState<{ source?: DashboardDataSource; key?: string; ready: boolean; fresh?: boolean; error?: string }>(() => routeDetailSeed
+    ? { source: routeDetailSeed.source, key: routeDetailSeed.key, ready: true, fresh: true } : { ready: false });
   const [playbackError, setPlaybackError] = useState<{ key?: string; message: string } | null>(null);
   const [downloadError, setDownloadError] = useState("");
   const [detailRevision, setDetailRevision] = useState(0);
 
   // B-2 이벤트 구간 다운로드 상태
-  const [eventExport, setEventExport] = useState<EventExportStatus | null>(null);
-  const [eventExportBusy, setEventExportBusy] = useState(false);
-  const [eventExportError, setEventExportError] = useState<{ message: string; code?: string } | null>(null);
+  const [storedEventExport, setEventExport] = useState<EventExportStatus | null>(null);
+  const [storedEventExportBusy, setEventExportBusy] = useState(false);
+  const [storedEventExportError, setEventExportError] = useState<{ message: string; code?: string } | null>(null);
+  const [exportLookup, setExportLookup] = useState<{ source?: DashboardDataSource; userId?: string; key?: string; status: "checking" | "done" | "missing" }>({ status: "checking" });
+  const exportController = useRef<AbortController | null>(null);
   const lastRequestIdRef = useRef<string | null>(null);
 
   // B-3 영상 파일 정보 상태
@@ -200,6 +211,11 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
   const selectedRecording = visibleRecordings[selectedIndex] ?? visibleRecordings[0];
   const selectedId = selectedRecording?.id;
   const selectedKey = selectedRecording ? recordingKey(selectedRecording) : undefined;
+  const currentUserId = session?.user?.id ?? "anonymous";
+  const exportContextMatches = exportLookup.source === dataSource && exportLookup.userId === currentUserId && exportLookup.key === selectedKey;
+  const eventExport = exportContextMatches ? storedEventExport : null;
+  const eventExportBusy = exportContextMatches && storedEventExportBusy;
+  const eventExportError = exportContextMatches ? storedEventExportError : null;
   const selectedSource = selectedRecording?.source ?? "event";
   const selectedSample = selectedRecording?.sample;
   const detailRequired = Boolean(dataSource?.getRecording && !selectedSample);
@@ -234,8 +250,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
         setAvailableRecordings((items) => items.map((item) => recordingKey(item) !== selectedKey ? item : recording ?? { ...item, status: "unavailable", contentUrl: undefined, downloadUrl: undefined, daily: undefined }));
         failures = 0;
         setDetailState({ source: dataSource, key: selectedKey, ready: Boolean(recording), fresh: Boolean(recording), error: recording ? undefined : "녹화 정보가 없습니다." });
-        if (recording?.status === "processing" || recording?.mediaStatus === "collecting" || recording?.mediaStatus === "processing"
-          || recording?.daily?.status === "recording" || recording?.daily?.status === "finalizing" || recording?.daily?.exportState === "processing") {
+        if (detailStillChanging(recording)) {
           timer = setTimeout(() => { void refresh(); }, 2000);
         }
       } catch (error) {
@@ -250,83 +265,76 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
         }
       }
     };
-    void refresh();
+    const reused = routeDetail.current?.source === dataSource && routeDetail.current.key === selectedKey ? routeDetail.current.recording : null;
+    routeDetail.current = null;
+    if (!reused) void refresh();
+    else if (detailStillChanging(reused)) timer = setTimeout(() => { void refresh(); }, 2000);
     return () => { controller.abort(); clearTimeout(timer); };
   }, [dataSource, selectedId, selectedKey, selectedSource, selectedSample, detailRevision]);
   useEffect(() => () => downloadController.current?.abort(), [dataSource]);
 
-  const currentUserId = session?.user?.id ?? "anonymous";
-
   useEffect(() => {
     let active = true;
-    if (!selectedRecording || selectedRecording.source === "daily") {
-      lastRequestIdRef.current = null;
-      queueMicrotask(() => {
-        if (!active) return;
-        setEventExport(null);
-        setEventExportError(null);
-        setEventExportBusy(false);
-      });
-      return () => { active = false; };
-    }
-    const eventId = selectedRecording.id;
+    const controller = new AbortController();
+    exportController.current = controller;
+    lastRequestIdRef.current = null;
     queueMicrotask(() => {
       if (!active) return;
       setEventExport(null);
       setEventExportError(null);
       setEventExportBusy(false);
+      setExportLookup({ source: dataSource, userId: currentUserId, key: selectedKey, status: "checking" });
     });
-
-    const stored = getStoredExport(currentUserId, eventId);
-    if (stored && dataSource?.getEventRecordingExportStatus) {
-      lastRequestIdRef.current = stored.requestId;
-      const controller = new AbortController();
-      void dataSource.getEventRecordingExportStatus(stored.statusPath, controller.signal)
+    if (selectedId && selectedSource !== "daily" && dataSource?.findEventRecordingExport) {
+      void dataSource.findEventRecordingExport(selectedId, { beforeSeconds: 30, afterSeconds: 30 }, controller.signal)
         .then((status) => {
           if (!active || controller.signal.aborted) return;
-          if (status.status === "deleted" || status.status === "expired") {
-            clearStoredExport(currentUserId, eventId);
-          }
+          lastRequestIdRef.current = status?.requestId ?? null;
           setEventExport(status);
+          setExportLookup({ source: dataSource, userId: currentUserId, key: selectedKey, status: "done" });
         })
         .catch((error: unknown) => {
           if (!active || controller.signal.aborted) return;
-          if (error && typeof error === "object" && "status" in error && (error.status === 404 || error.status === 410)) {
-            clearStoredExport(currentUserId, eventId);
-          }
+          const missing = error && typeof error === "object" && "status" in error && error.status === 404;
+          setEventExportError({ message: missing ? "이벤트를 찾을 수 없습니다." : "기존 구간 파일 작업을 확인하지 못했습니다." });
+          setExportLookup({ source: dataSource, userId: currentUserId, key: selectedKey, status: missing ? "missing" : "done" });
         });
-      return () => {
-        active = false;
-        controller.abort();
-      };
     } else {
-      lastRequestIdRef.current = null;
+      queueMicrotask(() => { if (active) setExportLookup({ source: dataSource, userId: currentUserId, key: selectedKey, status: "done" }); });
     }
-    return () => { active = false; };
-  }, [dataSource, selectedRecording, currentUserId]);
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [dataSource, selectedId, selectedSource, selectedKey, currentUserId]);
 
   useEffect(() => {
     if (!eventExport || !dataSource?.getEventRecordingExportStatus) return;
-    if (eventExport.status !== "pending" && eventExport.status !== "processing") return;
+    if (!["pending", "collecting", "processing"].includes(eventExport.status)) return;
 
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
 
+    let failures = 0;
     const poll = async () => {
       try {
         const nextStatus = await dataSource.getEventRecordingExportStatus!(eventExport.statusPath, controller.signal);
         if (controller.signal.aborted) return;
-        if (nextStatus.status === "deleted" || nextStatus.status === "expired") {
-          clearStoredExport(currentUserId, eventExport.eventId);
-        }
+        lastRequestIdRef.current = nextStatus.requestId;
+        failures = 0;
+        setEventExportError(null);
         setEventExport(nextStatus);
-        if (nextStatus.status === "pending" || nextStatus.status === "processing") {
+        if (["pending", "collecting", "processing"].includes(nextStatus.status)) {
           timer = setTimeout(() => { void poll(); }, 3000);
         }
       } catch (error) {
         if (controller.signal.aborted) return;
-        setEventExport((prev) => prev ? { ...prev, downloadPath: null } : null);
         const parsed = parseExportError(error);
+        if ((parsed.status === 0 || parsed.status >= 500) && failures < 3) {
+          timer = setTimeout(() => { void poll(); }, 2000 * 2 ** failures);
+          failures += 1;
+          return;
+        }
         setEventExportError(parsed);
       }
     };
@@ -336,12 +344,14 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
       controller.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [dataSource, eventExport, currentUserId]);
+  }, [dataSource, eventExport, selectedKey, currentUserId]);
 
   const handlePrepareEventExport = async (isRetry = false, isNew = false) => {
     if (!selectedRecording || selectedRecording.source === "daily" || !dataSource?.prepareEventRecordingExport) return;
     const eventId = selectedRecording.id;
-    let requestId = lastRequestIdRef.current;
+    const controller = exportController.current;
+    if (!controller || controller.signal.aborted) return;
+    let requestId = isRetry ? eventExport?.requestId ?? lastRequestIdRef.current : null;
     if (!requestId || isNew) {
       requestId = generateRequestId();
       lastRequestIdRef.current = requestId;
@@ -354,15 +364,30 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
         beforeSeconds: 30,
         afterSeconds: 30,
         retryFailed: isRetry,
-      });
+      }, controller.signal);
+      if (controller.signal.aborted) return;
       lastRequestIdRef.current = result.requestId;
-      saveStoredExport(currentUserId, eventId, { requestId: result.requestId, statusPath: result.statusPath });
       setEventExport(result);
     } catch (error) {
+      if (controller.signal.aborted) return;
       const parsed = parseExportError(error);
+      // 5xx와 네트워크 오류는 서버가 작업을 접수한 뒤 응답만 잃었을 수 있으므로 기존 작업 조회로 한 번 확인한다.
+      if ((parsed.status === 0 || parsed.status >= 500) && dataSource.findEventRecordingExport) {
+        try {
+          const recovered = await dataSource.findEventRecordingExport(eventId, { beforeSeconds: 30, afterSeconds: 30 }, controller.signal);
+          if (controller.signal.aborted) return;
+          if (recovered && ["pending", "collecting", "processing", "ready"].includes(recovered.status)) {
+            lastRequestIdRef.current = recovered.requestId;
+            setEventExport(recovered);
+            return;
+          }
+        } catch {
+          if (controller.signal.aborted) return;
+        }
+      }
       setEventExportError(parsed);
     } finally {
-      setEventExportBusy(false);
+      if (!controller.signal.aborted) setEventExportBusy(false);
     }
   };
 
@@ -689,7 +714,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
           eventExportButtonDisabled = false;
           eventExportButtonAction = () => { void handlePrepareEventExport(false, false); };
         }
-      } else if (eventExportBusy || eventExport.status === "pending" || eventExport.status === "processing") {
+      } else if (eventExportBusy || eventExport.status === "pending" || eventExport.status === "collecting" || eventExport.status === "processing") {
         eventExportMessage = "구간 파일을 준비하고 있습니다.";
         eventExportButtonLabel = "준비 중";
         eventExportButtonDisabled = true;
@@ -743,9 +768,12 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
         if (eventExportError.code) {
           eventExportTitle = eventExportError.code;
         }
-        eventExportButtonLabel = "구간 파일 준비";
-        eventExportButtonDisabled = false;
-        eventExportButtonAction = () => { void handlePrepareEventExport(false, false); };
+        // 새 준비 요청은 서버가 상세에서 새 요청 경로(exportPath)를 제공한 이벤트만 허용한다.
+        if (selectedRecording.exportPath) {
+          eventExportButtonLabel = "구간 파일 준비";
+          eventExportButtonDisabled = false;
+          eventExportButtonAction = () => { void handlePrepareEventExport(false, false); };
+        }
       } else if (eventExportBusy) {
         eventExportMessage = "구간 파일을 준비하고 있습니다.";
         eventExportButtonLabel = "준비 중";
@@ -757,7 +785,19 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
         eventExportButtonAction = () => { void handlePrepareEventExport(false, false); };
       } else {
         const code = selectedRecording.downloadReasonCode;
-        if (code === "EVENT_WINDOW_NOT_CLOSED") {
+        if (code === "EVENT_RECORDING_UNAVAILABLE") {
+          eventExportMessage = "이 구간에 확보된 녹화 영상이 없어 구간 파일을 준비할 수 없습니다.";
+          const reasons = selectedRecording.replay?.reasonCodes ?? [];
+          const unavailable = selectedRecording.replay?.unavailableIntervals ?? [];
+          const kinds = Array.from(new Set(unavailable.map((item) => item.kind)));
+          const titleParts: string[] = [];
+          if (reasons.length > 0) {
+            titleParts.push(`사유: ${reasons.join(", ")}`);
+          }
+          const kindsText = kinds.length > 0 ? ` (${kinds.join(", ")})` : "";
+          titleParts.push(`누락 구간: ${unavailable.length}개${kindsText}`);
+          eventExportTitle = titleParts.join(" / ");
+        } else if (code === "EVENT_WINDOW_NOT_CLOSED") {
           eventExportMessage = "수거가 끝난 뒤 준비할 수 있습니다.";
         } else if (code === "EVENT_EXPORT_RANGE_TOO_LONG") {
           eventExportMessage = "구간이 1시간을 넘어 준비할 수 없습니다.";
@@ -767,6 +807,18 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
         eventExportButtonLabel = "다운로드 불가";
         eventExportButtonDisabled = true;
       }
+    }
+  }
+
+  if (selectedRecording && selectedRecording.source !== "daily") {
+    if (!exportContextMatches || exportLookup.status === "checking") {
+      eventExportMessage = "기존 구간 파일 작업을 확인하고 있습니다.";
+      eventExportButtonLabel = "확인 중";
+      eventExportButtonDisabled = true;
+    } else if (exportLookup.status === "missing") {
+      eventExportMessage = "이벤트를 찾을 수 없습니다.";
+      eventExportButtonLabel = "다운로드 불가";
+      eventExportButtonDisabled = true;
     }
   }
 
@@ -921,7 +973,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                           ? <video ref={playerRef} src={selectedRecording.contentUrl} poster={selectedRecording.thumbnailUrl} controls preload="metadata" aria-label={`${selectedRecording.date} 녹화 영상`} onError={() => setPlaybackError({ key: selectedKey, message: "영상 접근 상태를 확인하세요." })} onTimeUpdate={(event) => { if (!recordingOpen) setPlaybackSeconds(event.currentTarget.currentTime); }} />
                           : selectedRecording?.sample
                             ? <img src={cameraFrame} alt={`${selectedRecording.date} 녹화 영상`} />
-                            : <div className="recording-media-unavailable" role="status">{selectedRecording ? "재생 가능한 영상이 없습니다." : "선택할 수 있는 녹화 영상이 없습니다."}</div>}
+                            : <div className="recording-media-unavailable" role="status">{detailRequired && !detailReady ? "영상을 준비 중입니다." : selectedRecording ? "재생 가능한 영상이 없습니다." : "선택할 수 있는 녹화 영상이 없습니다."}</div>}
                         {selectedPlaybackAvailable && recordedTime && <span className="recorded-time">{recordedTime}</span>}
                         {selectedPlaybackAvailable && <button
                           className="recording-expand"
@@ -933,7 +985,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                         </button>}
                       </div>
                     </div>
-                    {selectedRecording?.daily && Number.isFinite(dailyNow) && <Suspense fallback={null}><DailyRecordingTimeline recording={selectedRecording.daily} now={dailyNow} onSeek={seekDailyRecording} /></Suspense>}
+                    {selectedRecording?.daily && selectedRecording.daily.view === "full" && Number.isFinite(dailyNow) && <Suspense fallback={null}><DailyRecordingTimeline recording={selectedRecording.daily} now={dailyNow} onSeek={seekDailyRecording} /></Suspense>}
                     {selectedRecording?.sample && !selectedRecording.contentUrl && <div className="recording-controls">
                       <button
                         type="button"
@@ -954,7 +1006,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                       <div className="recording-info-actions">
                         {(Boolean(selectedRecording?.source !== "daily" && selectedRecording?.coverage === "partial" && dataSource?.getRecordingCoverage && clipIdentifier.test(selectedRecording.id))
                           || Boolean(selectedRecording?.replay && selectedRecording.replay.unavailableIntervals.length > 0)
-                          || Boolean(selectedRecording?.daily && selectedRecording.daily.gaps.length > 0)) && <button className="detail-trigger recording-coverage-trigger" type="button" aria-haspopup="dialog" onClick={() => setCoverageRecordingId(selectedRecording.id)}>{selectedRecording?.source !== "daily" && selectedRecording?.coverage === "partial" && dataSource?.getRecordingCoverage && clipIdentifier.test(selectedRecording.id) ? "부분 저장" : "누락 구간"}</button>}
+                          || Boolean(selectedRecording?.daily && selectedRecording.daily.view === "full" && selectedRecording.daily.gaps.length > 0)) && <button className="detail-trigger recording-coverage-trigger" type="button" aria-haspopup="dialog" onClick={() => setCoverageRecordingId(selectedRecording.id)}>{selectedRecording?.source !== "daily" && selectedRecording?.coverage === "partial" && dataSource?.getRecordingCoverage && clipIdentifier.test(selectedRecording.id) ? "부분 저장" : "누락 구간"}</button>}
                         {selectedRecording && (!selectedRecording.sample || selectedRecording.mediaStatus || selectedRecording.errorCode) && <RecordingStatusDetails
                           key={selectedKey} recording={selectedRecording} error={(detailState.source === dataSource && detailState.key === selectedKey ? detailState.error : undefined) ?? (playbackError?.key === selectedKey ? playbackError?.message : undefined)} pending={detailRequired && !detailReady} />}
                       </div>
@@ -993,6 +1045,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                       {isEvent ? (
                         <button
                           type="button"
+                          title={eventExportTitle}
                           disabled={eventExportButtonDisabled}
                           onClick={eventExportButtonAction}
                         >

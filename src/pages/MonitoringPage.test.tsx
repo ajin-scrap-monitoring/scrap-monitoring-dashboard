@@ -99,7 +99,7 @@ test.each(["FRESH", "STALE", "UNAVAILABLE", "UNKNOWN", "NO_DATA"] as const)("v2 
   expect(within(main).queryByText("대기", { exact: true })).not.toBeInTheDocument();
   expect(within(main).queryByText("0건", { exact: true })).not.toBeInTheDocument();
   expect(within(main).queryByText("참고도 / 실측 배치 미제공")).not.toBeInTheDocument();
-  expect(cards[6]).toHaveTextContent("활성 여부를 확인할 수 있는 알림 정보가 없습니다.");
+  expect(cards[6]).toHaveTextContent("활성 알림을 불러오지 못했습니다.");
   expect(screen.queryByRole("button", { name: "상태 상세" })).not.toBeInTheDocument();
   expect(screen.queryByRole("dialog", { name: "모니터링 상태 상세" })).not.toBeInTheDocument();
 });
@@ -118,6 +118,7 @@ test("SSE 연결 중단은 적재율을 숨기고 같은 snapshot 복구는 0%�
   view.rerender(<MonitoringPage data={disconnected} dataSource={dataSource} />);
   expect(view.container.querySelector(".kpi-value")).toHaveTextContent("판단 불가");
   expect(screen.getByText("실시간 연결 재연결 중")).toBeVisible();
+  expect(screen.getByText("실시간 연결이 복구되면 활성 알림을 다시 표시합니다.")).toBeVisible();
   expect(screen.getByLabelText("데이터 수신 상태")).toHaveTextContent("연결 문제");
   view.rerender(<MonitoringPage data={data} dataSource={dataSource} />);
   expect(view.container.querySelector(".kpi-value")).toHaveTextContent("0%");

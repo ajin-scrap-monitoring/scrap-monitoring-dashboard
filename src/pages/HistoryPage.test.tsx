@@ -285,3 +285,14 @@ test("표 페이지 이동은 해당 서버 페이지만 요청하고 이전 요
   expect(screen.queryByText("이벤트 11")).toBeNull();
   expect(screen.getByText("3 / 227")).toBeVisible();
 });
+
+test("이력 그래프는 서버가 simulated로 표시한 표본에 시뮬레이션 표기를 붙인다", async () => {
+  const { container } = await renderHistory({ loadSamples: [{ hour: 0, value: 20, simulated: true }, { hour: 1, value: null }, { hour: 2, value: 50, simulated: true }] });
+  expect(container.querySelector(".history-chart-simulation")).toHaveTextContent("시뮬레이션");
+  expect(screen.getByRole("img", { name: "조회 기간 대표 적재율 변화 그래프 (시뮬레이션)" })).toBeInTheDocument();
+});
+
+test("이력 그래프는 simulated 표본이 없으면 시뮬레이션 표기를 만들지 않는다", async () => {
+  const { container } = await renderHistory({ loadSamples: [{ hour: 0, value: 20 }, { hour: 2, value: 50, simulated: false }] });
+  expect(container.querySelector(".history-chart-simulation")).toBeNull();
+});

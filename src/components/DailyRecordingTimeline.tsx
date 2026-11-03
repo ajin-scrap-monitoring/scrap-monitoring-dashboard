@@ -1,6 +1,6 @@
 import { memo, useMemo, useState, type MouseEvent } from "react";
 
-import { dailyPlaybackPosition, dailyRecordingAvailability, type dailyTimeState, type DailyRecording } from "../data/daily-recordings";
+import { dailyPlaybackPosition, dailyRecordingAvailability, type dailyTimeState, type DailyRecordingFull } from "../data/daily-recordings";
 
 type TimeState = ReturnType<typeof dailyTimeState>;
 type TimeRange = { start: number; end: number; state: TimeState };
@@ -18,7 +18,7 @@ function clock(at: number, end: number): string {
   return at === end ? "24:00:00" : new Date(at + 9 * 60 * 60 * 1000).toISOString().slice(11, 19);
 }
 
-function ranges(recording: DailyRecording, now: number, unavailable: boolean): TimeRange[] {
+function ranges(recording: DailyRecordingFull, now: number, unavailable: boolean): TimeRange[] {
   const start = Date.parse(recording.windowStartsAt);
   const end = Date.parse(recording.windowEndsAt);
   const coverage = Date.parse(recording.coverageAsOfAt);
@@ -131,7 +131,7 @@ function DenseTimeline({ timeRanges, points, start, end, playable, onSeekAt }: {
   </>;
 }
 
-export const DailyRecordingTimeline = memo(function DailyRecordingTimeline({ recording, now, onSeek }: { recording: DailyRecording; now: number; onSeek: (seconds: number) => void }) {
+export const DailyRecordingTimeline = memo(function DailyRecordingTimeline({ recording, now, onSeek }: { recording: DailyRecordingFull; now: number; onSeek: (seconds: number) => void }) {
   const start = Date.parse(recording.windowStartsAt);
   const end = Date.parse(recording.windowEndsAt);
   const duration = end - start;

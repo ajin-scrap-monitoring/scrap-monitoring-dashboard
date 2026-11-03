@@ -1085,6 +1085,231 @@
         "title": "Capabilities",
         "type": "object"
       },
+      "ChartHistorySampleV2": {
+        "description": "Keep numerical and quality evidence while omitting long provenance identifiers.",
+        "properties": {
+          "averagePercent": {
+            "anyOf": [
+              {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Averagepercent"
+          },
+          "bucketEndAt": {
+            "format": "date-time",
+            "title": "Bucketendat",
+            "type": "string"
+          },
+          "bucketStartAt": {
+            "format": "date-time",
+            "title": "Bucketstartat",
+            "type": "string"
+          },
+          "dataState": {
+            "default": "NO_DATA",
+            "enum": [
+              "AVAILABLE",
+              "LIMITED",
+              "UNAVAILABLE",
+              "STALE",
+              "UNKNOWN",
+              "NO_DATA"
+            ],
+            "title": "Datastate",
+            "type": "string"
+          },
+          "generatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generatedat"
+          },
+          "inputSource": {
+            "default": "EDGE_STATE",
+            "enum": [
+              "EDGE_STATE",
+              "HEIGHT_SECTIONS",
+              "MIXED"
+            ],
+            "title": "Inputsource",
+            "type": "string"
+          },
+          "invalidSamples": {
+            "default": 0,
+            "title": "Invalidsamples",
+            "type": "integer"
+          },
+          "maximumPercent": {
+            "anyOf": [
+              {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximumpercent"
+          },
+          "minimumPercent": {
+            "anyOf": [
+              {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimumpercent"
+          },
+          "observedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observedat"
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoncodes",
+            "type": "array"
+          },
+          "simulated": {
+            "default": false,
+            "title": "Simulated",
+            "type": "boolean"
+          },
+          "valid": {
+            "default": false,
+            "title": "Valid",
+            "type": "boolean"
+          },
+          "validSamples": {
+            "default": 0,
+            "title": "Validsamples",
+            "type": "integer"
+          },
+          "valuePercent": {
+            "anyOf": [
+              {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuepercent"
+          },
+          "valuePolicy": {
+            "default": "RAW_STATE",
+            "enum": [
+              "RAW_STATE",
+              "MEDIAN_MINUTE"
+            ],
+            "title": "Valuepolicy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bucketStartAt",
+          "bucketEndAt"
+        ],
+        "title": "ChartHistorySampleV2",
+        "type": "object"
+      },
+      "ChartHistoryV2": {
+        "properties": {
+          "bucketSeconds": {
+            "enum": [
+              60,
+              300,
+              900,
+              3600,
+              7200,
+              21600,
+              86400
+            ],
+            "title": "Bucketseconds",
+            "type": "integer"
+          },
+          "from": {
+            "format": "date-time",
+            "title": "From",
+            "type": "string"
+          },
+          "pitId": {
+            "title": "Pitid",
+            "type": "string"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/ChartHistorySampleV2"
+            },
+            "title": "Samples",
+            "type": "array"
+          },
+          "schemaVersion": {
+            "const": "2",
+            "default": "2",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "selectionPolicy": {
+            "const": "LATEST_STATE_PER_BUCKET",
+            "default": "LATEST_STATE_PER_BUCKET",
+            "title": "Selectionpolicy",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/MonitoringSource"
+          },
+          "to": {
+            "format": "date-time",
+            "title": "To",
+            "type": "string"
+          },
+          "view": {
+            "const": "chart",
+            "default": "chart",
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pitId",
+          "source",
+          "from",
+          "to",
+          "bucketSeconds",
+          "samples"
+        ],
+        "title": "ChartHistoryV2",
+        "type": "object"
+      },
       "ClipDetail": {
         "description": "Full remote state, including partial coverage and nullable completion times.",
         "properties": {
@@ -2336,6 +2561,324 @@
         "title": "DailyRecording",
         "type": "object"
       },
+      "DailyRecordingSummary": {
+        "description": "Retain validated evidence internally; omit interval arrays from list output.",
+        "properties": {
+          "available_interval_count": {
+            "minimum": 0,
+            "title": "Available Interval Count",
+            "type": "integer"
+          },
+          "camera_id": {
+            "title": "Camera Id",
+            "type": "string"
+          },
+          "cleanup_completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cleanup Completed At"
+          },
+          "cleanup_error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DailyError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cleanup_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "failed",
+                  "complete"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cleanup State"
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "complete",
+                  "partial",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage"
+          },
+          "coverage_as_of_at": {
+            "format": "date-time",
+            "title": "Coverage As Of At",
+            "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "download_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Path"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DailyError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "export_allowed": {
+            "title": "Export Allowed",
+            "type": "boolean"
+          },
+          "export_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Export Expires At"
+          },
+          "export_state": {
+            "enum": [
+              "not_requested",
+              "processing",
+              "ready",
+              "failed"
+            ],
+            "title": "Export State",
+            "type": "string"
+          },
+          "gap_count": {
+            "minimum": 0,
+            "title": "Gap Count",
+            "type": "integer"
+          },
+          "has_gaps": {
+            "title": "Has Gaps",
+            "type": "boolean"
+          },
+          "playable_until_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playable Until At"
+          },
+          "playback_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playback Path"
+          },
+          "playback_protocol": {
+            "anyOf": [
+              {
+                "const": "hls",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playback Protocol"
+          },
+          "playback_state": {
+            "enum": [
+              "pending",
+              "ready",
+              "unavailable"
+            ],
+            "title": "Playback State",
+            "type": "string"
+          },
+          "recorded_seconds": {
+            "maximum": 86400,
+            "minimum": 0,
+            "title": "Recorded Seconds",
+            "type": "number"
+          },
+          "recording_date": {
+            "format": "date",
+            "title": "Recording Date",
+            "type": "string"
+          },
+          "recording_id": {
+            "format": "uuid",
+            "title": "Recording Id",
+            "type": "string"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "space_reclaimed": {
+            "title": "Space Reclaimed",
+            "type": "null"
+          },
+          "status": {
+            "enum": [
+              "recording",
+              "finalizing",
+              "closed",
+              "failed",
+              "deleted",
+              "expired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "timezone": {
+            "const": "Asia/Seoul",
+            "title": "Timezone",
+            "type": "string"
+          },
+          "window_end_at": {
+            "format": "date-time",
+            "title": "Window End At",
+            "type": "string"
+          },
+          "window_start_at": {
+            "format": "date-time",
+            "title": "Window Start At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recording_id",
+          "camera_id",
+          "recording_date",
+          "timezone",
+          "window_start_at",
+          "window_end_at",
+          "status",
+          "coverage",
+          "has_gaps",
+          "coverage_as_of_at",
+          "playable_until_at",
+          "recorded_seconds",
+          "playback_state",
+          "playback_protocol",
+          "playback_path",
+          "export_allowed",
+          "export_state",
+          "download_path",
+          "size_bytes",
+          "expires_at",
+          "export_expires_at",
+          "error",
+          "gap_count",
+          "available_interval_count"
+        ],
+        "title": "DailyRecordingSummary",
+        "type": "object"
+      },
+      "DailySummaryPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DailyRecordingSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "view": {
+            "const": "summary",
+            "default": "summary",
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "DailySummaryPage",
+        "type": "object"
+      },
       "DeliveryStatus": {
         "additionalProperties": false,
         "properties": {
@@ -2874,7 +3417,8 @@
               "EVENT_RANGE_EXPORT_UNSUPPORTED",
               "EVENT_EXPORT_NOT_REQUESTED",
               "EVENT_WINDOW_NOT_CLOSED",
-              "EVENT_EXPORT_RANGE_TOO_LONG"
+              "EVENT_EXPORT_RANGE_TOO_LONG",
+              "EVENT_RECORDING_UNAVAILABLE"
             ],
             "title": "Downloadreasoncode",
             "type": "string"
@@ -4970,6 +5514,23 @@
           "deviceStatus"
         ],
         "title": "MonitoringSnapshotV2",
+        "type": "object"
+      },
+      "MonitoringSnapshotWithAlertsV2": {
+        "description": "One current snapshot and the active alarms derived from that exact snapshot.",
+        "properties": {
+          "activeAlerts": {
+            "$ref": "#/components/schemas/ActiveFillAlertPageV2"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/MonitoringSnapshotV2"
+          }
+        },
+        "required": [
+          "snapshot",
+          "activeAlerts"
+        ],
+        "title": "MonitoringSnapshotWithAlertsV2",
         "type": "object"
       },
       "MonitoringSource": {
@@ -11362,6 +11923,16 @@
         "parameters": [
           {
             "in": "query",
+            "name": "include_camera_status",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Camera Status",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
             "name": "pit_id",
             "required": false,
             "schema": {
@@ -11716,6 +12287,20 @@
           },
           {
             "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "full",
+              "enum": [
+                "full",
+                "chart"
+              ],
+              "title": "View",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "pit_id",
             "required": false,
             "schema": {
@@ -11748,7 +12333,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LoadHistoryV2"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/LoadHistoryV2"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ChartHistoryV2"
+                    }
+                  ],
+                  "title": "Response Get Load History Api V2 Monitoring Load History Get"
                 }
               }
             },
@@ -12007,6 +12600,120 @@
         ]
       }
     },
+    "/api/v2/monitoring/snapshot-with-alerts": {
+      "get": {
+        "description": "Return both display areas from one snapshot, releasing the read transaction.",
+        "operationId": "snapshot_with_alerts_api_v2_monitoring_snapshot_with_alerts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "FILL_OPERATIONS",
+              "enum": [
+                "FILL_OPERATIONS",
+                "ALL"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "default": "pit-01",
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Pit Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringSnapshotWithAlertsV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Snapshot With Alerts Api V2 Monitoring Snapshot With Alerts Get"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Snapshot With Alerts",
+        "tags": [
+          "Monitoring v2"
+        ]
+      }
+    },
     "/api/v2/recordings/daily": {
       "get": {
         "operationId": "list_daily_recordings_api_v2_recordings_daily_get",
@@ -12100,6 +12807,20 @@
             }
           },
           {
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "full",
+              "enum": [
+                "full",
+                "summary"
+              ],
+              "title": "View",
+              "type": "string"
+            }
+          },
+          {
             "in": "cookie",
             "name": "scrap_session",
             "required": false,
@@ -12121,7 +12842,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DailyPage"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/DailyPage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DailySummaryPage"
+                    }
+                  ],
+                  "title": "Response List Daily Recordings Api V2 Recordings Daily Get"
                 }
               }
             },
@@ -13615,6 +14344,230 @@
       }
     },
     "/api/v2/recordings/events/{event_id}/exports": {
+      "get": {
+        "description": "Recover this account's existing export without creating or retrying a file.",
+        "operationId": "find_event_export_api_v2_recordings_events__event_id__exports_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "pattern": "^(?:evt-auto-col-start|evt-alt|evt-col|evt-v2-transition|evt-err)-[1-9][0-9]{0,18}$",
+              "title": "Event Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_seconds",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 300,
+              "minimum": 0,
+              "title": "Before Seconds",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_seconds",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 300,
+              "minimum": 0,
+              "title": "After Seconds",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/EventExportResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Find Event Export Api V2 Recordings Events  Event Id  Exports Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 404 Find Event Export Api V2 Recordings Events  Event Id  Exports Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Range Not Satisfiable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Find Event Export Api V2 Recordings Events  Event Id  Exports Get"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 503 Find Event Export Api V2 Recordings Events  Event Id  Exports Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Find Event Export",
+        "tags": [
+          "Event Recordings"
+        ]
+      },
       "post": {
         "description": "Only an explicit authenticated download request can create a range file.",
         "operationId": "prepare_event_export_api_v2_recordings_events__event_id__exports_post",
@@ -14067,5 +15020,5 @@
     }
   },
   "x-source-repository": "https://github.com/ajin-scrap-monitoring/scrap-monitoring-backend",
-  "x-source-revision": "3f865341df74d39273eebfee36436bc5be8fbe51"
+  "x-source-revision": "bef9263f27bcb1969acba8cdfa7314878a0d398f"
 }

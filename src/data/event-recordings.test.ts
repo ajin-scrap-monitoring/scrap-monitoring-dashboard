@@ -136,6 +136,27 @@ describe("이벤트 상세 replay 파서와 exportPath, downloadReasonCode", () 
     expect(replay.downloadReasonCode).toBe("EVENT_EXPORT_NOT_REQUESTED");
   });
 
+  test("downloadReasonCode가 EVENT_RECORDING_UNAVAILABLE일 때 올바르게 파싱한다", () => {
+    const { replay } = eventReplay({
+      ...baseReplay,
+      state: "UNAVAILABLE",
+      parts: [],
+      playbackSeconds: 0,
+      coveredSeconds: 0,
+      exportPath: null,
+      downloadReasonCode: "EVENT_RECORDING_UNAVAILABLE",
+      reasonCodes: ["NO_VIDEO_RECORDED"],
+      unavailableIntervals: [
+        { fromAt: "2026-10-12T00:59:30Z", toAt: "2026-10-12T01:00:30Z", kind: "MISSING", reasonCode: "NO_RECORDING" },
+      ],
+    }, "20261012-005930-coll");
+    expect(replay.state).toBe("UNAVAILABLE");
+    expect(replay.downloadReasonCode).toBe("EVENT_RECORDING_UNAVAILABLE");
+    expect(replay.exportPath).toBeNull();
+    expect(replay.reasonCodes).toEqual(["NO_VIDEO_RECORDED"]);
+    expect(replay.unavailableIntervals).toHaveLength(1);
+  });
+
   test("허용되지 않은 downloadReasonCode는 계약 오류로 처리한다", () => {
     expect(() => eventReplay({
       ...baseReplay,

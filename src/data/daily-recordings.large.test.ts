@@ -74,8 +74,8 @@ describe("대용량 날짜 녹화 응답", () => {
       { start: "2026-10-12 00:00:20", end: "2026-10-12 00:00:30" },
       { start: "2026-10-12 00:00:40", end: "2026-10-12 00:00:50" },
     ]);
-    expect(output.length).toBe(2_210_926);
-    expect(digest(output)).toBe(1508558611163387);
+    expect(output.length).toBe(2_210_996);
+    expect(digest(output)).toBe(6481720745419997);
   });
 
   test("timestamp, timestampValue와 wallClock은 최적화 이전 구현과 같은 값을 돌려준다", () => {

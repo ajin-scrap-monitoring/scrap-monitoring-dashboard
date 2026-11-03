@@ -62,11 +62,31 @@ describe("표시 시간대 Asia/Seoul 고정", () => {
     const history = requests.filter((url) => url.pathname === "/api/v2/monitoring/load-history").at(-1)!;
     expect(history.searchParams.get("to")).toBe("2026-10-13T09:00:00+09:00");
     expect(history.searchParams.get("from")).toBe("2026-10-06T09:00:00+09:00");
+    expect(history.searchParams.get("view")).toBe("chart");
     expect(first?.loadSamples.length).toBeGreaterThan(0);
     const queried = await source.queryHistory?.({ from: "2026-10-12T09:00", to: "2026-10-13T09:00" });
     const query = requests.filter((url) => url.pathname === "/api/v2/monitoring/load-history").at(-1)!;
     expect([query.searchParams.get("from"), query.searchParams.get("to")]).toEqual(["2026-10-12T09:00:00+09:00", "2026-10-13T09:00:00+09:00"]);
+    expect(query.searchParams.get("view")).toBe("chart");
     expect(queried?.startsAt).toBe("2026-10-12T09:00");
+  });
+
+  test("현황 24시간 그래프 요청 URL에 view=chart를 포함한다", async () => {
+    const requests: URL[] = [];
+    const snapshot = { ...monitoringV2StateFixture("FRESH", 10), serverTime: "2026-10-13T00:00:10Z", measuredAt: "2026-10-13T00:00:05Z" };
+    const base = createV2ContractFetch(url => url.pathname === "/api/v2/monitoring/snapshot" ? jsonResponse(snapshot) : undefined);
+    const source = createHttpDashboardDataSource({
+      apiContract: "backend",
+      monitoringVersion: "v2",
+      fetchImplementation: (input, init) => { requests.push(inputUrl(input)); return base(input, init); },
+    });
+    await source.getDashboardData();
+    const activation = source.activateMonitoringDetails!();
+    await activation.ready;
+    const historyReq = requests.find(url => url.pathname === "/api/v2/monitoring/load-history");
+    expect(historyReq).toBeDefined();
+    expect(historyReq?.searchParams.get("view")).toBe("chart");
+    activation.release();
   });
 
   test("이벤트 시각은 UTC와 다른 offset 모두 한국 표준시로 한 번만 변환한다", async () => {
@@ -379,7 +399,7 @@ describe("화면별 조회 범위와 요청 대기 제한", () => {
       await activation.ready;
       const unsubscribe = source.subscribe!(() => undefined);
       const detailPaths = new Set(["/api/v2/monitoring/collection-summary", "/api/v2/monitoring/fill-forecast",
-        "/api/v2/monitoring/profiles", "/api/v2/monitoring/active-alerts", "/api/v2/monitoring/layout",
+        "/api/v2/monitoring/profiles", "/api/v2/monitoring/snapshot-with-alerts", "/api/v2/monitoring/layout",
         "/api/v2/monitoring/load-history"]);
       const detailRequests = () => fetchImplementation.mock.calls.map(([input]) => inputUrl(input).pathname)
         .filter(pathname => detailPaths.has(pathname));
@@ -537,7 +557,8 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
     expect(routeData.recordings![0].downloadUrl).toBeUndefined();
     expect(requests.some(({ url }) => url.pathname === "/api/v1/recordings")).toBe(false);
     const parameters = requests.find(({ url }) => url.pathname === "/api/v2/recordings/daily")!.url.searchParams;
-    expect([...parameters.keys()].sort()).toEqual(["from_date", "limit", "to_date"]);
+    expect([...parameters.keys()].sort()).toEqual(["from_date", "limit", "to_date", "view"]);
+    expect(parameters.get("view")).toBe("summary");
     expect(parameters.get("to_date")).toBe("2026-10-14");
     expect(parameters.get("limit")).toBe("100");
   });

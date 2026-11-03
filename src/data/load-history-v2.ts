@@ -39,6 +39,10 @@ export function parseLoadHistoryV2(value: unknown, scope: LoadHistoryScope): Par
     || value.selectionPolicy !== "LATEST_STATE_PER_BUCKET" || !Array.isArray(value.samples)
     || value.samples.length > maximumHistorySamples) return fail();
 
+  const view = value.view;
+  if (view !== undefined && view !== "full" && view !== "chart") return fail();
+  const isChart = view === "chart";
+
   const from = timestampValue(value.from);
   const to = timestampValue(value.to);
   const interval = value.bucketSeconds * 1000;
@@ -51,7 +55,7 @@ export function parseLoadHistoryV2(value: unknown, scope: LoadHistoryScope): Par
   for (const [index, sample] of value.samples.entries()) {
     if (!record(sample) || !timestamp(sample.bucketStartAt) || !timestamp(sample.bucketEndAt)
       || ![sample.generatedAt, sample.observedAt].every((item) => item === null || timestamp(item))
-      || !(sample.assessmentId === null || typeof sample.assessmentId === "string")
+      || (!isChart && !(sample.assessmentId === null || typeof sample.assessmentId === "string"))
       || !(sample.valuePercent === null || (typeof sample.valuePercent === "number" && Number.isFinite(sample.valuePercent) && sample.valuePercent >= 0 && sample.valuePercent <= 100))
       || typeof sample.valid !== "boolean" || typeof sample.dataState !== "string" || !historyStates.includes(sample.dataState)
       || !strings(sample.reasonCodes)) return fail();
@@ -67,12 +71,12 @@ export function parseLoadHistoryV2(value: unknown, scope: LoadHistoryScope): Par
       || !(sample.simulated === undefined || typeof sample.simulated === "boolean")) return fail();
 
     const measuredAt = generatedAt ?? sample.bucketStartAt;
-    const metadata = {
+    const metadata: LoadHistoryMetadata = {
       bucketStartAt: sample.bucketStartAt,
       bucketEndAt: sample.bucketEndAt,
       generatedAt,
       observedAt,
-      assessmentId: sample.assessmentId,
+      ...(!isChart && { assessmentId: sample.assessmentId as string | null }),
       dataState: sample.dataState as HistoryDataState,
       reasonCodes: sample.reasonCodes,
       ...(typeof sample.inputSource === "string" && { inputSource: sample.inputSource as LoadHistoryMetadata["inputSource"] }),

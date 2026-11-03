@@ -1,4 +1,4 @@
-export type DailyRecording = {
+type DailyRecordingBase = {
   source: "daily";
   id: string;
   cameraId: string;
@@ -12,8 +12,6 @@ export type DailyRecording = {
   coverageAsOfAt: string;
   playableUntilAt: string | null;
   recordedSeconds: number;
-  gaps: { startsAt: string; endsAt: string; reasonCode: string }[];
-  availableIntervals: { startsAt: string; endsAt: string; playbackStartsAtSeconds: number; playbackEndsAtSeconds: number }[];
   playbackState: "pending" | "ready" | "unavailable";
   playbackProtocol: "hls" | null;
   playbackPath: string | null;
@@ -30,3 +28,17 @@ export type DailyRecording = {
   cleanupError?: { code: string; message: string } | null;
   spaceReclaimed?: null;
 };
+
+export type DailyRecordingFull = DailyRecordingBase & {
+  view: "full";
+  gaps: { startsAt: string; endsAt: string; reasonCode: string }[];
+  availableIntervals: { startsAt: string; endsAt: string; playbackStartsAtSeconds: number; playbackEndsAtSeconds: number }[];
+};
+
+export type DailyRecordingSummary = DailyRecordingBase & {
+  view: "summary";
+  gapCount: number;
+  availableIntervalCount: number;
+};
+
+export type DailyRecording = DailyRecordingFull | DailyRecordingSummary;

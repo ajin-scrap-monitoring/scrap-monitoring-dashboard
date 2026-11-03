@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { dailyPlaybackPosition, dailyPlaybackTimestamp, dailyRecording, dailyRecordingAvailability, dailyRecordingPage, dailyTimeState } from "./daily-recordings";
+import { dailyPlaybackPosition, dailyPlaybackTimestamp, dailyRecording, dailyRecordingAvailability, dailyRecordingPage, dailyRecordingSummary, dailyTimeState } from "./daily-recordings";
 
 const id = "550e8400-e29b-41d4-a716-446655440000";
 const fixture = {
@@ -247,5 +247,54 @@ describe("날짜 마감과 export 및 보관 만료의 분리", () => {
   test("space_reclaimed가 null이 아니면 계약 오류로 처리한다", () => {
     expect(() => closed({ space_reclaimed: true })).toThrow("Unexpected daily recording contract.");
     expect(() => closed({ space_reclaimed: 1024 })).toThrow("Unexpected daily recording contract.");
+  });
+});
+
+describe("날짜 녹화 요약(summary) 계약 파서", () => {
+  const summaryFixture = () => {
+    const copy = { ...fixture } as Record<string, unknown>;
+    delete copy.gaps;
+    delete copy.available_intervals;
+    copy.gap_count = 2;
+    copy.available_interval_count = 3;
+    copy.has_gaps = true;
+    return copy;
+  };
+
+  test("정상 요약 항목을 DailyRecordingSummary로 올바르게 파싱한다", () => {
+    const parsed = dailyRecordingSummary(summaryFixture(), "camera-main");
+    expect(parsed.view).toBe("summary");
+    expect(parsed.gapCount).toBe(2);
+    expect(parsed.availableIntervalCount).toBe(3);
+    expect(parsed.hasGaps).toBe(true);
+    expect("gaps" in parsed).toBe(false);
+    expect("availableIntervals" in parsed).toBe(false);
+  });
+
+  test("음수 개수는 계약 오류로 거부한다", () => {
+    expect(() => dailyRecordingSummary({ ...summaryFixture(), gap_count: -1 }, "camera-main")).toThrow("Unexpected daily recording contract.");
+    expect(() => dailyRecordingSummary({ ...summaryFixture(), available_interval_count: -1 }, "camera-main")).toThrow("Unexpected daily recording contract.");
+  });
+
+  test("has_gaps와 gap_count > 0 불일치는 계약 오류로 거부한다", () => {
+    expect(() => dailyRecordingSummary({ ...summaryFixture(), gap_count: 0, has_gaps: true }, "camera-main")).toThrow("Unexpected daily recording contract.");
+    expect(() => dailyRecordingSummary({ ...summaryFixture(), gap_count: 2, has_gaps: false }, "camera-main")).toThrow("Unexpected daily recording contract.");
+  });
+
+  test("요약 항목에 gaps나 available_intervals 배열이 포함되어 있으면 계약 오류로 거부한다", () => {
+    expect(() => dailyRecordingSummary({ ...summaryFixture(), gaps: [] }, "camera-main")).toThrow("Unexpected daily recording contract.");
+    expect(() => dailyRecordingSummary({ ...summaryFixture(), available_intervals: [] }, "camera-main")).toThrow("Unexpected daily recording contract.");
+  });
+
+  test("dailyRecordingPage는 view=summary에서 요약 항목을 파싱하고 잘못된 view는 거부한다", () => {
+    const page = { items: [summaryFixture()], next_cursor: null, view: "summary" };
+    const result = dailyRecordingPage(page, "camera-main");
+    expect(result.items[0].view).toBe("summary");
+
+    const fullPage = { items: [fixture], next_cursor: null, view: "full" };
+    expect(dailyRecordingPage(fullPage, "camera-main").items[0].view).toBe("full");
+
+    const invalidPage = { items: [summaryFixture()], next_cursor: null, view: "other" };
+    expect(() => dailyRecordingPage(invalidPage, "camera-main")).toThrow("Unexpected daily recording contract.");
   });
 });
