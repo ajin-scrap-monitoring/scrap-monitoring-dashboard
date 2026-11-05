@@ -6,6 +6,10 @@ let mediaRequests = 0
 let authRequests = 0
 let lastAuthRequest = null
 let lastDailyRequest = null
+let thumbnailBackendRequests = 0
+let thumbnailMediaRequests = 0
+let lastThumbnailBackend = null
+let lastThumbnailMedia = null
 const dailyId = '550e8400-e29b-41d4-a716-446655440000'
 const dailySegmentId = '550e8400-e29b-41d4-a716-446655440001'
 
@@ -86,7 +90,86 @@ const server = createServer((request, response) => {
 
   if (pathname === '/api/v1/proxy-test/metrics') {
     response.writeHead(200, { 'content-type': 'application/json' })
-    response.end(JSON.stringify({ mediaRequests, authRequests, lastAuthRequest, lastDailyRequest }))
+    response.end(JSON.stringify({
+      mediaRequests,
+      authRequests,
+      lastAuthRequest,
+      lastDailyRequest,
+      thumbnailBackendRequests,
+      thumbnailMediaRequests,
+      lastThumbnailBackend,
+      lastThumbnailMedia,
+    }))
+    return
+  }
+
+  const backendThumbnailMatch = /^\/media\/(clips|daily-recordings)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/thumbnail$/.exec(pathname)
+  if (backendThumbnailMatch) {
+    thumbnailBackendRequests += 1
+    lastThumbnailBackend = { url: request.url, method: request.method, headers: request.headers }
+    const [, resource, id] = backendThumbnailMatch
+
+    const cookie = request.headers.cookie
+    if (!cookie || cookie === 'scrap_session=expired') {
+      response.writeHead(401, { 'cache-control': 'no-store' })
+      response.end(JSON.stringify({ code: 'SESSION_EXPIRED' }))
+      return
+    }
+    if (cookie === 'scrap_session=forbidden') {
+      response.writeHead(403, { 'cache-control': 'no-store' })
+      response.end(JSON.stringify({ code: 'PERMISSION_DENIED' }))
+      return
+    }
+
+    if (id === '00000000-0000-0000-0000-000000000000') {
+      response.writeHead(404, { 'cache-control': 'no-store' })
+      response.end(JSON.stringify({ code: 'RESOURCE_NOT_FOUND' }))
+      return
+    }
+    if (id === '41000000-0000-0000-0000-000000000000') {
+      response.writeHead(410, { 'cache-control': 'no-store' })
+      response.end(JSON.stringify({ code: 'RESOURCE_EXPIRED' }))
+      return
+    }
+
+    const version = resource === 'daily-recordings' ? 'v2' : 'v1'
+    const internalPath = `/_thumbnail/${version}/${resource}/${id}/thumbnail`
+    response.writeHead(200, {
+      'x-accel-redirect': internalPath,
+      'cache-control': 'no-store',
+    })
+    response.end()
+    return
+  }
+
+  const mediaThumbnailMatch = /^\/api\/(v1\/clips|v2\/daily-recordings)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/thumbnail$/.exec(pathname)
+  if (mediaThumbnailMatch) {
+    thumbnailMediaRequests += 1
+    lastThumbnailMedia = { url: request.url, method: request.method, headers: request.headers }
+    const [, , id] = mediaThumbnailMatch
+
+    if (id === '30200000-0000-0000-0000-000000000000' || request.headers['x-thumbnail-probe'] === 'redirect') {
+      response.writeHead(302, { location: 'http://evil.invalid/thumbnail.jpg' })
+      response.end()
+      return
+    }
+
+    const thumbnailBytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0xff, 0xd9])
+    const headers = {
+      'content-type': 'image/jpeg',
+      'content-length': thumbnailBytes.length,
+      'set-cookie': 'media_cookie=must-not-reach-browser',
+      'cache-control': 'public, max-age=86400',
+      'x-powered-by': 'media-server',
+      'x-content-type-options': 'nosniff',
+    }
+
+    if (id === 'acc00000-0000-0000-0000-000000000000' || request.headers['x-thumbnail-probe'] === 'internal-redirect') {
+      headers['x-accel-redirect'] = '/_thumbnail/evil'
+    }
+
+    response.writeHead(200, headers)
+    response.end(request.method === 'HEAD' ? undefined : thumbnailBytes)
     return
   }
 

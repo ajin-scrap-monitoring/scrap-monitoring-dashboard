@@ -121,6 +121,8 @@ ssh -N -o ExitOnForwardFailure=yes \
 브라우저는 `http://127.0.0.1:5173/?source=api`로 접속한다. 영상 요청은 gateway가 Backend의
 session을 확인한 뒤 전달한다. Media Service에는 `Host`, `Range`, `If-Range` header와 클립
 다운로드의 `download=true` query만 전달한다. Session 검사 실패는 영상 요청을 거부한다.
+썸네일 요청은 Backend가 session과 자원을 검증한 뒤 내부 `X-Accel-Redirect` 경로를 통해
+Media Service에서 이미지를 전달받으며 불필요한 header를 제거한다.
 
 종료할 때는 `watch`와 forwarding 터미널을 각각 `Ctrl+C`로 중지한 뒤 실행한다.
 

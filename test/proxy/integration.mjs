@@ -204,6 +204,120 @@ async function verifyDailyGateway(metricsPath, mediaHost, authHost) {
   assert.equal(afterRejections.authRequests, beforeRejections.authRequests + 12)
 }
 
+async function verifyThumbnailGateway(metricsPath, mediaHost, backendHost) {
+  const clipId = '550e8400-e29b-41d4-a716-446655440000'
+  const dailyRecordingId = '550e8400-e29b-41d4-a716-446655440001'
+  const metrics = async () => (await request(metricsPath)).json()
+
+  const credentials = {
+    cookie: 'scrap_session=proxy-viewer',
+    authorization: 'Bearer synthetic-authorization',
+    'proxy-authorization': 'Basic synthetic-proxy-authorization',
+    range: 'bytes=0-10',
+    'if-range': '"synthetic-etag"',
+    'if-none-match': '"synthetic-etag"',
+    'if-modified-since': 'Wed, 14 Oct 2026 12:00:00 GMT',
+  }
+
+  function thumbnailHeaders(response) {
+    assert.equal(response.headers.get('cache-control'), 'no-store')
+    assert.equal(response.headers.get('x-content-type-options'), 'nosniff')
+    assert.equal(response.headers.get('set-cookie'), null)
+    assert.equal(response.headers.get('x-accel-redirect'), null)
+    assert.match(response.headers.get('x-request-id') ?? '', /.+/)
+  }
+
+  const expectedBytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0xff, 0xd9])
+
+  for (const [path, expectedMediaPath, expectedBackendPath] of [
+    [`/media/clips/${clipId}/thumbnail`, `/api/v1/clips/${clipId}/thumbnail`, `/media/clips/${clipId}/thumbnail`],
+    [`/media/daily-recordings/${dailyRecordingId}/thumbnail`, `/api/v2/daily-recordings/${dailyRecordingId}/thumbnail`, `/media/daily-recordings/${dailyRecordingId}/thumbnail`],
+  ]) {
+    const getResponse = await request(path, { headers: credentials })
+    assert.equal(getResponse.status, 200, `GET ${path} failed`)
+    thumbnailHeaders(getResponse)
+    assert.equal(getResponse.headers.get('content-type'), 'image/jpeg')
+    assert.equal(getResponse.headers.get('content-length'), String(expectedBytes.length))
+    const getBytes = Buffer.from(await getResponse.arrayBuffer())
+    assert.deepEqual(getBytes, expectedBytes)
+
+    const m = await metrics()
+    assert.equal(m.lastThumbnailMedia.url, expectedMediaPath)
+    assert.equal(m.lastThumbnailMedia.method, 'GET')
+    assert.equal(m.lastThumbnailMedia.headers.host, mediaHost)
+    assert.equal(m.lastThumbnailMedia.headers.cookie, undefined)
+    assert.equal(m.lastThumbnailMedia.headers.authorization, undefined)
+    assert.equal(m.lastThumbnailMedia.headers.range, undefined)
+    assert.equal(m.lastThumbnailMedia.headers['if-range'], undefined)
+    assert.equal(m.lastThumbnailMedia.headers['if-none-match'], undefined)
+    assert.equal(m.lastThumbnailMedia.headers['if-modified-since'], undefined)
+
+    assert.equal(m.lastThumbnailBackend.url, expectedBackendPath)
+    assert.equal(m.lastThumbnailBackend.headers.cookie, credentials.cookie)
+    assert.equal(m.lastThumbnailBackend.headers.authorization, undefined)
+
+    const headResponse = await request(path, { headers: credentials, method: 'HEAD' })
+    assert.equal(headResponse.status, 200, `HEAD ${path} failed`)
+    thumbnailHeaders(headResponse)
+    assert.equal(headResponse.headers.get('content-type'), 'image/jpeg')
+    assert.equal(headResponse.headers.get('content-length'), String(expectedBytes.length))
+    const headBytes = Buffer.from(await headResponse.arrayBuffer())
+    assert.equal(headBytes.byteLength, 0)
+  }
+
+  const clipPath = `/media/clips/${clipId}/thumbnail`
+
+  const noCookie = await request(clipPath)
+  assert.equal(noCookie.status, 401)
+  thumbnailHeaders(noCookie)
+
+  const expiredCookie = await request(clipPath, { headers: { cookie: 'scrap_session=expired' } })
+  assert.equal(expiredCookie.status, 401)
+  thumbnailHeaders(expiredCookie)
+
+  const notFound = await request('/media/clips/00000000-0000-0000-0000-000000000000/thumbnail', { headers: credentials })
+  assert.equal(notFound.status, 404)
+  thumbnailHeaders(notFound)
+
+  const gone = await request('/media/clips/41000000-0000-0000-0000-000000000000/thumbnail', { headers: credentials })
+  assert.equal(gone.status, 410)
+  thumbnailHeaders(gone)
+
+  for (const internalPath of [
+    `/_thumbnail/v1/clips/${clipId}/thumbnail`,
+    `/_thumbnail/v2/daily-recordings/${dailyRecordingId}/thumbnail`,
+  ]) {
+    const directInternal = await request(internalPath, { headers: credentials })
+    assert.equal(directInternal.status, 404, `Direct access to ${internalPath} must return 404`)
+  }
+
+  for (const method of ['POST', 'PUT', 'DELETE', 'PATCH']) {
+    const methodResponse = await request(clipPath, { method, headers: credentials })
+    assert.equal(methodResponse.status, 405, `${method} on thumbnail must return 405`)
+  }
+
+  const redirectResponse = await request('/media/clips/30200000-0000-0000-0000-000000000000/thumbnail', { headers: credentials })
+  assert.equal(redirectResponse.status, 502)
+  assert.equal(redirectResponse.headers.get('location'), null)
+  assert.equal(redirectResponse.headers.get('x-content-type-options'), 'nosniff')
+
+  const accelIgnoreResponse = await request('/media/clips/acc00000-0000-0000-0000-000000000000/thumbnail', { headers: credentials })
+  assert.equal(accelIgnoreResponse.status, 200)
+  thumbnailHeaders(accelIgnoreResponse)
+  assert.equal(accelIgnoreResponse.headers.get('x-accel-redirect'), null)
+  const accelBytes = Buffer.from(await accelIgnoreResponse.arrayBuffer())
+  assert.deepEqual(accelBytes, expectedBytes)
+
+  for (const invalidPath of [
+    `/media/daily-recordings/${dailyRecordingId.toUpperCase()}/thumbnail`,
+    `/media/daily-recordings/${dailyRecordingId.replace(/-/g, '')}/thumbnail`,
+    '/media/daily-recordings/not-a-valid-uuid/thumbnail',
+  ]) {
+    const invalidResponse = await request(invalidPath, { headers: credentials })
+    assert.equal(invalidResponse.status, 404, `${invalidPath} must return 404`)
+  }
+}
+
 async function waitForFrontend() {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     try {
@@ -434,6 +548,7 @@ try {
   assert.match(parsedLog.request_id, /.+/)
 
   await verifyDailyGateway('/contract-proxy-metrics', 'proxy_test_api', 'proxy_test_api')
+  await verifyThumbnailGateway('/contract-proxy-metrics', 'proxy_test_api', 'proxy_test_api')
 
   run('docker', ['rm', '--force', frontendName])
   run('docker', [
@@ -525,6 +640,7 @@ try {
   assert.equal(mediaAfterRejection.authRequests, mediaBeforeRejection.authRequests + 4)
 
   await verifyDailyGateway('/api/v1/proxy-test/metrics', 'development_media', 'development_backend')
+  await verifyThumbnailGateway('/api/v1/proxy-test/metrics', 'development_media', 'development_backend')
 
   run('docker', ['rm', '--force', frontendName])
   run('docker', [
@@ -538,6 +654,7 @@ try {
   await waitForFrontend()
   run('docker', ['exec', frontendName, 'nginx', '-t'])
   await verifyDailyGateway('/api/v1/proxy-test/metrics', 'integration_media', 'integration_backend')
+  await verifyThumbnailGateway('/api/v1/proxy-test/metrics', 'integration_media', 'integration_backend')
 
   console.log(`Verified reverse proxy integration for ${image}.`)
 } finally {

@@ -56,6 +56,52 @@ await test("daily media locations share the authenticated header and playlist bo
   assert.match(await source("../compose.remote-development.yaml"), /\.\/nginx\/includes:\/etc\/nginx\/includes:ro/);
 });
 
+await test("thumbnail locations share the authenticated handoff and image boundary in production and development", async () => {
+  const source = async (path: string) => readFile(new URL(path, import.meta.url), "utf8");
+  const authSnippet = await source("../nginx/includes/proxy-thumbnail-auth.conf");
+  const imageSnippet = await source("../nginx/includes/proxy-thumbnail-image.conf");
+
+  assert.match(authSnippet, /\$request_method !~ "\^\(GET\|HEAD\)\$"/);
+  assert.ok(authSnippet.includes("proxy_set_header Cookie $http_cookie;"));
+  assert.ok(authSnippet.includes('proxy_set_header Authorization "";'));
+  assert.ok(authSnippet.includes("proxy_hide_header Cache-Control;"));
+  assert.ok(authSnippet.includes("proxy_hide_header X-Content-Type-Options;"));
+  assert.ok(authSnippet.includes("proxy_cache off;"));
+  assert.ok(authSnippet.includes("include /etc/nginx/security-headers.conf;"));
+  assert.ok(authSnippet.includes('add_header Cache-Control "no-store" always;'));
+
+  assert.ok(imageSnippet.includes("internal;"));
+  assert.ok(imageSnippet.includes("rewrite ^/_thumbnail/(.*)$ /api/$1 break;"));
+  for (const header of ["Cookie", "Authorization", "Range", "If-Range", "If-None-Match", "If-Modified-Since"]) {
+    assert.ok(imageSnippet.includes(`proxy_set_header ${header} "";`));
+  }
+  assert.ok(imageSnippet.includes("proxy_hide_header Set-Cookie;"));
+  assert.ok(imageSnippet.includes("proxy_hide_header X-Accel-Redirect;"));
+  assert.ok(imageSnippet.includes("proxy_ignore_headers X-Accel-Redirect;"));
+  assert.ok(imageSnippet.includes("proxy_hide_header Cache-Control;"));
+  assert.ok(imageSnippet.includes("proxy_hide_header X-Content-Type-Options;"));
+  assert.ok(imageSnippet.includes("proxy_buffering off;"));
+  assert.ok(imageSnippet.includes("proxy_cache off;"));
+  assert.ok(imageSnippet.includes("proxy_redirect off;"));
+  assert.ok(imageSnippet.includes("proxy_intercept_errors on;"));
+  assert.ok(imageSnippet.includes("error_page 301 302 303 307 308 =502 @thumbnail_bad_response;"));
+  assert.ok(imageSnippet.includes("include /etc/nginx/security-headers.conf;"));
+  assert.doesNotMatch(imageSnippet, /add_header X-Content-Type-Options/);
+
+  for (const [path, backendUpstream, mediaUpstream] of [
+    ["../development/nginx-proxy.conf.template", "development_backend", "development_media"],
+    ["../integration/nginx/runtime.conf", "integration_backend", "integration_media"],
+    ["../test/proxy/runtime/20-proxy-locations.conf", "proxy_test_api", "proxy_test_api"],
+  ]) {
+    const config = await source(path);
+    assert.ok(config.includes("include /etc/nginx/includes/proxy-thumbnail-auth.conf;"));
+    assert.ok(config.includes(`proxy_pass http://${backendUpstream};`));
+    assert.ok(config.includes("include /etc/nginx/includes/proxy-thumbnail-image.conf;"));
+    assert.ok(config.includes(`proxy_pass http://${mediaUpstream};`));
+    assert.ok(config.includes("location @thumbnail_bad_response {\n"));
+  }
+});
+
 await test("browser gateway separates Backend reads and Media viewing from Edge camera ingest", async () => {
   const config = await readFile(new URL("../development/nginx-proxy.conf.template", import.meta.url), "utf8");
   const api = config.match(/location \/api\/ \{([\s\S]*?)\n {4}\}/)?.[1];

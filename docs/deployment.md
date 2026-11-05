@@ -185,7 +185,7 @@ Nginx 설정은 3개 영역으로 분리한다.
 | --- | --- | --- |
 | 기본 서버 | SPA fallback, `/healthz`, gzip, HTML 캐시 방지, 정적 자산 장기 캐시, 보안 헤더, 구조화 access log와 runtime 설정 제공 경로 | Runtime 설정의 파일 주입 |
 | HTTP 컨텍스트 | WebSocket Upgrade map과 `/etc/nginx/upstreams/*.conf` include | Docker DNS resolver, FastAPI upstream, `limit_req_zone` |
-| server 컨텍스트 | `/etc/nginx/runtime/*.conf` include와 HTTP, SSE, WebSocket 및 날짜 녹화 proxy snippet | API, 미디어와 선택적 signaling location, session 검사, upstream 선택, rate limit 적용, request body 크기와 timeout |
+| server 컨텍스트 | `/etc/nginx/runtime/*.conf` include와 HTTP, SSE, WebSocket, 날짜 녹화 및 썸네일 proxy snippet | API, 미디어와 선택적 signaling location, session 검사, upstream 선택, rate limit 적용, request body 크기와 timeout |
 
 배포 Repository는 `/etc/nginx/upstreams/`와 `/etc/nginx/runtime/`을 함께 주입한다.
 전자는 `resolver`, shared memory `upstream`과 `server <docker-service>:<port> resolve`를
@@ -211,6 +211,18 @@ MJPEG의 buffering을 비활성화한다. 기본 이미지에는 환경별 locat
 `GET`과 `HEAD` 및 허용한 경로만 전달하고 Media 경로와 HLS 목록 내부 경로를 변환한다.
 실제 브라우저와 Media의 경로 목록 및 인증 계약은
 [실제 서비스 계약](contracts/backend/README.md#실시간-영상과-녹화-파일)을 따른다.
+
+썸네일 location은 Backend 검증과 Media Service 이미지 전달을 분리한다. 브라우저의
+`/media/(clips|daily-recordings)/{UUID}/thumbnail` 요청은 `GET`과 `HEAD`만 허용하고 Cookie를 포함해
+Backend upstream으로 전달하며 Authorization은 비운다. Backend는 session, 카메라와 대상 자원을 확인한
+뒤 고정 내부 경로 `/_thumbnail/(v1/clips|v2/daily-recordings)/{UUID}/thumbnail`로 `X-Accel-Redirect`를 응답한다.
+internal로 보호되는 이 경로는 `/api/$1`로 rewrite한 뒤 Media upstream에서 이미지 byte를 받는다. Media
+요청에는 Cookie, Authorization, Range와 조건부 header를 전달하지 않으며 Media의 리다이렉트는 502로
+차단하고 upstream `X-Accel-Redirect`는 무시한다. 공용 snippet `/etc/nginx/includes/proxy-thumbnail-auth.conf`와
+`/etc/nginx/includes/proxy-thumbnail-image.conf`는 `security-headers.conf`를 포함해 `X-Content-Type-Options: nosniff`와
+`Cache-Control: no-store`를 보장하고 header 중복을 방지한다. 운영 배포 Repository는 `runtime/*.conf`에 이와
+동일한 썸네일 location 3개를 주입해야 한다.
+
 선택적 WebRTC 모드는 signaling만 FastAPI에 전달하고 미디어는 Nginx를 경유하지 않는다.
 FastAPI readiness endpoint는 upstream 컨테이너의 healthcheck와 배포 orchestration이 사용한다.
 Nginx `/healthz`는 정적 웹 컨테이너의 readiness만 나타내며 FastAPI readiness를 대체하지 않는다.
