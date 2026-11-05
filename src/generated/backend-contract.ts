@@ -48,6 +48,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/events.csv": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Download collection, alert and error history as CSV */
+        readonly get: operations["download_event_history_api_v1_events_csv_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/history/load": {
         readonly parameters: {
             readonly query?: never;
@@ -95,6 +112,40 @@ export interface paths {
         };
         /** Get Clip Media Info */
         readonly get: operations["get_clip_media_info_api_v1_media_clips__clip_id__media_info_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/media/clips/{identifier}/thumbnail": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Prepare Clip */
+        readonly post: operations["prepare_clip_api_v1_media_clips__identifier__thumbnail_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/media/clips/{identifier}/thumbnail-info": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Clip Info */
+        readonly get: operations["clip_info_api_v1_media_clips__identifier__thumbnail_info_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -361,6 +412,26 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/settings/history": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Settings History
+         * @description Read committed changes newest first; this does not initialize settings.
+         */
+        readonly get: operations["get_settings_history_api_v1_settings_history_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v2/monitoring/active-alerts": {
         readonly parameters: {
             readonly query?: never;
@@ -531,6 +602,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v2/monitoring/load-history.csv": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Download representative load history as CSV */
+        readonly get: operations["download_load_history_api_v2_monitoring_load_history_csv_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v2/monitoring/profiles": {
         readonly parameters: {
             readonly query?: never;
@@ -594,6 +682,40 @@ export interface paths {
         };
         /** List Daily Recordings */
         readonly get: operations["list_daily_recordings_api_v2_recordings_daily_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v2/recordings/daily/{identifier}/thumbnail": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Prepare Daily */
+        readonly post: operations["prepare_daily_api_v2_recordings_daily__identifier__thumbnail_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v2/recordings/daily/{identifier}/thumbnail-info": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Daily Info */
+        readonly get: operations["daily_info_api_v2_recordings_daily__identifier__thumbnail_info_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -1344,6 +1466,37 @@ export interface components {
             readonly thumbnail: components["schemas"]["RecordingThumbnailInfo"];
             readonly timestamp_info: components["schemas"]["RecordingTimestampInfo"];
         };
+        /** ClipThumbnailInfo */
+        readonly ClipThumbnailInfo: {
+            /** Camera Id */
+            readonly camera_id: string;
+            /**
+             * Clip Id
+             * Format: uuid
+             */
+            readonly clip_id: string;
+            /** Content Path */
+            readonly content_path: string | null;
+            /** Generated At */
+            readonly generated_at: string | null;
+            /** Height */
+            readonly height: number | null;
+            /** Reason Code */
+            readonly reason_code: ("NOT_PREPARED" | "SOURCE_NOT_READY" | "DAILY_MP4_REQUIRED" | "SOURCE_UNAVAILABLE" | "SOURCE_CHANGED" | "IMAGE_CHANGED" | "IMAGE_UNAVAILABLE" | "NO_VIDEO_FRAME" | "TIMELINE_UNAVAILABLE" | "GENERATION_TIMEOUT" | "GENERATION_FAILED" | "INVALID_IMAGE" | "IMAGE_TOO_LARGE" | "STORAGE_UNAVAILABLE" | "CAPACITY_EXCEEDED" | "JOB_INTERRUPTED" | "INSUFFICIENT_STORAGE") | null;
+            /** Representative At */
+            readonly representative_at: string | null;
+            /** Size Bytes */
+            readonly size_bytes: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "unsupported" | "unavailable" | "pending" | "failed" | "ready";
+            /** Time Basis */
+            readonly time_basis: "server_received_at" | null;
+            /** Width */
+            readonly width: number | null;
+        };
         /** Clock */
         readonly Clock: {
             /** Offset Ms */
@@ -1754,6 +1907,37 @@ export interface components {
              * @constant
              */
             readonly view?: "summary";
+        };
+        /** DailyThumbnailInfo */
+        readonly DailyThumbnailInfo: {
+            /** Camera Id */
+            readonly camera_id: string;
+            /** Content Path */
+            readonly content_path: string | null;
+            /** Generated At */
+            readonly generated_at: string | null;
+            /** Height */
+            readonly height: number | null;
+            /** Reason Code */
+            readonly reason_code: ("NOT_PREPARED" | "SOURCE_NOT_READY" | "DAILY_MP4_REQUIRED" | "SOURCE_UNAVAILABLE" | "SOURCE_CHANGED" | "IMAGE_CHANGED" | "IMAGE_UNAVAILABLE" | "NO_VIDEO_FRAME" | "TIMELINE_UNAVAILABLE" | "GENERATION_TIMEOUT" | "GENERATION_FAILED" | "INVALID_IMAGE" | "IMAGE_TOO_LARGE" | "STORAGE_UNAVAILABLE" | "CAPACITY_EXCEEDED" | "JOB_INTERRUPTED" | "INSUFFICIENT_STORAGE") | null;
+            /**
+             * Recording Id
+             * Format: uuid
+             */
+            readonly recording_id: string;
+            /** Representative At */
+            readonly representative_at: string | null;
+            /** Size Bytes */
+            readonly size_bytes: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "unsupported" | "unavailable" | "pending" | "failed" | "ready";
+            /** Time Basis */
+            readonly time_basis: "server_received_at" | null;
+            /** Width */
+            readonly width: number | null;
         };
         /** DeliveryStatus */
         readonly DeliveryStatus: {
@@ -3413,6 +3597,53 @@ export interface components {
             readonly expiresAt: string;
             readonly user: components["schemas"]["User"];
         };
+        /** SettingsActor */
+        readonly SettingsActor: {
+            /** Displayname */
+            readonly displayName: string;
+            /** Id */
+            readonly id: string;
+        };
+        /** SettingsHistoryItem */
+        readonly SettingsHistoryItem: {
+            readonly actor: components["schemas"]["SettingsActor"];
+            /** After */
+            readonly after: {
+                readonly [key: string]: unknown;
+            };
+            /** Before */
+            readonly before: {
+                readonly [key: string]: unknown;
+            } | null;
+            /** Changedfields */
+            readonly changedFields: readonly string[];
+            /** Id */
+            readonly id: string;
+            /**
+             * Occurredat
+             * Format: date-time
+             */
+            readonly occurredAt: string;
+            /**
+             * Operation
+             * @enum {string}
+             */
+            readonly operation: "create" | "update";
+            /** Pitid */
+            readonly pitId: string;
+            /**
+             * Resource
+             * @enum {string}
+             */
+            readonly resource: "alert_settings" | "pit_config";
+        };
+        /** SettingsHistoryPage */
+        readonly SettingsHistoryPage: {
+            /** Items */
+            readonly items: readonly components["schemas"]["SettingsHistoryItem"][];
+            /** Nextcursor */
+            readonly nextCursor: string | null;
+        };
         /** StatusReport */
         readonly StatusReport: {
             readonly clock: components["schemas"]["Clock"];
@@ -3483,6 +3714,14 @@ export interface components {
             readonly channels: readonly ("email" | "sms")[];
             /** Recipientid */
             readonly recipientId: string;
+        };
+        /** ThumbnailRequest */
+        readonly ThumbnailRequest: {
+            /**
+             * Retry Failed
+             * @default false
+             */
+            readonly retry_failed?: boolean;
         };
         /** UnavailableInterval */
         readonly UnavailableInterval: {
@@ -3852,6 +4091,15 @@ export interface operations {
                     readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
             /** @description Unprocessable Content */
             readonly 422: {
                 headers: {
@@ -3909,6 +4157,70 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly download_event_history_api_v1_events_csv_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly from?: string | null;
+                readonly to?: string | null;
+                readonly category?: "all" | "collection" | "alert" | "error";
+                readonly collection_scope?: "current" | "all";
+                readonly pit_id?: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "text/csv": string;
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -4241,6 +4553,294 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ClipMediaInfo"];
+                };
+            };
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly prepare_clip_api_v1_media_clips__identifier__thumbnail_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly "X-CSRF-Token"?: string | null;
+            };
+            readonly path: {
+                readonly identifier: string;
+            };
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ThumbnailRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ClipThumbnailInfo"];
+                };
+            };
+            /** @description Accepted */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ClipThumbnailInfo"];
+                };
+            };
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly clip_info_api_v1_media_clips__identifier__thumbnail_info_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly identifier: string;
+            };
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ClipThumbnailInfo"];
                 };
             };
             /** @description Bad Request */
@@ -5491,6 +6091,72 @@ export interface operations {
             };
         };
     };
+    readonly get_settings_history_api_v1_settings_history_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly pit_id?: string | null;
+                readonly actor_id?: string | null;
+                readonly resource?: ("alert_settings" | "pit_config") | null;
+                readonly from?: string | null;
+                readonly to?: string | null;
+                readonly limit?: number;
+                readonly cursor?: string | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SettingsHistoryPage"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
     readonly get_active_alerts_api_v2_monitoring_active_alerts_get: {
         readonly parameters: {
             readonly query?: {
@@ -6106,6 +6772,69 @@ export interface operations {
             };
         };
     };
+    readonly download_load_history_api_v2_monitoring_load_history_csv_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly from?: string | null;
+                readonly to?: string | null;
+                readonly bucket_seconds?: (60 | 300 | 900 | 3600 | 7200 | 21600 | 86400) | null;
+                readonly pit_id?: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "text/csv": string;
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
     readonly profiles_api_v2_monitoring_profiles_get: {
         readonly parameters: {
             readonly query?: {
@@ -6312,6 +7041,294 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["DailyPage"] | components["schemas"]["DailySummaryPage"];
+                };
+            };
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly prepare_daily_api_v2_recordings_daily__identifier__thumbnail_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly "X-CSRF-Token"?: string | null;
+            };
+            readonly path: {
+                readonly identifier: string;
+            };
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ThumbnailRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DailyThumbnailInfo"];
+                };
+            };
+            /** @description Accepted */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DailyThumbnailInfo"];
+                };
+            };
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly daily_info_api_v2_recordings_daily__identifier__thumbnail_info_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly identifier: string;
+            };
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DailyThumbnailInfo"];
                 };
             };
             /** @description Bad Request */
