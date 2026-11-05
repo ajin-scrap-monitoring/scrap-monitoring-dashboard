@@ -37,6 +37,8 @@ run_step() {
   printf 'Running %s\n' "$label"
   timeout --signal=TERM --kill-after=15s "$duration" "$@" >>"$step_log" 2>&1 &
   active_step_pid=$!
+  # bash는 wait 진입 직전에 도착한 trap 대상 signal을 단계 종료까지 미룰 수 있으므로 짧은 sleep으로 종료를 확인해 trap을 바로 실행한다.
+  while kill -0 "$active_step_pid" 2>/dev/null; do sleep 0.2; done
   if wait "$active_step_pid"; then result=0; else result=$?; fi
   active_step_pid=
   if [[ $result -ne 0 ]]; then printf 'Failed %s (exit %s)\n' "$label" "$result" >&2; fi
@@ -44,9 +46,11 @@ run_step() {
 }
 
 stop_active_step() {
-  if [[ -n $active_step_pid ]]; then
-    kill -TERM "$active_step_pid" 2>/dev/null || true
-    wait "$active_step_pid" 2>/dev/null || true
-    active_step_pid=
-  fi
+  local pids pid
+  # signal이 단계 시작과 active_step_pid 기록 사이에 도착해도 시작된 단계 process를 남기지 않는다.
+  pids=$(jobs -p)
+  [[ -z $active_step_pid ]] || pids+=" $active_step_pid"
+  for pid in $pids; do kill -TERM "$pid" 2>/dev/null || true; done
+  for pid in $pids; do wait "$pid" 2>/dev/null || true; done
+  active_step_pid=
 }

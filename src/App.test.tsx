@@ -195,8 +195,9 @@ test("알림 상태가 loading이면 알림 확인 중을 표시하고 badge를 
   expect(button.querySelector(".notification-badge")).toBeNull();
 
   fireEvent.click(button);
-  expect(await screen.findByText("불러오는 중...")).toBeVisible();
-  expect(screen.getByRole("button", { name: "모두 읽음" })).toBeDisabled();
+  // popover 모듈 로딩 중의 placeholder도 같은 문구를 표시하므로 실제 알림 popover의 버튼이 나타난 뒤 검사한다.
+  expect(await screen.findByRole("button", { name: "모두 읽음" })).toBeDisabled();
+  expect(screen.getByText("불러오는 중...")).toBeVisible();
 });
 
 test("4개 화면 이동 동안 getDashboardData와 subscribe는 1회이며, 각 화면 데이터는 이동마다 요청된다", async () => {
