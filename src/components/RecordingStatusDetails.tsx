@@ -3,6 +3,11 @@ import { useEffect, useId, useRef, useState } from "react";
 import { wallClock } from "../data/contract-values";
 import type { Recording } from "../domain/dashboard";
 import { recordingErrorCode, recordingStatus, recordingStatusReason } from "../recording-status";
+import {
+  formatThumbnailStatusText,
+  getThumbnailAdminAction,
+  type ThumbnailInfo,
+} from "../data/recording-thumbnail";
 
 function cleanupText(daily: NonNullable<Recording["daily"]>) {
   if (daily.cleanupState === "pending") return "파일 정리 중";
@@ -16,7 +21,25 @@ function cleanupText(daily: NonNullable<Recording["daily"]>) {
   return "정보 없음";
 }
 
-export function RecordingStatusDetails({ recording, error, pending = false }: { recording: Recording; error?: string; pending?: boolean }) {
+export function RecordingStatusDetails({
+  recording,
+  error,
+  pending = false,
+  thumbnailInfo,
+  thumbnailError,
+  thumbnailPreparing = false,
+  onPrepareThumbnail,
+  isAdmin = false,
+}: {
+  recording: Recording;
+  error?: string;
+  pending?: boolean;
+  thumbnailInfo?: ThumbnailInfo | null;
+  thumbnailError?: number | null;
+  thumbnailPreparing?: boolean;
+  onPrepareThumbnail?: (retryFailed?: boolean) => void;
+  isAdmin?: boolean;
+}) {
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -29,6 +52,8 @@ export function RecordingStatusDetails({ recording, error, pending = false }: { 
   const failed = Boolean(error || exportFailed || recording.mediaStatus === "failed" || recording.mediaStatus === "blocked" || errorCode);
   const reason = error ?? (pending ? "최신 녹화 정보를 확인하고 있습니다." : recordingStatusReason(recording));
   const close = () => { setMode("closed"); trigger.current?.focus(); };
+  const thumbnailStatus = formatThumbnailStatusText(thumbnailInfo, thumbnailError);
+  const adminAction = getThumbnailAdminAction(isAdmin, thumbnailInfo, thumbnailError);
 
   useEffect(() => {
     if (!open) return;
@@ -65,7 +90,24 @@ export function RecordingStatusDetails({ recording, error, pending = false }: { 
         {recording.coverage && <div><dt>녹화 범위</dt><dd>{recording.coverage === "partial" ? "부분 저장" : recording.coverage === "complete" ? "전체 구간" : recording.coverage === "none" ? "영상 없음" : "확인 불가"}</dd></div>}
         {Boolean(recording.gaps?.length) && <div><dt>누락 구간</dt><dd>{recording.gaps?.length}개</dd></div>}
         {recording.daily && <div><dt>파일 정리 상태</dt><dd>{cleanupText(recording.daily)}</dd></div>}
+        {(thumbnailInfo !== undefined || thumbnailError !== undefined) && (
+          <div>
+            <dt>대표 이미지</dt>
+            <dd role={thumbnailStatus.role}>{thumbnailStatus.text}</dd>
+          </div>
+        )}
       </dl>
+      {adminAction.canPrepare && (
+        <div className="recording-status-popover-actions">
+          <button
+            type="button"
+            disabled={thumbnailPreparing}
+            onClick={() => onPrepareThumbnail?.(adminAction.isRetry)}
+          >
+            {adminAction.isRetry ? "대표 이미지 다시 준비" : "대표 이미지 준비"}
+          </button>
+        </div>
+      )}
       {failed && <p>상세 처리 로그는 Backend와 Media Service 서버 로그에서 확인하세요.</p>}
     </div>}
   </div>;

@@ -1128,11 +1128,15 @@ export function createHttpDashboardDataSource({
     getEventRecordingExportStatus: async (statusPath, signal) => (await recordingsApi()).getEventRecordingExportStatus(statusPath, signal),
     getDailyRecordingMediaInfo: async (recordingId, signal) => (await recordingsApi()).getDailyRecordingMediaInfo(recordingId, signal),
     getClipMediaInfo: async (clipId, signal) => (await recordingsApi()).getClipMediaInfo(clipId, signal),
-    ...(useV2Monitoring ? { subscribeCameraStatus: (listener: (status: CameraStatusV2, receivedAt: number) => void) => {
-      cameraListeners.add(listener);
-      if (lastCameraStatus) listener(lastCameraStatus.status, lastCameraStatus.receivedAt);
-      return () => { cameraListeners.delete(listener); };
-    } } : {}),
+    ...(useV2Monitoring ? {
+      getThumbnailInfo: async (target, signal) => (await recordingsApi()).getThumbnailInfo(target, signal),
+      prepareThumbnail: async (target, options) => (await recordingsApi()).prepareThumbnail(target, options),
+      subscribeCameraStatus: (listener: (status: CameraStatusV2, receivedAt: number) => void) => {
+        cameraListeners.add(listener);
+        if (lastCameraStatus) listener(lastCameraStatus.status, lastCameraStatus.receivedAt);
+        return () => { cameraListeners.delete(listener); };
+      },
+    } : {}),
     getRecordingCoverage: async (recordingId, signal) => (await recordingsApi()).getRecordingCoverage(recordingId, signal),
     markAllNotificationsRead: async () => {
       const session = currentData?.session;

@@ -12,6 +12,7 @@ import type {
 import type { EventExportStatus } from "./event-recordings";
 import type { ClipMediaInfoResult, DailyMediaInfoResult } from "./media-info-cache";
 import type { CameraStatusV2 } from "./camera-status-v2";
+import type { ThumbnailInfo, ThumbnailTarget } from "./recording-thumbnail";
 
 export type DashboardDataRequestOptions = {
   signal?: AbortSignal;
@@ -86,6 +87,8 @@ export interface DashboardDataSource {
   getEventRecordingExportStatus?(statusPath: string, signal?: AbortSignal): Promise<EventExportStatus>;
   getDailyRecordingMediaInfo?(recordingId: string, signal?: AbortSignal): Promise<DailyMediaInfoResult>;
   getClipMediaInfo?(clipId: string, signal?: AbortSignal): Promise<ClipMediaInfoResult>;
+  getThumbnailInfo?(target: ThumbnailTarget, signal?: AbortSignal): Promise<ThumbnailInfo>;
+  prepareThumbnail?(target: ThumbnailTarget, options?: { retryFailed?: boolean; signal?: AbortSignal }): Promise<ThumbnailInfo>;
   subscribeCameraStatus?(listener: (status: CameraStatusV2, receivedAt: number) => void): () => void;
   getRecordingCoverage?(recordingId: string, signal?: AbortSignal): Promise<RecordingCoverageDetail>;
   markAllNotificationsRead?(): Promise<void>;
