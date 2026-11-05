@@ -14,7 +14,7 @@ import {
 
 import { ApiError, createHttpDashboardDataSource } from "./http-dashboard-data-source";
 import type { DashboardData } from "../domain/dashboard";
-import { collectionSummaryFixture, eventRecordingFixture, eventRecordingId, eventRecordingPageFixture, eventReplayFixture, monitoringV2StateFixture } from "../test/backend-contract-fixtures";
+import { activeAlertsBasisFixture, activeAlertsFixture, collectionSummaryFixture, eventRecordingFixture, eventRecordingId, eventRecordingPageFixture, eventReplayFixture, monitoringV2StateFixture } from "../test/backend-contract-fixtures";
 import { dailyRecordingFixture, dailyRecordingId } from "../test/daily-recording-fixtures";
 
 type RecordedRequest = { init?: RequestInit; url: URL };
@@ -2132,5 +2132,138 @@ describe("HTTP 대시보드 데이터 소스", () => {
       ).rejects.toMatchObject({ status: 401 });
       expect(onSessionExpired).toHaveBeenCalledTimes(1);
     });
+
+    test("동일 snapshotId 결합 응답이 연속으로 올 때 카메라 알림 변화(없음 -> INTERRUPTED -> UNKNOWN -> 없음)가 monitoring.alerts에 매번 반영된다", async () => {
+      vi.useFakeTimers();
+      try {
+        const fixedSnapshotId = "same-snapshot-f2";
+        const fixedServerTime = "2026-10-15T12:00:00Z";
+        const stream = new FakeEventSource();
+
+        const snapshot = {
+          ...monitoringV2StateFixture("FRESH", 72),
+          snapshotId: fixedSnapshotId,
+          serverTime: fixedServerTime,
+          operations: {
+            effectiveState: "NORMAL" as const,
+            lastKnownState: null,
+            lastEvaluatedAt: null,
+            lastAlertAt: null,
+            notificationId: null,
+          },
+        };
+
+        const cameraAlert = (state: "INTERRUPTED" | "UNKNOWN") => ({
+          id: `camera-health-${state.toLowerCase()}`,
+          type: "device_error" as const,
+          severity: "warning" as const,
+          title: "카메라 수신 이상",
+          componentKind: "CAMERA" as const,
+          componentId: "camera-main",
+          state,
+          evaluatedAt: fixedServerTime,
+          measuredAt: null,
+          startedAt: null,
+          startBasis: "UNKNOWN" as const,
+          evidenceSource: "MEDIA_CAMERA_STATUS" as const,
+          validUntilAt: "2026-10-15T12:00:10Z",
+        });
+
+        const makeActiveAlerts = (items: ReturnType<typeof cameraAlert>[]) =>
+          activeAlertsFixture({
+            computedAt: fixedServerTime,
+            evaluationState: "NORMAL",
+            basis: activeAlertsBasisFixture({
+              snapshotId: fixedSnapshotId,
+              measuredAt: snapshot.measuredAt,
+              lastEvaluatedAt: snapshot.measuredAt,
+            }),
+            items,
+          });
+
+        const sequence = [
+          makeActiveAlerts([]),
+          makeActiveAlerts([cameraAlert("INTERRUPTED")]),
+          makeActiveAlerts([cameraAlert("UNKNOWN")]),
+          makeActiveAlerts([]),
+        ];
+
+        let sequenceIndex = 0;
+        const base = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/snapshot") {
+            return jsonResponse(snapshot);
+          }
+          if (url.pathname === "/api/v2/monitoring/snapshot-with-alerts") {
+            const currentAlerts = sequence[Math.min(sequenceIndex, sequence.length - 1)];
+            return jsonResponse({
+              snapshot,
+              activeAlerts: currentAlerts,
+            });
+          }
+          return undefined;
+        });
+
+        const source = createHttpDashboardDataSource({
+          apiContract: "backend",
+          monitoringVersion: "v2",
+          fetchImplementation: base,
+          eventSourceFactory: () => stream as unknown as EventSource,
+        });
+
+        let latestData: DashboardData | undefined;
+        const unsubscribe = source.subscribe?.((data) => {
+          latestData = data;
+        });
+
+        await source.getDashboardData();
+        const activation = source.activateMonitoringDetails!();
+        await activation.ready;
+        await vi.waitFor(() => expect(latestData?.monitoring.activeAlertsAreaState?.status).toBe("ready"));
+
+        // 1단계: 카메라 알림 없음
+        expect(latestData?.monitoring.alerts).toHaveLength(0);
+
+        // 2단계: INTERRUPTED (60초 타이머 경과)
+        sequenceIndex = 1;
+        await vi.advanceTimersByTimeAsync(60_000);
+        await vi.waitFor(() => {
+          expect(latestData?.monitoring.alerts).toHaveLength(1);
+          expect(latestData?.monitoring.alerts[0]).toMatchObject({
+            id: "camera-health-interrupted",
+            health: {
+              componentKind: "CAMERA",
+              state: "INTERRUPTED",
+            },
+          });
+        });
+
+        // 3단계: UNKNOWN (60초 타이머 경과)
+        sequenceIndex = 2;
+        await vi.advanceTimersByTimeAsync(60_000);
+        await vi.waitFor(() => {
+          expect(latestData?.monitoring.alerts).toHaveLength(1);
+          expect(latestData?.monitoring.alerts[0]).toMatchObject({
+            id: "camera-health-unknown",
+            health: {
+              componentKind: "CAMERA",
+              state: "UNKNOWN",
+            },
+          });
+        });
+
+        // 4단계: 없음 (60초 타이머 경과)
+        sequenceIndex = 3;
+        await vi.advanceTimersByTimeAsync(60_000);
+        await vi.waitFor(() => {
+          expect(latestData?.monitoring.alerts).toHaveLength(0);
+        });
+
+        activation.release();
+        unsubscribe?.();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });
+
