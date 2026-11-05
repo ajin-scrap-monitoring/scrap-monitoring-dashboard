@@ -13,6 +13,7 @@ import { createRecordingList, recordingsPerPage } from "./recording-list";
 import { eventRecordingPage, mapEventRecording, eventReplay, eventExportStatus, type EventExportStatus } from "./event-recordings";
 import { historyData, mapEvent, mapRecording } from "./history-recording-mapping";
 import { parseDailyMediaInfo, parseClipMediaInfo, type DailyMediaInfoResult, type ClipMediaInfoResult } from "./media-info-cache";
+import { parseThumbnailInfo, type ThumbnailInfo, type ThumbnailTarget, isCanonicalUuid } from "./recording-thumbnail";
 
 const API_PATHS = {
   events: "/api/v1/events",
@@ -401,6 +402,35 @@ export function createRecordingsApi({
     return parseClipCoverage(await request<unknown>(`/api/v1/media/clips/${encodeURIComponent(recordingId)}`, { signal }), recordingId, cameraId);
   };
 
+  const getThumbnailInfo = async (
+    target: ThumbnailTarget,
+    signal?: AbortSignal,
+  ): Promise<ThumbnailInfo> => {
+    if (!isCanonicalUuid(target.id)) throw new Error("Canonical UUID is required for thumbnail info.");
+    const path = target.kind === "clip"
+      ? `/api/v1/media/clips/${encodeURIComponent(target.id)}/thumbnail-info`
+      : `/api/v2/recordings/daily/${encodeURIComponent(target.id)}/thumbnail-info`;
+    const response = await request<unknown>(path, { signal });
+    return parseThumbnailInfo(response, target);
+  };
+
+  const prepareThumbnail = async (
+    target: ThumbnailTarget,
+    options?: { retryFailed?: boolean; signal?: AbortSignal },
+  ): Promise<ThumbnailInfo> => {
+    if (!isCanonicalUuid(target.id)) throw new Error("Canonical UUID is required for thumbnail preparation.");
+    const path = target.kind === "clip"
+      ? `/api/v1/media/clips/${encodeURIComponent(target.id)}/thumbnail`
+      : `/api/v2/recordings/daily/${encodeURIComponent(target.id)}/thumbnail`;
+    const body = options?.retryFailed ? JSON.stringify({ retry_failed: true }) : JSON.stringify({});
+    const response = await request<unknown>(path, {
+      method: "POST",
+      body,
+      signal: options?.signal,
+    });
+    return parseThumbnailInfo(response, target);
+  };
+
   const initialHistory = (end: string): DashboardData["history"] => historyBeforeQuery(end);
 
   const initialHistoryForRoute = (serverTime: string, displayTimeOffset: string, collectionThreshold?: number): DashboardData["history"] => {
@@ -464,6 +494,8 @@ export function createRecordingsApi({
     getRecordingCoverage,
     getDailyRecordingMediaInfo,
     getClipMediaInfo,
+    getThumbnailInfo,
+    prepareThumbnail,
     getEventRecordingExportStatus,
     findEventRecordingExport,
     initialHistory,

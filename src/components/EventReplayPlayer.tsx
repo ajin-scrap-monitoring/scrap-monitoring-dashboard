@@ -21,9 +21,10 @@ function locate(replay: EventReplay, seconds: number): Position {
   return { index, offset: Math.min(part.endSeconds, part.startSeconds + (clamped - part.relativeStartSeconds)) };
 }
 
-export function EventReplayPlayer({ replay, label, initialSeconds = 0, controlRef, onError, onPosition }: {
+export function EventReplayPlayer({ replay, label, poster, initialSeconds = 0, controlRef, onError, onPosition }: {
   replay: EventReplay;
   label: string;
+  poster?: string;
   initialSeconds?: number;
   controlRef?: Ref<EventReplayControl>;
   onError: () => void;
@@ -77,7 +78,7 @@ export function EventReplayPlayer({ replay, label, initialSeconds = 0, controlRe
 
   return <div className="event-replay">
     <DailyRecordingVideo key={`${position.index}-${revision}`} videoRef={videoRef} path={part.playbackPath} label={label}
-      initialTime={position.offset} controls={false} autoPlay={playing && !ended} onError={onError} onEnded={advance}
+      poster={poster} initialTime={position.offset} controls={false} autoPlay={playing && !ended} onError={onError} onEnded={advance}
       onTimeUpdate={(seconds) => {
         if (seconds >= part.endSeconds) { advance(); return; }
         report(Math.min(replay.playbackSeconds, part.relativeStartSeconds + Math.max(0, seconds - part.startSeconds)));

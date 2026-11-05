@@ -287,7 +287,7 @@ v2 경보와 수거 판단 목록(`/api/v2/monitoring/alerts`, `collection-event
 | 보관 만료 | 날짜 녹화의 `expires_at`, `status` | 변환 사용 | `status`가 deleted 또는 expired면 "삭제됨" 또는 "만료됨" 표시, 이벤트는 `parts`의 날짜별 요약 목록(`view=summary`)에서 찾은 모든 날짜 녹화 중 가장 빠른 만료를 사용하며 하나라도 확인하지 못하면 정보 없음 |
 | codec, 해상도, frame rate | `/api/v2/recordings/daily/{recording_id}/media-info`, `/api/v1/media/clips/{clip_id}/media-info` | 직접 사용 | 날짜 녹화는 file 정보와 segments(상세 창/title), 이벤트는 export 완료 후 clip media-info 연동 |
 | 이벤트 구간 용량과 MP4 | `GET/POST /api/v2/recordings/events/{event_id}/exports`, `GET statusPath` | 직접 사용 | 서버 조회 복구와 명시 준비 및 재시도, 응답 requestId 및 statusPath 사용 |
-| 미리보기 썸네일 | 제공 정보 없음 | 추가 계약 필요 | 미리보기 없음 표시 |
+| 미리보기 썸네일 | `/api/v2/recordings/daily/{id}/thumbnail-info`, `/api/v1/media/clips/{clipId}/thumbnail-info` | 직접 사용 | 완료 날짜(ready MP4)와 clipId가 있는 이벤트 녹화에 thumbnail-info를 조회하고 ready 시 content_path 이미지를 기존 썸네일 자리와 재생 poster에 연결 |
 
 날짜 녹화 목록은 `GET /api/v2/recordings/daily`에 `view=summary`를 전달해 요청하며
 `next_cursor` 페이징 시에도 같은 파라미터를 유지한다. 목록 응답의 `view`가 `"summary"`이면
@@ -365,7 +365,7 @@ Backend와 Media Service에 전달할 요청 항목을 관리한다. 제공되�
 | R-08 | 녹화 영상의 codec, 해상도, frame rate | Media Service | 반영 |
 | R-09 | 실시간 영상의 촬영 시각 | Media Service | 대기 |
 | R-10 | 날짜 녹화 삭제 시 503 | Media Service | 수정 버전 확인 대기 |
-| R-11 | 녹화 목록 미리보기 이미지 | Backend, Media Service | 대기 |
+| R-11 | 녹화 목록 미리보기 이미지 | Backend, Media Service | 반영 |
 | R-12 | 배포 환경 설정 | Backend, 운영 | 운영 환경 설정 대기 |
 | R-13 | 알림 실제 발송 | Backend, 운영 | 대기 |
 | A-01 | 시뮬레이션 `lidar-b` 측정선 위치가 현장 기준과 다름 | Backend | 대기 |
