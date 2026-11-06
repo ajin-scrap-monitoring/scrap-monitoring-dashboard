@@ -49,7 +49,7 @@ describe("recording-thumbnail", () => {
         time_basis: "server_received_at",
         width: 640,
       };
-      const parsed = parseThumbnailInfo(raw, clipTarget);
+      const parsed = parseThumbnailInfo(raw, clipTarget)!;
       expect(parsed.status).toBe("ready");
       expect(parsed.contentPath).toBe(`/media/clips/${clipTarget.id}/thumbnail`);
       expect(parsed.width).toBe(640);
@@ -74,7 +74,7 @@ describe("recording-thumbnail", () => {
         time_basis: null,
         width: 640,
       };
-      const parsed = parseThumbnailInfo(raw, dailyTarget);
+      const parsed = parseThumbnailInfo(raw, dailyTarget)!;
       expect(parsed.status).toBe("ready");
       expect(parsed.representativeAt).toBeNull();
       expect(parsed.timeBasis).toBeNull();
@@ -131,7 +131,7 @@ describe("recording-thumbnail", () => {
         time_basis: null,
         width: null,
       };
-      expect(parseThumbnailInfo(raw, clipTarget).status).toBe("pending");
+      expect(parseThumbnailInfo(raw, clipTarget)!.status).toBe("pending");
       expect(() => parseThumbnailInfo({ ...raw, reason_code: "SOME_CODE" }, clipTarget)).toThrow("null reason_code");
       expect(() => parseThumbnailInfo({ ...raw, width: 100 }, clipTarget)).toThrow("null image properties");
     });
@@ -150,7 +150,7 @@ describe("recording-thumbnail", () => {
         time_basis: null,
         width: null,
       };
-      expect(parseThumbnailInfo(raw, dailyTarget).status).toBe("unavailable");
+      expect(parseThumbnailInfo(raw, dailyTarget)!.status).toBe("unavailable");
       expect(() => parseThumbnailInfo({ ...raw, reason_code: null }, dailyTarget)).toThrow("non-empty reason_code");
       expect(() => parseThumbnailInfo({ ...raw, content_path: "/media/path" }, dailyTarget)).toThrow("null image properties");
     });
@@ -170,6 +170,39 @@ describe("recording-thumbnail", () => {
         width: null,
       };
       expect(() => parseThumbnailInfo(raw, clipTarget)).toThrow("Clip ID mismatch");
+    });
+
+    it("이벤트 대상의 null 응답은 null을 반환한다", () => {
+      const eventTarget: ThumbnailTarget = { kind: "event", eventId: "evt-1", path: "/api/v2/recordings/events/evt-1/thumbnail-info" };
+      expect(parseThumbnailInfo(null, eventTarget)).toBeNull();
+    });
+
+    it("이벤트 대상의 응답에 canonical UUID clip_id가 없거나 형식이 다르면 예외를 던진다", () => {
+      const eventTarget: ThumbnailTarget = { kind: "event", eventId: "evt-1", path: "/api/v2/recordings/events/evt-1/thumbnail-info" };
+      expect(() => parseThumbnailInfo({ camera_id: "cam-1", clip_id: "invalid-uuid", status: "pending", content_path: null, reason_code: null, representative_at: null, time_basis: null, generated_at: null, width: null, height: null, size_bytes: null }, eventTarget)).toThrow("canonical UUID clip_id");
+    });
+
+    it("이벤트 대상의 ready 응답을 정상 변환하고 응답 clip_id를 보존한다", () => {
+      const eventTarget: ThumbnailTarget = { kind: "event", eventId: "evt-1", path: "/api/v2/recordings/events/evt-1/thumbnail-info" };
+      const raw = {
+        camera_id: "cam-1",
+        clip_id: "6412c932-abad-470e-ba71-c183874fad5a",
+        content_path: "/media/clips/6412c932-abad-470e-ba71-c183874fad5a/thumbnail",
+        generated_at: "2026-11-06T07:13:11Z",
+        height: 360,
+        reason_code: "TIMELINE_UNAVAILABLE",
+        representative_at: null,
+        size_bytes: 10221,
+        status: "ready",
+        time_basis: null,
+        width: 640,
+      };
+      const parsed = parseThumbnailInfo(raw, eventTarget);
+      expect(parsed).not.toBeNull();
+      expect(parsed!.kind).toBe("event");
+      expect(parsed!.id).toBe("evt-1");
+      expect(parsed!.clipId).toBe("6412c932-abad-470e-ba71-c183874fad5a");
+      expect(parsed!.contentPath).toBe("/media/clips/6412c932-abad-470e-ba71-c183874fad5a/thumbnail");
     });
   });
 
@@ -277,6 +310,14 @@ describe("recording-thumbnail", () => {
       const result = formatThumbnailStatusText(null, 404);
       expect(result.text).toBe("이미지 없음");
       expect(result.role).toBe("alert");
+    });
+
+    it("info가 null이면 '연결된 구간 파일 없음'을 반환한다", () => {
+      expect(formatThumbnailStatusText(null).text).toBe("연결된 구간 파일 없음");
+    });
+
+    it("info가 undefined이면 '확인 중'을 반환한다", () => {
+      expect(formatThumbnailStatusText(undefined).text).toBe("확인 중");
     });
   });
 

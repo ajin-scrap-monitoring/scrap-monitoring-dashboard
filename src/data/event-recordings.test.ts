@@ -164,3 +164,76 @@ describe("이벤트 상세 replay 파서와 exportPath, downloadReasonCode", () 
     }, "20261012-005930-coll")).toThrow("Unexpected event recording contract.");
   });
 });
+
+describe("이벤트 썸네일 경로 파서(thumbnailInfoPath)", () => {
+  const eventId = "20261012-005930-coll";
+  const validPath = `/api/v2/recordings/events/${eventId}/thumbnail-info?pit_id=pit-01&before_seconds=30&after_seconds=30`;
+
+  test("정상 경로와 허용된 쿼리는 순서와 값을 그대로 보존한다", () => {
+    const item = eventRecordingItem(eventRecordingFixture({ eventId, thumbnailInfoPath: validPath }));
+    expect(item.thumbnailInfoPath).toBe(validPath);
+    const recording = mapEventRecording(item);
+    expect(recording.thumbnailInfoPath).toBe(validPath);
+  });
+
+  test("쿼리가 없는 정상 경로도 그대로 보존한다", () => {
+    const pathWithoutQuery = `/api/v2/recordings/events/${eventId}/thumbnail-info`;
+    const item = eventRecordingItem(eventRecordingFixture({ eventId, thumbnailInfoPath: pathWithoutQuery }));
+    expect(item.thumbnailInfoPath).toBe(pathWithoutQuery);
+  });
+
+  test("thumbnailInfoPath가 없거나 null이면 null로 보존한다", () => {
+    const itemNull = eventRecordingItem(eventRecordingFixture({ eventId, thumbnailInfoPath: null }));
+    expect(itemNull.thumbnailInfoPath).toBeNull();
+    expect(mapEventRecording(itemNull).thumbnailInfoPath).toBeNull();
+
+    const fixtureWithoutField = eventRecordingFixture({ eventId });
+    delete (fixtureWithoutField as Record<string, unknown>).thumbnailInfoPath;
+    const itemUndefined = eventRecordingItem(fixtureWithoutField);
+    expect(itemUndefined.thumbnailInfoPath).toBeNull();
+  });
+
+  test("다른 eventId를 가리키는 경로는 null로 처리하고 계약 오류로 실패하지 않는다", () => {
+    const wrongEventPath = `/api/v2/recordings/events/different-event-id/thumbnail-info?pit_id=pit-01`;
+    const item = eventRecordingItem(eventRecordingFixture({ eventId, thumbnailInfoPath: wrongEventPath }));
+    expect(item.thumbnailInfoPath).toBeNull();
+  });
+
+  test("외부 URL은 null로 처리한다", () => {
+    const externalUrl = `https://example.com/api/v2/recordings/events/${eventId}/thumbnail-info?pit_id=pit-01`;
+    const item = eventRecordingItem(eventRecordingFixture({ eventId, thumbnailInfoPath: externalUrl }));
+    expect(item.thumbnailInfoPath).toBeNull();
+  });
+
+  test("//로 시작하는 protocol-relative 경로는 null로 처리한다", () => {
+    const protoRelative = `//api/v2/recordings/events/${eventId}/thumbnail-info`;
+    const item = eventRecordingItem(eventRecordingFixture({ eventId, thumbnailInfoPath: protoRelative }));
+    expect(item.thumbnailInfoPath).toBeNull();
+  });
+
+  test("허용하지 않은 query parameter가 포함되면 null로 처리한다", () => {
+    const invalidQuery = `/api/v2/recordings/events/${eventId}/thumbnail-info?pit_id=pit-01&camera_id=cam-1`;
+    const item = eventRecordingItem(eventRecordingFixture({ eventId, thumbnailInfoPath: invalidQuery }));
+    expect(item.thumbnailInfoPath).toBeNull();
+  });
+
+  test("상세(eventReplay)의 event도 목록과 동일하게 처리된다", () => {
+    const baseReplay = {
+      source: "DAILY_RECORDING",
+      state: "AVAILABLE",
+      asOf: "2026-10-12T02:00:00Z",
+      effectiveTo: "2026-10-12T01:00:30Z",
+      requestedSeconds: 0,
+      coveredSeconds: 0,
+      playbackSeconds: 0,
+      parts: [],
+      unavailableIntervals: [],
+      reasonCodes: [],
+      event: eventRecordingFixture({ eventId, thumbnailInfoPath: validPath }),
+    };
+    const { item, replay } = eventReplay(baseReplay, eventId);
+    expect(item.thumbnailInfoPath).toBe(validPath);
+    const recording = mapEventRecording(item, replay);
+    expect(recording.thumbnailInfoPath).toBe(validPath);
+  });
+});

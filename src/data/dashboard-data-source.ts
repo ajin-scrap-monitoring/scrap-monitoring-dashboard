@@ -87,7 +87,7 @@ export interface DashboardDataSource {
   getEventRecordingExportStatus?(statusPath: string, signal?: AbortSignal): Promise<EventExportStatus>;
   getDailyRecordingMediaInfo?(recordingId: string, signal?: AbortSignal): Promise<DailyMediaInfoResult>;
   getClipMediaInfo?(clipId: string, signal?: AbortSignal): Promise<ClipMediaInfoResult>;
-  getThumbnailInfo?(target: ThumbnailTarget, signal?: AbortSignal): Promise<ThumbnailInfo>;
+  getThumbnailInfo?(target: ThumbnailTarget, signal?: AbortSignal): Promise<ThumbnailInfo | null>;
   prepareThumbnail?(target: ThumbnailTarget, options?: { retryFailed?: boolean; signal?: AbortSignal }): Promise<ThumbnailInfo>;
   subscribeCameraStatus?(listener: (status: CameraStatusV2, receivedAt: number) => void): () => void;
   getRecordingCoverage?(recordingId: string, signal?: AbortSignal): Promise<RecordingCoverageDetail>;
