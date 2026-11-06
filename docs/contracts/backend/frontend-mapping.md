@@ -358,7 +358,7 @@ UNCONFIRMED, FUTURE, MISSING, EXPIRED)와 `reasonCode`를 표시한다. 날짜 �
 Backend와 Media Service에 전달할 요청 항목을 관리한다. 제공되지 않는 값은 0, 정상 또는 synthetic
 값으로 보충하지 않는다.
 
-미해결 요청은 다음 14개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
+미해결 요청은 다음 15개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
 
 | ID | 항목 | 책임 | 상태 |
 | --- | --- | --- | --- |
@@ -376,6 +376,7 @@ Backend와 Media Service에 전달할 요청 항목을 관리한다. 제공되�
 | Q-12 | 알림 실제 발송 | Backend, 운영 | 대기 |
 | Q-13 | 운영 배포 환경 설정 | Backend, 운영 | 대기 |
 | Q-14 | 미해결 요청의 담당과 예정 시점 | Backend | 대기 |
+| Q-15 | 새 이벤트 구간 파일의 길이 0 gap으로 인한 Backend 502 `MEDIA_RANGE_BASIS_MISMATCH` | Media Service, Backend | 원인 확인 대기 |
 
 ### 이력 및 녹화 영상의 일괄 협의 항목
 
