@@ -9,11 +9,13 @@ export type ThumbnailStatus = "unsupported" | "unavailable" | "pending" | "faile
 
 export type ThumbnailTarget =
   | { kind: "clip"; id: string }
-  | { kind: "daily"; id: string };
+  | { kind: "daily"; id: string }
+  | { kind: "event"; eventId: string; path: string };
 
 export type ThumbnailInfo = {
-  kind: "clip" | "daily";
+  kind: "clip" | "daily" | "event";
   id: string;
+  clipId?: string | null;
   cameraId: string;
   status: ThumbnailStatus;
   contentPath: string | null;
@@ -40,16 +42,27 @@ export function isValidThumbnailContentPath(kind: "clip" | "daily", id: string, 
   return path === expected;
 }
 
-export function parseThumbnailInfo(raw: unknown, target: ThumbnailTarget): ThumbnailInfo {
+export function parseThumbnailInfo(raw: unknown, target: ThumbnailTarget): ThumbnailInfo | null {
+  if (target.kind === "event" && raw === null) {
+    return null;
+  }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("Invalid thumbnail response body.");
   }
   const r = raw as Record<string, unknown>;
 
+  let clipId: string | null = null;
   if (target.kind === "clip") {
     if (r.clip_id !== target.id) throw new Error("Clip ID mismatch in thumbnail info.");
-  } else {
+    clipId = target.id;
+  } else if (target.kind === "daily") {
     if (r.recording_id !== target.id) throw new Error("Recording ID mismatch in thumbnail info.");
+  } else {
+    // target.kind === "event"
+    if (typeof r.clip_id !== "string" || !isCanonicalUuid(r.clip_id)) {
+      throw new Error("Event thumbnail info requires canonical UUID clip_id.");
+    }
+    clipId = r.clip_id;
   }
 
   if (typeof r.camera_id !== "string" || !r.camera_id) {
@@ -63,7 +76,9 @@ export function parseThumbnailInfo(raw: unknown, target: ThumbnailTarget): Thumb
   }
 
   if (status === "ready") {
-    if (typeof r.content_path !== "string" || !isValidThumbnailContentPath(target.kind, target.id, r.content_path)) {
+    const expectedTargetKind = target.kind === "daily" ? "daily" : "clip";
+    const expectedId = target.kind === "daily" ? target.id : (clipId ?? "");
+    if (typeof r.content_path !== "string" || !isValidThumbnailContentPath(expectedTargetKind, expectedId, r.content_path)) {
       throw new Error("Ready thumbnail must have a valid content_path matching the expected path pattern.");
     }
     if (typeof r.width !== "number" || r.width <= 0 || !Number.isInteger(r.width)) {
@@ -112,7 +127,8 @@ export function parseThumbnailInfo(raw: unknown, target: ThumbnailTarget): Thumb
 
   return {
     kind: target.kind,
-    id: target.id,
+    id: target.kind === "event" ? target.eventId : target.id,
+    ...(clipId !== null && { clipId }),
     cameraId: r.camera_id,
     status,
     contentPath: status === "ready" && typeof r.content_path === "string" ? r.content_path : null,
@@ -156,8 +172,11 @@ export function formatThumbnailStatusText(
   if (errorStatus) {
     return { text: thumbnailErrorNotice(errorStatus), role: "alert" };
   }
-  if (!info) {
+  if (info === undefined) {
     return { text: "확인 중" };
+  }
+  if (info === null) {
+    return { text: "연결된 구간 파일 없음" };
   }
 
   switch (info.status) {

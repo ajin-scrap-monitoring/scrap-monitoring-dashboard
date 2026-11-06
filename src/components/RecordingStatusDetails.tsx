@@ -27,6 +27,7 @@ export function RecordingStatusDetails({
   pending = false,
   thumbnailInfo,
   thumbnailError,
+  hasThumbnailTarget = false,
   thumbnailPreparing = false,
   onPrepareThumbnail,
   isAdmin = false,
@@ -36,6 +37,7 @@ export function RecordingStatusDetails({
   pending?: boolean;
   thumbnailInfo?: ThumbnailInfo | null;
   thumbnailError?: number | null;
+  hasThumbnailTarget?: boolean;
   thumbnailPreparing?: boolean;
   onPrepareThumbnail?: (retryFailed?: boolean) => void;
   isAdmin?: boolean;
@@ -90,7 +92,7 @@ export function RecordingStatusDetails({
         {recording.coverage && <div><dt>녹화 범위</dt><dd>{recording.coverage === "partial" ? "부분 저장" : recording.coverage === "complete" ? "전체 구간" : recording.coverage === "none" ? "영상 없음" : "확인 불가"}</dd></div>}
         {Boolean(recording.gaps?.length) && <div><dt>누락 구간</dt><dd>{recording.gaps?.length}개</dd></div>}
         {recording.daily && <div><dt>파일 정리 상태</dt><dd>{cleanupText(recording.daily)}</dd></div>}
-        {(thumbnailInfo !== undefined || thumbnailError !== undefined) && (
+        {(hasThumbnailTarget || thumbnailInfo !== undefined || thumbnailError !== undefined) && (
           <div>
             <dt>대표 이미지</dt>
             <dd role={thumbnailStatus.role}>{thumbnailStatus.text}</dd>

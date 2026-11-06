@@ -254,6 +254,7 @@ export type Recording = {
   occurredAt?: string;
   exportPath?: string | null;
   downloadReasonCode?: string | null;
+  thumbnailInfoPath?: string | null;
   windowFrom?: string;
   windowTo?: string | null;
   codec: string;

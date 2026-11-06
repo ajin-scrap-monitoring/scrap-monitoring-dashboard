@@ -32,6 +32,7 @@ export type EventRecordingItem = {
   windowTo: string | null;
   window: EventRecordingWindow;
   playback: EventPlaybackSummary | null;
+  thumbnailInfoPath?: string | null;
 };
 
 export type EventRecordingPage = {
@@ -82,13 +83,38 @@ function nonNegative(value: unknown): number {
 function stamp(value: unknown): string { return timestamp(value) ? value : fail(); }
 function optionalStamp(value: unknown): string | null { return value === undefined || value === null ? null : stamp(value); }
 
+const allowedThumbnailQueryKeys = new Set(["pit_id", "before_seconds", "after_seconds"]);
+
+export function validateThumbnailInfoPath(value: unknown, eventId: string): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") return null;
+  if (value.startsWith("//")) return null;
+  const expectedPrefix = `/api/v2/recordings/events/${eventId}/thumbnail-info`;
+  if (value === expectedPrefix) return value;
+  if (!value.startsWith(`${expectedPrefix}?`)) return null;
+
+  const queryString = value.slice(expectedPrefix.length + 1);
+  if (!queryString || queryString.includes("#")) return null;
+
+  const pairs = queryString.split("&");
+  for (const pair of pairs) {
+    if (!pair) return null;
+    const eqIndex = pair.indexOf("=");
+    const key = eqIndex === -1 ? pair : pair.slice(0, eqIndex);
+    if (!allowedThumbnailQueryKeys.has(key)) return null;
+  }
+
+  return value;
+}
+
 export function eventRecordingItem(value: unknown): EventRecordingItem {
   if (!record(value) || typeof value.eventId !== "string" || !eventRecordingIdentifier.test(value.eventId)
     || typeof value.title !== "string" || typeof value.eventType !== "string"
     || !(value.windowTo === undefined || nullableTimestamp(value.windowTo, true))
     || !(value.simulated === undefined || value.simulated === null || typeof value.simulated === "boolean")
     || !(value.stateAtOccurrence === undefined || value.stateAtOccurrence === null || typeof value.stateAtOccurrence === "string")
-    || !(value.reasonCodes === undefined || strings(value.reasonCodes))) return fail();
+    || !(value.reasonCodes === undefined || strings(value.reasonCodes))
+    || !(value.thumbnailInfoPath === undefined || value.thumbnailInfoPath === null || typeof value.thumbnailInfoPath === "string")) return fail();
   const category = choice(value.category, categories);
   return {
     eventId: value.eventId,
@@ -109,6 +135,7 @@ export function eventRecordingItem(value: unknown): EventRecordingItem {
       windowTo: optionalStamp(value.windowTo),
     },
     playback: playbackSummary(value.playback),
+    thumbnailInfoPath: validateThumbnailInfoPath(value.thumbnailInfoPath, value.eventId),
   };
 }
 
@@ -218,6 +245,7 @@ export function mapEventRecording(item: EventRecordingItem, replay?: EventReplay
     downloadReasonCode: replay?.downloadReasonCode ?? null,
     windowFrom: item.windowFrom,
     windowTo: item.windowTo,
+    thumbnailInfoPath: item.thumbnailInfoPath,
     ...(replay && { replay }),
     ...(summary && { playbackSummary: summary }),
     id: item.eventId,

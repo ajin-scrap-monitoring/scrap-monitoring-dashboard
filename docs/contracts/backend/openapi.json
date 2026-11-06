@@ -3596,6 +3596,18 @@
             ],
             "title": "Stateatoccurrence"
           },
+          "thumbnailInfoPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Read-only lookup of an existing shared clip; never prepares media",
+            "title": "Thumbnailinfopath"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -16866,8 +16878,252 @@
           "Event Recordings"
         ]
       }
+    },
+    "/api/v2/recordings/events/{event_id}/thumbnail-info": {
+      "get": {
+        "description": "Find a shared existing clip without exposing another user's export request.",
+        "operationId": "get_event_thumbnail_api_v2_recordings_events__event_id__thumbnail_info_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "pattern": "^(?:evt-auto-col-start|evt-alt|evt-col|evt-v2-transition|evt-err)-[1-9][0-9]{0,18}$",
+              "title": "Event Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pit_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 50,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pit Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_seconds",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 300,
+              "minimum": 0,
+              "title": "Before Seconds",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_seconds",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 300,
+              "minimum": 0,
+              "title": "After Seconds",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ClipThumbnailInfo"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Event Thumbnail Api V2 Recordings Events  Event Id  Thumbnail Info Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 404 Get Event Thumbnail Api V2 Recordings Events  Event Id  Thumbnail Info Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Range Not Satisfiable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Event Thumbnail Api V2 Recordings Events  Event Id  Thumbnail Info Get"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 503 Get Event Thumbnail Api V2 Recordings Events  Event Id  Thumbnail Info Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Get Event Thumbnail",
+        "tags": [
+          "Event Recordings"
+        ]
+      }
     }
   },
   "x-source-repository": "https://github.com/ajin-scrap-monitoring/scrap-monitoring-backend",
-  "x-source-revision": "f0b64ceaf293b9242eaebb0e9726111f75ccd529"
+  "x-source-revision": "51dcb82022da9e8821c42cfabcccd73fd645d394"
 }

@@ -287,7 +287,7 @@ v2 경보와 수거 판단 목록(`/api/v2/monitoring/alerts`, `collection-event
 | 보관 만료 | 날짜 녹화의 `expires_at`, `status` | 변환 사용 | `status`가 deleted 또는 expired면 "삭제됨" 또는 "만료됨" 표시, 이벤트는 `parts`의 날짜별 요약 목록(`view=summary`)에서 찾은 모든 날짜 녹화 중 가장 빠른 만료를 사용하며 하나라도 확인하지 못하면 정보 없음 |
 | codec, 해상도, frame rate | `/api/v2/recordings/daily/{recording_id}/media-info`, `/api/v1/media/clips/{clip_id}/media-info` | 직접 사용 | 날짜 녹화는 file 정보와 segments(상세 창/title), 이벤트는 export 완료 후 clip media-info 연동 |
 | 이벤트 구간 용량과 MP4 | `GET/POST /api/v2/recordings/events/{event_id}/exports`, `GET statusPath` | 직접 사용 | 서버 조회 복구와 명시 준비 및 재시도, 응답 requestId 및 statusPath 사용 |
-| 미리보기 썸네일 | `/api/v2/recordings/daily/{id}/thumbnail-info`, `/api/v1/media/clips/{clipId}/thumbnail-info` | 직접 사용 | 완료 날짜(ready MP4)와 clipId가 있는 이벤트 녹화에 thumbnail-info를 조회하고 ready 시 content_path 이미지를 기존 썸네일 자리와 재생 poster에 연결 |
+| 미리보기 썸네일 | `/api/v2/recordings/daily/{id}/thumbnail-info`, `/api/v2/recordings/events/{event_id}/thumbnail-info`, `/api/v1/media/clips/{clipId}/thumbnail-info` | 직접 사용 | 완료 날짜(ready MP4)와 `thumbnailInfoPath`가 있는 이벤트 녹화에 thumbnail-info를 조회하고(없으면 기존 clipId 흐름 유지), ready 시 content_path 이미지를 기존 썸네일 자리와 재생 poster에 연결 |
 
 날짜 녹화 목록은 `GET /api/v2/recordings/daily`에 `view=summary`를 전달해 요청하며
 `next_cursor` 페이징 시에도 같은 파라미터를 유지한다. 목록 응답의 `view`가 `"summary"`이면
@@ -358,27 +358,24 @@ UNCONFIRMED, FUTURE, MISSING, EXPIRED)와 `reasonCode`를 표시한다. 날짜 �
 Backend와 Media Service에 전달할 요청 항목을 관리한다. 제공되지 않는 값은 0, 정상 또는 synthetic
 값으로 보충하지 않는다.
 
+미해결 요청은 다음 14개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
+
 | ID | 항목 | 책임 | 상태 |
 | --- | --- | --- | --- |
-| R-03 | 측정 영역의 실측 배치 | Backend, Edge | 실측 배치 연동 대기 |
-| R-07 | 이벤트 구간 MP4 다운로드와 파일 용량 | Backend, Media Service | 반영 |
-| R-08 | 녹화 영상의 codec, 해상도, frame rate | Media Service | 반영 |
-| R-09 | 실시간 영상의 촬영 시각 | Media Service | 대기 |
-| R-10 | 날짜 녹화 삭제 시 503 | Media Service | 수정 버전 확인 대기 |
-| R-11 | 녹화 목록 미리보기 이미지 | Backend, Media Service | 반영 |
-| R-12 | 배포 환경 설정 | Backend, 운영 | 운영 환경 설정 대기 |
-| R-13 | 알림 실제 발송 | Backend, 운영 | 대기 |
-| A-01 | 시뮬레이션 `lidar-b` 측정선 위치가 현장 기준과 다름 | Backend | 대기 |
-| A-02 | 대기 중인 이전 요청의 담당과 예정 시점 | Backend | 대기 |
-| A-07 | 적재율 이력 조회의 응답 시간 | Backend | 반영 |
-| A-09 | 이벤트 녹화 목록의 정렬 기준과 페이지 안정성 | Backend | 반영 |
-| A-10 | 이벤트 구간 export의 기존 작업 조회와 같은 계정, 이벤트, 문맥의 중복 생성 방지 | Backend | 반영 |
-| A-11 | 녹화 파일 정보(codec, 해상도, frame rate)의 파일 완성 시점 측정과 저장값 반환 | Backend, Media Service | 대기 |
-| A-12 | 현재 판정과 활성 알림을 같은 snapshot 근거로 비교하는 방법 | Backend | 반영 |
-| A-13 | 카메라 상태의 기존 실시간 연결(SSE) 전달 | Backend | 반영 |
-| A-14 | 영상이 없는 이벤트의 `exportPath` 제공 조건 | Backend | 반영 |
-| A-15 | 녹화 저장 위치와 저장 용량 정책 | Backend, Media Service | 대기 |
-| A-16 | 구간 파일 조각 경계의 짧은 공백을 누락으로 집계하는 기준 | Media Service | 대기 |
+| Q-1 | Media 응답 지연과 간헐 504(썸네일, 날짜 녹화 상세, media-info) | Media Service | 원인 확인 대기 |
+| Q-2 | 날짜 녹화의 짧은 누락 반복과 실시간 frame 공백 | Media Service | 원인 확인 대기 |
+| Q-3 | 구간 파일 조각 경계 공백의 집계 기준 | Media Service | 대기 |
+| Q-4 | 실시간 영상의 촬영 시각 | Media Service | 대기 |
+| Q-5 | 썸네일 자동 준비와 구간 파일이 없는 수거의 대표 이미지 | Media Service, Backend | 협의 대기 |
+| Q-6 | Media image label과 실제 실행 source의 일치 | Media Service | 확인 대기 |
+| Q-7 | 녹화 파일 정보(codec, 해상도, frame rate)의 파일 완성 시점 값 | Media Service, Backend | 대기 |
+| Q-8 | 녹화 저장 위치와 저장 용량 정책 | Media Service, Backend | 대기 |
+| Q-9 | 카메라 latency의 정의와 전달 | Media Service, Backend | 대기 |
+| Q-10 | 측정 영역의 실측 배치 | Backend, Edge | 대기 |
+| Q-11 | 시뮬레이션 `lidar-b` 측정선 위치가 현장 기준과 다름 | Backend | 대기 |
+| Q-12 | 알림 실제 발송 | Backend, 운영 | 대기 |
+| Q-13 | 운영 배포 환경 설정 | Backend, 운영 | 대기 |
+| Q-14 | 미해결 요청의 담당과 예정 시점 | Backend | 대기 |
 
 ### 이력 및 녹화 영상의 일괄 협의 항목
 

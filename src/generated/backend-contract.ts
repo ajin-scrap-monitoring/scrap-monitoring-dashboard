@@ -854,6 +854,26 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v2/recordings/events/{event_id}/thumbnail-info": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Event Thumbnail
+         * @description Find a shared existing clip without exposing another user's export request.
+         */
+        readonly get: operations["get_event_thumbnail_api_v2_recordings_events__event_id__thumbnail_info_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2076,6 +2096,11 @@ export interface components {
             readonly simulated?: boolean | null;
             /** Stateatoccurrence */
             readonly stateAtOccurrence?: string | null;
+            /**
+             * Thumbnailinfopath
+             * @description Read-only lookup of an existing shared clip; never prepares media
+             */
+            readonly thumbnailInfoPath?: string | null;
             /** Title */
             readonly title: string;
             /**
@@ -8534,6 +8559,142 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["EventExportResponse"];
+                };
+            };
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly get_event_thumbnail_api_v2_recordings_events__event_id__thumbnail_info_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly pit_id?: string | null;
+                readonly before_seconds?: number;
+                readonly after_seconds?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly event_id: string;
+            };
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ClipThumbnailInfo"] | null;
                 };
             };
             /** @description Bad Request */
