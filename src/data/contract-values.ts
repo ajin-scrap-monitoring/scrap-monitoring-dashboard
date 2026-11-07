@@ -14,7 +14,7 @@ const timestampPattern = /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?
 // 같은 날짜가 수천 번 반복되는 응답에서 달력 검증을 날짜마다 한 번만 하도록 결과를 보관한다.
 const calendarDates = new Map<string, boolean>();
 
-function calendarDate(date: string) {
+export function calendarDate(date: string) {
   let valid = calendarDates.get(date);
   if (valid === undefined) {
     const midnight = Date.parse(`${date}T00:00:00Z`);

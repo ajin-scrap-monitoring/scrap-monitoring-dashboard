@@ -204,6 +204,89 @@ describe("recording-thumbnail", () => {
       expect(parsed!.clipId).toBe("6412c932-abad-470e-ba71-c183874fad5a");
       expect(parsed!.contentPath).toBe("/media/clips/6412c932-abad-470e-ba71-c183874fad5a/thumbnail");
     });
+
+    it("dailyDate 대상의 null 응답은 null을 반환한다", () => {
+      const dailyDateTarget: ThumbnailTarget = {
+        kind: "dailyDate",
+        date: "2026-11-08",
+        path: "/api/v2/recordings/daily/by-date/2026-11-08/thumbnail-info",
+      };
+      expect(parseThumbnailInfo(null, dailyDateTarget)).toBeNull();
+    });
+
+    it("dailyDate 대상의 응답에 canonical UUID recording_id가 없거나 대문자면 예외를 던진다", () => {
+      const dailyDateTarget: ThumbnailTarget = {
+        kind: "dailyDate",
+        date: "2026-11-08",
+        path: "/api/v2/recordings/daily/by-date/2026-11-08/thumbnail-info",
+      };
+      const base = {
+        camera_id: "cam-1",
+        status: "ready",
+        content_path: "/media/daily-recordings/cb955a1c-88f3-403d-acc8-ea8361e05c46/thumbnail",
+        width: 640,
+        height: 360,
+        size_bytes: 10000,
+        generated_at: "2026-11-08T00:00:00Z",
+        representative_at: null,
+        time_basis: null,
+        reason_code: null,
+      };
+      expect(() => parseThumbnailInfo({ ...base, recording_id: "not-a-uuid" }, dailyDateTarget)).toThrow("canonical UUID recording_id");
+      expect(() => parseThumbnailInfo({ ...base, recording_id: "CB955A1C-88F3-403D-ACC8-EA8361E05C46" }, dailyDateTarget)).toThrow("canonical UUID recording_id");
+    });
+
+    it("dailyDate 대상의 ready 응답을 변환하고 응답 recording_id를 id와 recordingId에 보존한다", () => {
+      const dailyDateTarget: ThumbnailTarget = {
+        kind: "dailyDate",
+        date: "2026-11-08",
+        path: "/api/v2/recordings/daily/by-date/2026-11-08/thumbnail-info",
+      };
+      const recId = "cb955a1c-88f3-403d-acc8-ea8361e05c46";
+      const raw = {
+        camera_id: "cam-1",
+        recording_id: recId,
+        status: "ready",
+        content_path: `/media/daily-recordings/${recId}/thumbnail`,
+        width: 640,
+        height: 360,
+        size_bytes: 10609,
+        reason_code: "TIMELINE_UNAVAILABLE",
+        representative_at: null,
+        time_basis: null,
+        generated_at: "2026-11-08T00:00:22Z",
+      };
+      const parsed = parseThumbnailInfo(raw, dailyDateTarget);
+      expect(parsed).not.toBeNull();
+      expect(parsed!.kind).toBe("dailyDate");
+      expect(parsed!.id).toBe(recId);
+      expect(parsed!.recordingId).toBe(recId);
+      expect(parsed!.contentPath).toBe(`/media/daily-recordings/${recId}/thumbnail`);
+      expect(parsed!.reasonCode).toBe("TIMELINE_UNAVAILABLE");
+    });
+
+    it("dailyDate 대상의 content_path가 recording_id와 일치하지 않으면 예외를 던진다", () => {
+      const dailyDateTarget: ThumbnailTarget = {
+        kind: "dailyDate",
+        date: "2026-11-08",
+        path: "/api/v2/recordings/daily/by-date/2026-11-08/thumbnail-info",
+      };
+      const recId = "cb955a1c-88f3-403d-acc8-ea8361e05c46";
+      const raw = {
+        camera_id: "cam-1",
+        recording_id: recId,
+        status: "ready",
+        content_path: "/media/daily-recordings/018f4a30-9b4a-7b3b-8d3f-5c2b3a1a0001/thumbnail",
+        width: 640,
+        height: 360,
+        size_bytes: 10609,
+        reason_code: null,
+        representative_at: null,
+        time_basis: null,
+        generated_at: "2026-11-08T00:00:22Z",
+      };
+      expect(() => parseThumbnailInfo(raw, dailyDateTarget)).toThrow("matching the expected path pattern");
+    });
   });
 
   describe("thumbnailErrorNotice", () => {
@@ -319,6 +402,56 @@ describe("recording-thumbnail", () => {
     it("info가 undefined이면 '확인 중'을 반환한다", () => {
       expect(formatThumbnailStatusText(undefined).text).toBe("확인 중");
     });
+
+    it("RECORDING_BUSY는 보류로 '녹화 중 생성 보류'를 반환한다", () => {
+      const busy = {
+        kind: "dailyDate" as const,
+        id: "cb955a1c-88f3-403d-acc8-ea8361e05c46",
+        cameraId: "cam-1",
+        status: "unavailable" as const,
+        contentPath: null,
+        width: null,
+        height: null,
+        sizeBytes: null,
+        reasonCode: "RECORDING_BUSY",
+        representativeAt: null,
+        timeBasis: null,
+        generatedAt: null,
+      };
+      expect(formatThumbnailStatusText(busy).text).toBe("녹화 중 생성 보류");
+    });
+
+    it("dailyDate 대상의 null 응답은 '날짜 대표 이미지 없음'을 반환한다", () => {
+      expect(formatThumbnailStatusText(null, null, "dailyDate").text).toBe("날짜 대표 이미지 없음");
+    });
+
+    it("dailyDate ready 응답은 문구 앞에 '날짜 대표 이미지'를 붙인다", () => {
+      const readyWithTime = {
+        kind: "dailyDate" as const,
+        id: "cb955a1c-88f3-403d-acc8-ea8361e05c46",
+        cameraId: "cam-1",
+        status: "ready" as const,
+        contentPath: "/media/daily-recordings/cb955a1c-88f3-403d-acc8-ea8361e05c46/thumbnail",
+        width: 640,
+        height: 360,
+        sizeBytes: 1000,
+        reasonCode: null,
+        representativeAt: "2026-11-08T00:00:00Z",
+        timeBasis: "server_received_at" as const,
+        generatedAt: "2026-11-08T00:05:00Z",
+      };
+      const resultTime = formatThumbnailStatusText(readyWithTime);
+      expect(resultTime.text).toContain("날짜 대표 이미지, 서버 수신 기준");
+
+      const readyWithoutTime = {
+        ...readyWithTime,
+        representativeAt: null,
+        timeBasis: null,
+        reasonCode: "TIMELINE_UNAVAILABLE",
+      };
+      const resultNoTime = formatThumbnailStatusText(readyWithoutTime);
+      expect(resultNoTime.text).toBe("날짜 대표 이미지, 시각 정보 없음");
+    });
   });
 
   describe("getThumbnailAdminAction", () => {
@@ -373,6 +506,10 @@ describe("recording-thumbnail", () => {
       expect(getThumbnailAdminAction(true, { ...failedInfo, status: "ready" as const, reasonCode: null }).canPrepare).toBe(false);
       expect(getThumbnailAdminAction(true, { ...failedInfo, status: "pending" as const, reasonCode: null }).canPrepare).toBe(false);
       expect(getThumbnailAdminAction(true, { ...failedInfo, status: "unavailable" as const, reasonCode: "DAILY_MP4_REQUIRED" }).canPrepare).toBe(false);
+
+      // dailyDate 대상은 준비 버튼을 주지 않는다
+      expect(getThumbnailAdminAction(true, failedInfo, null, "dailyDate").canPrepare).toBe(false);
+      expect(getThumbnailAdminAction(true, { ...failedInfo, kind: "dailyDate" }).canPrepare).toBe(false);
     });
   });
 });

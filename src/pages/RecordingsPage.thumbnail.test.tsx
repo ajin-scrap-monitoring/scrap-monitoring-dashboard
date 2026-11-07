@@ -44,7 +44,7 @@ describe("RecordingsPage thumbnail", () => {
   };
 
   function createDailyRecording(idSuffix: string, options: {
-    status?: "closed" | "recording" | "finalizing";
+    status?: "closed" | "recording" | "finalizing" | "failed";
     exportState?: "ready" | "not_requested" | "processing" | "failed";
   } = {}): Recording {
     const id = `018f4a30-9b4a-7b3b-8d3f-5c2b3a1a000${idSuffix}`;
@@ -113,7 +113,12 @@ describe("RecordingsPage thumbnail", () => {
     };
   }
 
-  function createEventRecording(idSuffix: string, eventId: string, options: { thumbnailInfoPath?: string | null; replay?: EventReplay } = {}): Recording {
+  function createEventRecording(idSuffix: string, eventId: string, options: {
+    thumbnailInfoPath?: string | null;
+    dailyThumbnailInfoPath?: string | null;
+    replay?: EventReplay;
+    exportState?: "ready";
+  } = {}): Recording {
     return {
       id: eventId,
       source: "event",
@@ -138,18 +143,22 @@ describe("RecordingsPage thumbnail", () => {
       retentionStartsAt: "",
       retentionEndsAt: "",
       thumbnailInfoPath: options.thumbnailInfoPath,
+      dailyThumbnailInfoPath: options.dailyThumbnailInfoPath,
       replay: options.replay,
     };
   }
 
-  it("현재 보이는 항목 중 조건에 맞는 항목만 정보 GET을 실행하고 진행 중 날짜와 TS만 있는 날짜는 요청하지 않는다", async () => {
+  it("현재 보이는 항목 중 조건에 맞는 항목(recording, finalizing, closed, failed)만 정보 GET을 실행하고 expired, deleted는 요청하지 않는다", async () => {
     const r1 = createDailyRecording("1", { status: "closed", exportState: "ready" });
-    const r2 = createDailyRecording("2", { status: "recording", exportState: "ready" }); // 진행 중
-    const r3 = createDailyRecording("3", { status: "closed", exportState: "not_requested" }); // TS만 있음
-    const eventWithoutClip = createEventRecording("4", "event-without-clip");
+    const r2 = createDailyRecording("2", { status: "recording", exportState: "ready" }); // 녹화 중
+    const r3 = createDailyRecording("3", { status: "closed", exportState: "not_requested" }); // MP4 미완료
+    const r4 = createDailyRecording("4", { status: "failed", exportState: "failed" }); // 실패
+    const rExpired = createDailyRecording("5", { status: "expired" as never, exportState: "ready" }); // 만료
+    const rDeleted = createDailyRecording("6", { status: "deleted" as never, exportState: "ready" }); // 삭제
+    const eventWithoutClip = createEventRecording("7", "event-without-clip");
 
     const getThumbnailInfo = vi.fn().mockImplementation((target: ThumbnailTarget) => {
-      if (target.kind === "event") return Promise.resolve(null);
+      if (target.kind === "event" || target.kind === "dailyDate") return Promise.resolve(null);
       return Promise.resolve({
         kind: target.kind,
         id: target.id,
@@ -177,7 +186,7 @@ describe("RecordingsPage thumbnail", () => {
       <RecordingsPage
         headerNotifications={[]}
         reception={{ status: "connected", lastReceivedAt: "2026-10-20T00:00:00Z" }}
-        recordings={[r1, r2, r3, eventWithoutClip]}
+        recordings={[r1, r2, r3, r4, rExpired, rDeleted, eventWithoutClip]}
         recordingsSource="daily"
         dataSource={dataSource}
         session={adminSession}
@@ -188,9 +197,12 @@ describe("RecordingsPage thumbnail", () => {
       await Promise.resolve();
     });
 
-    // r1만 요청되어야 하고, r2(진행 중), r3(TS만), eventWithoutClip(clipId 없음)은 요청되지 않음
-    expect(getThumbnailInfo).toHaveBeenCalledTimes(1);
+    // r1, r2, r3, r4는 요청되어야 하고, rExpired, rDeleted, eventWithoutClip은 요청되지 않음
+    expect(getThumbnailInfo).toHaveBeenCalledTimes(4);
     expect(getThumbnailInfo).toHaveBeenCalledWith({ kind: "daily", id: r1.id }, expect.any(AbortSignal));
+    expect(getThumbnailInfo).toHaveBeenCalledWith({ kind: "daily", id: r2.id }, expect.any(AbortSignal));
+    expect(getThumbnailInfo).toHaveBeenCalledWith({ kind: "daily", id: r3.id }, expect.any(AbortSignal));
+    expect(getThumbnailInfo).toHaveBeenCalledWith({ kind: "daily", id: r4.id }, expect.any(AbortSignal));
   });
 
   it("동시 요청 수를 최대 3개로 제한한다", async () => {
@@ -270,7 +282,7 @@ describe("RecordingsPage thumbnail", () => {
     const r2 = createDailyRecording("2");
 
     const getThumbnailInfo = vi.fn().mockImplementation((target: ThumbnailTarget) => {
-      if (target.kind !== "event" && target.id === r1.id) {
+      if ("id" in target && target.id === r1.id) {
         return Promise.resolve({
           kind: "daily",
           id: r1.id,
@@ -599,7 +611,7 @@ describe("RecordingsPage thumbnail", () => {
     let firstPageSignal: AbortSignal | undefined;
 
     const getThumbnailInfo = vi.fn().mockImplementation((target: ThumbnailTarget, signal?: AbortSignal) => {
-      if (target.kind !== "event" && target.id === recordings[0].id && !firstPageSignal) {
+      if ("id" in target && target.id === recordings[0].id && !firstPageSignal) {
         firstPageSignal = signal;
       }
       return new Promise(() => {
@@ -837,7 +849,7 @@ describe("RecordingsPage thumbnail", () => {
     });
     const calls: Record<string, number> = {};
     const getThumbnailInfo = vi.fn().mockImplementation((target: ThumbnailTarget) => {
-      if (target.kind === "event") return Promise.resolve(null);
+      if (target.kind === "event" || target.kind === "dailyDate") return Promise.resolve(null);
       const targetId = target.id;
       calls[targetId] = (calls[targetId] ?? 0) + 1;
       if (targetId === r1.id && calls[targetId] === 1) return Promise.reject(Object.assign(new Error("timeout"), { status: 504 }));
@@ -1040,7 +1052,7 @@ describe("RecordingsPage thumbnail", () => {
 
       const calls: Record<string, number> = {};
       const getThumbnailInfo = vi.fn().mockImplementation((target: ThumbnailTarget) => {
-        const key = target.kind === "event" ? target.eventId : target.id;
+        const key = target.kind === "event" ? target.eventId : target.kind === "dailyDate" ? target.path : target.id;
         calls[key] = (calls[key] ?? 0) + 1;
         if (target.kind === "event" && target.eventId === "evt-fail") {
           return Promise.reject(Object.assign(new Error("gateway error"), { status: 502 }));
@@ -1373,6 +1385,309 @@ describe("RecordingsPage thumbnail", () => {
       await act(async () => { resolveInfo(null); await Promise.resolve(); });
       expect(screen.getByText("연결된 구간 파일 없음")).toBeInTheDocument();
       expect(screen.queryByText("확인 중")).toBeNull();
+    });
+  });
+
+  describe("F2 날짜 공통 대표 이미지(dailyThumbnailInfoPath) 연동", () => {
+    const dailyPath = "/api/v2/recordings/daily/by-date/2026-11-08/thumbnail-info";
+    const recordingId = "cb955a1c-88f3-403d-acc8-ea8361e05c46";
+    const sampleReplay: EventReplay = {
+      state: "AVAILABLE",
+      asOf: "2026-11-08T00:05:00Z",
+      effectiveTo: "2026-11-08T00:05:00Z",
+      requestedSeconds: 300,
+      coveredSeconds: 300,
+      playbackSeconds: 300,
+      parts: [
+        {
+          recordingId,
+          recordingDate: "2026-11-08",
+          playbackPath: `/media/daily-recordings/${recordingId}/hls/index.m3u8`,
+          fromAt: "2026-11-08T00:00:00Z",
+          toAt: "2026-11-08T00:05:00Z",
+          startSeconds: 0,
+          endSeconds: 300,
+          relativeStartSeconds: 0,
+          relativeEndSeconds: 300,
+          mapping: "LINEAR",
+        },
+      ],
+      unavailableIntervals: [],
+      reasonCodes: [],
+      downloadReasonCode: null,
+    };
+
+    it("dailyThumbnailInfoPath가 있으면 날짜 경로를 우선 조회하고 null이어도 thumbnailInfoPath나 clip으로 대체하지 않는다", async () => {
+      const eventWithBoth = createEventRecording("1", "evt-both", {
+        dailyThumbnailInfoPath: dailyPath,
+        thumbnailInfoPath: "/api/v2/recordings/events/evt-both/thumbnail-info?pit_id=pit-01",
+        exportState: "ready",
+      });
+
+      const getThumbnailInfo = vi.fn().mockResolvedValue(null);
+      const dataSource = {
+        supportsDailyRecordings: false,
+        getDashboardData: () => Promise.resolve({} as never),
+        getRecording: vi.fn().mockResolvedValue(eventWithBoth),
+        getThumbnailInfo,
+      };
+
+      const view = render(
+        <RecordingsPage
+          headerNotifications={[]}
+          reception={{ status: "connected", lastReceivedAt: "2026-11-08T00:00:00Z" }}
+          recordings={[eventWithBoth]}
+          recordingsSource="event"
+          dataSource={dataSource}
+          session={adminSession}
+        />,
+      );
+      await act(async () => { await Promise.resolve(); });
+
+      // dailyDate 대상만 1회 호출되고 event 대상은 호출되지 않음
+      expect(getThumbnailInfo).toHaveBeenCalledTimes(1);
+      expect(getThumbnailInfo).toHaveBeenCalledWith(
+        { kind: "dailyDate", date: "2026-11-08", path: dailyPath },
+        expect.any(AbortSignal),
+      );
+
+      // null 응답이므로 목록은 미리보기 없음, 상태 상세는 "날짜 대표 이미지 없음", 준비 버튼 없음
+      expect(view.container.querySelector(".recording-thumbnail-empty")).not.toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: /상세/ }));
+      expect(screen.getByText("날짜 대표 이미지 없음")).toBeInTheDocument();
+      expect(screen.queryByText("연결된 구간 파일 없음")).toBeNull();
+      expect(screen.queryByRole("button", { name: "대표 이미지 준비" })).toBeNull();
+    });
+
+    it("같은 날짜의 여러 항목은 thumbnail-info를 1회만 조회하고 이미지를 공유한다", async () => {
+      const e1 = createEventRecording("1", "evt-1", { dailyThumbnailInfoPath: dailyPath, replay: sampleReplay });
+      const e2 = createEventRecording("2", "evt-2", { dailyThumbnailInfoPath: dailyPath, replay: sampleReplay });
+      const e3 = createEventRecording("3", "evt-3", { dailyThumbnailInfoPath: dailyPath, replay: sampleReplay });
+
+      const readyInfo: ThumbnailInfo = {
+        kind: "dailyDate",
+        id: recordingId,
+        recordingId,
+        cameraId: "cam-main",
+        status: "ready",
+        contentPath: `/media/daily-recordings/${recordingId}/thumbnail`,
+        width: 640,
+        height: 360,
+        sizeBytes: 10609,
+        reasonCode: null,
+        representativeAt: "2026-11-08T00:00:00Z",
+        timeBasis: "server_received_at",
+        generatedAt: "2026-11-08T00:05:00Z",
+      };
+
+      const getThumbnailInfo = vi.fn().mockResolvedValue(readyInfo);
+      const dataSource = {
+        supportsDailyRecordings: false,
+        getDashboardData: () => Promise.resolve({} as never),
+        getRecording: vi.fn().mockImplementation((id: string) => Promise.resolve([e1, e2, e3].find((e) => e.id === id) ?? e1)),
+        getThumbnailInfo,
+      };
+
+      const view = render(
+        <RecordingsPage
+          headerNotifications={[]}
+          reception={{ status: "connected", lastReceivedAt: "2026-11-08T00:00:00Z" }}
+          recordings={[e1, e2, e3]}
+          recordingsSource="event"
+          dataSource={dataSource}
+          session={adminSession}
+        />,
+      );
+      await act(async () => { await Promise.resolve(); });
+
+      // 중복 없이 1회만 조회됨
+      expect(getThumbnailInfo).toHaveBeenCalledTimes(1);
+
+      // 3개 항목 모두 동일 이미지 URL을 렌더링
+      const images = view.container.querySelectorAll(`img[src="/media/daily-recordings/${recordingId}/thumbnail"]`);
+      expect(images.length).toBe(3);
+
+      // poster도 연결됨
+      expect(screen.getByTestId("event-replay")).toHaveAttribute(
+        "data-poster",
+        `/media/daily-recordings/${recordingId}/thumbnail`,
+      );
+
+      // 상태 상세에 '날짜 대표 이미지, 서버 수신 기준' 문구 표시 및 준비 버튼 없음
+      fireEvent.click(screen.getByRole("button", { name: /상세/ }));
+      expect(screen.getByText(/날짜 대표 이미지, 서버 수신 기준/)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "대표 이미지 준비" })).toBeNull();
+    });
+
+    it("TIMELINE_UNAVAILABLE ready 응답을 정상 표시하고 문구를 안내한다", async () => {
+      const e1 = createEventRecording("1", "evt-timeline", { dailyThumbnailInfoPath: dailyPath, replay: sampleReplay });
+      const readyTimelineInfo: ThumbnailInfo = {
+        kind: "dailyDate",
+        id: recordingId,
+        recordingId,
+        cameraId: "cam-main",
+        status: "ready",
+        contentPath: `/media/daily-recordings/${recordingId}/thumbnail`,
+        width: 640,
+        height: 360,
+        sizeBytes: 10609,
+        reasonCode: "TIMELINE_UNAVAILABLE",
+        representativeAt: null,
+        timeBasis: null,
+        generatedAt: "2026-11-08T00:05:00Z",
+      };
+
+      const getThumbnailInfo = vi.fn().mockResolvedValue(readyTimelineInfo);
+      const dataSource = {
+        supportsDailyRecordings: false,
+        getDashboardData: () => Promise.resolve({} as never),
+        getRecording: vi.fn().mockResolvedValue(e1),
+        getThumbnailInfo,
+      };
+
+      render(
+        <RecordingsPage
+          headerNotifications={[]}
+          reception={{ status: "connected", lastReceivedAt: "2026-11-08T00:00:00Z" }}
+          recordings={[e1]}
+          recordingsSource="event"
+          dataSource={dataSource}
+          session={adminSession}
+        />,
+      );
+      await act(async () => { await Promise.resolve(); });
+
+      expect(screen.getByTestId("event-replay")).toHaveAttribute(
+        "data-poster",
+        `/media/daily-recordings/${recordingId}/thumbnail`,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /상세/ }));
+      expect(screen.getByText("날짜 대표 이미지, 시각 정보 없음")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "대표 이미지 준비" })).toBeNull();
+    });
+
+    it("RECORDING_BUSY는 보류로 문구를 표시하고 준비 버튼을 주지 않으며 재조회를 진행한다", async () => {
+      vi.useFakeTimers();
+      try {
+        const e1 = createEventRecording("1", "evt-busy", { dailyThumbnailInfoPath: dailyPath });
+        const busyInfo: ThumbnailInfo = {
+          kind: "dailyDate",
+          id: recordingId,
+          recordingId,
+          cameraId: "cam-main",
+          status: "unavailable",
+          contentPath: null,
+          width: null,
+          height: null,
+          sizeBytes: null,
+          reasonCode: "RECORDING_BUSY",
+          representativeAt: null,
+          timeBasis: null,
+          generatedAt: null,
+        };
+
+        const getThumbnailInfo = vi.fn().mockResolvedValue(busyInfo);
+        const dataSource = {
+          supportsDailyRecordings: false,
+          getDashboardData: () => Promise.resolve({} as never),
+          getRecording: vi.fn().mockResolvedValue(e1),
+          getThumbnailInfo,
+        };
+
+        render(
+          <RecordingsPage
+            headerNotifications={[]}
+            reception={{ status: "connected", lastReceivedAt: "2026-11-08T00:00:00Z" }}
+            recordings={[e1]}
+            recordingsSource="event"
+            dataSource={dataSource}
+            session={adminSession}
+          />,
+        );
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+
+        expect(getThumbnailInfo).toHaveBeenCalledTimes(1);
+
+        fireEvent.click(screen.getByRole("button", { name: /상세/ }));
+        expect(screen.getByText("녹화 중 생성 보류")).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "대표 이미지 준비" })).toBeNull();
+
+        // 5초 후 재조회
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5000);
+        });
+        expect(getThumbnailInfo).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("dailyDate 대상의 410 오류는 이미지를 해제하고 5xx 오류는 다른 녹화 선택 시 재조회한다", async () => {
+      const e1 = createEventRecording("1", "evt-500", { dailyThumbnailInfoPath: dailyPath });
+      const e2 = createEventRecording("2", "evt-other", { dailyThumbnailInfoPath: "/api/v2/recordings/daily/by-date/2026-11-07/thumbnail-info" });
+      const calls: Record<string, number> = {};
+
+      const getThumbnailInfo = vi.fn().mockImplementation((target: ThumbnailTarget) => {
+        if (target.kind !== "dailyDate") return Promise.resolve(null);
+        calls[target.path] = (calls[target.path] ?? 0) + 1;
+        if (target.path === dailyPath && calls[target.path] === 1) {
+          return Promise.reject(Object.assign(new Error("server error"), { status: 500 }));
+        }
+        if (target.path.includes("2026-11-07")) {
+          return Promise.reject(Object.assign(new Error("gone"), { status: 410 }));
+        }
+        return Promise.resolve({
+          kind: "dailyDate" as const,
+          id: recordingId,
+          recordingId,
+          cameraId: "cam-main",
+          status: "ready" as const,
+          contentPath: `/media/daily-recordings/${recordingId}/thumbnail`,
+          width: 640,
+          height: 360,
+          sizeBytes: 10609,
+          reasonCode: null,
+          representativeAt: null,
+          timeBasis: null,
+          generatedAt: "2026-11-08T00:00:00Z",
+        });
+      });
+
+      const dataSource = {
+        supportsDailyRecordings: false,
+        getDashboardData: () => Promise.resolve({} as never),
+        getRecording: vi.fn().mockImplementation((id: string) => Promise.resolve([e1, e2].find((e) => e.id === id) ?? e1)),
+        getThumbnailInfo,
+      };
+
+      const view = render(
+        <RecordingsPage
+          headerNotifications={[]}
+          reception={{ status: "connected", lastReceivedAt: "2026-11-08T00:00:00Z" }}
+          recordings={[e1, e2]}
+          recordingsSource="event"
+          dataSource={dataSource}
+          session={adminSession}
+        />,
+      );
+      await act(async () => { await Promise.resolve(); });
+
+      // e1은 500 오류, e2는 410 오류
+      expect(calls[dailyPath]).toBe(1);
+      expect(calls["/api/v2/recordings/daily/by-date/2026-11-07/thumbnail-info"]).toBe(1);
+
+      // e2 선택: 410은 캐시되어 재호출 없음
+      fireEvent.click(view.container.querySelectorAll(".recording-item")[1]);
+      await act(async () => { await Promise.resolve(); });
+      expect(calls["/api/v2/recordings/daily/by-date/2026-11-07/thumbnail-info"]).toBe(1);
+
+      // e1 다시 선택: 500은 캐시되지 않으므로 다시 조회됨
+      fireEvent.click(view.container.querySelectorAll(".recording-item")[0]);
+      await act(async () => { await Promise.resolve(); });
+      expect(calls[dailyPath]).toBe(2);
     });
   });
 });

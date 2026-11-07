@@ -690,6 +690,26 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v2/recordings/daily/by-date/{recording_date}/thumbnail-info": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Daily Thumbnail By Date
+         * @description Share an existing date image across event categories without media mutations.
+         */
+        readonly get: operations["get_daily_thumbnail_by_date_api_v2_recordings_daily_by_date__recording_date__thumbnail_info_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v2/recordings/daily/{identifier}/thumbnail": {
         readonly parameters: {
             readonly query?: never;
@@ -1502,7 +1522,7 @@ export interface components {
             /** Height */
             readonly height: number | null;
             /** Reason Code */
-            readonly reason_code: ("NOT_PREPARED" | "SOURCE_NOT_READY" | "DAILY_MP4_REQUIRED" | "SOURCE_UNAVAILABLE" | "SOURCE_CHANGED" | "IMAGE_CHANGED" | "IMAGE_UNAVAILABLE" | "NO_VIDEO_FRAME" | "TIMELINE_UNAVAILABLE" | "GENERATION_TIMEOUT" | "GENERATION_FAILED" | "INVALID_IMAGE" | "IMAGE_TOO_LARGE" | "STORAGE_UNAVAILABLE" | "CAPACITY_EXCEEDED" | "JOB_INTERRUPTED" | "INSUFFICIENT_STORAGE") | null;
+            readonly reason_code: ("NOT_PREPARED" | "SOURCE_NOT_READY" | "RECORDING_BUSY" | "DAILY_MP4_REQUIRED" | "SOURCE_UNAVAILABLE" | "SOURCE_CHANGED" | "IMAGE_CHANGED" | "IMAGE_UNAVAILABLE" | "NO_VIDEO_FRAME" | "TIMELINE_UNAVAILABLE" | "GENERATION_TIMEOUT" | "GENERATION_FAILED" | "INVALID_IMAGE" | "IMAGE_TOO_LARGE" | "STORAGE_UNAVAILABLE" | "CAPACITY_EXCEEDED" | "JOB_INTERRUPTED" | "INSUFFICIENT_STORAGE") | null;
             /** Representative At */
             readonly representative_at: string | null;
             /** Size Bytes */
@@ -1939,7 +1959,7 @@ export interface components {
             /** Height */
             readonly height: number | null;
             /** Reason Code */
-            readonly reason_code: ("NOT_PREPARED" | "SOURCE_NOT_READY" | "DAILY_MP4_REQUIRED" | "SOURCE_UNAVAILABLE" | "SOURCE_CHANGED" | "IMAGE_CHANGED" | "IMAGE_UNAVAILABLE" | "NO_VIDEO_FRAME" | "TIMELINE_UNAVAILABLE" | "GENERATION_TIMEOUT" | "GENERATION_FAILED" | "INVALID_IMAGE" | "IMAGE_TOO_LARGE" | "STORAGE_UNAVAILABLE" | "CAPACITY_EXCEEDED" | "JOB_INTERRUPTED" | "INSUFFICIENT_STORAGE") | null;
+            readonly reason_code: ("NOT_PREPARED" | "SOURCE_NOT_READY" | "RECORDING_BUSY" | "DAILY_MP4_REQUIRED" | "SOURCE_UNAVAILABLE" | "SOURCE_CHANGED" | "IMAGE_CHANGED" | "IMAGE_UNAVAILABLE" | "NO_VIDEO_FRAME" | "TIMELINE_UNAVAILABLE" | "GENERATION_TIMEOUT" | "GENERATION_FAILED" | "INVALID_IMAGE" | "IMAGE_TOO_LARGE" | "STORAGE_UNAVAILABLE" | "CAPACITY_EXCEEDED" | "JOB_INTERRUPTED" | "INSUFFICIENT_STORAGE") | null;
             /**
              * Recording Id
              * Format: uuid
@@ -2069,6 +2089,11 @@ export interface components {
              * @enum {string}
              */
             readonly category: "collection" | "alert" | "error";
+            /**
+             * Dailythumbnailinfopath
+             * @description Shared KST occurrence-date thumbnail lookup; never prepares media
+             */
+            readonly dailyThumbnailInfoPath?: string | null;
             /** Eventid */
             readonly eventId: string;
             /** Eventto */
@@ -7066,6 +7091,138 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["DailyPage"] | components["schemas"]["DailySummaryPage"];
+                };
+            };
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly get_daily_thumbnail_by_date_api_v2_recordings_daily_by_date__recording_date__thumbnail_info_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly recording_date: string;
+            };
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DailyThumbnailInfo"] | null;
                 };
             };
             /** @description Bad Request */

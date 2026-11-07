@@ -1,6 +1,6 @@
 import type { EventPlaybackSummary, EventRecordingWindow, EventReplay, EventReplayPart, Recording } from "../domain/dashboard";
 import { dailyRecordingIdentifier } from "./daily-recordings";
-import { nullableTimestamp, record, strings, timestamp } from "./contract-values";
+import { calendarDate, nullableTimestamp, record, strings, timestamp } from "./contract-values";
 import { eventRecordingIdentifier } from "./recording-values";
 
 export { eventRecordingIdentifier };
@@ -33,6 +33,7 @@ export type EventRecordingItem = {
   window: EventRecordingWindow;
   playback: EventPlaybackSummary | null;
   thumbnailInfoPath?: string | null;
+  dailyThumbnailInfoPath?: string | null;
 };
 
 export type EventRecordingPage = {
@@ -85,6 +86,15 @@ function optionalStamp(value: unknown): string | null { return value === undefin
 
 const allowedThumbnailQueryKeys = new Set(["pit_id", "before_seconds", "after_seconds"]);
 
+export function validateDailyThumbnailInfoPath(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") return null;
+  if (value.startsWith("//")) return null;
+  const match = /^\/api\/v2\/recordings\/daily\/by-date\/(\d{4}-\d{2}-\d{2})\/thumbnail-info$/.exec(value);
+  if (!match) return null;
+  return calendarDate(match[1]) ? value : null;
+}
+
 export function validateThumbnailInfoPath(value: unknown, eventId: string): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value !== "string") return null;
@@ -136,6 +146,7 @@ export function eventRecordingItem(value: unknown): EventRecordingItem {
     },
     playback: playbackSummary(value.playback),
     thumbnailInfoPath: validateThumbnailInfoPath(value.thumbnailInfoPath, value.eventId),
+    dailyThumbnailInfoPath: validateDailyThumbnailInfoPath(value.dailyThumbnailInfoPath),
   };
 }
 
@@ -246,6 +257,7 @@ export function mapEventRecording(item: EventRecordingItem, replay?: EventReplay
     windowFrom: item.windowFrom,
     windowTo: item.windowTo,
     thumbnailInfoPath: item.thumbnailInfoPath,
+    dailyThumbnailInfoPath: item.dailyThumbnailInfoPath ?? null,
     ...(replay && { replay }),
     ...(summary && { playbackSummary: summary }),
     id: item.eventId,

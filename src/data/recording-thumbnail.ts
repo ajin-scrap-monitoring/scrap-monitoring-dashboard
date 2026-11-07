@@ -10,11 +10,13 @@ export type ThumbnailStatus = "unsupported" | "unavailable" | "pending" | "faile
 export type ThumbnailTarget =
   | { kind: "clip"; id: string }
   | { kind: "daily"; id: string }
-  | { kind: "event"; eventId: string; path: string };
+  | { kind: "event"; eventId: string; path: string }
+  | { kind: "dailyDate"; date: string; path: string };
 
 export type ThumbnailInfo = {
-  kind: "clip" | "daily" | "event";
+  kind: "clip" | "daily" | "event" | "dailyDate";
   id: string;
+  recordingId?: string | null;
   clipId?: string | null;
   cameraId: string;
   status: ThumbnailStatus;
@@ -43,7 +45,7 @@ export function isValidThumbnailContentPath(kind: "clip" | "daily", id: string, 
 }
 
 export function parseThumbnailInfo(raw: unknown, target: ThumbnailTarget): ThumbnailInfo | null {
-  if (target.kind === "event" && raw === null) {
+  if ((target.kind === "event" || target.kind === "dailyDate") && raw === null) {
     return null;
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -52,11 +54,18 @@ export function parseThumbnailInfo(raw: unknown, target: ThumbnailTarget): Thumb
   const r = raw as Record<string, unknown>;
 
   let clipId: string | null = null;
+  let recordingId: string | null = null;
   if (target.kind === "clip") {
     if (r.clip_id !== target.id) throw new Error("Clip ID mismatch in thumbnail info.");
     clipId = target.id;
   } else if (target.kind === "daily") {
     if (r.recording_id !== target.id) throw new Error("Recording ID mismatch in thumbnail info.");
+    recordingId = target.id;
+  } else if (target.kind === "dailyDate") {
+    if (typeof r.recording_id !== "string" || !isCanonicalUuid(r.recording_id)) {
+      throw new Error("Daily date thumbnail info requires canonical UUID recording_id.");
+    }
+    recordingId = r.recording_id;
   } else {
     // target.kind === "event"
     if (typeof r.clip_id !== "string" || !isCanonicalUuid(r.clip_id)) {
@@ -76,8 +85,8 @@ export function parseThumbnailInfo(raw: unknown, target: ThumbnailTarget): Thumb
   }
 
   if (status === "ready") {
-    const expectedTargetKind = target.kind === "daily" ? "daily" : "clip";
-    const expectedId = target.kind === "daily" ? target.id : (clipId ?? "");
+    const expectedTargetKind = (target.kind === "daily" || target.kind === "dailyDate") ? "daily" : "clip";
+    const expectedId = (target.kind === "daily" || target.kind === "dailyDate") ? (recordingId ?? "") : (clipId ?? "");
     if (typeof r.content_path !== "string" || !isValidThumbnailContentPath(expectedTargetKind, expectedId, r.content_path)) {
       throw new Error("Ready thumbnail must have a valid content_path matching the expected path pattern.");
     }
@@ -127,8 +136,9 @@ export function parseThumbnailInfo(raw: unknown, target: ThumbnailTarget): Thumb
 
   return {
     kind: target.kind,
-    id: target.kind === "event" ? target.eventId : target.id,
+    id: target.kind === "event" ? target.eventId : target.kind === "dailyDate" ? recordingId! : target.id,
     ...(clipId !== null && { clipId }),
+    ...(recordingId !== null && { recordingId }),
     cameraId: r.camera_id,
     status,
     contentPath: status === "ready" && typeof r.content_path === "string" ? r.content_path : null,
@@ -168,6 +178,7 @@ export function thumbnailErrorNotice(status: number): string {
 export function formatThumbnailStatusText(
   info?: ThumbnailInfo | null,
   errorStatus?: number | null,
+  targetKind?: ThumbnailTarget["kind"],
 ): { text: string; role?: "alert" } {
   if (errorStatus) {
     return { text: thumbnailErrorNotice(errorStatus), role: "alert" };
@@ -176,7 +187,13 @@ export function formatThumbnailStatusText(
     return { text: "확인 중" };
   }
   if (info === null) {
-    return { text: "연결된 구간 파일 없음" };
+    return { text: targetKind === "dailyDate" ? "날짜 대표 이미지 없음" : "연결된 구간 파일 없음" };
+  }
+
+  const isDailyDate = info.kind === "dailyDate" || targetKind === "dailyDate";
+
+  if (info.status === "unavailable" && info.reasonCode === "RECORDING_BUSY") {
+    return { text: "녹화 중 생성 보류" };
   }
 
   switch (info.status) {
@@ -192,11 +209,13 @@ export function formatThumbnailStatusText(
         text: info.reasonCode ? `실패 (${info.reasonCode})` : "실패",
         role: "alert",
       };
-    case "ready":
+    case "ready": {
+      const prefix = isDailyDate ? "날짜 대표 이미지, " : "";
       if (info.representativeAt && info.timeBasis === "server_received_at") {
-        return { text: `서버 수신 기준 ${wallClock(info.representativeAt, true)}` };
+        return { text: `${prefix}서버 수신 기준 ${wallClock(info.representativeAt, true)}` };
       }
-      return { text: "시각 정보 없음" };
+      return { text: `${prefix}시각 정보 없음` };
+    }
   }
 }
 
@@ -204,8 +223,12 @@ export function getThumbnailAdminAction(
   isAdmin: boolean,
   info?: ThumbnailInfo | null,
   errorStatus?: number | null,
+  targetKind?: ThumbnailTarget["kind"],
 ): { canPrepare: boolean; isRetry: boolean } {
   if (!isAdmin) return { canPrepare: false, isRetry: false };
+  if (targetKind === "dailyDate" || info?.kind === "dailyDate") {
+    return { canPrepare: false, isRetry: false };
+  }
   // 준비 가능 여부는 정보 응답으로 확인된 경우에만 판단한다. 조회 중과 오류 상태에는 버튼을 표시하지 않는다.
   if (errorStatus || !info) return { canPrepare: false, isRetry: false };
   if (info.status === "failed") {

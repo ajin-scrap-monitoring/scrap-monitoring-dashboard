@@ -7,6 +7,7 @@ import {
   formatThumbnailStatusText,
   getThumbnailAdminAction,
   type ThumbnailInfo,
+  type ThumbnailTarget,
 } from "../data/recording-thumbnail";
 
 function cleanupText(daily: NonNullable<Recording["daily"]>) {
@@ -31,6 +32,7 @@ export function RecordingStatusDetails({
   thumbnailPreparing = false,
   onPrepareThumbnail,
   isAdmin = false,
+  targetKind,
 }: {
   recording: Recording;
   error?: string;
@@ -41,6 +43,7 @@ export function RecordingStatusDetails({
   thumbnailPreparing?: boolean;
   onPrepareThumbnail?: (retryFailed?: boolean) => void;
   isAdmin?: boolean;
+  targetKind?: ThumbnailTarget["kind"];
 }) {
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
@@ -54,8 +57,8 @@ export function RecordingStatusDetails({
   const failed = Boolean(error || exportFailed || recording.mediaStatus === "failed" || recording.mediaStatus === "blocked" || errorCode);
   const reason = error ?? (pending ? "최신 녹화 정보를 확인하고 있습니다." : recordingStatusReason(recording));
   const close = () => { setMode("closed"); trigger.current?.focus(); };
-  const thumbnailStatus = formatThumbnailStatusText(thumbnailInfo, thumbnailError);
-  const adminAction = getThumbnailAdminAction(isAdmin, thumbnailInfo, thumbnailError);
+  const thumbnailStatus = formatThumbnailStatusText(thumbnailInfo, thumbnailError, targetKind);
+  const adminAction = getThumbnailAdminAction(isAdmin, thumbnailInfo, thumbnailError, targetKind);
 
   useEffect(() => {
     if (!open) return;

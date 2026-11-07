@@ -255,6 +255,7 @@ export type Recording = {
   exportPath?: string | null;
   downloadReasonCode?: string | null;
   thumbnailInfoPath?: string | null;
+  dailyThumbnailInfoPath?: string | null;
   windowFrom?: string;
   windowTo?: string | null;
   codec: string;

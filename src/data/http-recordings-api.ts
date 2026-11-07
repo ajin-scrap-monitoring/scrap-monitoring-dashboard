@@ -406,7 +406,7 @@ export function createRecordingsApi({
     target: ThumbnailTarget,
     signal?: AbortSignal,
   ): Promise<ThumbnailInfo | null> => {
-    if (target.kind === "event") {
+    if (target.kind === "event" || target.kind === "dailyDate") {
       const response = await request<unknown>(target.path, { signal });
       return parseThumbnailInfo(response, target);
     }
@@ -422,7 +422,7 @@ export function createRecordingsApi({
     target: ThumbnailTarget,
     options?: { retryFailed?: boolean; signal?: AbortSignal },
   ): Promise<ThumbnailInfo> => {
-    if (target.kind === "event" || !isCanonicalUuid(target.id)) throw new Error("Canonical UUID is required for thumbnail preparation.");
+    if (target.kind === "event" || target.kind === "dailyDate" || !isCanonicalUuid(target.id)) throw new Error("Canonical UUID is required for thumbnail preparation.");
     const path = target.kind === "clip"
       ? `/api/v1/media/clips/${encodeURIComponent(target.id)}/thumbnail`
       : `/api/v2/recordings/daily/${encodeURIComponent(target.id)}/thumbnail`;
