@@ -359,15 +359,14 @@ UNCONFIRMED, FUTURE, MISSING, EXPIRED)와 `reasonCode`를 표시한다. 날짜 �
 Backend와 Media Service에 전달할 요청 항목을 관리한다. 제공되지 않는 값은 0, 정상 또는 synthetic
 값으로 보충하지 않는다.
 
-미해결 요청은 다음 15개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
+미해결 요청은 다음 13개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
 
 | ID | 항목 | 책임 | 상태 |
 | --- | --- | --- | --- |
-| Q-1 | Media 응답 지연과 간헐 504(썸네일, 날짜 녹화 상세, media-info) | Media Service | 원인 확인 대기 |
+| Q-1 | Media 응답 지연과 간헐 504(썸네일, 날짜 녹화 상세, media-info, 구간 파일 조회와 삭제) | Media Service | 원인 확인 대기 |
 | Q-2 | 날짜 녹화의 짧은 누락 반복과 실시간 frame 공백 | Media Service | 원인 확인 대기 |
 | Q-3 | 구간 파일 조각 경계 공백의 집계 기준 | Media Service | 대기 |
 | Q-4 | 실시간 영상의 촬영 시각 | Media Service | 대기 |
-| Q-5 | 썸네일 자동 준비와 구간 파일이 없는 수거의 대표 이미지 | Media Service, Backend | 협의 대기 |
 | Q-6 | Media image label과 실제 실행 source의 일치 | Media Service | 확인 대기 |
 | Q-7 | 녹화 파일 정보(codec, 해상도, frame rate)의 파일 완성 시점 값 | Media Service, Backend | 대기 |
 | Q-8 | 녹화 저장 위치와 저장 용량 정책 | Media Service, Backend | 대기 |
@@ -377,7 +376,6 @@ Backend와 Media Service에 전달할 요청 항목을 관리한다. 제공되�
 | Q-12 | 알림 실제 발송 | Backend, 운영 | 대기 |
 | Q-13 | 운영 배포 환경 설정 | Backend, 운영 | 대기 |
 | Q-14 | 미해결 요청의 담당과 예정 시점 | Backend | 대기 |
-| Q-15 | 새 이벤트 구간 파일의 길이 0 gap으로 인한 Backend 502 `MEDIA_RANGE_BASIS_MISMATCH` | Media Service, Backend | 원인 확인 대기 |
 
 ### 이력 및 녹화 영상의 일괄 협의 항목
 
