@@ -69,7 +69,8 @@ Backend는 장비 보고가 30초 이상 없으면 연결 상태를 UNKNOWN으�
 ## 현황 화면
 
 Backend 기준은 manifest의 revision이다. 현황 보조 조회는 5개(`fill-forecast`,
-`collection-summary`, `profiles`, `snapshot-with-alerts`, `layout`)이며 60초 간격으로 갱신한다.
+`collection-summary`, `profiles`, `snapshot-with-alerts`, `layout`)이며, 수거 요약, 예상 도달,
+활성 알림과 배치는 60초 간격으로 갱신하고 LiDAR 단면(`profiles`)은 약 1초 간격으로 갱신한다.
 활성 알림 조회 실패는 활성 알림 영역의 오류로 표시하고 나머지 보조 조회 실패는 해당 값만
 정보 없음으로 표시한다. 401과 403은 숨기지 않는다.
 
@@ -86,7 +87,7 @@ Backend 기준은 manifest의 revision이다. 현황 보조 조회는 5개(`fill
 | 영상 촬영 시각 | 제공 정보 없음 | 추가 계약 필요 | frame 촬영 시각의 출처와 전달 형식 |
 | 측정 영역 | 제공 정보 없음 | 추가 계약 필요 | 참고도 유지, 실측 좌표계와 센서 및 측정선 연결 |
 | 최근 24시간 적재율 | `/api/v2/monitoring/load-history` | 변환 사용 | [적재율 추이](#적재율-추이) |
-| LiDAR 1, LiDAR 2 | `/api/v2/monitoring/profiles` | 변환 사용 | [LiDAR 높이 곡선](#lidar-높이-곡선) |
+| LiDAR 1, LiDAR 2 | `/api/v2/monitoring/profiles` | 변환 사용 | 화면 활성 중 약 1초 간격 갱신, 이전 스캔 교체, [LiDAR 높이 곡선](#lidar-높이-곡선) |
 | 활성 알림 | `/api/v2/monitoring/snapshot-with-alerts` | 변환 사용 | [활성 알림](#활성-알림) |
 | 센서 상태 | `deviceStatus.snapshot.sensors` | 변환 사용 | `lidar-a`는 LiDAR 1, `lidar-b`는 LiDAR 2로 표시하며 원래 ID와 상태 보존, scan 시각으로 latency를 추정하지 않음 |
 | 엣지 및 카메라 상태 | `connection_state`, `effective_state`, `monitoring.camera-status` | 변환 사용 | 엣지는 snapshot의 보고 상태, 카메라는 [카메라 상태](#카메라-상태)의 독립 관측 사용 |
