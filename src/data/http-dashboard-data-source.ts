@@ -56,6 +56,7 @@ const REQUEST_TIMEOUT_MS = 10_000;
 // 90일 적재율 이력은 약 11초가 걸리며 Backend의 처리 상한은 20초이다.
 const LOAD_HISTORY_TIMEOUT_MS = 25_000;
 const MONITORING_REFRESH_MS = 60_000;
+const LIDAR_PROFILE_REFRESH_MS = 1000;
 const notificationFailureMessage = "알림을 불러오지 못했습니다.";
 export const loadHistoryFailureMessage = "적재율 추이를 불러오지 못했습니다.";
 const collectionHistoryFailureMessage = "최근 수거 기록을 불러오지 못했습니다.";
@@ -113,7 +114,6 @@ function sinceCollection(completedAt: string | null, serverTime: string) {
 type CollectionInsights = {
   collection: CollectionSummary;
   forecast: FillForecast | null;
-  profiles: LidarProfile[] | null;
   layout: MeasurementLayoutStatus | null;
 };
 
@@ -132,7 +132,13 @@ function applyForecast(summary: MonitoringSummary, forecast: FillForecast | null
 
 type SnapshotAlerts = { snapshot: NonNullable<DashboardData["monitoring"]["v2"]>; alerts: ActiveFillAlerts };
 
-function applyCollectionInsights(monitoring: DashboardData["monitoring"], insights: CollectionInsights | null, serverTime: string, paired: SnapshotAlerts | null) {
+function applyCollectionInsights(
+  monitoring: DashboardData["monitoring"],
+  insights: CollectionInsights | null,
+  serverTime: string,
+  paired: SnapshotAlerts | null,
+  profiles: LidarProfile[] | null = null,
+) {
   const measuring = monitoring.v2?.dataState === "FRESH";
   const { summary } = monitoring;
   applyForecast(summary, insights?.forecast ?? null, serverTime, measuring);
@@ -140,7 +146,7 @@ function applyCollectionInsights(monitoring: DashboardData["monitoring"], insigh
   summary.timeSinceCollection = sinceCollection(collection?.lastActivityAt ?? null, serverTime);
   summary.averageCollectionCycle = !collection ? missingValue
     : collection.averageCycleSeconds === null ? "자료 부족" : durationText(collection.averageCycleSeconds);
-  monitoring.lidarProfiles = measuring && insights?.profiles ? insights.profiles : [];
+  monitoring.lidarProfiles = measuring && profiles ? profiles : [];
   monitoring.measurementLayout = insights ? insights.layout : undefined;
   const sameScope = paired && paired.snapshot.siteId === monitoring.v2?.siteId && paired.snapshot.edgeId === monitoring.v2?.edgeId;
   const reported = sameScope ? paired.alerts : null;
@@ -356,6 +362,9 @@ export function createHttpDashboardDataSource({
   let notificationRevision = 0;
   let notificationRefreshRequired = false;
   let collectionInsights: CollectionInsights | null = null;
+  let lidarProfilesState: LidarProfile[] | null = null;
+  let lidarProfilesController: AbortController | null = null;
+  let lidarProfilesTimer: ReturnType<typeof setTimeout> | undefined;
   let snapshotAlerts: SnapshotAlerts | null = null;
   let snapshotAlertsAreaState: DataAreaState = { status: "loading" };
   let closeMonitoringStream: (() => void) | null = null;
@@ -406,7 +415,7 @@ export function createHttpDashboardDataSource({
       monitoring.videoStatus = "available";
     }
     if (monitoring.v2) {
-      applyCollectionInsights(monitoring, collectionInsights, snapshot.serverTime, snapshotAlerts);
+      applyCollectionInsights(monitoring, collectionInsights, snapshot.serverTime, snapshotAlerts, lidarProfilesState);
       monitoring.activeAlertsAreaState = snapshotAlertsAreaState;
     }
     if (monitoring.v2) {
@@ -542,7 +551,7 @@ export function createHttpDashboardDataSource({
     }
     if (signal?.aborted || sequence !== snapshotAlertsSequence || !currentData?.monitoring.v2) return;
     currentData.monitoring.activeAlertsAreaState = snapshotAlertsAreaState;
-    applyCollectionInsights(currentData.monitoring, collectionInsights, currentData.monitoring.v2.serverTime, snapshotAlerts);
+    applyCollectionInsights(currentData.monitoring, collectionInsights, currentData.monitoring.v2.serverTime, snapshotAlerts, lidarProfilesState);
     publishNotifications();
   };
 
@@ -553,7 +562,7 @@ export function createHttpDashboardDataSource({
     void refreshSnapshotAlerts(signal);
   };
 
-  const getCollectionSummary = async (signal?: AbortSignal) => {
+  const getCollectionSummary = async (signal?: AbortSignal): Promise<CollectionInsights> => {
     collectionRequestedAt = performance.now();
     const optional = <T,>(operation: Promise<T>) => operation.catch((error: unknown) => {
       if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError") || isAuthorizationError(error)) throw error;
@@ -561,13 +570,63 @@ export function createHttpDashboardDataSource({
     });
     // 활성 알림은 자기 영역 상태로 따로 반영하므로 현황 본문 표시 조건(이 Promise)에 넣지 않는다.
     void refreshSnapshotAlerts(signal);
-    const [collection, forecast, profiles, layout] = await Promise.all([
+    const [collection, forecast, layout] = await Promise.all([
       request<unknown>(pitPath("/api/v2/monitoring/collection-summary"), { signal }).then((value) => parseCollectionSummaryV2(value, pitId)),
       optional(request<unknown>(pitPath("/api/v2/monitoring/fill-forecast"), { signal }).then((value) => parseFillForecastV2(value, pitId))),
-      optional(request<unknown>(pitPath("/api/v2/monitoring/profiles"), { signal }).then((value) => parseLidarProfilesV2(value, pitId))),
       optional(request<unknown>(pitPath("/api/v2/monitoring/layout"), { signal }).then((value) => parseMeasurementLayoutV2(value, pitId))),
     ]);
-    return { collection, forecast, profiles, layout };
+    return { collection, forecast, layout };
+  };
+
+  const lidarProfilesActive = () => backendContract && useV2Monitoring && monitoringDetailsRefCount > 0
+    && (typeof document === "undefined" || document.visibilityState !== "hidden");
+
+  const applyLidarProfiles = (profiles: LidarProfile[] | null) => {
+    lidarProfilesState = profiles;
+    if (!currentData?.monitoring) return;
+    const before = insightsSignature(currentData.monitoring);
+    currentData.monitoring.lidarProfiles = currentData.monitoring.v2?.dataState === "FRESH" && profiles ? profiles : [];
+    if (before !== insightsSignature(currentData.monitoring)) publishNotifications();
+  };
+
+  // 단면 조회는 한 번에 하나만 보내고 응답 뒤 다음 요청을 예약한다. 루프를 멈추면 진행 중 요청을 abort하고 그 응답은 적용하지 않는다.
+  const requestLidarProfiles = async (controller: AbortController) => {
+    const startedAt = performance.now();
+    const current = () => controller === lidarProfilesController && !controller.signal.aborted;
+    try {
+      const profiles = parseLidarProfilesV2(await request<unknown>(pitPath("/api/v2/monitoring/profiles"), { signal: controller.signal }), pitId);
+      if (!current()) return;
+      applyLidarProfiles(profiles);
+    } catch (error) {
+      if (!current()) return;
+      if (isAuthorizationError(error)) {
+        publishAuthorizationError(error);
+        return;
+      }
+      applyLidarProfiles(null);
+    }
+    if (!current() || !lidarProfilesActive()) return;
+    lidarProfilesTimer = setTimeout(() => {
+      lidarProfilesTimer = undefined;
+      if (current() && lidarProfilesActive()) void requestLidarProfiles(controller);
+    }, Math.max(0, LIDAR_PROFILE_REFRESH_MS - (performance.now() - startedAt)));
+  };
+
+  const stopLidarProfilesLoop = () => {
+    if (lidarProfilesTimer !== undefined) clearTimeout(lidarProfilesTimer);
+    lidarProfilesTimer = undefined;
+    lidarProfilesController?.abort();
+    lidarProfilesController = null;
+  };
+
+  // 멈춰 있던 동안의 단면은 최신 관측이 아니므로 새 루프의 첫 응답 전까지 비운다.
+  const startLidarProfilesLoop = (): Promise<void> => {
+    stopLidarProfilesLoop();
+    if (!lidarProfilesActive()) return Promise.resolve();
+    applyLidarProfiles(null);
+    const controller = new AbortController();
+    lidarProfilesController = controller;
+    return requestLidarProfiles(controller);
   };
 
   const requestV2LoadHistory = async (from: string, to: string, signal?: AbortSignal) => {
@@ -624,7 +683,7 @@ export function createHttpDashboardDataSource({
         lastCollectionSuccessAt = performance.now();
         collectionInsights = summary;
         const before = insightsSignature(currentData.monitoring);
-        applyCollectionInsights(currentData.monitoring, summary, currentData.monitoring.v2.serverTime, snapshotAlerts);
+        applyCollectionInsights(currentData.monitoring, summary, currentData.monitoring.v2.serverTime, snapshotAlerts, lidarProfilesState);
         if (before !== insightsSignature(currentData.monitoring) || currentData.monitoring.completedCollectionState?.status === "error") {
           currentData.monitoring.completedCollectionState = readyState;
           publishNotifications();
@@ -800,9 +859,11 @@ export function createHttpDashboardDataSource({
     if (typeof document === "undefined" || monitoringDetailsRefCount === 0) return;
     if (document.visibilityState === "hidden") {
       stopMonitoringDetailsTimer();
+      stopLidarProfilesLoop();
     } else {
       if (monitoringDetailsController) {
         queryMonitoringDetailsOnResume(monitoringDetailsController.signal);
+        void startLidarProfilesLoop();
       }
       startMonitoringDetailsTimer();
     }
@@ -859,7 +920,7 @@ export function createHttpDashboardDataSource({
         monitoring.unreadNotificationCount = null;
       }
       if (monitoring.v2 && collectionInsights) {
-        applyCollectionInsights(monitoring, collectionInsights, snapshot.serverTime, snapshotAlerts);
+        applyCollectionInsights(monitoring, collectionInsights, snapshot.serverTime, snapshotAlerts, lidarProfilesState);
       }
       updateLoadOneHourAgo(monitoring);
 
@@ -1020,20 +1081,20 @@ export function createHttpDashboardDataSource({
       }
       const signal = monitoringDetailsController!.signal;
 
-      let ready: Promise<void>;
+      let collectionReady: Promise<void>;
       if (backendContract) {
         const elapsed = performance.now() - lastCollectionSuccessAt;
         if (elapsed < MONITORING_REFRESH_MS) {
-          ready = Promise.resolve();
+          collectionReady = Promise.resolve();
         } else {
-          ready = (async () => {
+          collectionReady = (async () => {
             try {
               const summary = await getCollectionSummary(signal);
               if (signal.aborted) return;
               lastCollectionSuccessAt = performance.now();
               collectionInsights = summary;
               if (currentData?.monitoring) {
-                applyCollectionInsights(currentData.monitoring, summary, currentData.monitoring.v2?.serverTime ?? "", snapshotAlerts);
+                applyCollectionInsights(currentData.monitoring, summary, currentData.monitoring.v2?.serverTime ?? "", snapshotAlerts, lidarProfilesState);
                 currentData.monitoring.completedCollectionState = readyState;
                 publishNotifications();
               }
@@ -1049,8 +1110,12 @@ export function createHttpDashboardDataSource({
           })();
         }
       } else {
-        ready = Promise.resolve();
+        collectionReady = Promise.resolve();
       }
+
+      const profileReady = lidarProfilesController ? Promise.resolve() : startLidarProfilesLoop();
+
+      const ready = Promise.all([collectionReady, profileReady]).then(() => undefined);
 
       const loadHistoryElapsed = performance.now() - lastLoadHistorySuccessAt;
       if (loadHistoryElapsed >= MONITORING_REFRESH_MS) {
@@ -1106,6 +1171,7 @@ export function createHttpDashboardDataSource({
         monitoringDetailsRefCount -= 1;
         if (monitoringDetailsRefCount === 0) {
           stopMonitoringDetailsTimer();
+          stopLidarProfilesLoop();
           if (typeof document !== "undefined") {
             document.removeEventListener("visibilitychange", handleMonitoringDetailsVisibility);
           }

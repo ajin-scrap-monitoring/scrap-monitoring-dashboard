@@ -2265,5 +2265,310 @@ describe("HTTP 대시보드 데이터 소스", () => {
       }
     });
   });
+
+  describe("LiDAR 단면 1초 갱신", () => {
+    test("1초 간격 갱신과 배열 교체, ready가 첫 프로필 요청을 기다림, 수거 요약은 여전히 60초 주기", async () => {
+      vi.useFakeTimers();
+      try {
+        let profileCount = 0;
+        const fetchImplementation = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/profiles") {
+            profileCount += 1;
+            const currentCount = profileCount;
+            return Promise.resolve(new Response(JSON.stringify({
+              pitId: "pit-01",
+              profiles: [
+                {
+                  sensorId: "lidar-a",
+                  measuredAt: `2026-11-08T00:00:0${currentCount}Z`,
+                  samples: [{ positionRatio: 0.1 * currentCount, height: 100 * currentCount, valid: true }],
+                },
+                {
+                  sensorId: "lidar-b",
+                  measuredAt: `2026-11-08T00:00:0${currentCount}Z`,
+                  samples: [{ positionRatio: 0.1 * currentCount, height: 200 * currentCount, valid: true }],
+                },
+              ],
+            }), { status: 200, headers: { "Content-Type": "application/json" } }));
+          }
+          return undefined;
+        });
+
+        const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((data) => { latestData = data; });
+        await source.getDashboardData();
+
+        const summaryCalls = () => fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v2/monitoring/collection-summary").length;
+        const profileCalls = () => fetchImplementation.mock.calls.filter(([input]) => inputUrl(input).pathname === "/api/v2/monitoring/profiles").length;
+
+        const activation = source.activateMonitoringDetails!();
+        expect(profileCalls()).toBe(1);
+        expect(summaryCalls()).toBe(1);
+
+        await activation.ready;
+        expect(latestData?.monitoring.lidarProfiles).toHaveLength(2);
+        expect(latestData?.monitoring.lidarProfiles[0]?.samples[0]?.height).toBe(1); // 100cm = 1m
+
+        // 1초 경과 -> 2번째 프로필 요청 완료 및 배열 교체
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(profileCalls()).toBe(2);
+        expect(summaryCalls()).toBe(1); // 수거 요약은 여전히 1회
+        expect(latestData?.monitoring.lidarProfiles[0]?.samples[0]?.height).toBe(2); // 200cm = 2m
+
+        // 2초 경과 -> 3번째 프로필 요청 완료
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(profileCalls()).toBe(3);
+        expect(summaryCalls()).toBe(1);
+
+        // 60초 경과 -> 수거 요약 2번째 호출
+        await vi.advanceTimersByTimeAsync(58_000);
+        expect(summaryCalls()).toBe(2);
+
+        activation.release();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("느린 응답 동안 중첩 요청이 없고 응답 직후 다음 요청이 시작된다", async () => {
+      vi.useFakeTimers();
+      try {
+        let resolveProfile: ((res: Response) => void) | null = null;
+        let profileCallsCount = 0;
+        const fetchImplementation = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/profiles") {
+            profileCallsCount += 1;
+            return new Promise<Response>((resolve) => {
+              resolveProfile = resolve;
+            });
+          }
+          return undefined;
+        });
+
+        const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+        await source.getDashboardData();
+
+        const activation = source.activateMonitoringDetails!();
+        expect(profileCallsCount).toBe(1);
+
+        // 1.5초(1500ms) 경과 중에도 아직 이전 응답이 끝나지 않았으므로 중첩 요청 없음
+        await vi.advanceTimersByTimeAsync(1500);
+        expect(profileCallsCount).toBe(1);
+
+        // 이전 응답 resolve (1.5초 걸림) -> 응답이 1초보다 늦었으므로 0ms 딜레이로 즉시 다음 요청 시작
+        resolveProfile!(new Response(JSON.stringify({
+          pitId: "pit-01",
+          profiles: [],
+        }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+        await vi.advanceTimersByTimeAsync(0);
+        expect(profileCallsCount).toBe(2);
+
+        activation.release();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("release 뒤와 재활성화 뒤 늦은 응답은 적용되지 않는다", async () => {
+      vi.useFakeTimers();
+      try {
+        let resolveProfile: ((res: Response) => void) | null = null;
+        const fetchImplementation = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/profiles") {
+            return new Promise<Response>((resolve) => {
+              resolveProfile = resolve;
+            });
+          }
+          return undefined;
+        });
+
+        const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((data) => { latestData = data; });
+        await source.getDashboardData();
+
+        const act1 = source.activateMonitoringDetails!();
+        // 아직 프로필 응답 미해결 상태에서 release
+        act1.release();
+
+        // 늦은 응답 도착
+        resolveProfile!(new Response(JSON.stringify({
+          pitId: "pit-01",
+          profiles: [
+            { sensorId: "lidar-a", measuredAt: "2026-11-08T00:00:00Z", samples: [{ positionRatio: 0.5, height: 500, valid: true }] },
+          ],
+        }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+        await vi.advanceTimersByTimeAsync(100);
+        // release 뒤 늦은 응답은 적용되지 않아 빈 배열 유지
+        expect(latestData?.monitoring.lidarProfiles).toHaveLength(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("document hidden이면 루프를 멈추고 visible 복귀 시 즉시 1회 조회 후 재개한다", async () => {
+      vi.useFakeTimers();
+      try {
+        let profileCallsCount = 0;
+        const fetchImplementation = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/profiles") {
+            profileCallsCount += 1;
+            return Promise.resolve(new Response(JSON.stringify({
+              pitId: "pit-01",
+              profiles: [],
+            }), { status: 200, headers: { "Content-Type": "application/json" } }));
+          }
+          return undefined;
+        });
+
+        const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+        await source.getDashboardData();
+
+        const activation = source.activateMonitoringDetails!();
+        await activation.ready;
+        expect(profileCallsCount).toBe(1);
+
+        // hidden 전환
+        Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true, writable: true });
+        document.dispatchEvent(new Event("visibilitychange"));
+
+        // hidden 동안 시간 경과해도 추가 요청 없음
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(profileCallsCount).toBe(1);
+
+        // visible 복귀
+        Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true, writable: true });
+        document.dispatchEvent(new Event("visibilitychange"));
+
+        // 즉시 1회 조회됨
+        expect(profileCallsCount).toBe(2);
+
+        // 이후 1초 뒤 재개
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(profileCallsCount).toBe(3);
+
+        activation.release();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("요청 중 hidden과 visible이 바뀌거나 release 직후 재활성화되어도 이전 응답은 버리고 새 루프가 이어진다", async () => {
+      vi.useFakeTimers();
+      try {
+        const pending: Array<{ resolve: (response: Response) => void; signal?: AbortSignal | null }> = [];
+        const profileBody = (height: number) => new Response(JSON.stringify({
+          pitId: "pit-01",
+          profiles: [{ sensorId: "lidar-a", measuredAt: "2026-11-08T00:00:00Z", samples: [{ positionRatio: 0.5, height, valid: true }] }],
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+        const fetchImplementation = createV2ContractFetch((url, init) => {
+          if (url.pathname === "/api/v2/monitoring/profiles") {
+            return new Promise<Response>((resolve) => { pending.push({ resolve, signal: init?.signal }); });
+          }
+          return undefined;
+        });
+        const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((data) => { latestData = data; });
+        await source.getDashboardData();
+
+        const first = source.activateMonitoringDetails!();
+        expect(pending).toHaveLength(1);
+        Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true, writable: true });
+        document.dispatchEvent(new Event("visibilitychange"));
+        Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true, writable: true });
+        document.dispatchEvent(new Event("visibilitychange"));
+        expect(pending).toHaveLength(2);
+        expect(pending[0].signal?.aborted).toBe(true);
+        pending[0].resolve(profileBody(900));
+        pending[1].resolve(profileBody(100));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(latestData?.monitoring.lidarProfiles[0]?.samples[0]?.height).toBe(1);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(pending).toHaveLength(3);
+
+        first.release();
+        expect(pending[2].signal?.aborted).toBe(true);
+        const second = source.activateMonitoringDetails!();
+        expect(pending).toHaveLength(4);
+        pending[2].resolve(profileBody(900));
+        pending[3].resolve(profileBody(300));
+        await second.ready;
+        expect(latestData?.monitoring.lidarProfiles[0]?.samples[0]?.height).toBe(3);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(pending).toHaveLength(5);
+        second.release();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("프로필 조회가 401이면 기존 인증 만료 처리 후 루프를 멈춘다", async () => {
+      vi.useFakeTimers();
+      try {
+        let profileCalls = 0;
+        const fetchImplementation = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/profiles") {
+            profileCalls += 1;
+            return Promise.resolve(new Response(JSON.stringify({ detail: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } }));
+          }
+          return undefined;
+        });
+        const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+        await source.getDashboardData();
+        const activation = source.activateMonitoringDetails!();
+        await activation.ready;
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(profileCalls).toBe(1);
+        activation.release();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("프로필 조회 실패(인증 오류 제외)는 프로필을 비운다", async () => {
+      vi.useFakeTimers();
+      try {
+        let shouldFail = false;
+        const fetchImplementation = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/profiles") {
+            if (shouldFail) {
+              return Promise.resolve(new Response(JSON.stringify({ detail: "Internal error" }), { status: 500, headers: { "Content-Type": "application/json" } }));
+            }
+            return Promise.resolve(new Response(JSON.stringify({
+              pitId: "pit-01",
+              profiles: [
+                { sensorId: "lidar-a", measuredAt: "2026-11-08T00:00:00Z", samples: [{ positionRatio: 0.5, height: 500, valid: true }] },
+              ],
+            }), { status: 200, headers: { "Content-Type": "application/json" } }));
+          }
+          return undefined;
+        });
+
+        const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((data) => { latestData = data; });
+        await source.getDashboardData();
+
+        const activation = source.activateMonitoringDetails!();
+        await activation.ready;
+        expect(latestData?.monitoring.lidarProfiles).toHaveLength(2);
+
+        // 다음 요청에서 500 실패
+        shouldFail = true;
+        await vi.advanceTimersByTimeAsync(1000);
+
+        // 프로필이 비워짐
+        expect(latestData?.monitoring.lidarProfiles).toEqual([]);
+
+        activation.release();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
 });
 
