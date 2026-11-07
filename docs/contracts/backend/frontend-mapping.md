@@ -287,7 +287,7 @@ v2 경보와 수거 판단 목록(`/api/v2/monitoring/alerts`, `collection-event
 | 보관 만료 | 날짜 녹화의 `expires_at`, `status` | 변환 사용 | `status`가 deleted 또는 expired면 "삭제됨" 또는 "만료됨" 표시, 이벤트는 `parts`의 날짜별 요약 목록(`view=summary`)에서 찾은 모든 날짜 녹화 중 가장 빠른 만료를 사용하며 하나라도 확인하지 못하면 정보 없음 |
 | codec, 해상도, frame rate | `/api/v2/recordings/daily/{recording_id}/media-info`, `/api/v1/media/clips/{clip_id}/media-info` | 직접 사용 | 날짜 녹화는 file 정보와 segments(상세 창/title), 이벤트는 export 완료 후 clip media-info 연동 |
 | 이벤트 구간 용량과 MP4 | `GET/POST /api/v2/recordings/events/{event_id}/exports`, `GET statusPath` | 직접 사용 | 서버 조회 복구와 명시 준비 및 재시도, 응답 requestId 및 statusPath 사용 |
-| 미리보기 썸네일 | `/api/v2/recordings/daily/{id}/thumbnail-info`, `/api/v2/recordings/events/{event_id}/thumbnail-info`, `/api/v1/media/clips/{clipId}/thumbnail-info` | 직접 사용 | 완료 날짜(ready MP4)와 `thumbnailInfoPath`가 있는 이벤트 녹화에 thumbnail-info를 조회하고(없으면 기존 clipId 흐름 유지), ready 시 content_path 이미지를 기존 썸네일 자리와 재생 poster에 연결 |
+| 미리보기 썸네일 | `/api/v2/recordings/daily/{id}/thumbnail-info`, `/api/v2/recordings/daily/by-date/{recording_date}/thumbnail-info`, `/api/v2/recordings/events/{event_id}/thumbnail-info`, `/api/v1/media/clips/{clipId}/thumbnail-info` | 직접 사용 | 날짜 녹화(recording, finalizing, closed, failed이며 expired와 deleted 제외) 및 이벤트 녹화 썸네일 조회, 이벤트 녹화의 `dailyThumbnailInfoPath` 우선 조회 및 클립 미대체, ready 시 content_path 이미지를 기존 썸네일 자리와 재생 poster에 연결, `RECORDING_BUSY` 보류 폴링 재조회와 준비 버튼 미제공 |
 
 날짜 녹화 목록은 `GET /api/v2/recordings/daily`에 `view=summary`를 전달해 요청하며
 `next_cursor` 페이징 시에도 같은 파라미터를 유지한다. 목록 응답의 `view`가 `"summary"`이면

@@ -237,3 +237,75 @@ describe("이벤트 썸네일 경로 파서(thumbnailInfoPath)", () => {
     expect(recording.thumbnailInfoPath).toBe(validPath);
   });
 });
+
+describe("날짜 대표 이미지 경로(dailyThumbnailInfoPath) 검증", () => {
+  const eventId = "evt-20261108-001";
+  const validDailyPath = "/api/v2/recordings/daily/by-date/2026-11-08/thumbnail-info";
+
+  test("정상 경로는 그대로 보존되고 mapEventRecording으로 전달된다", () => {
+    const item = eventRecordingItem(eventRecordingFixture({ eventId, dailyThumbnailInfoPath: validDailyPath }));
+    expect(item.dailyThumbnailInfoPath).toBe(validDailyPath);
+    const recording = mapEventRecording(item);
+    expect(recording.dailyThumbnailInfoPath).toBe(validDailyPath);
+  });
+
+  test("dailyThumbnailInfoPath가 없거나 null이면 null로 보존한다", () => {
+    const itemNull = eventRecordingItem(eventRecordingFixture({ eventId, dailyThumbnailInfoPath: null }));
+    expect(itemNull.dailyThumbnailInfoPath).toBeNull();
+    expect(mapEventRecording(itemNull).dailyThumbnailInfoPath).toBeNull();
+
+    const fixtureWithout = eventRecordingFixture({ eventId });
+    delete (fixtureWithout as Record<string, unknown>).dailyThumbnailInfoPath;
+    const itemUndefined = eventRecordingItem(fixtureWithout);
+    expect(itemUndefined.dailyThumbnailInfoPath).toBeNull();
+    expect(mapEventRecording(itemUndefined).dailyThumbnailInfoPath).toBeNull();
+  });
+
+  test("query나 fragment가 포함된 경로는 null로 처리한다", () => {
+    const withQuery = "/api/v2/recordings/daily/by-date/2026-11-08/thumbnail-info?camera_id=cam-1";
+    const item = eventRecordingItem(eventRecordingFixture({ eventId, dailyThumbnailInfoPath: withQuery }));
+    expect(item.dailyThumbnailInfoPath).toBeNull();
+
+    const withFragment = "/api/v2/recordings/daily/by-date/2026-11-08/thumbnail-info#fragment";
+    const itemFrag = eventRecordingItem(eventRecordingFixture({ eventId, dailyThumbnailInfoPath: withFragment }));
+    expect(itemFrag.dailyThumbnailInfoPath).toBeNull();
+  });
+
+  test("잘못된 달력 날짜는 null로 처리한다", () => {
+    for (const badDate of ["2026-02-30", "2026-13-01", "2026-11-32", "2026-00-01", "not-a-date"]) {
+      const path = `/api/v2/recordings/daily/by-date/${badDate}/thumbnail-info`;
+      const item = eventRecordingItem(eventRecordingFixture({ eventId, dailyThumbnailInfoPath: path }));
+      expect(item.dailyThumbnailInfoPath).toBeNull();
+    }
+  });
+
+  test("외부 URL 및 protocol-relative 경로는 null로 처리한다", () => {
+    const external = "https://example.com/api/v2/recordings/daily/by-date/2026-11-08/thumbnail-info";
+    const item = eventRecordingItem(eventRecordingFixture({ eventId, dailyThumbnailInfoPath: external }));
+    expect(item.dailyThumbnailInfoPath).toBeNull();
+
+    const protoRelative = "//api/v2/recordings/daily/by-date/2026-11-08/thumbnail-info";
+    const itemProto = eventRecordingItem(eventRecordingFixture({ eventId, dailyThumbnailInfoPath: protoRelative }));
+    expect(itemProto.dailyThumbnailInfoPath).toBeNull();
+  });
+
+  test("상세(eventReplay)의 event도 동일하게 처리된다", () => {
+    const baseReplay = {
+      source: "DAILY_RECORDING",
+      state: "AVAILABLE",
+      asOf: "2026-10-12T02:00:00Z",
+      effectiveTo: "2026-10-12T01:00:30Z",
+      requestedSeconds: 0,
+      coveredSeconds: 0,
+      playbackSeconds: 0,
+      parts: [],
+      unavailableIntervals: [],
+      reasonCodes: [],
+      event: eventRecordingFixture({ eventId, dailyThumbnailInfoPath: validDailyPath }),
+    };
+    const { item, replay } = eventReplay(baseReplay, eventId);
+    expect(item.dailyThumbnailInfoPath).toBe(validDailyPath);
+    const recording = mapEventRecording(item, replay);
+    expect(recording.dailyThumbnailInfoPath).toBe(validDailyPath);
+  });
+});

@@ -22,7 +22,7 @@ export type ThumbnailCacheEntry = {
 };
 
 export function targetKey(target: ThumbnailTarget): string {
-  if (target.kind === "event") {
+  if (target.kind === "event" || target.kind === "dailyDate") {
     return target.path;
   }
   return `${target.kind}:${target.id}`;
@@ -62,11 +62,20 @@ export function resolveThumbnailTarget(
   if (recording.source === "daily" || recording.daily) {
     const daily = recording.daily;
     if (!daily) return null;
-    if (daily.status === "recording" || daily.status === "finalizing") return null;
-    if (daily.exportState !== "ready") return null;
+    if (!["recording", "finalizing", "closed", "failed"].includes(daily.status)) return null;
     const id = daily.id ?? recording.id;
     if (!isCanonicalUuid(id)) return null;
     return { kind: "daily", id };
+  }
+
+  if (recording.dailyThumbnailInfoPath) {
+    const match = /^\/api\/v2\/recordings\/daily\/by-date\/(\d{4}-\d{2}-\d{2})\/thumbnail-info$/.exec(recording.dailyThumbnailInfoPath);
+    const date = match ? match[1] : "";
+    return {
+      kind: "dailyDate",
+      date,
+      path: recording.dailyThumbnailInfoPath,
+    };
   }
 
   if (recording.thumbnailInfoPath) {
@@ -144,6 +153,10 @@ export function useRecordingThumbnails({
     if (target.kind === "event") {
       return Boolean(info.clipId && isValidThumbnailContentPath("clip", info.clipId, info.contentPath));
     }
+    if (target.kind === "dailyDate") {
+      const recId = info.recordingId ?? info.id;
+      return Boolean(recId && isCanonicalUuid(recId) && isValidThumbnailContentPath("daily", recId, info.contentPath));
+    }
     return isValidThumbnailContentPath(target.kind, target.id, info.contentPath);
   };
 
@@ -212,7 +225,11 @@ export function useRecordingThumbnails({
         }
 
         const cached = store.get(key);
-        if (cached?.info !== undefined && cached.info?.status !== "pending") {
+        const isPolling = cached?.info && (
+          cached.info.status === "pending" ||
+          (cached.info.status === "unavailable" && cached.info.reasonCode === "RECORDING_BUSY")
+        );
+        if (cached?.info !== undefined && !isPolling) {
           continue;
         }
         // 404, 410, 422 같은 대상 오류만 재사용한다. 5xx와 통신 오류는 선택 변경이나 페이지 이동으로 effect가 다시 실행될 때 재조회한다.
@@ -243,7 +260,11 @@ export function useRecordingThumbnails({
             };
           });
 
-          if (info && info.status === "pending" && pollCount < PENDING_POLL_INTERVALS_MS.length) {
+          const shouldPoll = info && (
+            info.status === "pending" ||
+            (info.status === "unavailable" && info.reasonCode === "RECORDING_BUSY")
+          );
+          if (shouldPoll && pollCount < PENDING_POLL_INTERVALS_MS.length) {
             const delay = PENDING_POLL_INTERVALS_MS[pollCount];
             const timer = setTimeout(() => {
               activeTimers.delete(timer);
@@ -311,7 +332,7 @@ export function useRecordingThumbnails({
   }, [dataSource, targets, targetsKey, store, pollRevision, selectedTargetKey]);
 
   const prepareSelectedThumbnail = useCallback(async (retryFailed = false) => {
-    if (!dataSource?.prepareThumbnail || !selectedTarget || isPreparing) return;
+    if (!dataSource?.prepareThumbnail || !selectedTarget || selectedTarget.kind === "dailyDate" || isPreparing) return;
 
     const key = targetKey(selectedTarget);
     const cachedEntry = store.get(key);
@@ -370,13 +391,8 @@ export function useRecordingThumbnails({
     const key = targetKey(target);
     const entry = thumbnails[key];
     if (!entry?.info || entry.info.status !== "ready" || entry.imageFailed) return undefined;
-    const path = entry.info.contentPath;
-    if (!path) return undefined;
-    const isValid = target.kind === "event"
-      ? Boolean(entry.info.clipId && isValidThumbnailContentPath("clip", entry.info.clipId, path))
-      : isValidThumbnailContentPath(target.kind, target.id, path);
-    if (!isValid) return undefined;
-    return path;
+    if (!isReadyContentPath(target, entry.info)) return undefined;
+    return entry.info.contentPath ?? undefined;
   }, [knownClipIds, thumbnails]);
 
   return {

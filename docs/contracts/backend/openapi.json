@@ -1698,6 +1698,7 @@
                 "enum": [
                   "NOT_PREPARED",
                   "SOURCE_NOT_READY",
+                  "RECORDING_BUSY",
                   "DAILY_MP4_REQUIRED",
                   "SOURCE_UNAVAILABLE",
                   "SOURCE_CHANGED",
@@ -3088,6 +3089,7 @@
                 "enum": [
                   "NOT_PREPARED",
                   "SOURCE_NOT_READY",
+                  "RECORDING_BUSY",
                   "DAILY_MP4_REQUIRED",
                   "SOURCE_UNAVAILABLE",
                   "SOURCE_CHANGED",
@@ -3517,6 +3519,18 @@
             ],
             "title": "Category",
             "type": "string"
+          },
+          "dailyThumbnailInfoPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shared KST occurrence-date thumbnail lookup; never prepares media",
+            "title": "Dailythumbnailinfopath"
           },
           "eventId": {
             "title": "Eventid",
@@ -14436,6 +14450,208 @@
         ]
       }
     },
+    "/api/v2/recordings/daily/by-date/{recording_date}/thumbnail-info": {
+      "get": {
+        "description": "Share an existing date image across event categories without media mutations.",
+        "operationId": "get_daily_thumbnail_by_date_api_v2_recordings_daily_by_date__recording_date__thumbnail_info_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recording_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Recording Date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/DailyThumbnailInfo"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Daily Thumbnail By Date Api V2 Recordings Daily By Date  Recording Date  Thumbnail Info Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 404 Get Daily Thumbnail By Date Api V2 Recordings Daily By Date  Recording Date  Thumbnail Info Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Range Not Satisfiable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Daily Thumbnail By Date Api V2 Recordings Daily By Date  Recording Date  Thumbnail Info Get"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaErrorResponse"
+                    }
+                  ],
+                  "title": "Response 503 Get Daily Thumbnail By Date Api V2 Recordings Daily By Date  Recording Date  Thumbnail Info Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Get Daily Thumbnail By Date",
+        "tags": [
+          "Daily Recordings"
+        ]
+      }
+    },
     "/api/v2/recordings/daily/{identifier}/thumbnail": {
       "post": {
         "operationId": "prepare_daily_api_v2_recordings_daily__identifier__thumbnail_post",
@@ -17125,5 +17341,5 @@
     }
   },
   "x-source-repository": "https://github.com/ajin-scrap-monitoring/scrap-monitoring-backend",
-  "x-source-revision": "51dcb82022da9e8821c42cfabcccd73fd645d394"
+  "x-source-revision": "567db1f91226179a6ed06bd85912864c47a753ff"
 }

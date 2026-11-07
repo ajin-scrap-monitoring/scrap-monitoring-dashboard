@@ -1046,6 +1046,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                           thumbnailPreparing={isPreparingThumbnail}
                           onPrepareThumbnail={(retry) => { void prepareSelectedThumbnail(retry); }}
                           isAdmin={session?.user.role === "administrator"}
+                          targetKind={selectedTarget?.kind}
                         />}
                       </div>
                     </div>
