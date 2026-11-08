@@ -359,23 +359,22 @@ UNCONFIRMED, FUTURE, MISSING, EXPIRED)와 `reasonCode`를 표시한다. 날짜 �
 Backend와 Media Service에 전달할 요청 항목을 관리한다. 제공되지 않는 값은 0, 정상 또는 synthetic
 값으로 보충하지 않는다.
 
-미해결 요청은 다음 13개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
+미해결 요청은 다음 12개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
 
 | ID | 항목 | 책임 | 상태 |
 | --- | --- | --- | --- |
-| Q-1 | Media 응답 지연과 간헐 504(썸네일, 날짜 녹화 상세, media-info, 구간 파일 조회와 삭제) | Media Service | 원인 확인 대기 |
-| Q-2 | 날짜 녹화의 짧은 누락 반복과 실시간 frame 공백 | Media Service | 원인 확인 대기 |
-| Q-3 | 구간 파일 조각 경계 공백의 집계 기준 | Media Service | 대기 |
-| Q-4 | 실시간 영상의 촬영 시각 | Media Service | 대기 |
-| Q-6 | Media image label과 실제 실행 source의 일치 | Media Service | 확인 대기 |
-| Q-7 | 녹화 파일 정보(codec, 해상도, frame rate)의 파일 완성 시점 값 | Media Service, Backend | 대기 |
-| Q-8 | 녹화 저장 위치와 저장 용량 정책 | Media Service, Backend | 대기 |
-| Q-9 | 카메라 latency의 정의와 전달 | Media Service, Backend | 대기 |
-| Q-10 | 측정 영역의 실측 배치 | Backend, Edge | 대기 |
-| Q-11 | 시뮬레이션 `lidar-b` 측정선 위치가 현장 기준과 다름 | Backend | 대기 |
-| Q-12 | 알림 실제 발송 | Backend, 운영 | 대기 |
-| Q-13 | 운영 배포 환경 설정 | Backend, 운영 | 대기 |
-| Q-14 | 미해결 요청의 담당과 예정 시점 | Backend | 대기 |
+| Q-1 | Media 응답 지연과 간헐 504(썸네일, 날짜 녹화 상세, media-info, 구간 파일 조회와 삭제) | Media Service, Backend | Backend 삭제 응답 복구 병합, 개발 서버 반영과 Media 원인 회신 대기 |
+| Q-2 | 날짜 녹화의 짧은 누락 반복과 실시간 frame 공백 | Media Service | Media 회신 대기 |
+| Q-3 | 구간 파일 조각 경계 공백의 집계 기준 | Media Service, Backend | 현재 기준 문서화, Media 허용 정책 대기 |
+| Q-4 | 실시간 영상의 촬영 시각 | Media Service | 원천 미지원, 시각 계약 대기 |
+| Q-7 | 녹화 파일 정보(codec, 해상도, frame rate)의 파일 완성 시점 값 | Media Service, Backend | 측정 시각 field 계약 대기 |
+| Q-8 | 녹화 저장 위치와 저장 용량 정책 | Media Service, Backend | 기존 정책 설명 수신, 잔여 용량 API 없음 |
+| Q-9 | 카메라 latency의 정의와 전달 | Media Service, Backend | 측정 정의 미확정 |
+| Q-10 | 측정 영역의 실측 배치 | Backend, Edge | 실측 근거 대기 |
+| Q-11 | 시뮬레이션 `lidar-b` 측정선 위치가 현장 기준과 다름 | Backend, Edge | 현재 좌표 근거 수신, LiDAR 계산 높이 자료 대기 |
+| Q-12 | 알림 실제 발송 | Backend, 운영 | 발송 보류 |
+| Q-13 | 운영 배포 환경 설정 | Backend, 운영 | 운영 결정 대기 |
+| Q-14 | 미해결 요청의 담당과 예정 시점 | Backend | 담당 회신 수신, 목표 날짜 미정 |
 
 ### 이력 및 녹화 영상의 일괄 협의 항목
 
