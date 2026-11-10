@@ -88,7 +88,7 @@ describe("Backend v2 모니터링", () => {
         services: [{ service: "camera-edge", state, last_progress_at: snapshot.serverTime, reason_codes: [] }],
       },
     } }, "pit-01");
-    expect(result.devices.find(device => device.label === "카메라")).toMatchObject({ status, statusLabel: state, latency: "정보 없음" });
+    expect(result.devices.find(device => device.label === "카메라")).toMatchObject({ status, statusLabel: state });
     expect(result.devices[0]).toMatchObject({ status: "normal", statusLabel: "FRESH" });
     expect(result.summary.loadPercent).toBeNull();
     expect(result.v2?.services?.[0].state).toBe(state);
@@ -187,7 +187,6 @@ describe("Backend v2 모니터링", () => {
     } } }, "pit-01");
     expect(result.v2?.clock).toEqual({ state: "SYNCHRONIZED", offsetMs: 17 });
     expect(result.v2?.services?.[0]).toMatchObject({ name: "test-service", lastProgressAt: "2026-10-13T00:00:00Z" });
-    expect(result.devices.every(device => device.latency === "정보 없음")).toBe(true);
   });
 
   test.each([{ clock: { state: "SYNCHRONIZED", offset_ms: Number.NaN } }, { services: [{ service: "test", state: "HEALTHY", last_progress_at: "bad-time", reason_codes: [] }] }])("잘못된 장비 진단 계약을 거부한다 %j", invalid => {

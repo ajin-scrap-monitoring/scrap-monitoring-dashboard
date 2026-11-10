@@ -25,8 +25,8 @@ test("합성 시나리오는 상태별 화면 데이터를 분리한다", async 
   expect(measurementError.monitoring.alarmState).toBe("ERROR");
   expect(disconnected.monitoring.alarmState).toBe("UNKNOWN");
   expect(collectionRequired.monitoring.alerts[0].detail).toBe("대표 적재율 84%");
-  expect(measurementError.monitoring.devices[1].latency).toBe("-");
-  expect(disconnected.monitoring.devices.every((device) => device.latency === "수신 없음")).toBe(true);
+  expect(measurementError.monitoring.devices[1].status).toBe("unavailable");
+  expect(disconnected.monitoring.devices.every((device) => device.status === "unavailable")).toBe(true);
 });
 
 test("데이터 없음과 요청 오류 시나리오를 제공한다", async () => {

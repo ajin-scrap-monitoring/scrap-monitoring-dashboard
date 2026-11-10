@@ -91,18 +91,17 @@ export function monitoringV2Data(snapshot: unknown, pitId: string): DashboardDat
   const sensorDevices: DeviceStatus[] = sensors.length ? sensors.map((sensor) => ({
     label: sensor.sensor_id === "lidar-a" ? "LiDAR 1" : sensor.sensor_id === "lidar-b" ? "LiDAR 2" : sensor.sensor_id,
     received: sensor.last_scan_at ?? missingValue,
-    latency: missingValue,
     status: deviceStatus(reporting ? sensor.data_state : undefined),
     statusLabel: reporting ? sensor.data_state : "UNKNOWN",
-  })) : ["LiDAR 1", "LiDAR 2"].map((label) => ({ label, received: missingValue, latency: missingValue, status: "unknown" }));
+  })) : ["LiDAR 1", "LiDAR 2"].map((label) => ({ label, received: missingValue, status: "unknown" }));
 
   return {
     alarmState: snapshot.operations?.effectiveState ?? null,
     alerts: [],
     devices: [
       ...sensorDevices,
-      { label: "카메라", received: missingValue, latency: missingValue, status: deviceStatus(cameraState), statusLabel: cameraState },
-      { label: "엣지 장비", received: device.last_received_at ?? missingValue, latency: missingValue, status: deviceStatus(device.effective_state), statusLabel: device.effective_state },
+      { label: "카메라", received: missingValue, status: deviceStatus(cameraState), statusLabel: cameraState },
+      { label: "엣지 장비", received: device.last_received_at ?? missingValue, status: deviceStatus(device.effective_state), statusLabel: device.effective_state },
     ],
     headerNotifications: [],
     unreadNotificationCount: 0,

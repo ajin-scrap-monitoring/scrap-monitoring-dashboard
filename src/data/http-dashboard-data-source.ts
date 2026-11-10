@@ -268,7 +268,6 @@ function monitoringData(snapshot: ApiMonitoringSnapshot, notifications: ApiNotif
     })),
     devices: snapshot.devices.map((device) => ({
       label: device.displayName,
-      latency: device.latencyMilliseconds === null || device.latencyMilliseconds === undefined ? "-" : `${device.latencyMilliseconds}ms`,
       received: device.lastReceivedAt ? timeOnly(device.lastReceivedAt, true) : "-",
       status: device.status,
     })),
