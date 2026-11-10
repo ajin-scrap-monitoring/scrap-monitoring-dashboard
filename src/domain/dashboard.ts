@@ -43,7 +43,6 @@ export type UserSession = {
 export type DeviceStatus = {
   label: string;
   received: string;
-  latency: string;
   status: "normal" | "delayed" | "unavailable" | "unknown";
   statusLabel?: string;
   receivedLabel?: string;

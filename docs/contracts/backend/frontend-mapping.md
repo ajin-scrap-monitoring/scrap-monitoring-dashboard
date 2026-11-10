@@ -91,7 +91,6 @@ Backend 기준은 manifest의 revision이다. 현황 보조 조회는 5개(`fill
 | 활성 알림 | `/api/v2/monitoring/snapshot-with-alerts` | 변환 사용 | [활성 알림](#활성-알림) |
 | 센서 상태 | `deviceStatus.snapshot.sensors` | 변환 사용 | `lidar-a`는 LiDAR 1, `lidar-b`는 LiDAR 2로 표시하며 원래 ID와 상태 보존, scan 시각으로 latency를 추정하지 않음 |
 | 엣지 및 카메라 상태 | `connection_state`, `effective_state`, `monitoring.camera-status` | 변환 사용 | 엣지는 snapshot의 보고 상태, 카메라는 [카메라 상태](#카메라-상태)의 독립 관측 사용 |
-| 카메라 latency | 제공 정보 없음 | 추가 계약 필요 | `last_progress_at`으로 추정하지 않음 |
 
 `summary.loadPercent`는 이미 percent 단위이므로 다시 100을 곱하지 않는다.
 `measuredAt`, `assessmentReceivedAt`, 센서의 `last_scan_at`, 장비의 `last_received_at`과 영상
@@ -359,22 +358,29 @@ UNCONFIRMED, FUTURE, MISSING, EXPIRED)와 `reasonCode`를 표시한다. 날짜 �
 Backend와 Media Service에 전달할 요청 항목을 관리한다. 제공되지 않는 값은 0, 정상 또는 synthetic
 값으로 보충하지 않는다.
 
-미해결 요청은 다음 12개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
+Backend 회신서의 요청 목록은 이 절의 표를 정본으로 사용한다. 요청을 등록하거나 유지할 때 다음
+5개 기준을 적용한다.
 
-| ID | 항목 | 책임 | 상태 |
-| --- | --- | --- | --- |
-| Q-1 | Media 응답 지연과 간헐 504(썸네일, 날짜 녹화 상세, media-info, 구간 파일 조회와 삭제) | Media Service, Backend | Backend 삭제 응답 복구 병합, 개발 서버 반영과 Media 원인 회신 대기 |
-| Q-2 | 날짜 녹화의 짧은 누락 반복과 실시간 frame 공백 | Media Service | Media 회신 대기 |
-| Q-3 | 구간 파일 조각 경계 공백의 집계 기준 | Media Service, Backend | 현재 기준 문서화, Media 허용 정책 대기 |
-| Q-4 | 실시간 영상의 촬영 시각 | Media Service | 원천 미지원, 시각 계약 대기 |
-| Q-7 | 녹화 파일 정보(codec, 해상도, frame rate)의 파일 완성 시점 값 | Media Service, Backend | 측정 시각 field 계약 대기 |
-| Q-8 | 녹화 저장 위치와 저장 용량 정책 | Media Service, Backend | 기존 정책 설명 수신, 잔여 용량 API 없음 |
-| Q-9 | 카메라 latency의 정의와 전달 | Media Service, Backend | 측정 정의 미확정 |
-| Q-10 | 측정 영역의 실측 배치 | Backend, Edge | 실측 근거 대기 |
-| Q-11 | 시뮬레이션 `lidar-b` 측정선 위치가 현장 기준과 다름 | Backend, Edge | 현재 좌표 근거 수신, LiDAR 계산 높이 자료 대기 |
-| Q-12 | 알림 실제 발송 | Backend, 운영 | 발송 보류 |
-| Q-13 | 운영 배포 환경 설정 | Backend, 운영 | 운영 결정 대기 |
-| Q-14 | 미해결 요청의 담당과 예정 시점 | Backend | 담당 회신 수신, 목표 날짜 미정 |
+| 기준 | 적용 방법 |
+| --- | --- |
+| 화면 위치 | 현재 렌더링 코드에서 확인한 카드와 표시 요소. 렌더링하지 않는 domain field, 제안 계약과 이전 화면은 표시 자리가 아님. 화면 위치가 없는 항목은 배포와 일정 같은 절차 항목만 허용 |
+| 근거 수준 | 비교 기준을 출처 그대로 기재. 참고도와의 차이를 현장 기준과의 차이로 기재하지 않음 |
+| 관측 범위 | 표본 수와 측정 구간을 함께 기재. Dashboard는 Backend 응답까지만 측정하며 측정하지 않은 구간의 원인을 단정하지 않음 |
+| 완료 기준 | 요청 문구의 모든 선택지를 완료로 인정. 수신한 계약의 제한값과 Dashboard의 요청 timeout을 넘는 기준을 요구하지 않음 |
+| 종료 | 요청한 결과나 대안을 받으면 항목을 종료. 새 요구는 새 ID로 등록 |
+
+미해결 요청은 다음 8개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
+
+| ID | 항목 | 화면 위치 | 책임 | 상태 |
+| --- | --- | --- | --- | --- |
+| Q-1 | 응답 지연과 간헐 504(썸네일 정보와 이미지, 날짜 녹화 상세와 삭제, media-info, 구간 파일 상태 조회) | 녹화 목록 썸네일, 녹화 정보 카드, 날짜 녹화 삭제 | Media Service, Backend | Media 원인 회신 대기, 요청 종류별 완료 기준 미합의 |
+| Q-2 | 날짜 녹화의 짧은 누락 반복과 실시간 frame 공백 | 녹화 정보 카드의 누락 구간과 녹화 범위 상세 창, 현황 실시간 영상 | Media Service | Media 회신 대기 |
+| Q-3 | 구간 파일 조각 경계 공백의 원인 | 녹화 정보 카드의 일부 구간 누락 표시 | Media Service, Backend | 양의 공백 보존 기준 계약 명시, Media 원본 대조 결과 대기 |
+| Q-4 | 실시간 영상의 촬영 시각 | 현황 실시간 영상의 시각 표시 | Media Service | 원천 미지원, 시각 계약 대기 |
+| Q-10 | 측정 영역의 실측 배치 | 현황 측정 영역 카드 | Backend, Edge | 실측 근거 대기 |
+| Q-12 | 알림 실제 발송 | 관리자 테스트 알림 | Backend, 운영 | 발송 보류 |
+| Q-13 | 운영 배포 환경 설정 | 없음(배포 절차) | Backend, 운영 | 운영 결정 대기 |
+| Q-14 | 미해결 요청의 담당과 예정 시점 | 없음(일정) | Backend | 담당 회신 수신, 목표 날짜 미정 |
 
 ### 이력 및 녹화 영상의 일괄 협의 항목
 

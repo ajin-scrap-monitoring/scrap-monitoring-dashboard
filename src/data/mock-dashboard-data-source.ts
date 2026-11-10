@@ -37,10 +37,10 @@ const baseDashboardData: DashboardData = {
     videoCapturedAt: "2026-09-10T10:24:18+09:00",
     summary: { loadPercent: 72, collectionThreshold: 80, expectedArrivalAt: "9월 10일 14:30", operationState: "accumulating", preCollectionAlert: { enabled: true, threshold: 70 }, loadOneHourAgo: null, remainingTime: "4시간 6분", timeSinceCollection: "2시간 0분", averageCollectionCycle: "23시간 10분" },
     devices: [
-      { label: "LiDAR 1", received: "10:24:18", latency: "120ms", status: "normal" },
-      { label: "LiDAR 2", received: "10:24:18", latency: "135ms", status: "normal" },
-      { label: "카메라", received: "10:24:16", latency: "180ms", status: "normal" },
-      { label: "엣지 장비", received: "10:24:17", latency: "95ms", status: "normal" },
+      { label: "LiDAR 1", received: "10:24:18", status: "normal" },
+      { label: "LiDAR 2", received: "10:24:18", status: "normal" },
+      { label: "카메라", received: "10:24:16", status: "normal" },
+      { label: "엣지 장비", received: "10:24:17", status: "normal" },
     ],
     alerts: [
       { detail: "대표 적재율 82%", id: "alert-1", level: "warning", time: "10:20", title: "수거 필요" },
@@ -178,11 +178,11 @@ function dashboardDataFor(scenario: MockScenario): DashboardData {
       break;
     case "measurement-error":
       data.monitoring.alarmState = "ERROR";
-      data.monitoring.devices[1] = { label: "LiDAR 2", received: "10:18:04", latency: "-", status: "unavailable" };
+      data.monitoring.devices[1] = { label: "LiDAR 2", received: "10:18:04", status: "unavailable" };
       break;
     case "disconnected":
       data.monitoring.alarmState = "UNKNOWN";
-      data.monitoring.devices = data.monitoring.devices.map((device) => ({ ...device, latency: "수신 없음", status: "unavailable" }));
+      data.monitoring.devices = data.monitoring.devices.map((device) => ({ ...device, status: "unavailable" }));
       break;
     case "no-data":
       data.monitoring.alarmState = null;
@@ -257,7 +257,6 @@ function operationCycleData(step: number) {
     data.monitoring.devices[1] = {
       label: "LiDAR 2",
       received: "10:27:01",
-      latency: "-",
       status: "unavailable",
     };
   }
@@ -266,7 +265,6 @@ function operationCycleData(step: number) {
     data.monitoring.status = "disconnected";
     data.monitoring.devices = data.monitoring.devices.map((device) => ({
       ...device,
-      latency: "수신 없음",
       status: "unavailable",
     }));
   }
