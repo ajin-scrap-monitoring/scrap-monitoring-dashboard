@@ -1225,9 +1225,13 @@ export function createHttpDashboardDataSource({
     sendTestNotification: async (recipientId, channels) => {
       const session = currentData?.session;
       const { signal } = notificationActionsController;
-      await (await loadAdminApi()).sendTestNotification(adminContext(), recipientId, channels, signal);
+      const deliveryId = await (await loadAdminApi()).sendTestNotification(adminContext(), recipientId, channels, signal);
       try { await finishNotificationAction(new Set(), session, signal); }
       catch { /* The accepted request is independent of notification refresh or cancellation. */ }
+      return deliveryId;
+    },
+    getEmailDelivery: async (id, signal) => {
+      return (await loadAdminApi()).getEmailDelivery(adminContext(), id, signal);
     },
     subscribe: (listener) => {
       const eventSource = eventSourceFactory(eventsPath);

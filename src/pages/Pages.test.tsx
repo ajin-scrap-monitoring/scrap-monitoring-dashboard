@@ -236,8 +236,8 @@ test("테스트 알림은 수신 채널을 하나 이상 요구한다", async ()
   const data = await createMockDashboardDataSource().getDashboardData();
   render(<AdminPage admin={data.admin} headerNotifications={[]} />);
 
+  expect(screen.queryByRole("checkbox", { name: "문자" })).not.toBeInTheDocument();
   await user.click(screen.getByRole("checkbox", { name: "이메일" }));
-  await user.click(screen.getByRole("checkbox", { name: "문자" }));
   await user.click(screen.getByRole("button", { name: "테스트 알림 보내기" }));
   expect(screen.getByRole("alert")).toHaveTextContent("채널을 하나 이상 선택하세요.");
 });

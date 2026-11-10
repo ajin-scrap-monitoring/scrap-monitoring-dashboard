@@ -121,13 +121,13 @@ test("관리자 저장 충돌과 테스트 접수는 안내 위치만 바꾸고 
   await expect(page.getByRole("alert")).toHaveText("다른 변경이 있습니다. 새로고침 후 다시 시도하세요.");
   expect(await geometry(page)).toEqual(before);
   await page.getByRole("button", { name: "테스트 알림 보내기" }).click();
-  await expect(page.getByText("테스트 알림 요청을 접수했습니다.", { exact: true })).toBeVisible();
+  await expect(page.getByText("테스트 알림 요청을 접수했습니다. 이메일 발송 상태 정보는 없습니다.", { exact: true })).toBeVisible();
   expect(await geometry(page)).toEqual(before);
   await page.route("**/api/v1/notifications/test", route => route.fulfill({ status: 503, json: { detail: "Synthetic test failure" } }));
   await page.getByRole("button", { name: "테스트 알림 보내기" }).click();
   await expect(page.locator(".test-alert-card [role=alert]")).toHaveText("테스트 알림 요청을 처리하지 못했습니다.");
   expect(await geometry(page)).toEqual(before);
-  await expect(page.locator(".test-alert-card")).toContainText("실제 이메일이나 문자 수신을 보장하지 않습니다.");
+  await expect(page.locator(".test-alert-card")).toContainText("요청 접수와 Google 접수는 실제 이메일 수신을 보장하지 않습니다.");
 });
 
 test("대상 생성 요청 중 닫기를 잠그고 성공한 대상은 목록에 한 번만 반영한다", async ({ page }) => {

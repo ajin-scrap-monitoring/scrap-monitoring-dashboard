@@ -113,8 +113,8 @@ test("제안 계약의 로그인, 알림 읽음과 관리자 변경 요청을 �
 
   await page.getByRole("button", { name: "수신 설정", exact: true }).click();
   const recipientDialog = page.getByRole("dialog", { name: "계약 담당자 수신 설정" });
-  await recipientDialog.getByText("문자", { exact: true }).click();
-  await expect(recipientDialog.getByRole("checkbox", { name: "문자" })).not.toBeChecked();
+  await expect(recipientDialog.getByRole("checkbox", { name: "문자" })).toHaveCount(0);
+  await expect(recipientDialog.getByRole("checkbox", { name: "이메일" })).toBeChecked();
   await recipientDialog.getByRole("button", { name: "수신 설정 저장" }).click();
   await expect(recipientDialog).toBeHidden();
 
@@ -129,7 +129,7 @@ test("제안 계약의 로그인, 알림 읽음과 관리자 변경 요청을 �
   await expect(page.getByText("계약 추가 담당자")).toBeVisible();
 
   await page.getByRole("button", { name: "테스트 알림 보내기" }).click();
-  await expect(page.getByText("테스트 알림 요청을 접수했습니다.", { exact: true })).toBeVisible();
+  await expect(page.getByText("테스트 알림 요청을 접수했습니다. 이메일 발송 상태 정보는 없습니다.", { exact: true })).toBeVisible();
 
   const settingsRequest = requests.find(({ method, url }) => method === "PUT" && url.pathname === "/api/v1/settings/alerts");
   expect(settingsRequest?.headers["x-csrf-token"]).toBe("csrf-contract-example");

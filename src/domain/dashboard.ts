@@ -316,6 +316,21 @@ export type RecipientSettings = {
   useGlobal: boolean;
 };
 
+export type EmailDeliveryStatus = "QUEUED" | "SENDING" | "SENT" | "FAILED" | "UNCERTAIN" | "CANCELLED";
+
+export type EmailDeliveryReceipt = {
+  attemptedAt: string | null;
+  attempts: number;
+  completedAt: string | null;
+  dueAt: string;
+  errorCode: string | null;
+  id: string;
+  phase: "ALERT" | "RECOVERY" | "TEST";
+  pitId: string;
+  recipientId: string;
+  status: EmailDeliveryStatus;
+};
+
 export type AlertSettings = {
   collectionThreshold: number;
   enabledEventTypes: Array<"collection_required" | "measurement_error" | "device_error">;

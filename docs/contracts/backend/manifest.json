@@ -4,7 +4,7 @@
     {
       "directory": "backend",
       "repository": "ajin-scrap-monitoring/scrap-monitoring-backend",
-      "revision": "567db1f91226179a6ed06bd85912864c47a753ff"
+      "revision": "97a380d8955d61bde3d44a62ff15d8bcfca248e9"
     },
     {
       "directory": "media",
@@ -31,6 +31,7 @@
     "/api/v1/notification-recipients",
     "/api/v1/notification-recipients/{recipientId}",
     "/api/v1/notifications",
+    "/api/v1/notifications/email-deliveries/{delivery_id}",
     "/api/v1/notifications/read-all",
     "/api/v1/notifications/test",
     "/api/v1/notifications/{notificationId}",

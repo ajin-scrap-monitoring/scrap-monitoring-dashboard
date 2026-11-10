@@ -285,7 +285,7 @@ v2 경보와 수거 판단 목록(`/api/v2/monitoring/alerts`, `collection-event
 | 이벤트 구간 재생 | `/api/v2/recordings/events/{event_id}`의 `parts` | 변환 사용 | 날짜 녹화 HLS를 구간별로 이어서 재생 |
 | 시작, 종료, 길이, 형식 | 이벤트 상세 | 변환 사용 | 길이는 `playbackSeconds`, 형식은 HLS |
 | 보관 만료 | 날짜 녹화의 `expires_at`, `status` | 변환 사용 | `status`가 deleted 또는 expired면 "삭제됨" 또는 "만료됨" 표시, 이벤트는 `parts`의 날짜별 요약 목록(`view=summary`)에서 찾은 모든 날짜 녹화 중 가장 빠른 만료를 사용하며 하나라도 확인하지 못하면 정보 없음 |
-| codec, 해상도, frame rate | `/api/v2/recordings/daily/{recording_id}/media-info`, `/api/v1/media/clips/{clip_id}/media-info` | 직접 사용 | 날짜 녹화는 file 정보와 segments(상세 창/title), 이벤트는 export 완료 후 clip media-info 연동 |
+| codec, 해상도, frame rate | `/api/v2/recordings/daily/{recording_id}/media-info`, `/api/v1/media/clips/{clip_id}/media-info` | 직접 사용 | 날짜 녹화는 file 정보(측정 시각, 출처)와 segments(상세 창/title), 이벤트는 export 완료 후 clip media-info(측정 시각, 출처) 연동 |
 | 이벤트 구간 용량과 MP4 | `GET/POST /api/v2/recordings/events/{event_id}/exports`, `GET statusPath` | 직접 사용 | 서버 조회 복구와 명시 준비 및 재시도, 응답 requestId 및 statusPath 사용 |
 | 미리보기 썸네일 | `/api/v2/recordings/daily/{id}/thumbnail-info`, `/api/v2/recordings/daily/by-date/{recording_date}/thumbnail-info`, `/api/v2/recordings/events/{event_id}/thumbnail-info`, `/api/v1/media/clips/{clipId}/thumbnail-info` | 직접 사용 | 날짜 녹화(recording, finalizing, closed, failed이며 expired와 deleted 제외) 및 이벤트 녹화 썸네일 조회, 이벤트 녹화의 `dailyThumbnailInfoPath` 우선 조회 및 클립 미대체, ready 시 content_path 이미지를 기존 썸네일 자리와 재생 poster에 연결, `RECORDING_BUSY` 보류 폴링 재조회와 준비 버튼 미제공 |
 
@@ -369,16 +369,15 @@ Backend 회신서의 요청 목록은 이 절의 표를 정본으로 사용한�
 | 완료 기준 | 요청 문구의 모든 선택지를 완료로 인정. 수신한 계약의 제한값과 Dashboard의 요청 timeout을 넘는 기준을 요구하지 않음 |
 | 종료 | 요청한 결과나 대안을 받으면 항목을 종료. 새 요구는 새 ID로 등록 |
 
-미해결 요청은 다음 8개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
+미해결 요청은 다음 7개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
 
 | ID | 항목 | 화면 위치 | 책임 | 상태 |
 | --- | --- | --- | --- | --- |
 | Q-1 | 응답 지연과 간헐 504(썸네일 정보와 이미지, 날짜 녹화 상세와 삭제, media-info, 구간 파일 상태 조회) | 녹화 목록 썸네일, 녹화 정보 카드, 날짜 녹화 삭제 | Media Service, Backend | Media 원인 회신 대기, 요청 종류별 완료 기준 미합의 |
-| Q-2 | 날짜 녹화의 짧은 누락 반복과 실시간 frame 공백 | 녹화 정보 카드의 누락 구간과 녹화 범위 상세 창, 현황 실시간 영상 | Media Service | Media 회신 대기 |
-| Q-3 | 구간 파일 조각 경계 공백의 원인 | 녹화 정보 카드의 일부 구간 누락 표시 | Media Service, Backend | 양의 공백 보존 기준 계약 명시, Media 원본 대조 결과 대기 |
-| Q-4 | 실시간 영상의 촬영 시각 | 현황 실시간 영상의 시각 표시 | Media Service | 원천 미지원, 시각 계약 대기 |
-| Q-10 | 측정 영역의 실측 배치 | 현황 측정 영역 카드 | Backend, Edge | 실측 근거 대기 |
-| Q-12 | 알림 실제 발송 | 관리자 테스트 알림 | Backend, 운영 | 발송 보류 |
+| Q-2 | 날짜 녹화의 짧은 누락 반복과 실시간 frame 공백 | 녹화 정보 카드의 누락 구간과 녹화 범위 상세 창, 현황 실시간 영상 | Media Service | 11/10 카메라 진단 회신 수신, 사용자 요청으로 추가 문의 보류 |
+| Q-3 | 구간 파일 조각 경계 공백의 원인 | 녹화 정보 카드의 일부 구간 누락 표시 | Media Service, Backend | 양의 공백 보존 기준 계약 명시, 사용자 요청으로 추가 문의 보류 |
+| Q-4 | 실시간 영상의 촬영 시각 | 현황 실시간 영상의 시각 표시 | Media Service | 원천 미지원, 선택 사항(미제공 시 현재 영상 수신 시각 표시 유지) |
+| Q-10 | 측정 영역의 실측 배치 | 현황 측정 영역 카드 | Backend, Edge | 현재 참고도 유지, 실측 자료 확보 시 별도 진행 |
 | Q-13 | 운영 배포 환경 설정 | 없음(배포 절차) | Backend, 운영 | 운영 결정 대기 |
 | Q-14 | 미해결 요청의 담당과 예정 시점 | 없음(일정) | Backend | 담당 회신 수신, 목표 날짜 미정 |
 
@@ -389,15 +388,23 @@ Backend 회신서의 요청 목록은 이 절의 표를 정본으로 사용한�
 ### 관리자 설정과 알림의 협의 항목
 
 관리자 화면은 수거 임계율, 알림 대상 관리, 알림 정책과 테스트 알림의 4개 카드를 유지한다.
-설정 저장 성공, 테스트 요청 접수와 실제 채널 수신은 서로 다른 결과다. 저장한 정책은
-실제 외부 발송에 적용되지 않으며 테스트 요청은 접수(202)까지만 제공된다.
+실제 알림 채널은 Backend의 Gmail API 이메일 발송이며 SMS (Short Message Service)는 발송 범위에서
+제외한다. Backend는 SMS 요청을 기록만 하므로 Frontend는 새 요청에 `sms`를 보내지 않고 서버에 남은
+`sms` 채널 값을 발송 채널로 표시하지 않는다. 설정 저장 성공, 테스트 요청 접수(202), Google 접수(`SENT`)와
+실제 받은편지함 수신은 서로 다른 결과다.
 
 Backend는 수거 임계율을 5에서 100, 사전 알림 임계율을 0 이상이며 수거 임계율보다
 5%p 이상 낮은 값으로 검증하고 위반은 422로 거절한다. 사전 알림 표시를 꺼도 같은
 조합 조건을 적용한다. Frontend는 같은 범위를 먼저 검사하고 서버의 422, 412와 428을
-기존 저장값을 유지한 채 안내한다. 수신 대상은 이름과 소속을 비울 수 없고 채널은 중복 없이
-1개 이상이어야 한다. 전화번호 삭제는 `phone: null`이다. 현재 수신 정책 패널은 이름과
-연락처를 편집하지 않는다.
+기존 저장값을 유지한 채 안내한다. 수신 대상은 이름과 소속을 비울 수 없고 채널은
+중복 없이 1개 이상이어야 한다. 전화번호 삭제는 `phone: null`이다. 현재 수신 정책
+패널은 이름과 연락처를 편집하지 않는다.
+
+관리자 수동 테스트는 수신 대상의 자동 사용 여부와 구독 설정과 별개로 요청한 이메일을 보낸다.
+202 본문의 `emailDeliveryId`는 Gmail 발송이 활성일 때만 있으며 관리자 전용
+`GET /api/v1/notifications/email-deliveries/{delivery_id}`로 상태를 조회한다. 상태는 `QUEUED` 대기,
+`SENDING` 처리 중, `SENT` Google 접수, `FAILED` 실패, `CANCELLED` 취소, `UNCERTAIN` 접수 여부 불명확이다.
+Gmail POST는 멱등성이 없으므로 조회 실패와 `UNCERTAIN`에도 테스트 요청을 자동으로 다시 보내지 않는다.
 
 Frontend 책임은 중복 요청 방지, 같은 설정 resource의 두 저장 직렬화, 요청 실패와 충돌
 안내, 필수 입력 및 채널 검증, 응답값 적용과 늦은 응답 차단이다. 테스트 요청 성공 후

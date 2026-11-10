@@ -182,7 +182,7 @@ test("외부 연동 전 요청은 처리 범위를 화면에 표시한다", asyn
   await page.getByRole("button", { name: "로그인", exact: true }).click();
   await page.goto("/admin");
   await page.getByRole("button", { name: "테스트 알림 보내기" }).click();
-  await expect(page.getByRole("status")).toHaveText("테스트 알림 요청을 접수했습니다.");
+  await expect(page.getByRole("status")).toHaveText("테스트 알림 요청을 접수했습니다. 이메일 발송 상태 정보는 없습니다.");
 });
 
 test("적재율 이력의 이벤트 트랙에서 상세 정보를 제공한다", async ({ page }) => {

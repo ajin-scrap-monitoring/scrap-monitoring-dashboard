@@ -810,6 +810,16 @@
             "title": "Fill State",
             "type": "string"
           },
+          "fusion_result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FusionResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "generated_at": {
             "format": "date-time",
             "title": "Generated At",
@@ -882,6 +892,22 @@
             "const": "2.0",
             "title": "Schema Version",
             "type": "string"
+          },
+          "section_profiles": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SectionResult"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Profiles"
           },
           "site_id": {
             "maxLength": 128,
@@ -3240,6 +3266,101 @@
         "title": "DeliveryStatus",
         "type": "object"
       },
+      "EmailDeliveryReceipt": {
+        "properties": {
+          "attempted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempted At"
+          },
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "due_at": {
+            "format": "date-time",
+            "title": "Due At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "phase": {
+            "enum": [
+              "ALERT",
+              "RECOVERY",
+              "TEST"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "pit_id": {
+            "title": "Pit Id",
+            "type": "string"
+          },
+          "recipient_id": {
+            "title": "Recipient Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "QUEUED",
+              "SENDING",
+              "SENT",
+              "FAILED",
+              "UNCERTAIN",
+              "CANCELLED"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "recipient_id",
+          "pit_id",
+          "phase",
+          "status",
+          "due_at",
+          "attempted_at",
+          "completed_at",
+          "attempts",
+          "error_code"
+        ],
+        "title": "EmailDeliveryReceipt",
+        "type": "object"
+      },
       "EventExportRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3940,6 +4061,29 @@
             ],
             "title": "Height"
           },
+          "measured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measured At"
+          },
+          "metadata_origin": {
+            "default": "unknown",
+            "enum": [
+              "request_probe",
+              "memory_cache",
+              "persisted_probe",
+              "unknown"
+            ],
+            "title": "Metadata Origin",
+            "type": "string"
+          },
           "reason_code": {
             "anyOf": [
               {
@@ -4336,6 +4480,103 @@
           "reason_codes"
         ],
         "title": "FillObservation",
+        "type": "object"
+      },
+      "FusionComponent": {
+        "additionalProperties": false,
+        "properties": {
+          "anchor_scan_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Anchor Scan Id",
+            "type": "string"
+          },
+          "calibrated_ratio": {
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Calibrated Ratio",
+            "type": "number"
+          },
+          "section_ratio": {
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Section Ratio",
+            "type": "number"
+          },
+          "sensor_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Sensor Id",
+            "type": "string"
+          },
+          "weight": {
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "sensor_id",
+          "section_ratio",
+          "calibrated_ratio",
+          "weight",
+          "anchor_scan_id"
+        ],
+        "title": "FusionComponent",
+        "type": "object"
+      },
+      "FusionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "clock_domain_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Clock Domain Id",
+            "type": "string"
+          },
+          "components": {
+            "items": {
+              "$ref": "#/components/schemas/FusionComponent"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Components",
+            "type": "array"
+          },
+          "method": {
+            "const": "CALIBRATED_WEIGHTED_SECTIONS",
+            "title": "Method",
+            "type": "string"
+          },
+          "model_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Model Version",
+            "type": "string"
+          },
+          "pair_delta_ms": {
+            "maximum": 100,
+            "minimum": 0,
+            "title": "Pair Delta Ms",
+            "type": "number"
+          },
+          "ratio": {
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Ratio",
+            "type": "number"
+          }
+        },
+        "required": [
+          "method",
+          "model_version",
+          "ratio",
+          "pair_delta_ms",
+          "clock_domain_id",
+          "components"
+        ],
+        "title": "FusionResult",
         "type": "object"
       },
       "HTTPErrorResponse": {
@@ -7307,6 +7548,163 @@
         "title": "ScanReference",
         "type": "object"
       },
+      "SectionBin": {
+        "additionalProperties": false,
+        "properties": {
+          "ceiling_z_mm": {
+            "maximum": 1000000000,
+            "minimum": -1000000000,
+            "title": "Ceiling Z Mm",
+            "type": "number"
+          },
+          "floor_z_mm": {
+            "maximum": 1000000000,
+            "minimum": -1000000000,
+            "title": "Floor Z Mm",
+            "type": "number"
+          },
+          "height_mm": {
+            "anyOf": [
+              {
+                "maximum": 2000000000,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height Mm"
+          },
+          "index": {
+            "maximum": 511,
+            "minimum": 0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "sensor_ids": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 1,
+            "title": "Sensor Ids",
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "OBSERVED",
+              "INTERPOLATED",
+              "UNAVAILABLE",
+              "MASKED"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "floor_z_mm",
+          "ceiling_z_mm",
+          "height_mm",
+          "source",
+          "sensor_ids"
+        ],
+        "title": "SectionBin",
+        "type": "object"
+      },
+      "SectionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SensorSectionProfile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason_codes": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "sensor_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Sensor Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "AVAILABLE",
+              "LIMITED",
+              "UNAVAILABLE"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sensor_id",
+          "state",
+          "reason_codes",
+          "profile"
+        ],
+        "title": "SectionResult",
+        "type": "object"
+      },
+      "SectionStats": {
+        "additionalProperties": false,
+        "properties": {
+          "input_points": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Input Points",
+            "type": "integer"
+          },
+          "retained_points": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Retained Points",
+            "type": "integer"
+          },
+          "scan_count": {
+            "maximum": 8,
+            "minimum": 1,
+            "title": "Scan Count",
+            "type": "integer"
+          },
+          "sensor_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Sensor Id",
+            "type": "string"
+          },
+          "spatial_rejected_bins": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Spatial Rejected Bins",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sensor_id",
+          "scan_count",
+          "input_points",
+          "retained_points",
+          "spatial_rejected_bins"
+        ],
+        "title": "SectionStats",
+        "type": "object"
+      },
       "SegmentFormat": {
         "properties": {
           "codec": {
@@ -7441,6 +7839,145 @@
           "formats"
         ],
         "title": "SegmentMediaInfo",
+        "type": "object"
+      },
+      "SensorSectionProfile": {
+        "additionalProperties": false,
+        "properties": {
+          "area_basis": {
+            "const": "VERTICAL_PROJECTION",
+            "title": "Area Basis",
+            "type": "string"
+          },
+          "area_mm2": {
+            "anyOf": [
+              {
+                "maximum": 1e+21,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area Mm2"
+          },
+          "area_ratio": {
+            "anyOf": [
+              {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area Ratio"
+          },
+          "axis_xy": {
+            "items": {
+              "maximum": 1,
+              "minimum": -1,
+              "type": "number"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Axis Xy",
+            "type": "array"
+          },
+          "bin_width_mm": {
+            "maximum": 1000000,
+            "minimum": 1,
+            "title": "Bin Width Mm",
+            "type": "integer"
+          },
+          "bins": {
+            "items": {
+              "$ref": "#/components/schemas/SectionBin"
+            },
+            "maxItems": 512,
+            "minItems": 1,
+            "title": "Bins",
+            "type": "array"
+          },
+          "capacity_area_mm2": {
+            "exclusiveMinimum": 0,
+            "maximum": 1e+21,
+            "title": "Capacity Area Mm2",
+            "type": "number"
+          },
+          "coordinate_frame_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Coordinate Frame Id",
+            "type": "string"
+          },
+          "coverage_ratio": {
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Coverage Ratio",
+            "type": "number"
+          },
+          "origin_xy_mm": {
+            "items": {
+              "maximum": 1000000000,
+              "minimum": -1000000000,
+              "type": "number"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Origin Xy Mm",
+            "type": "array"
+          },
+          "plane_normal": {
+            "items": {
+              "maximum": 1,
+              "minimum": -1,
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Plane Normal",
+            "type": "array"
+          },
+          "plane_origin_mm": {
+            "items": {
+              "maximum": 1000000000000000,
+              "minimum": -1000000000000000,
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Plane Origin Mm",
+            "type": "array"
+          },
+          "sensor_stats": {
+            "items": {
+              "$ref": "#/components/schemas/SectionStats"
+            },
+            "maxItems": 1,
+            "minItems": 1,
+            "title": "Sensor Stats",
+            "type": "array"
+          }
+        },
+        "required": [
+          "coordinate_frame_id",
+          "origin_xy_mm",
+          "axis_xy",
+          "plane_origin_mm",
+          "plane_normal",
+          "area_basis",
+          "bin_width_mm",
+          "bins",
+          "area_mm2",
+          "capacity_area_mm2",
+          "area_ratio",
+          "coverage_ratio",
+          "sensor_stats"
+        ],
+        "title": "SensorSectionProfile",
         "type": "object"
       },
       "SensorStatus": {
@@ -10961,6 +11498,113 @@
         ]
       }
     },
+    "/api/v1/notifications/email-deliveries/{delivery_id}": {
+      "get": {
+        "operationId": "email_delivery_receipt_api_v1_notifications_email_deliveries__delivery_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "delivery_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9-]{36}$",
+              "title": "Delivery Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "scrap_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scrap Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailDeliveryReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Email Delivery Receipt Api V1 Notifications Email Deliveries  Delivery Id  Get"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Email Delivery Receipt",
+        "tags": [
+          "Administration"
+        ]
+      }
+    },
     "/api/v1/notifications/read-all": {
       "post": {
         "description": "Mark all unread notifications as read.",
@@ -11060,7 +11704,7 @@
     },
     "/api/v1/notifications/test": {
       "post": {
-        "description": "Queue an immediate test notification to a recipient.\n\nThe current implementation records the request without external delivery.",
+        "description": "Queue an immediate test notification to a recipient.\n\nEmail is queued only when Gmail is enabled. SMS remains record-only.",
         "operationId": "send_test_notification_api_v1_notifications_test_post",
         "parameters": [
           {
@@ -11180,7 +11824,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "Record a test notification request",
+        "summary": "Record or queue a test notification request",
         "tags": [
           "Administration"
         ]
@@ -17341,5 +17985,5 @@
     }
   },
   "x-source-repository": "https://github.com/ajin-scrap-monitoring/scrap-monitoring-backend",
-  "x-source-revision": "567db1f91226179a6ed06bd85912864c47a753ff"
+  "x-source-revision": "97a380d8955d61bde3d44a62ff15d8bcfca248e9"
 }

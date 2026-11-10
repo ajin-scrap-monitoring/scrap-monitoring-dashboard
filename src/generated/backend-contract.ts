@@ -258,6 +258,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/notifications/email-deliveries/{delivery_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Email Delivery Receipt */
+        readonly get: operations["email_delivery_receipt_api_v1_notifications_email_deliveries__delivery_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/notifications/read-all": {
         readonly parameters: {
             readonly query?: never;
@@ -288,10 +305,10 @@ export interface paths {
         readonly get?: never;
         readonly put?: never;
         /**
-         * Record a test notification request
+         * Record or queue a test notification request
          * @description Queue an immediate test notification to a recipient.
          *
-         *     The current implementation records the request without external delivery.
+         *     Email is queued only when Gmail is enabled. SMS remains record-only.
          */
         readonly post: operations["send_test_notification_api_v1_notifications_test_post"];
         readonly delete?: never;
@@ -1209,6 +1226,7 @@ export interface components {
             readonly fill_estimate: components["schemas"]["FillEstimate"] | null;
             /** Fill State */
             readonly fill_state: string;
+            readonly fusion_result?: components["schemas"]["FusionResult"] | null;
             /**
              * Generated At
              * Format: date-time
@@ -1236,6 +1254,8 @@ export interface components {
              * @constant
              */
             readonly schema_version: "2.0";
+            /** Section Profiles */
+            readonly section_profiles?: readonly components["schemas"]["SectionResult"][] | null;
             /** Site Id */
             readonly site_id: string;
         };
@@ -1990,6 +2010,38 @@ export interface components {
             /** Quarantined Messages */
             readonly quarantined_messages: number;
         };
+        /** EmailDeliveryReceipt */
+        readonly EmailDeliveryReceipt: {
+            /** Attempted At */
+            readonly attempted_at: string | null;
+            /** Attempts */
+            readonly attempts: number;
+            /** Completed At */
+            readonly completed_at: string | null;
+            /**
+             * Due At
+             * Format: date-time
+             */
+            readonly due_at: string;
+            /** Error Code */
+            readonly error_code: string | null;
+            /** Id */
+            readonly id: string;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            readonly phase: "ALERT" | "RECOVERY" | "TEST";
+            /** Pit Id */
+            readonly pit_id: string;
+            /** Recipient Id */
+            readonly recipient_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "QUEUED" | "SENDING" | "SENT" | "FAILED" | "UNCERTAIN" | "CANCELLED";
+        };
         /** EventExportRequest */
         readonly EventExportRequest: {
             /**
@@ -2240,6 +2292,14 @@ export interface components {
             readonly fps_num?: number | null;
             /** Height */
             readonly height?: number | null;
+            /** Measured At */
+            readonly measured_at?: string | null;
+            /**
+             * Metadata Origin
+             * @default unknown
+             * @enum {string}
+             */
+            readonly metadata_origin?: "request_probe" | "memory_cache" | "persisted_probe" | "unknown";
             /** Reason Code */
             readonly reason_code?: ("file_unavailable" | "probe_failed" | "probe_timeout" | "probe_unavailable" | "file_changed" | "metadata_unavailable") | null;
             /** Size Bytes */
@@ -2385,6 +2445,37 @@ export interface components {
             readonly time_basis?: "SOURCE_UTC" | "SIMULATION_SOURCE_UTC_UNVERIFIED";
             /** Value Percent */
             readonly value_percent?: number | null;
+        };
+        /** FusionComponent */
+        readonly FusionComponent: {
+            /** Anchor Scan Id */
+            readonly anchor_scan_id: string;
+            /** Calibrated Ratio */
+            readonly calibrated_ratio: number;
+            /** Section Ratio */
+            readonly section_ratio: number;
+            /** Sensor Id */
+            readonly sensor_id: string;
+            /** Weight */
+            readonly weight: number;
+        };
+        /** FusionResult */
+        readonly FusionResult: {
+            /** Clock Domain Id */
+            readonly clock_domain_id: string;
+            /** Components */
+            readonly components: readonly components["schemas"]["FusionComponent"][];
+            /**
+             * Method
+             * @constant
+             */
+            readonly method: "CALIBRATED_WEIGHTED_SECTIONS";
+            /** Model Version */
+            readonly model_version: string;
+            /** Pair Delta Ms */
+            readonly pair_delta_ms: number;
+            /** Ratio */
+            readonly ratio: number;
         };
         /** HTTPErrorResponse */
         readonly HTTPErrorResponse: {
@@ -3568,6 +3659,50 @@ export interface components {
             /** Sensor Id */
             readonly sensor_id: string;
         };
+        /** SectionBin */
+        readonly SectionBin: {
+            /** Ceiling Z Mm */
+            readonly ceiling_z_mm: number;
+            /** Floor Z Mm */
+            readonly floor_z_mm: number;
+            /** Height Mm */
+            readonly height_mm: number | null;
+            /** Index */
+            readonly index: number;
+            /** Sensor Ids */
+            readonly sensor_ids: readonly string[];
+            /**
+             * Source
+             * @enum {string}
+             */
+            readonly source: "OBSERVED" | "INTERPOLATED" | "UNAVAILABLE" | "MASKED";
+        };
+        /** SectionResult */
+        readonly SectionResult: {
+            readonly profile: components["schemas"]["SensorSectionProfile"] | null;
+            /** Reason Codes */
+            readonly reason_codes: readonly string[];
+            /** Sensor Id */
+            readonly sensor_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            readonly state: "AVAILABLE" | "LIMITED" | "UNAVAILABLE";
+        };
+        /** SectionStats */
+        readonly SectionStats: {
+            /** Input Points */
+            readonly input_points: number;
+            /** Retained Points */
+            readonly retained_points: number;
+            /** Scan Count */
+            readonly scan_count: number;
+            /** Sensor Id */
+            readonly sensor_id: string;
+            /** Spatial Rejected Bins */
+            readonly spatial_rejected_bins: number;
+        };
         /** SegmentFormat */
         readonly SegmentFormat: {
             /** Codec */
@@ -3600,6 +3735,38 @@ export interface components {
             readonly status: "ready" | "partial" | "unknown";
             /** Total */
             readonly total: number;
+        };
+        /** SensorSectionProfile */
+        readonly SensorSectionProfile: {
+            /**
+             * Area Basis
+             * @constant
+             */
+            readonly area_basis: "VERTICAL_PROJECTION";
+            /** Area Mm2 */
+            readonly area_mm2: number | null;
+            /** Area Ratio */
+            readonly area_ratio: number | null;
+            /** Axis Xy */
+            readonly axis_xy: readonly number[];
+            /** Bin Width Mm */
+            readonly bin_width_mm: number;
+            /** Bins */
+            readonly bins: readonly components["schemas"]["SectionBin"][];
+            /** Capacity Area Mm2 */
+            readonly capacity_area_mm2: number;
+            /** Coordinate Frame Id */
+            readonly coordinate_frame_id: string;
+            /** Coverage Ratio */
+            readonly coverage_ratio: number;
+            /** Origin Xy Mm */
+            readonly origin_xy_mm: readonly number[];
+            /** Plane Normal */
+            readonly plane_normal: readonly number[];
+            /** Plane Origin Mm */
+            readonly plane_origin_mm: readonly number[];
+            /** Sensor Stats */
+            readonly sensor_stats: readonly components["schemas"]["SectionStats"][];
         };
         /** SensorStatus */
         readonly SensorStatus: {
@@ -5327,6 +5494,75 @@ export interface operations {
             };
             /** @description Unauthorized */
             readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly email_delivery_receipt_api_v1_notifications_email_deliveries__delivery_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly delivery_id: string;
+            };
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["EmailDeliveryReceipt"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
                 headers: {
                     readonly [name: string]: unknown;
                 };

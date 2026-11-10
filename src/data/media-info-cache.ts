@@ -1,6 +1,8 @@
 // Backend가 파일 완성 시점에 측정한 값을 제공하면 서버 값을 우선하고 이 fallback을 제거한다.
 
-import { record } from "./contract-values";
+import { record, timestamp } from "./contract-values";
+
+export type MetadataOrigin = "request_probe" | "memory_cache" | "persisted_probe" | "unknown";
 
 export type FileMediaInfo = {
   status: "ready" | "unknown";
@@ -12,6 +14,8 @@ export type FileMediaInfo = {
   fpsDen: number | null;
   sizeBytes: number | null;
   reasonCode: string | null;
+  measuredAt: string | null;
+  metadataOrigin: MetadataOrigin;
 };
 
 export type SegmentFormat = {
@@ -80,13 +84,26 @@ function releaseSlot(): void {
   }
 }
 
+// v2는 파일 검사 시각과 출처를 포함한다. v1 항목은 두 field가 없으므로 읽지 않고 지운다.
+function removeLegacyEntry(kind: "daily" | "clip", id: string) {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) window.localStorage.removeItem(`scrap-dashboard:media-info:v1:${kind}:${id}`);
+  } catch {
+    // 무시
+  }
+}
+
 function dailyStorageKey(recordingId: string): string {
-  return `scrap-dashboard:media-info:v1:daily:${recordingId}`;
+  removeLegacyEntry("daily", recordingId);
+  return `scrap-dashboard:media-info:v2:daily:${recordingId}`;
 }
 
 function clipStorageKey(clipId: string): string {
-  return `scrap-dashboard:media-info:v1:clip:${clipId}`;
+  removeLegacyEntry("clip", clipId);
+  return `scrap-dashboard:media-info:v2:clip:${clipId}`;
 }
+
+const VALID_METADATA_ORIGINS = new Set(["request_probe", "memory_cache", "persisted_probe", "unknown"]);
 
 export function parseFileMediaInfo(value: unknown): FileMediaInfo {
   if (!record(value)) {
@@ -100,9 +117,34 @@ export function parseFileMediaInfo(value: unknown): FileMediaInfo {
       fpsDen: null,
       sizeBytes: null,
       reasonCode: "metadata_unavailable",
+      measuredAt: null,
+      metadataOrigin: "unknown",
     };
   }
+
+  let measuredAt: string | null = null;
+  if (value.measured_at !== undefined && value.measured_at !== null) {
+    if (typeof value.measured_at !== "string" || !timestamp(value.measured_at) || !/(?:Z|\+00:00)$/i.test(value.measured_at)) {
+      throw new Error("Invalid measured_at: must be valid ISO 8601 UTC timestamp");
+    }
+    measuredAt = value.measured_at;
+  }
+
+  let metadataOrigin: MetadataOrigin = "unknown";
+  if (value.metadata_origin !== undefined) {
+    if (typeof value.metadata_origin !== "string" || !VALID_METADATA_ORIGINS.has(value.metadata_origin)) {
+      throw new Error(`Invalid metadata_origin: ${typeof value.metadata_origin === "string" ? value.metadata_origin : "not a string"}`);
+    }
+    metadataOrigin = value.metadata_origin as MetadataOrigin;
+  }
+
   const status = value.status === "ready" ? "ready" : "unknown";
+  if (status === "unknown") {
+    if (measuredAt !== null || metadataOrigin !== "unknown") {
+      throw new Error("Unknown file information must not claim measurements or provenance");
+    }
+  }
+
   return {
     status,
     codec: typeof value.codec === "string" ? value.codec : null,
@@ -113,6 +155,8 @@ export function parseFileMediaInfo(value: unknown): FileMediaInfo {
     fpsDen: typeof value.fps_den === "number" && Number.isFinite(value.fps_den) ? value.fps_den : null,
     sizeBytes: typeof value.size_bytes === "number" && Number.isFinite(value.size_bytes) ? value.size_bytes : null,
     reasonCode: typeof value.reason_code === "string" ? value.reason_code : null,
+    measuredAt,
+    metadataOrigin,
   };
 }
 
