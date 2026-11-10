@@ -71,6 +71,59 @@ describe("LiDAR profile 표본", () => {
     expect(first.samples).toEqual([]);
     expect(second.samples).toEqual([]);
   });
+
+  test("새 optional field(sampleSource, processingVersion, sourceScanId)를 허용하고 잘못된 sampleSource는 거부한다", () => {
+    const base = lidarProfilesFixture();
+    const withValidFields = {
+      ...base,
+      profiles: [
+        {
+          ...base.profiles[0],
+          sensorId: "lidar-a",
+          sampleSource: "FILTERED_POINT_CLOUD",
+          processingVersion: "ANGULAR_RANGE_MEDIAN_V1",
+          sourceScanId: "scan-001",
+        },
+        {
+          ...base.profiles[1],
+          sensorId: "lidar-b",
+          sampleSource: "MEASUREMENT",
+          processingVersion: null,
+          sourceScanId: null,
+        },
+      ],
+    };
+    const [first, second] = parseLidarProfilesV2(withValidFields, "pit-01");
+    expect(first.label).toBe("LiDAR 1");
+    expect(second.label).toBe("LiDAR 2");
+    expect("sampleSource" in first).toBe(false);
+    expect("processingVersion" in first).toBe(false);
+    expect("sourceScanId" in first).toBe(false);
+
+    const withInvalidSource = {
+      ...base,
+      profiles: [{ ...base.profiles[0], sampleSource: "INVALID_SOURCE" }],
+    };
+    expect(() => parseLidarProfilesV2(withInvalidSource, "pit-01")).toThrow("Unexpected v2 LiDAR profile contract.");
+
+    const withNullSource = {
+      ...base,
+      profiles: [{ ...base.profiles[0], sampleSource: null }],
+    };
+    expect(() => parseLidarProfilesV2(withNullSource, "pit-01")).toThrow("Unexpected v2 LiDAR profile contract.");
+
+    const withInvalidProcessingVersion = {
+      ...base,
+      profiles: [{ ...base.profiles[0], processingVersion: 123 }],
+    };
+    expect(() => parseLidarProfilesV2(withInvalidProcessingVersion, "pit-01")).toThrow("Unexpected v2 LiDAR profile contract.");
+
+    const withInvalidScanId = {
+      ...base,
+      profiles: [{ ...base.profiles[0], sourceScanId: 123 }],
+    };
+    expect(() => parseLidarProfilesV2(withInvalidScanId, "pit-01")).toThrow("Unexpected v2 LiDAR profile contract.");
+  });
 });
 
 describe("calculateUnmeasuredRanges", () => {

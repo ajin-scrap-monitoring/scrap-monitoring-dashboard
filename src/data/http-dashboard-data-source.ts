@@ -146,7 +146,7 @@ function applyCollectionInsights(
   summary.timeSinceCollection = sinceCollection(collection?.lastActivityAt ?? null, serverTime);
   summary.averageCollectionCycle = !collection ? missingValue
     : collection.averageCycleSeconds === null ? "자료 부족" : durationText(collection.averageCycleSeconds);
-  monitoring.lidarProfiles = measuring && profiles ? profiles : [];
+  monitoring.lidarProfiles = profiles ? profiles : [];
   monitoring.measurementLayout = insights ? insights.layout : undefined;
   const sameScope = paired && paired.snapshot.siteId === monitoring.v2?.siteId && paired.snapshot.edgeId === monitoring.v2?.edgeId;
   const reported = sameScope ? paired.alerts : null;
@@ -584,7 +584,7 @@ export function createHttpDashboardDataSource({
     lidarProfilesState = profiles;
     if (!currentData?.monitoring) return;
     const before = insightsSignature(currentData.monitoring);
-    currentData.monitoring.lidarProfiles = currentData.monitoring.v2?.dataState === "FRESH" && profiles ? profiles : [];
+    currentData.monitoring.lidarProfiles = profiles ? profiles : [];
     if (before !== insightsSignature(currentData.monitoring)) publishNotifications();
   };
 

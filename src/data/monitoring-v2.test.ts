@@ -292,11 +292,13 @@ describe("Backend v2 모니터링", () => {
       fixture.profiles[1].filteredAverage = 320 as unknown as null;
       expect((await monitoringOf(fixture)).lidarProfiles[0].average).toBe("3.20 m");
     });
-    test("센서가 없으면 해당 slot은 빈 곡선이며 FRESH가 아니거나 계약 오류이면 숨긴다", async () => {
+    test("센서가 없으면 해당 slot은 빈 곡선이며 적재율이 STALE이어도 profile 유효점이 있으면 유지하고 계약 오류이면 숨긴다", async () => {
       const missing = lidarProfilesFixture();
       missing.profiles.pop();
       expect((await monitoringOf(missing)).lidarProfiles[0].samples).toEqual([]);
-      expect((await monitoringOf(lidarProfilesFixture(), monitoringV2StateFixture("STALE", 72))).lidarProfiles).toEqual([]);
+      const staleMonitoring = await monitoringOf(lidarProfilesFixture(), monitoringV2StateFixture("STALE", 72));
+      expect(staleMonitoring.lidarProfiles).toHaveLength(2);
+      expect(staleMonitoring.lidarProfiles[0].samples.length).toBeGreaterThan(0);
       expect((await monitoringOf({ profiles: "invalid" })).lidarProfiles).toEqual([]);
     });
     test("시뮬레이션과 보정 상태를 보존한다", async () => {

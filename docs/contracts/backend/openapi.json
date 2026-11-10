@@ -810,6 +810,22 @@
             "title": "Fill State",
             "type": "string"
           },
+          "filtered_point_clouds": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FilteredPointCloud"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filtered Point Clouds"
+          },
           "fusion_result": {
             "anyOf": [
               {
@@ -1853,6 +1869,272 @@
           "offset_ms"
         ],
         "title": "Clock",
+        "type": "object"
+      },
+      "CloudAnchor": {
+        "additionalProperties": false,
+        "properties": {
+          "acquired_at": {
+            "format": "date-time",
+            "title": "Acquired At",
+            "type": "string"
+          },
+          "acquired_monotonic_ns": {
+            "pattern": "^[0-9]{1,20}$",
+            "title": "Acquired Monotonic Ns",
+            "type": "string"
+          },
+          "clock_domain_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Clock Domain Id",
+            "type": "string"
+          },
+          "clock_offset_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clock Offset Ms"
+          },
+          "clock_state": {
+            "enum": [
+              "SYNCED",
+              "DEGRADED",
+              "UNSYNCED"
+            ],
+            "title": "Clock State",
+            "type": "string"
+          },
+          "scan_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Scan Id",
+            "type": "string"
+          },
+          "selected_point_count": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Selected Point Count",
+            "type": "integer"
+          },
+          "sequence": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "source_point_count": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Source Point Count",
+            "type": "integer"
+          },
+          "stream_instance_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Stream Instance Id",
+            "type": "string"
+          },
+          "timestamp_source": {
+            "const": "EDGE_SCAN_RECEIVED",
+            "title": "Timestamp Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scan_id",
+          "stream_instance_id",
+          "sequence",
+          "acquired_at",
+          "timestamp_source",
+          "clock_domain_id",
+          "acquired_monotonic_ns",
+          "clock_state",
+          "clock_offset_ms",
+          "source_point_count",
+          "selected_point_count"
+        ],
+        "title": "CloudAnchor",
+        "type": "object"
+      },
+      "CloudProcessing": {
+        "additionalProperties": false,
+        "properties": {
+          "angle_match_tolerance_mdeg": {
+            "maximum": 1000,
+            "minimum": 0,
+            "title": "Angle Match Tolerance Mdeg",
+            "type": "integer"
+          },
+          "distance_max_mm": {
+            "maximum": 1073741823,
+            "minimum": 1,
+            "title": "Distance Max Mm",
+            "type": "integer"
+          },
+          "distance_min_mm": {
+            "maximum": 1073741823,
+            "minimum": 0,
+            "title": "Distance Min Mm",
+            "type": "integer"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "max_adjacent_angle_gap_mdeg": {
+            "maximum": 180000,
+            "minimum": 1,
+            "title": "Max Adjacent Angle Gap Mdeg",
+            "type": "integer"
+          },
+          "processing_version": {
+            "const": "ANGULAR_RANGE_MEDIAN_V1",
+            "title": "Processing Version",
+            "type": "string"
+          },
+          "quality_min": {
+            "maximum": 255,
+            "minimum": 0,
+            "title": "Quality Min",
+            "type": "integer"
+          },
+          "spatial_max_deviation_mm": {
+            "maximum": 1000000000,
+            "minimum": 0,
+            "title": "Spatial Max Deviation Mm",
+            "type": "number"
+          },
+          "spatial_min_neighbors": {
+            "maximum": 16,
+            "minimum": 1,
+            "title": "Spatial Min Neighbors",
+            "type": "integer"
+          },
+          "spatial_neighbor_spread_mm": {
+            "maximum": 1000000000,
+            "minimum": 0,
+            "title": "Spatial Neighbor Spread Mm",
+            "type": "number"
+          },
+          "spatial_radius_points": {
+            "maximum": 8,
+            "minimum": 0,
+            "title": "Spatial Radius Points",
+            "type": "integer"
+          },
+          "window": {
+            "$ref": "#/components/schemas/CloudWindow"
+          }
+        },
+        "required": [
+          "enabled",
+          "processing_version",
+          "quality_min",
+          "distance_min_mm",
+          "distance_max_mm",
+          "spatial_radius_points",
+          "spatial_min_neighbors",
+          "spatial_max_deviation_mm",
+          "spatial_neighbor_spread_mm",
+          "max_adjacent_angle_gap_mdeg",
+          "angle_match_tolerance_mdeg",
+          "window"
+        ],
+        "title": "CloudProcessing",
+        "type": "object"
+      },
+      "CloudReference": {
+        "additionalProperties": false,
+        "properties": {
+          "calibration_version": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calibration Version"
+          },
+          "config_revision": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Config Revision",
+            "type": "string"
+          },
+          "coordinate_frame_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Coordinate Frame Id",
+            "type": "string"
+          },
+          "scan_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Scan Id",
+            "type": "string"
+          },
+          "sensor_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Sensor Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sensor_id",
+          "scan_id",
+          "config_revision",
+          "calibration_version",
+          "coordinate_frame_id"
+        ],
+        "title": "CloudReference",
+        "type": "object"
+      },
+      "CloudWindow": {
+        "additionalProperties": false,
+        "properties": {
+          "max_age_ms": {
+            "maximum": 1000,
+            "minimum": 1,
+            "title": "Max Age Ms",
+            "type": "integer"
+          },
+          "min_scans": {
+            "maximum": 8,
+            "minimum": 1,
+            "title": "Min Scans",
+            "type": "integer"
+          },
+          "pair_tolerance_ms": {
+            "maximum": 100,
+            "minimum": 0,
+            "title": "Pair Tolerance Ms",
+            "type": "integer"
+          },
+          "scan_count": {
+            "maximum": 8,
+            "minimum": 1,
+            "title": "Scan Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scan_count",
+          "min_scans",
+          "max_age_ms",
+          "pair_tolerance_ms"
+        ],
+        "title": "CloudWindow",
         "type": "object"
       },
       "CollectionCriteria": {
@@ -4482,6 +4764,204 @@
         "title": "FillObservation",
         "type": "object"
       },
+      "FilteredPointCloud": {
+        "additionalProperties": false,
+        "properties": {
+          "anchor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CloudAnchor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "angles_mdeg": {
+            "items": {
+              "maximum": 359999,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "title": "Angles Mdeg",
+            "type": "array"
+          },
+          "calibration_version": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calibration Version"
+          },
+          "coordinate_frame_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Coordinate Frame Id",
+            "type": "string"
+          },
+          "invalid_reason_codes": {
+            "items": {
+              "items": {
+                "enum": [
+                  "NO_SCAN",
+                  "SDK_INVALID_RANGE",
+                  "SOURCE_INVALID",
+                  "LOW_QUALITY",
+                  "OUT_OF_RANGE",
+                  "SPATIAL_OUTLIER",
+                  "INSUFFICIENT_HISTORY",
+                  "FILTER_UNVERIFIED",
+                  "CALIBRATION_MISSING",
+                  "CALIBRATION_UNVERIFIED",
+                  "CALIBRATION_MISMATCH",
+                  "COORDINATE_OUT_OF_RANGE",
+                  "INPUT_EXPIRED_DURING_FILTER"
+                ],
+                "type": "string"
+              },
+              "maxItems": 1,
+              "type": "array"
+            },
+            "title": "Invalid Reason Codes",
+            "type": "array"
+          },
+          "point_count": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Point Count",
+            "type": "integer"
+          },
+          "point_indices": {
+            "items": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "title": "Point Indices",
+            "type": "array"
+          },
+          "processing": {
+            "$ref": "#/components/schemas/CloudProcessing"
+          },
+          "processing_version": {
+            "const": "ANGULAR_RANGE_MEDIAN_V1",
+            "title": "Processing Version",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "sample_counts": {
+            "items": {
+              "maximum": 8,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "title": "Sample Counts",
+            "type": "array"
+          },
+          "sensor_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Sensor Id",
+            "type": "string"
+          },
+          "source_scans": {
+            "items": {
+              "$ref": "#/components/schemas/CloudReference"
+            },
+            "maxItems": 8,
+            "title": "Source Scans",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "AVAILABLE",
+              "LIMITED",
+              "UNAVAILABLE"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "valid": {
+            "items": {
+              "type": "boolean"
+            },
+            "title": "Valid",
+            "type": "array"
+          },
+          "valid_point_count": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Valid Point Count",
+            "type": "integer"
+          },
+          "verification_state": {
+            "enum": [
+              "VERIFIED",
+              "DEFAULT",
+              "UNVERIFIED"
+            ],
+            "title": "Verification State",
+            "type": "string"
+          },
+          "xyz_mm": {
+            "items": {
+              "anyOf": [
+                {
+                  "items": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "number"
+                  },
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Xyz Mm",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sensor_id",
+          "state",
+          "reason_codes",
+          "coordinate_frame_id",
+          "calibration_version",
+          "verification_state",
+          "processing_version",
+          "anchor",
+          "source_scans",
+          "point_count",
+          "valid_point_count",
+          "point_indices",
+          "angles_mdeg",
+          "xyz_mm",
+          "valid",
+          "invalid_reason_codes",
+          "sample_counts",
+          "processing"
+        ],
+        "title": "FilteredPointCloud",
+        "type": "object"
+      },
       "FusionComponent": {
         "additionalProperties": false,
         "properties": {
@@ -5425,6 +5905,17 @@
             ],
             "title": "Minimum"
           },
+          "processingVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processingversion"
+          },
           "reasonCodes": {
             "items": {
               "type": "string"
@@ -5446,6 +5937,15 @@
           "referenceDistanceCm": {
             "title": "Referencedistancecm",
             "type": "number"
+          },
+          "sampleSource": {
+            "default": "MEASUREMENT",
+            "enum": [
+              "MEASUREMENT",
+              "FILTERED_POINT_CLOUD"
+            ],
+            "title": "Samplesource",
+            "type": "string"
           },
           "samples": {
             "items": {
@@ -5486,6 +5986,17 @@
             "default": false,
             "title": "Simulated",
             "type": "boolean"
+          },
+          "sourceScanId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcescanid"
           },
           "summaryValuePolicy": {
             "default": "PROFILE_MEAN",
@@ -17985,5 +18496,5 @@
     }
   },
   "x-source-repository": "https://github.com/ajin-scrap-monitoring/scrap-monitoring-backend",
-  "x-source-revision": "97a380d8955d61bde3d44a62ff15d8bcfca248e9"
+  "x-source-revision": "7e68d10446899b25ce5ba7d2761ba9978cb802b1"
 }

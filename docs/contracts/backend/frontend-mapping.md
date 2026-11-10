@@ -170,8 +170,14 @@ Backend 오류 본문은 `{detail: 문자열}`, `{detail: [{loc, msg, type}]}` �
 카드에 연결한다. 이 대응은 현행 장비 상태와 같은 규칙이며 응답이 제공하는 값이 아니다.
 각 profile의 `samples`는 필수 배열이며 누락이나 null이면 계약 오류로 처리한다.
 `samples=[]`는 표본 없음 상태로 두고 빈 피트나 높이 0으로 바꾸지 않는다.
+profile의 최신성은 Backend profiles 응답(빈 배열, null 높이, `reasonCodes`)이 판단하며
+적재율 준비 상태(`dataState`)와 독립적이다. snapshot `dataState`가 UNKNOWN, STALE 또는
+filterState가 WARMING이어도 profile 응답에 유효점이 있으면 곡선을 표시한다.
 높이는 cm를 m로 한 번 변환하고 `positionRatio`는 0 이상 1 이하의 위치로 사용한다.
 평균은 `SCAN_MEAN_TEMPORAL_MEDIAN` 기준이면 `filteredAverage`, 아니면 `average`다.
+`filteredAverage`가 null이면 대표값은 "-"로 표시하고 곡선은 유지한다.
+`sampleSource`, `processingVersion`, `sourceScanId`의 3개 optional 필드는 계약 파서에서
+허용하지만 화면 모델에는 보존하지 않는다.
 `valid=false`, 높이 또는 위치가 null인 표본은 선을 끊는다. 관측 범위는 `positionRatio`가 null이
 아닌 표본의 최솟값~최댓값이다. 가로축의 [0, 최솟값)과 (최댓값, 1] 구간은 미측정 영역으로 옅은
 회색 음영을 렌더링하고 음영 폭이 약 24px 이상이면 가운데에 "미측정" 글자를 표시한다. 음영의
