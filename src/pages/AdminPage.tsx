@@ -1,4 +1,4 @@
-import { useCallback, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { DashboardPageShell } from "../components/DashboardShell";
 import { SectionTitle } from "../components/DashboardPrimitives";
@@ -14,7 +14,7 @@ const recipientsPerPage = 10;
 const minimumCollectionThreshold = 5;
 const preAlertGap = 5;
 const eventChoices = [["collection", "수거 필요"], ["error", "측정 오류"], ["device", "장비 장애"]] as const;
-const channelChoices = [["email", "이메일"], ["sms", "문자"]] as const;
+const channelChoices = [["email", "이메일"]] as const;
 function newRecipientDefaults() { return { name: "", team: "", email: "", phone: "", emailChannel: true, smsChannel: false, enabled: true, useGlobal: true, collection: true, error: true, device: true }; }
 
 function AdminCheck({ checked, children, disabled, onChange }: { checked: boolean; children: string; disabled?: boolean; onChange: (checked: boolean) => void }) {
@@ -68,10 +68,89 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
   const [policyRules, setPolicyRules] = useState(initialPolicy.rules);
   const [savedPolicy, setSavedPolicy] = useState(initialPolicy);
   const [policyMessage, setPolicyMessage] = useState("");
-  const [testChannels, setTestChannels] = useState({ email: true, sms: true });
+  const [testChannels, setTestChannels] = useState({ email: true });
   const [testRecipient, setTestRecipient] = useState(admin.recipients[0]?.email ?? "");
   const [testRecipientError, setTestRecipientError] = useState("");
-  const [testAlertState, setTestAlertState] = useState<"idle" | "processing" | "complete" | "invalid">("idle");
+  const [testAlertState, setTestAlertState] = useState<"idle" | "processing" | "invalid">("idle");
+  const [deliveryStatus, setDeliveryStatus] = useState<{ text: string; title?: string; role?: "alert" | "status" } | null>(null);
+  const deliveryPollRef = useRef<{ controller: AbortController; timerId: number | null; active: boolean } | null>(null);
+
+  const stopDeliveryPolling = useCallback(() => {
+    if (deliveryPollRef.current) {
+      deliveryPollRef.current.active = false;
+      deliveryPollRef.current.controller.abort();
+      if (deliveryPollRef.current.timerId !== null) {
+        window.clearTimeout(deliveryPollRef.current.timerId);
+      }
+      deliveryPollRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      stopDeliveryPolling();
+    };
+  }, [stopDeliveryPolling]);
+
+  const startDeliveryPolling = (deliveryId: string) => {
+    stopDeliveryPolling();
+    const controller = new AbortController();
+    const pollState = {
+      controller,
+      timerId: null as number | null,
+      active: true,
+    };
+    deliveryPollRef.current = pollState;
+
+    let pollAttempts = 0;
+    const maxPollAttempts = 20;
+
+    const poll = async () => {
+      if (!pollState.active || controller.signal.aborted) return;
+      try {
+        if (!dataSource?.getEmailDelivery) {
+          setDeliveryStatus({ text: "이메일 발송 상태를 확인하지 못했습니다.", role: "alert" });
+          return;
+        }
+        const receipt = await dataSource.getEmailDelivery(deliveryId, controller.signal);
+        if (!pollState.active || controller.signal.aborted) return;
+
+        if (receipt.status === "QUEUED") {
+          setDeliveryStatus({ text: "이메일 발송 대기 중입니다.", role: "status" });
+        } else if (receipt.status === "SENDING") {
+          setDeliveryStatus({ text: "이메일 발송 처리 중입니다.", role: "status" });
+        } else if (receipt.status === "SENT") {
+          setDeliveryStatus({ text: "Google이 이메일 발송을 접수했습니다. 받은편지함 도착 확인은 아닙니다.", role: "status" });
+          return;
+        } else if (receipt.status === "FAILED") {
+          setDeliveryStatus({ text: "이메일 발송에 실패했습니다.", title: receipt.errorCode ?? undefined, role: "alert" });
+          return;
+        } else if (receipt.status === "CANCELLED") {
+          setDeliveryStatus({ text: "이메일 발송이 취소되었습니다.", role: "alert" });
+          return;
+        } else if (receipt.status === "UNCERTAIN") {
+          setDeliveryStatus({ text: "이메일 발송 접수 여부를 확인할 수 없습니다.", role: "alert" });
+          return;
+        }
+
+        pollAttempts += 1;
+        if (pollAttempts >= maxPollAttempts) {
+          setDeliveryStatus({ text: "이메일 발송 상태를 계속 확인하지 못했습니다.", role: "alert" });
+          return;
+        }
+
+        pollState.timerId = window.setTimeout(() => {
+          void poll();
+        }, 3000);
+      } catch {
+        if (!pollState.active || controller.signal.aborted) return;
+        setDeliveryStatus({ text: "이메일 발송 상태를 확인하지 못했습니다.", role: "alert" });
+      }
+    };
+
+    void poll();
+  };
+
   const settingsAction = useAdminAction(dataSource);
   const recipientAction = useAdminAction(dataSource);
   const addAction = useAdminAction(dataSource);
@@ -97,19 +176,24 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
       return;
     }
     setTestRecipientError("");
-    if (testChannels.sms && (!recipient.phone.trim() || recipient.phone === "-")) {
-      setTestRecipientError("문자 테스트에는 전화번호가 필요합니다.");
-      return;
-    }
-    if (!testChannels.email && !testChannels.sms) {
+    if (!testChannels.email) {
       setTestAlertState("invalid");
       return;
     }
+    stopDeliveryPolling();
+    setDeliveryStatus(null);
     setTestAlertState("processing");
-    const channels = [testChannels.email ? "email" : null, testChannels.sms ? "sms" : null].filter((channel): channel is "email" | "sms" => channel !== null);
+    const channels = ["email"] as const;
     testAction.run(
-      () => dataSource ? dataSource.sendTestNotification?.(recipient.id, channels) ?? Promise.reject(new Error("Unsupported action")) : Promise.resolve(),
-      () => setTestAlertState("complete"),
+      () => dataSource ? dataSource.sendTestNotification?.(recipient.id, channels) ?? Promise.reject(new Error("Unsupported action")) : Promise.resolve(null),
+      (deliveryId) => {
+        setTestAlertState("idle");
+        if (!deliveryId) {
+          setDeliveryStatus({ text: "테스트 알림 요청을 접수했습니다. 이메일 발송 상태 정보는 없습니다.", role: "status" });
+          return;
+        }
+        startDeliveryPolling(deliveryId);
+      },
       () => {
         setTestAlertState("idle");
         setTestRecipientError("테스트 알림 요청을 처리하지 못했습니다.");
@@ -216,12 +300,8 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
       setAddRecipientError("이미 등록된 이메일입니다.");
       return;
     }
-    if (!newRecipient.emailChannel && !newRecipient.smsChannel) {
+    if (!newRecipient.emailChannel) {
       setAddRecipientError("수신 채널을 하나 이상 선택하세요.");
-      return;
-    }
-    if (newRecipient.smsChannel && !newRecipient.phone.trim()) {
-      setAddRecipientError("문자 수신을 사용하려면 전화번호를 입력하세요.");
       return;
     }
     if (![newRecipient.collection, newRecipient.error, newRecipient.device].some(Boolean)) {
@@ -229,8 +309,8 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
       return;
     }
     const email = newRecipient.email.trim();
-    const settings = { collection: newRecipient.collection, device: newRecipient.device, email: newRecipient.emailChannel, enabled: newRecipient.enabled, error: newRecipient.error, sms: newRecipient.smsChannel, useGlobal: newRecipient.useGlobal };
-    const fallback = { recipient: { id: `recipient-${recipients.length + 1}`, version: '"local"', name: newRecipient.name.trim(), team: newRecipient.team.trim(), email, phone: newRecipient.phone.trim() || "-", channel: newRecipient.emailChannel && newRecipient.smsChannel ? "이메일, 문자" : newRecipient.emailChannel ? "이메일" : "문자", enabled: newRecipient.enabled }, settings };
+    const settings = { collection: newRecipient.collection, device: newRecipient.device, email: newRecipient.emailChannel, enabled: newRecipient.enabled, error: newRecipient.error, sms: false, useGlobal: newRecipient.useGlobal };
+    const fallback = { recipient: { id: `recipient-${recipients.length + 1}`, version: '"local"', name: newRecipient.name.trim(), team: newRecipient.team.trim(), email, phone: newRecipient.phone.trim() || "-", channel: newRecipient.emailChannel ? "이메일" : "-", enabled: newRecipient.enabled }, settings };
     setAddRecipientError("");
     addAction.run(
       () => dataSource ? dataSource.createNotificationRecipient?.({ recipient: { enabled: newRecipient.enabled, email, name: newRecipient.name.trim(), phone: newRecipient.phone.trim() || "-", team: newRecipient.team.trim() }, settings }) ?? Promise.reject(new Error("Unsupported action")) : Promise.resolve(fallback),
@@ -247,17 +327,14 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
 
   const saveRecipientSettings = () => {
     if (!selectedRecipient || !selectedRecipientSettings) return;
-    if (!selectedRecipientSettings.email && !selectedRecipientSettings.sms) {
+    if (!selectedRecipientSettings.email) {
       setRecipientSaveError("수신 채널을 하나 이상 선택하세요.");
       return;
     }
-    if (selectedRecipientSettings.sms && (!selectedRecipient.phone.trim() || selectedRecipient.phone === "-")) {
-      setRecipientSaveError("문자 수신에는 전화번호가 필요합니다.");
-      return;
-    }
+    const settingsToSave = { ...selectedRecipientSettings, sms: false };
     setRecipientSaveError("");
     recipientAction.run(
-      () => dataSource ? dataSource.updateNotificationRecipient?.(selectedRecipient, selectedRecipientSettings) ?? Promise.reject(new Error("Unsupported action")) : Promise.resolve({ recipient: selectedRecipient, settings: selectedRecipientSettings }),
+      () => dataSource ? dataSource.updateNotificationRecipient?.(selectedRecipient, settingsToSave) ?? Promise.reject(new Error("Unsupported action")) : Promise.resolve({ recipient: selectedRecipient, settings: settingsToSave }),
       (updated) => {
         setRecipients((items) => items.map((item) => item.id === updated.recipient.id ? updated.recipient : item));
         setRecipientSettings((items) => ({ ...items, [updated.recipient.email]: structuredClone(updated.settings) }));
@@ -320,7 +397,7 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
               <div className="admin-card-head"><SectionTitle>알림 대상 관리</SectionTitle><div className="recipients-tools"><span>총 {recipients.length}명</span><button className="admin-primary compact" type="button" onClick={() => setAddRecipientOpen(true)}>알림 대상 추가</button></div></div>
               <div className="recipients-table-wrap"><table><thead><tr>{["이름", "소속", "이메일", "전화번호", "수신 채널", "수신 이벤트", "상태", "관리"].map((label) => <th key={label}>{label}</th>)}</tr></thead><tbody>{visibleRecipients.length > 0 ? visibleRecipients.map((recipient) => {
                 const settings = recipientSettings[recipient.email];
-                const fields = [recipient.name, recipient.team, recipient.email, recipient.phone, settings.email && settings.sms ? "이메일, 문자" : settings.email ? "이메일" : settings.sms ? "문자" : "-", recipientEventSummary(settings)];
+                const fields = [recipient.name, recipient.team, recipient.email, recipient.phone, settings.email ? "이메일" : "-", recipientEventSummary(settings)];
                 return <tr key={recipient.id}>{fields.map((value, index) => <td key={index}><span className="recipient-cell-text" title={value}>{value}</span></td>)}<td><span className={`status-text ${settings.enabled ? "ok" : "muted"}`}>{settings.enabled ? "사용" : "중지"}</span></td><td><button type="button" className="admin-small-button recipient-settings-button" onClick={() => openRecipientPanel(recipient.email)}>수신 설정</button></td></tr>;
               }) : <tr><td className="table-empty" colSpan={8}>등록된 알림 대상이 없습니다.</td></tr>}</tbody></table></div><Pagination ariaLabel="알림 대상 페이지" currentPage={recipientPage} itemLabel="알림 대상" onPageChange={setRecipientPage} totalPages={recipientPages} />
             </section>
@@ -336,7 +413,7 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
               <div className="policy-actions">{policyMessage && <span className="policy-feedback" role="status" title={policyMessage}>{policyMessage}</span>}<button className="admin-secondary" type="button" onClick={() => { setPolicyEvents(savedPolicy.events); setRecoveryNotice(savedPolicy.recovery); setPolicyRules(savedPolicy.rules); setPolicyMessage("변경을 취소했습니다."); }}>취소</button><button className="admin-primary compact" type="button" onClick={savePolicy}>정책 저장</button></div>
             </fieldset></section>
             <section className="card test-alert-card">
-              <SectionTitle>테스트 알림</SectionTitle><fieldset className="admin-fields" disabled={testAction.busy}><p className="test-alert-intro admin-inline-feedback" role={testRecipientError || testAlertState === "invalid" ? "alert" : testAlertState === "complete" ? "status" : undefined} title={testRecipientError || undefined}>{testRecipientError || (testAlertState === "invalid" ? "테스트 알림을 보낼 채널을 하나 이상 선택하세요." : testAlertState === "complete" ? "테스트 알림 요청을 접수했습니다." : "선택한 대상과 채널로 테스트 요청을 보냅니다.")}</p><div className="admin-field"><span>등록 대상</span><Dropdown label="등록 대상" value={recipients.find((recipient) => recipient.email === testRecipient) ? `${recipients.find((recipient) => recipient.email === testRecipient)!.name} (${testRecipient})` : "대상 선택"} options={recipients.map((recipient) => `${recipient.name} (${recipient.email})`)} onChange={(value) => { setTestRecipient(recipients.find((recipient) => `${recipient.name} (${recipient.email})` === value)!.email); setTestRecipientError(""); setTestAlertState("idle"); }} /></div><div className="admin-field"><span>채널 선택</span><div className="test-channels">{channelChoices.map(([key, label]) => <AdminCheck key={key} checked={testChannels[key]} onChange={(checked) => setTestChannels((channels) => ({ ...channels, [key]: checked }))}>{label}</AdminCheck>)}</div></div><div className="test-message"><strong>수신 확인</strong><span>요청 접수는 실제 이메일이나 문자 수신을 보장하지 않습니다.</span></div><button className="admin-outline-button" type="button" disabled={testAction.busy || recipients.length === 0} onClick={requestTestAlert}>{testAlertState === "processing" ? "테스트 알림 확인 중" : "테스트 알림 보내기"}</button></fieldset>
+              <SectionTitle>테스트 알림</SectionTitle><fieldset className="admin-fields" disabled={testAction.busy}><p className="test-alert-intro admin-inline-feedback" role={testRecipientError || testAlertState === "invalid" ? "alert" : deliveryStatus ? deliveryStatus.role : undefined} title={testRecipientError || deliveryStatus?.title || undefined}>{testRecipientError || (testAlertState === "invalid" ? "테스트 알림을 보낼 채널을 하나 이상 선택하세요." : deliveryStatus ? deliveryStatus.text : "선택한 대상과 채널로 테스트 요청을 보냅니다.")}</p><div className="admin-field"><span>등록 대상</span><Dropdown label="등록 대상" value={recipients.find((recipient) => recipient.email === testRecipient) ? `${recipients.find((recipient) => recipient.email === testRecipient)!.name} (${testRecipient})` : "대상 선택"} options={recipients.map((recipient) => `${recipient.name} (${recipient.email})`)} onChange={(value) => { stopDeliveryPolling(); setDeliveryStatus(null); setTestRecipient(recipients.find((recipient) => `${recipient.name} (${recipient.email})` === value)!.email); setTestRecipientError(""); setTestAlertState("idle"); }} /></div><div className="admin-field"><span>채널 선택</span><div className="test-channels">{channelChoices.map(([key, label]) => <AdminCheck key={key} checked={testChannels[key]} onChange={(checked) => setTestChannels((channels) => ({ ...channels, [key]: checked }))}>{label}</AdminCheck>)}</div></div><div className="test-message"><strong>수신 확인</strong><span>요청 접수와 Google 접수는 실제 이메일 수신을 보장하지 않습니다.</span></div><button className="admin-outline-button" type="button" disabled={testAction.busy || recipients.length === 0} onClick={requestTestAlert}>{testAlertState === "processing" ? "테스트 알림 확인 중" : "테스트 알림 보내기"}</button></fieldset>
             </section>
           </div>
         </div>

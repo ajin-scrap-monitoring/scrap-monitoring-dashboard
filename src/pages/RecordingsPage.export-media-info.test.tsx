@@ -659,6 +659,209 @@ describe("녹화 정보 영상 파일 정보 연결", () => {
     expect(screen.getByText("1280 x 720")).toBeInTheDocument();
     expect(screen.getByText("1.5 MB")).toBeInTheDocument();
   });
+
+  describe("Q7 RecordingsPage 녹화 정보 카드 title 검증", () => {
+    test("날짜 녹화: file이 있을 때 segments 줄과 파일 검사 시각 및 측정값 출처를 모두 표시한다", async () => {
+      const dailyRec = createDailyRecording({ id: "550e8400-e29b-41d4-a716-446655440011", sizeBytes: 2097152 });
+      const getMediaInfoMock = vi.fn().mockResolvedValue({
+        kind: "daily",
+        recordingId: "550e8400-e29b-41d4-a716-446655440011",
+        file: {
+          status: "ready",
+          codec: "h264",
+          width: 1920,
+          height: 1080,
+          fps: 30,
+          fpsNum: 30,
+          fpsDen: 1,
+          sizeBytes: 2097152,
+          reasonCode: null,
+          measuredAt: "2026-11-10T04:00:00Z",
+          metadataOrigin: "memory_cache",
+        },
+        segments: {
+          status: "ready",
+          total: 10,
+          measured: 10,
+          formats: [{ codec: "h264", width: 1920, height: 1080, segmentCount: 10 }],
+          mixed: false,
+        },
+        storedSizeBytes: 2097152,
+      });
+
+      const dataSource: DashboardDataSource = {
+        ...baseSource,
+        getRecording: () => Promise.resolve(dailyRec),
+        getDailyRecordingMediaInfo: getMediaInfoMock,
+      };
+
+      render(
+        <RecordingsPage
+          dataSource={dataSource}
+          recordings={[dailyRec]}
+          headerNotifications={[]}
+          reception={reception}
+        />,
+      );
+
+      await act(async () => { await Promise.resolve(); });
+
+      const dd = screen.getByText("h264");
+      expect(dd).toHaveAttribute("title", "녹화 조각 형식: ready, 측정 10/10, 혼합 여부: 전체 확인 결과 동일\n파일 검사 시각: 2026-11-10 13:00:00 (한국 표준시), 측정값 출처: 메모리 측정값 재사용");
+    });
+
+    test("날짜 녹화: file이 null이면 segments 줄 유지하고 파일 정보 없음 줄을 표시한다", async () => {
+      const dailyRec = createDailyRecording({ id: "550e8400-e29b-41d4-a716-446655440012" });
+      const getMediaInfoMock = vi.fn().mockResolvedValue({
+        kind: "daily",
+        recordingId: "550e8400-e29b-41d4-a716-446655440012",
+        file: null,
+        segments: {
+          status: "partial",
+          total: 10,
+          measured: 5,
+          formats: [],
+          mixed: null,
+        },
+        storedSizeBytes: null,
+      });
+
+      const dataSource: DashboardDataSource = {
+        ...baseSource,
+        getRecording: () => Promise.resolve(dailyRec),
+        getDailyRecordingMediaInfo: getMediaInfoMock,
+      };
+
+      render(
+        <RecordingsPage
+          dataSource={dataSource}
+          recordings={[dailyRec]}
+          headerNotifications={[]}
+          reception={reception}
+        />,
+      );
+
+      await act(async () => { await Promise.resolve(); });
+
+      const dds = screen.getAllByText("날짜 MP4 준비 전");
+      expect(dds[0]).toHaveAttribute("title", "녹화 조각 형식: partial, 측정 5/10, 혼합 여부: 확인 불가\n파일 정보 없음");
+    });
+
+    test("날짜 녹화: 시각이 null이면 '파일 검사 시각: 정보 없음'을 표시한다", async () => {
+      const dailyRec = createDailyRecording({ id: "550e8400-e29b-41d4-a716-446655440013", sizeBytes: 1000 });
+      const getMediaInfoMock = vi.fn().mockResolvedValue({
+        kind: "daily",
+        recordingId: "550e8400-e29b-41d4-a716-446655440013",
+        file: {
+          status: "ready",
+          codec: "h264",
+          width: 1920,
+          height: 1080,
+          fps: 30,
+          fpsNum: 30,
+          fpsDen: 1,
+          sizeBytes: 1000,
+          reasonCode: null,
+          measuredAt: null,
+          metadataOrigin: "request_probe",
+        },
+        segments: {
+          status: "ready",
+          total: 1,
+          measured: 1,
+          formats: [{ codec: "h264", width: 1920, height: 1080, segmentCount: 1 }],
+          mixed: false,
+        },
+        storedSizeBytes: 1000,
+      });
+
+      const dataSource: DashboardDataSource = {
+        ...baseSource,
+        getRecording: () => Promise.resolve(dailyRec),
+        getDailyRecordingMediaInfo: getMediaInfoMock,
+      };
+
+      render(
+        <RecordingsPage
+          dataSource={dataSource}
+          recordings={[dailyRec]}
+          headerNotifications={[]}
+          reception={reception}
+        />,
+      );
+
+      await act(async () => { await Promise.resolve(); });
+
+      const dd = screen.getByText("h264");
+      expect(dd).toHaveAttribute("title", "녹화 조각 형식: ready, 측정 1/1, 혼합 여부: 전체 확인 결과 동일\n파일 검사 시각: 정보 없음, 측정값 출처: 요청 시 검사");
+    });
+
+    test("이벤트(clip): 파일 정보 줄만 title로 둔다", async () => {
+      const eventRec = createEventRecording({
+        exportPath: "/api/v2/recordings/events/evt-clip-title/exports",
+      });
+
+      const clipMock = vi.fn().mockResolvedValue({
+        kind: "clip",
+        clipId: "clip-title-1",
+        sizeBytes: 1572864,
+        mediaInfo: {
+          status: "ready",
+          codec: "hevc",
+          width: 1280,
+          height: 720,
+          fps: 30,
+          fpsNum: 30,
+          fpsDen: 1,
+          sizeBytes: 1572864,
+          reasonCode: null,
+          measuredAt: "2026-11-10T04:00:00Z",
+          metadataOrigin: "persisted_probe",
+        },
+        storedSizeBytes: 1572864,
+      });
+
+      const prepareMock = vi.fn().mockResolvedValue({
+        requestId: "req-clip-title",
+        eventId: eventRec.id,
+        statusPath: "/status/req-clip-title",
+        status: "ready",
+        clipId: "clip-title-1",
+        coverage: "complete",
+        sizeBytes: 1572864,
+        downloadPath: "/media/clips/clip-title-1/content?download=true",
+        expiresAt: null,
+        actualFrom: null,
+        actualTo: null,
+        errorCode: null,
+        gaps: [],
+      });
+
+      const dataSource: DashboardDataSource = {
+        ...baseSource,
+        getRecording: () => Promise.resolve(eventRec),
+        prepareEventRecordingExport: prepareMock,
+        getClipMediaInfo: clipMock,
+      };
+
+      render(
+        <RecordingsPage
+          dataSource={dataSource}
+          recordings={[eventRec]}
+          headerNotifications={[]}
+          reception={reception}
+        />,
+      );
+
+      await act(async () => { if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(0); else await Promise.resolve(); });
+      fireEvent.click(screen.getByRole("button", { name: "구간 파일 준비" }));
+      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await Promise.resolve(); });
+
+      const dd = screen.getByText("hevc");
+      expect(dd).toHaveAttribute("title", "파일 검사 시각: 2026-11-10 13:00:00 (한국 표준시), 측정값 출처: 저장된 측정값 재사용");
+    });
+  });
 });
 
 describe("서버 export 복구 수명", () => {

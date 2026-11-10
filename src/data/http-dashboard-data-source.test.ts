@@ -914,7 +914,7 @@ describe("테스트 알림 이후 종 목록 동기화", () => {
     await source.getDashboardData();
     const listener = vi.fn<(data: DashboardData) => void>();
     const unsubscribe = source.subscribe?.(listener);
-    await expect(source.sendTestNotification!("recipient-contract-1", ["email"])).resolves.toBeUndefined();
+    await expect(source.sendTestNotification!("recipient-contract-1", ["email"])).resolves.toBeNull();
     expect(listener.mock.lastCall?.[0].monitoring.unreadNotificationCount).toBe(1);
     if (status === 503) expect(listener.mock.lastCall?.[0].monitoring.notificationState).toMatchObject({ status: "error", stale: true });
     if (status === 403) expect(listener.mock.lastCall?.[0].authError).toMatchObject({ status: 403 });
@@ -979,7 +979,7 @@ describe("테스트 알림 이후 종 목록 동기화", () => {
     }
     listener.mockClear();
     complete(new Response(JSON.stringify({ ...notificationPageFixture, unreadCount: 99 })));
-    await expect(pending).resolves.toBeUndefined();
+    await expect(pending).resolves.toBeNull();
     expect(listener).not.toHaveBeenCalled();
     unsubscribe?.();
   });
@@ -1611,7 +1611,7 @@ describe("HTTP 대시보드 데이터 소스", () => {
       ...routeData.admin!.recipientSettings["operator@example.com"],
       sms: false,
     });
-    await source.sendTestNotification?.("recipient-contract-1", ["email", "sms"]);
+    await source.sendTestNotification?.("recipient-contract-1", ["email"]);
 
     const settingsRequest = requests.find(({ url, init }) => url.pathname === "/api/v1/settings/alerts" && init?.method === "PUT");
     expect(new Headers(settingsRequest?.init?.headers).get("X-CSRF-Token")).toBe("csrf-contract-example");
@@ -1625,7 +1625,7 @@ describe("HTTP 대시보드 데이터 소스", () => {
       settings: { email: true, sms: true },
     });
     const testRequest = requests.find(({ url }) => url.pathname === "/api/v1/notifications/test");
-    expect(JSON.parse(requestBodyText(testRequest?.init?.body)) as unknown).toEqual({ channels: ["email", "sms"], recipientId: "recipient-contract-1" });
+    expect(JSON.parse(requestBodyText(testRequest?.init?.body)) as unknown).toEqual({ channels: ["email"], recipientId: "recipient-contract-1" });
   });
 
   test("SSE 중복을 제거하고 스냅샷, 새 알림과 재동기화를 현재 데이터에 병합한다", async () => {

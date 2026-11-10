@@ -36,12 +36,14 @@ test("실제 관리자 설정과 대상 저장, 테스트 접수 및 사용자�
     await expect(page.locator(".recipients-table-wrap")).toContainText("integration-admin@example.com");
     await page.getByRole("button", { name: "수신 설정", exact: true }).click();
     const preferences = page.getByRole("dialog", { name: "검증 담당자 수신 설정" });
-    await preferences.getByText("문자", { exact: true }).click();
-    await expect(preferences.getByRole("checkbox", { name: "문자", exact: true })).toBeChecked();
+    await expect(preferences.getByRole("checkbox", { name: "문자", exact: true })).toHaveCount(0);
+    await expect(preferences.getByRole("checkbox", { name: "이메일", exact: true })).toBeChecked();
     await preferences.getByRole("button", { name: "수신 설정 저장" }).click();
     await expect(preferences).toBeHidden();
     await page.reload();
-    await expect(page.locator(".recipients-table-wrap tbody")).toContainText("이메일, 문자");
+    const savedRow = page.locator(".recipients-table-wrap tbody tr", { hasText: "integration-admin@example.com" });
+    await expect(savedRow).toContainText("이메일");
+    await expect(savedRow).not.toContainText("문자");
 
     const recipients = await (await page.request.get("/api/v1/notification-recipients?page=1&pageSize=100")).json() as components["schemas"]["NotificationRecipientPage"];
     const recipient = recipients.items.find(item => item.email === "integration-admin@example.com");
@@ -51,7 +53,7 @@ test("실제 관리자 설정과 대상 저장, 테스트 접수 및 사용자�
     const accepted = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/v1/notifications/test");
     await page.getByRole("button", { name: "테스트 알림 보내기" }).click();
     expect((await accepted).status()).toBe(202);
-    await expect(page.getByText("테스트 알림 요청을 접수했습니다.", { exact: true })).toBeVisible();
+    await expect(page.getByText("테스트 알림 요청을 접수했습니다. 이메일 발송 상태 정보는 없습니다.", { exact: true })).toBeVisible();
     const response = await page.request.get("/api/v1/notifications?page=1&pageSize=100");
     expect(response.status()).toBe(200);
     const notifications = await response.json() as components["schemas"]["NotificationPage"];

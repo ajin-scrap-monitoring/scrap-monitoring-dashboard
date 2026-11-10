@@ -1,6 +1,7 @@
 import type {
   AlertSettings,
   DashboardData,
+  EmailDeliveryReceipt,
   EventCategory,
   HistoryEventPage,
   NotificationRecipient,
@@ -100,7 +101,8 @@ export interface DashboardDataSource {
   openRecordingList?(query: DateRangeQuery): RecordingList;
   queryRecordings?(query: DateRangeQuery, signal?: AbortSignal): Promise<DashboardData["recordings"]>;
   replaceAlertSettings?(settings: AlertSettings): Promise<AlertSettings>;
-  sendTestNotification?(recipientId: string, channels: Array<"email" | "sms">): Promise<void>;
+  sendTestNotification?(recipientId: string, channels: readonly ("email")[], signal?: AbortSignal): Promise<string | null>;
+  getEmailDelivery?(id: string, signal?: AbortSignal): Promise<EmailDeliveryReceipt>;
   subscribe?(listener: DashboardDataUpdateListener): () => void;
   updateNotificationRecipient?(recipient: NotificationRecipient, settings: RecipientSettings): Promise<NotificationRecipientResult>;
 }

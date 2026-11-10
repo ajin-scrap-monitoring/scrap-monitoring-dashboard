@@ -9,7 +9,7 @@ import { DateTimeField } from "../components/DateTimeField";
 import { DetailDialog } from "../components/DetailDialog";
 import { RecordingStatusDetails } from "../components/RecordingStatusDetails";
 import type { EventReplayControl } from "../components/EventReplayPlayer";
-import { seoulDateTime } from "../display-time";
+import { seoulDateTime, seoulDisplayText } from "../display-time";
 import { dateTimeValue, isValidDateTime, recentPeriods, recentRange } from "../date-range";
 import type { DashboardDataSource } from "../data/dashboard-data-source";
 import type { DashboardData, DataAreaState, DataReception, EventCategory, HeaderNotification, Recording, RecordingList, RecordingListSnapshot, UserSession } from "../domain/dashboard";
@@ -27,6 +27,7 @@ import {
   setCachedDailyMediaInfo,
   type ClipMediaInfoResult,
   type DailyMediaInfoResult,
+  type FileMediaInfo,
 } from "../data/media-info-cache";
 import { useDelayedState } from "../use-delayed-state";
 import { useModalFocus } from "../use-modal-focus";
@@ -46,6 +47,24 @@ const recordingTimeFormat = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/S
 function retryableRecordingError(error: unknown) {
   if (error && typeof error === "object" && "status" in error) return [408, 429, 500, 502, 503, 504].includes(Number(error.status));
   return error instanceof TypeError;
+}
+
+const metadataOriginLabels: Record<FileMediaInfo["metadataOrigin"], string> = {
+  request_probe: "요청 시 검사",
+  memory_cache: "메모리 측정값 재사용",
+  persisted_probe: "저장된 측정값 재사용",
+  unknown: "확인 안 됨",
+};
+
+function formatFileInfoLine(file: FileMediaInfo | null): string {
+  if (file === null) {
+    return "파일 정보 없음";
+  }
+  const measuredTimeText = file.measuredAt && Number.isFinite(Date.parse(file.measuredAt))
+    ? seoulDisplayText(Date.parse(file.measuredAt))
+    : "정보 없음";
+  const originText = metadataOriginLabels[file.metadataOrigin] ?? "확인 안 됨";
+  return `파일 검사 시각: ${measuredTimeText}, 측정값 출처: ${originText}`;
 }
 
 function recordingKey(recording: Recording) { return `${recording.source ?? "event"}:${recording.id}`; }
@@ -639,6 +658,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
   let displayFps = "정보 없음";
   let displayFileSize = "정보 없음";
   let segmentsTitle: string | undefined;
+  let fileInfoLine: string | undefined;
 
   if (selectedRecording?.daily) {
     const dailyInfo = mediaInfoState.key === selectedKey ? mediaInfoState : null;
@@ -658,6 +678,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
       displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "파일 삭제 또는 만료";
     } else if (dailyInfo?.dailyData) {
       const file = dailyInfo.dailyData.file;
+      fileInfoLine = formatFileInfoLine(file);
       if (file === null) {
         displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "날짜 MP4 준비 전";
       } else if (file.status === "ready") {
@@ -685,6 +706,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
         displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "조회 안 됨";
       } else if (clipInfo?.clipData) {
         const media = clipInfo.clipData.mediaInfo;
+        fileInfoLine = formatFileInfoLine(media);
         if (media.status === "ready") {
           displayCodec = media.codec ?? "정보 없음";
           displayResolution = media.width != null && media.height != null ? `${media.width} x ${media.height}` : "정보 없음";
@@ -703,6 +725,8 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
     displayFps = selectedRecording.frameRate != null ? `${selectedRecording.frameRate} fps` : "정보 없음";
     displayFileSize = selectedRecording.size ?? "정보 없음";
   }
+
+  const mediaInfoTitle = [segmentsTitle, fileInfoLine].filter(Boolean).join("\n") || undefined;
 
   // B-2 이벤트 구간 다운로드 UI 계산
   let eventExportMessage = "";
@@ -1056,11 +1080,11 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                       <div><dt>{selectedRecording?.daily ? "확보된 길이" : selectedRecording?.replay ? "재생 길이" : "기간"}</dt><dd>{selectedRecording?.duration ?? "정보 없음"}</dd></div>
                       <div><dt>{selectedRecording?.daily ? "녹화 유형" : "발생 유형"}</dt><dd>{selectedRecording ? <span className={`recording-type ${selectedRecording.tone}`}>{selectedRecording.type}</span> : "정보 없음"}</dd></div>
                       <div><dt>{selectedRecording?.daily ? "재생 형식" : "파일 형식"}</dt><dd>{selectedRecording?.daily ? selectedRecording.daily.playbackProtocol?.toUpperCase() ?? "정보 없음" : selectedRecording?.format ?? "정보 없음"}</dd></div>
-                      <div><dt>비디오 코덱</dt><dd title={segmentsTitle}>{displayCodec}</dd></div>
-                      <div><dt>해상도</dt><dd title={segmentsTitle}>{displayResolution}</dd></div>
-                      <div><dt>화면 비율</dt><dd title={segmentsTitle}>{displayAspectRatio}</dd></div>
-                      <div><dt>프레임 속도</dt><dd title={segmentsTitle}>{displayFps}</dd></div>
-                      <div><dt>파일 용량</dt><dd title={segmentsTitle}>{displayFileSize}</dd></div>
+                      <div><dt>비디오 코덱</dt><dd title={mediaInfoTitle}>{displayCodec}</dd></div>
+                      <div><dt>해상도</dt><dd title={mediaInfoTitle}>{displayResolution}</dd></div>
+                      <div><dt>화면 비율</dt><dd title={mediaInfoTitle}>{displayAspectRatio}</dd></div>
+                      <div><dt>프레임 속도</dt><dd title={mediaInfoTitle}>{displayFps}</dd></div>
+                      <div><dt>파일 용량</dt><dd title={mediaInfoTitle}>{displayFileSize}</dd></div>
                       <div className="recording-retention"><dt>{selectedRecording?.daily || selectedRecording?.eventWindow ? "보관 만료" : "보관 기간"}</dt><dd>{!selectedRecording ? "정보 없음" : selectedRecording.daily || selectedRecording.eventWindow ? <span>{selectedRecording.retentionEndsAt}</span> : <><span>{selectedRecording.retentionStartsAt}</span><span>~ {selectedRecording.retentionEndsAt}</span></>}</dd></div>
                     </dl>
                   </section>

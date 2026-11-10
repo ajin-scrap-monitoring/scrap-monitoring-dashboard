@@ -463,7 +463,19 @@ export function createMockDashboardDataSource(scenario: MockScenario = "normal")
       currentData.admin.preCollectionAlert = structuredClone(currentData.admin.alertSettings.preCollectionAlert);
       return Promise.resolve(structuredClone(currentData.admin.alertSettings));
     },
-    sendTestNotification: () => Promise.resolve(),
+    sendTestNotification: () => Promise.resolve(null),
+    getEmailDelivery: (id: string) => Promise.resolve({
+      attemptedAt: new Date().toISOString(),
+      attempts: 1,
+      completedAt: new Date().toISOString(),
+      dueAt: new Date().toISOString(),
+      errorCode: null,
+      id,
+      phase: "TEST" as const,
+      pitId: "pit-contract-1",
+      recipientId: "recipient-contract-1",
+      status: "SENT" as const,
+    }),
     subscribe: (listener) => {
       closeMockStream?.();
       publishCamera();
