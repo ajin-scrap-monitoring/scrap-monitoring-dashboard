@@ -781,7 +781,9 @@ export function createHttpDashboardDataSource({
       return { ...profile, curveHeld: undefined, averageHeld: undefined };
     }
     const previousAverage = lastNormalAverages.get(sensorId);
-    const warming = profile.reasonCodes?.includes("HEIGHT_TEMPORAL_WARMING_OR_MISSING") ?? false;
+    const reasonCodes = profile.reasonCodes ?? [];
+    const hasMissing = reasonCodes.includes("HEIGHT_TEMPORAL_MISSING");
+    const warming = !hasMissing && reasonCodes.includes("HEIGHT_TEMPORAL_WARMING");
     if (warming && previousAverage && now - previousAverage.startedAt < HOLD_MS) {
       scheduleProfileExpiry(sensorId, "average", previousAverage.startedAt, now);
       return { ...profile, average: previousAverage.average, curveHeld: undefined, averageHeld: true };

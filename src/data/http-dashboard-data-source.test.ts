@@ -2922,7 +2922,7 @@ describe("HTTP 대시보드 데이터 소스", () => {
       }
     });
 
-    test("대표 평균 HEIGHT_TEMPORAL_WARMING_OR_MISSING 유지와 3초 만료, 다른 사유는 즉시 '-'", async () => {
+    test("대표 평균 HEIGHT_TEMPORAL_WARMING 유지와 3초 만료, 다른 사유는 즉시 '-'", async () => {
       vi.useFakeTimers();
       try {
         let currentProfile: unknown = {
@@ -2954,7 +2954,7 @@ describe("HTTP 대시보드 데이터 소스", () => {
         expect(latestData?.monitoring.lidarProfiles[0]?.average).toBe("2.40 m");
         expect(latestData?.monitoring.lidarProfiles[0]?.averageHeld).toBeUndefined();
 
-        // 1초 뒤: 유효점이 있고 filteredAverage=null이며 HEIGHT_TEMPORAL_WARMING_OR_MISSING
+        // 1초 뒤: 유효점이 있고 filteredAverage=null이며 HEIGHT_TEMPORAL_WARMING과 호환 혼합 코드
         currentProfile = {
           pitId: "pit-01",
           profiles: [
@@ -2963,7 +2963,7 @@ describe("HTTP 대시보드 데이터 소스", () => {
               measuredAt: "2026-11-11T06:00:01Z",
               summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN",
               filteredAverage: null,
-              reasonCodes: ["HEIGHT_TEMPORAL_WARMING_OR_MISSING"],
+              reasonCodes: ["HEIGHT_TEMPORAL_WARMING", "HEIGHT_TEMPORAL_WARMING_OR_MISSING"],
               samples: [{ positionRatio: 0.6, height: 250, valid: true }],
             },
             { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:01Z", samples: [] },
@@ -3012,6 +3012,193 @@ describe("HTTP 대시보드 데이터 소스", () => {
               samples: [{ positionRatio: 0.5, height: 300, valid: true }],
             },
             { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:05Z", samples: [] },
+          ],
+        };
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(latestData?.monitoring.lidarProfiles[0]?.average).toBe("-");
+        expect(latestData?.monitoring.lidarProfiles[0]?.averageHeld).toBeUndefined();
+
+        activation.release();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("대표 평균은 HEIGHT_TEMPORAL_MISSING 수신 시 즉시 '-'로 전환하고 직전 정상값을 버린다", async () => {
+      vi.useFakeTimers();
+      try {
+        let currentProfile: unknown = {
+          pitId: "pit-01",
+          profiles: [
+            {
+              sensorId: "lidar-a",
+              measuredAt: "2026-11-11T06:00:00Z",
+              summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN",
+              filteredAverage: 240,
+              samples: [{ positionRatio: 0.5, height: 240, valid: true }],
+            },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:00Z", samples: [] },
+          ],
+        };
+        const fetchImplementation = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/profiles") {
+            return Promise.resolve(new Response(JSON.stringify(currentProfile), { status: 200, headers: { "Content-Type": "application/json" } }));
+          }
+          return undefined;
+        });
+        const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((d) => { latestData = d; });
+        await source.getDashboardData();
+
+        const activation = source.activateMonitoringDetails!();
+        await activation.ready;
+        expect(latestData?.monitoring.lidarProfiles[0]?.average).toBe("2.40 m");
+
+        // 1초 뒤: HEIGHT_TEMPORAL_MISSING 수신 -> 즉시 "-" 및 유지 안 함
+        currentProfile = {
+          pitId: "pit-01",
+          profiles: [
+            {
+              sensorId: "lidar-a",
+              measuredAt: "2026-11-11T06:00:01Z",
+              summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN",
+              filteredAverage: null,
+              reasonCodes: ["HEIGHT_TEMPORAL_MISSING"],
+              samples: [{ positionRatio: 0.6, height: 250, valid: true }],
+            },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:01Z", samples: [] },
+          ],
+        };
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(latestData?.monitoring.lidarProfiles[0]?.average).toBe("-");
+        expect(latestData?.monitoring.lidarProfiles[0]?.averageHeld).toBeUndefined();
+
+        // 직전 정상값이 버려졌으므로 그 다음 회차에 WARMING이 오더라도 이전 평균이 없어 유지되지 않음
+        currentProfile = {
+          pitId: "pit-01",
+          profiles: [
+            {
+              sensorId: "lidar-a",
+              measuredAt: "2026-11-11T06:00:02Z",
+              summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN",
+              filteredAverage: null,
+              reasonCodes: ["HEIGHT_TEMPORAL_WARMING", "HEIGHT_TEMPORAL_WARMING_OR_MISSING"],
+              samples: [{ positionRatio: 0.6, height: 250, valid: true }],
+            },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:02Z", samples: [] },
+          ],
+        };
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(latestData?.monitoring.lidarProfiles[0]?.average).toBe("-");
+        expect(latestData?.monitoring.lidarProfiles[0]?.averageHeld).toBeUndefined();
+
+        activation.release();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("대표 평균은 혼합 코드 HEIGHT_TEMPORAL_WARMING_OR_MISSING 단독 수신 시 즉시 '-'", async () => {
+      vi.useFakeTimers();
+      try {
+        let currentProfile: unknown = {
+          pitId: "pit-01",
+          profiles: [
+            {
+              sensorId: "lidar-a",
+              measuredAt: "2026-11-11T06:00:00Z",
+              summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN",
+              filteredAverage: 240,
+              samples: [{ positionRatio: 0.5, height: 240, valid: true }],
+            },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:00Z", samples: [] },
+          ],
+        };
+        const fetchImplementation = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/profiles") {
+            return Promise.resolve(new Response(JSON.stringify(currentProfile), { status: 200, headers: { "Content-Type": "application/json" } }));
+          }
+          return undefined;
+        });
+        const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((d) => { latestData = d; });
+        await source.getDashboardData();
+
+        const activation = source.activateMonitoringDetails!();
+        await activation.ready;
+        expect(latestData?.monitoring.lidarProfiles[0]?.average).toBe("2.40 m");
+
+        // 1초 뒤: 혼합 코드 단독 수신 -> 즉시 "-"
+        currentProfile = {
+          pitId: "pit-01",
+          profiles: [
+            {
+              sensorId: "lidar-a",
+              measuredAt: "2026-11-11T06:00:01Z",
+              summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN",
+              filteredAverage: null,
+              reasonCodes: ["HEIGHT_TEMPORAL_WARMING_OR_MISSING"],
+              samples: [{ positionRatio: 0.6, height: 250, valid: true }],
+            },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:01Z", samples: [] },
+          ],
+        };
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(latestData?.monitoring.lidarProfiles[0]?.average).toBe("-");
+        expect(latestData?.monitoring.lidarProfiles[0]?.averageHeld).toBeUndefined();
+
+        activation.release();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("대표 평균은 HEIGHT_TEMPORAL_WARMING과 HEIGHT_TEMPORAL_MISSING이 함께 오면 MISSING 우선으로 '-'", async () => {
+      vi.useFakeTimers();
+      try {
+        let currentProfile: unknown = {
+          pitId: "pit-01",
+          profiles: [
+            {
+              sensorId: "lidar-a",
+              measuredAt: "2026-11-11T06:00:00Z",
+              summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN",
+              filteredAverage: 240,
+              samples: [{ positionRatio: 0.5, height: 240, valid: true }],
+            },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:00Z", samples: [] },
+          ],
+        };
+        const fetchImplementation = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/profiles") {
+            return Promise.resolve(new Response(JSON.stringify(currentProfile), { status: 200, headers: { "Content-Type": "application/json" } }));
+          }
+          return undefined;
+        });
+        const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((d) => { latestData = d; });
+        await source.getDashboardData();
+
+        const activation = source.activateMonitoringDetails!();
+        await activation.ready;
+        expect(latestData?.monitoring.lidarProfiles[0]?.average).toBe("2.40 m");
+
+        // 1초 뒤: WARMING과 MISSING 동시 수신 -> MISSING 우선으로 즉시 "-"
+        currentProfile = {
+          pitId: "pit-01",
+          profiles: [
+            {
+              sensorId: "lidar-a",
+              measuredAt: "2026-11-11T06:00:01Z",
+              summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN",
+              filteredAverage: null,
+              reasonCodes: ["HEIGHT_TEMPORAL_WARMING", "HEIGHT_TEMPORAL_MISSING"],
+              samples: [{ positionRatio: 0.6, height: 250, valid: true }],
+            },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:01Z", samples: [] },
           ],
         };
         await vi.advanceTimersByTimeAsync(1000);
@@ -3127,7 +3314,7 @@ describe("HTTP 대시보드 데이터 소스", () => {
         profileResult = () => Promise.resolve(new Response(JSON.stringify({
           pitId: "pit-01",
           profiles: [
-            { sensorId: "lidar-a", measuredAt: "2026-11-11T06:00:01Z", summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN", filteredAverage: null, reasonCodes: ["HEIGHT_TEMPORAL_WARMING_OR_MISSING"], samples: [{ positionRatio: 0.5, height: 210, valid: true }] },
+            { sensorId: "lidar-a", measuredAt: "2026-11-11T06:00:01Z", summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN", filteredAverage: null, reasonCodes: ["HEIGHT_TEMPORAL_WARMING", "HEIGHT_TEMPORAL_WARMING_OR_MISSING"], samples: [{ positionRatio: 0.5, height: 210, valid: true }] },
             { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:01Z", summaryValuePolicy: "PROFILE_MEAN", average: 350, samples: [{ positionRatio: 0.5, height: 350, valid: true }] },
           ],
         }), { status: 200, headers: { "Content-Type": "application/json" } }));
@@ -3274,7 +3461,7 @@ describe("HTTP 대시보드 데이터 소스", () => {
         try {
           const run = await start(profileResponse(validProfiles("2026-11-11T06:00:00Z")));
           run.set(profileResponse({ pitId: "pit-01", profiles: [
-            { sensorId: "lidar-a", measuredAt: "2026-11-11T06:00:01Z", summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN", filteredAverage: null, reasonCodes: ["HEIGHT_TEMPORAL_WARMING_OR_MISSING"], samples: [{ positionRatio: 0.5, height: 210, valid: true }] },
+            { sensorId: "lidar-a", measuredAt: "2026-11-11T06:00:01Z", summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN", filteredAverage: null, reasonCodes: ["HEIGHT_TEMPORAL_WARMING", "HEIGHT_TEMPORAL_WARMING_OR_MISSING"], samples: [{ positionRatio: 0.5, height: 210, valid: true }] },
             { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:01Z", summaryValuePolicy: "PROFILE_MEAN", average: 310, samples: [{ positionRatio: 0.5, height: 310, valid: true }] },
           ] }));
           await vi.advanceTimersByTimeAsync(1000);
