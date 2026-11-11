@@ -1226,6 +1226,8 @@ export interface components {
             readonly fill_estimate: components["schemas"]["FillEstimate"] | null;
             /** Fill State */
             readonly fill_state: string;
+            /** Filtered Point Clouds */
+            readonly filtered_point_clouds?: readonly components["schemas"]["FilteredPointCloud"][] | null;
             readonly fusion_result?: components["schemas"]["FusionResult"] | null;
             /**
              * Generated At
@@ -1563,6 +1565,93 @@ export interface components {
             readonly offset_ms: number | null;
             /** State */
             readonly state: string;
+        };
+        /** CloudAnchor */
+        readonly CloudAnchor: {
+            /**
+             * Acquired At
+             * Format: date-time
+             */
+            readonly acquired_at: string;
+            /** Acquired Monotonic Ns */
+            readonly acquired_monotonic_ns: string;
+            /** Clock Domain Id */
+            readonly clock_domain_id: string;
+            /** Clock Offset Ms */
+            readonly clock_offset_ms: number | null;
+            /**
+             * Clock State
+             * @enum {string}
+             */
+            readonly clock_state: "SYNCED" | "DEGRADED" | "UNSYNCED";
+            /** Scan Id */
+            readonly scan_id: string;
+            /** Selected Point Count */
+            readonly selected_point_count: number;
+            /** Sequence */
+            readonly sequence: number;
+            /** Source Point Count */
+            readonly source_point_count: number;
+            /** Stream Instance Id */
+            readonly stream_instance_id: string;
+            /**
+             * Timestamp Source
+             * @constant
+             */
+            readonly timestamp_source: "EDGE_SCAN_RECEIVED";
+        };
+        /** CloudProcessing */
+        readonly CloudProcessing: {
+            /** Angle Match Tolerance Mdeg */
+            readonly angle_match_tolerance_mdeg: number;
+            /** Distance Max Mm */
+            readonly distance_max_mm: number;
+            /** Distance Min Mm */
+            readonly distance_min_mm: number;
+            /** Enabled */
+            readonly enabled: boolean;
+            /** Max Adjacent Angle Gap Mdeg */
+            readonly max_adjacent_angle_gap_mdeg: number;
+            /**
+             * Processing Version
+             * @constant
+             */
+            readonly processing_version: "ANGULAR_RANGE_MEDIAN_V1";
+            /** Quality Min */
+            readonly quality_min: number;
+            /** Spatial Max Deviation Mm */
+            readonly spatial_max_deviation_mm: number;
+            /** Spatial Min Neighbors */
+            readonly spatial_min_neighbors: number;
+            /** Spatial Neighbor Spread Mm */
+            readonly spatial_neighbor_spread_mm: number;
+            /** Spatial Radius Points */
+            readonly spatial_radius_points: number;
+            readonly window: components["schemas"]["CloudWindow"];
+        };
+        /** CloudReference */
+        readonly CloudReference: {
+            /** Calibration Version */
+            readonly calibration_version: string | null;
+            /** Config Revision */
+            readonly config_revision: string;
+            /** Coordinate Frame Id */
+            readonly coordinate_frame_id: string;
+            /** Scan Id */
+            readonly scan_id: string;
+            /** Sensor Id */
+            readonly sensor_id: string;
+        };
+        /** CloudWindow */
+        readonly CloudWindow: {
+            /** Max Age Ms */
+            readonly max_age_ms: number;
+            /** Min Scans */
+            readonly min_scans: number;
+            /** Pair Tolerance Ms */
+            readonly pair_tolerance_ms: number;
+            /** Scan Count */
+            readonly scan_count: number;
         };
         /**
          * CollectionCriteria
@@ -2446,6 +2535,52 @@ export interface components {
             /** Value Percent */
             readonly value_percent?: number | null;
         };
+        /** FilteredPointCloud */
+        readonly FilteredPointCloud: {
+            readonly anchor: components["schemas"]["CloudAnchor"] | null;
+            /** Angles Mdeg */
+            readonly angles_mdeg: readonly number[];
+            /** Calibration Version */
+            readonly calibration_version: string | null;
+            /** Coordinate Frame Id */
+            readonly coordinate_frame_id: string;
+            /** Invalid Reason Codes */
+            readonly invalid_reason_codes: readonly (readonly ("NO_SCAN" | "SDK_INVALID_RANGE" | "SOURCE_INVALID" | "LOW_QUALITY" | "OUT_OF_RANGE" | "SPATIAL_OUTLIER" | "INSUFFICIENT_HISTORY" | "FILTER_UNVERIFIED" | "CALIBRATION_MISSING" | "CALIBRATION_UNVERIFIED" | "CALIBRATION_MISMATCH" | "COORDINATE_OUT_OF_RANGE" | "INPUT_EXPIRED_DURING_FILTER")[])[];
+            /** Point Count */
+            readonly point_count: number;
+            /** Point Indices */
+            readonly point_indices: readonly number[];
+            readonly processing: components["schemas"]["CloudProcessing"];
+            /**
+             * Processing Version
+             * @constant
+             */
+            readonly processing_version: "ANGULAR_RANGE_MEDIAN_V1";
+            /** Reason Codes */
+            readonly reason_codes: readonly string[];
+            /** Sample Counts */
+            readonly sample_counts: readonly number[];
+            /** Sensor Id */
+            readonly sensor_id: string;
+            /** Source Scans */
+            readonly source_scans: readonly components["schemas"]["CloudReference"][];
+            /**
+             * State
+             * @enum {string}
+             */
+            readonly state: "AVAILABLE" | "LIMITED" | "UNAVAILABLE";
+            /** Valid */
+            readonly valid: readonly boolean[];
+            /** Valid Point Count */
+            readonly valid_point_count: number;
+            /**
+             * Verification State
+             * @enum {string}
+             */
+            readonly verification_state: "VERIFIED" | "DEFAULT" | "UNVERIFIED";
+            /** Xyz Mm */
+            readonly xyz_mm: readonly (readonly number[] | null)[];
+        };
         /** FusionComponent */
         readonly FusionComponent: {
             /** Anchor Scan Id */
@@ -2814,12 +2949,20 @@ export interface components {
             readonly measuredAt?: string | null;
             /** Minimum */
             readonly minimum?: number | null;
+            /** Processingversion */
+            readonly processingVersion?: string | null;
             /** Reasoncodes */
             readonly reasonCodes?: readonly string[];
             /** Referencedepthcm */
             readonly referenceDepthCm?: number | null;
             /** Referencedistancecm */
             readonly referenceDistanceCm: number;
+            /**
+             * Samplesource
+             * @default MEASUREMENT
+             * @enum {string}
+             */
+            readonly sampleSource?: "MEASUREMENT" | "FILTERED_POINT_CLOUD";
             /** Samples */
             readonly samples: readonly components["schemas"]["LidarProfileSampleV2"][];
             /** Sectionfillpercent */
@@ -2833,6 +2976,8 @@ export interface components {
              * @default false
              */
             readonly simulated?: boolean;
+            /** Sourcescanid */
+            readonly sourceScanId?: string | null;
             /**
              * Summaryvaluepolicy
              * @default PROFILE_MEAN

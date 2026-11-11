@@ -2569,6 +2569,150 @@ describe("HTTP 대시보드 데이터 소스", () => {
         vi.useRealTimers();
       }
     });
+
+    test("적재율이 UNKNOWN 또는 STALE이고 filterState가 WARMING이어도 profile 유효점이 있으면 곡선을 유지한다 (SSE 경로 및 profile 재조회 경로)", async () => {
+      vi.useFakeTimers();
+      try {
+        const stream = new FakeEventSource();
+        let profileHeight = 100;
+        const fetchImplementation = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/profiles") {
+            return Promise.resolve(new Response(JSON.stringify({
+              pitId: "pit-01",
+              profiles: [
+                { sensorId: "lidar-a", measuredAt: "2026-11-08T00:00:00Z", samples: [{ positionRatio: 0.5, height: profileHeight, valid: true }] },
+                { sensorId: "lidar-b", measuredAt: "2026-11-08T00:00:00Z", samples: [] },
+              ],
+            }), { status: 200, headers: { "Content-Type": "application/json" } }));
+          }
+          if (url.pathname === "/api/v2/monitoring/snapshot") {
+            return jsonResponse(monitoringV2StateFixture("STALE", 0, { filterState: "WARMING" }));
+          }
+          return undefined;
+        });
+
+        const source = createHttpDashboardDataSource({
+          apiContract: "backend",
+          monitoringVersion: "v2",
+          fetchImplementation,
+          eventSourceFactory: () => stream as unknown as EventSource,
+        });
+
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((data) => { latestData = data; });
+        await source.getDashboardData();
+
+        const activation = source.activateMonitoringDetails!();
+        await activation.ready;
+
+        // 1. profile 재조회 경로: snapshot이 STALE/WARMING 상태에서도 profile 조회 결과 곡선이 표시됨
+        expect(latestData?.monitoring.v2?.dataState).toBe("STALE");
+        expect(latestData?.monitoring.summary.loadPercent).toBeNull();
+        expect(latestData?.monitoring.lidarProfiles[0]?.samples[0]?.height).toBe(1);
+
+        // 2. SSE 경로: snapshot이 UNKNOWN / WARMING으로 바뀌어도 마지막 profile 결과 곡선이 유지됨
+        stream.emit("monitoring.snapshot", monitoringV2StateFixture("UNKNOWN", 0, { filterState: "WARMING" }));
+
+        expect(latestData?.monitoring.v2?.dataState).toBe("UNKNOWN");
+        expect(latestData?.monitoring.lidarProfiles[0]?.samples[0]?.height).toBe(1);
+
+        // 3. 이후 profile 재조회에서 다음 응답이 오면 곡선 교체
+        profileHeight = 250;
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(latestData?.monitoring.lidarProfiles[0]?.samples[0]?.height).toBe(2.5);
+
+        activation.release();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("시간 중앙값 대표값 filteredAverage=null이면 '-'로 표시하고 곡선은 유지한다", async () => {
+      vi.useFakeTimers();
+      try {
+        const fetchImplementation = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/profiles") {
+            return Promise.resolve(new Response(JSON.stringify({
+              pitId: "pit-01",
+              profiles: [
+                {
+                  sensorId: "lidar-a",
+                  measuredAt: "2026-11-08T00:00:00Z",
+                  summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN",
+                  filteredAverage: null,
+                  samples: [{ positionRatio: 0.5, height: 180, valid: true }],
+                },
+                { sensorId: "lidar-b", measuredAt: "2026-11-08T00:00:00Z", samples: [] },
+              ],
+            }), { status: 200, headers: { "Content-Type": "application/json" } }));
+          }
+          return undefined;
+        });
+
+        const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((data) => { latestData = data; });
+        await source.getDashboardData();
+
+        const activation = source.activateMonitoringDetails!();
+        await activation.ready;
+
+        expect(latestData?.monitoring.lidarProfiles[0]?.average).toBe("-");
+        expect(latestData?.monitoring.lidarProfiles[0]?.samples[0]?.height).toBe(1.8);
+
+        activation.release();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("profile samples가 빈 배열이거나 모두 무효이면 빈 곡선으로 처리한다", async () => {
+      vi.useFakeTimers();
+      try {
+        let returnEmpty = true;
+        const fetchImplementation = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/profiles") {
+            return Promise.resolve(new Response(JSON.stringify({
+              pitId: "pit-01",
+              profiles: [
+                {
+                  sensorId: "lidar-a",
+                  measuredAt: "2026-11-08T00:00:00Z",
+                  samples: returnEmpty
+                    ? []
+                    : [
+                        { positionRatio: null, height: null, valid: false },
+                        { positionRatio: 0.5, height: 200, valid: false },
+                      ],
+                },
+                { sensorId: "lidar-b", measuredAt: "2026-11-08T00:00:00Z", samples: [] },
+              ],
+            }), { status: 200, headers: { "Content-Type": "application/json" } }));
+          }
+          return undefined;
+        });
+
+        const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((data) => { latestData = data; });
+        await source.getDashboardData();
+
+        const activation = source.activateMonitoringDetails!();
+        await activation.ready;
+
+        // samples가 빈 배열일 때
+        expect(latestData?.monitoring.lidarProfiles[0]?.samples).toEqual([]);
+
+        // 모두 무효일 때
+        returnEmpty = false;
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(latestData?.monitoring.lidarProfiles[0]?.samples.every((s) => s.height === null)).toBe(true);
+
+        activation.release();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });
 

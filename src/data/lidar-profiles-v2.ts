@@ -7,9 +7,14 @@ const slots = [
 ] as const;
 const calibrationStates = ["UNVERIFIED", "VERIFIED", "UNAVAILABLE", "SIMULATION"];
 const summaryPolicies = ["PROFILE_MEAN", "SCAN_MEAN_TEMPORAL_MEDIAN"];
+const sampleSources = ["MEASUREMENT", "FILTERED_POINT_CLOUD"];
 
 function nullableNumber(value: unknown): value is number | null {
   return value === null || (typeof value === "number" && Number.isFinite(value));
+}
+
+function nullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
 }
 
 function meters(centimeters: number | null | undefined) {
@@ -39,7 +44,10 @@ export function parseLidarProfilesV2(value: unknown, pitId: string): LidarProfil
       || !["average", "minimum", "maximum", "filteredAverage"].every((key) => profile[key] === undefined || nullableNumber(profile[key]))
       || !(profile.calibrationState === undefined || calibrationStates.includes(profile.calibrationState as string))
       || !(profile.summaryValuePolicy === undefined || summaryPolicies.includes(profile.summaryValuePolicy as string))
-      || !(profile.reasonCodes === undefined || strings(profile.reasonCodes))) return fail();
+      || !(profile.reasonCodes === undefined || strings(profile.reasonCodes))
+      || !(profile.sampleSource === undefined || sampleSources.includes(profile.sampleSource as string))
+      || !(profile.processingVersion === undefined || nullableString(profile.processingVersion))
+      || !(profile.sourceScanId === undefined || nullableString(profile.sourceScanId))) return fail();
     bySensor.set(profile.sensorId, profile);
   }
   return slots.map((slot) => {
