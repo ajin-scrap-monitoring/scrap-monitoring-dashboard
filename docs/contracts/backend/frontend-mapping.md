@@ -176,7 +176,7 @@ profile의 최신성은 Backend profiles 응답(빈 배열, null 높이, `reason
 filterState가 WARMING이어도 profile 응답에 유효점이 있으면 곡선을 표시한다.
 높이는 cm를 m로 한 번 변환하고 `positionRatio`는 0 이상 1 이하의 위치로 사용한다.
 평균은 `SCAN_MEAN_TEMPORAL_MEDIAN` 기준이면 `filteredAverage`, 아니면 `average`다.
-새 profile에 유효점이 있고 대표값이 null이며 `reasonCodes`에 `HEIGHT_TEMPORAL_WARMING_OR_MISSING`이 있으면 마지막 정상 대표값을 최대 3초간 유지해 보조 표기 "평균 갱신 대기"와 title "마지막 정상 대표값을 최대 3초 표시합니다"로 표시한다. 그 외의 사유로 null이면 대표값은 "-"로 표시하고 곡선은 유지한다.
+새 profile에 유효점이 있고 대표값이 null일 때 `reasonCodes`에 `HEIGHT_TEMPORAL_MISSING`이 있으면 유지하지 않고 직전 정상 대표값을 버린다. 그렇지 않고 `HEIGHT_TEMPORAL_WARMING`이 있으면 마지막 정상 대표값을 최대 3초간 유지해 보조 표기 "평균 갱신 대기"와 title "마지막 정상 대표값을 최대 3초 표시합니다"로 표시한다(혼합 코드 `HEIGHT_TEMPORAL_WARMING_OR_MISSING` 단독은 유지하지 않는다). 그 외의 사유로 null이면 대표값은 "-"로 표시하고 곡선은 유지한다.
 profile 조회가 네트워크 오류, timeout 또는 5xx로 실패한 경우(인증 오류 제외)에만 마지막 유효 곡선과 대표값을 최대 3초간 보조 표기 "곡선 갱신 대기"로 유지한다. 응답이 도착했으나 `samples`가 빈 배열이거나 유효점이 없으면(예: `FILTERED_PROFILE_UNAVAILABLE`) 즉시 비우고 과거 곡선으로 덮지 않는다. 부분 무효점은 새 곡선의 유효점만 그리고 끊긴 구간을 유지하며 이전 스캔 점으로 보충하지 않는다. 유지 시간 3초가 만료되면 곡선은 비우고 평균은 "-"로 전환한다.
 `sampleSource`, `processingVersion`, `sourceScanId`의 3개 optional 필드는 계약 파서에서
 허용하지만 화면 모델에는 보존하지 않는다.
