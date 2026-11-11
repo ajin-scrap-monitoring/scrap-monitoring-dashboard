@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 
 import type { DashboardData, DataAreaState, LidarProfile } from "../domain/dashboard";
 import { calculateUnmeasuredRanges } from "../data/lidar-profiles-v2";
@@ -120,41 +120,79 @@ export function MeasurementDiagram({ lidar1Color, lidar2Color }: { lidar1Color: 
   );
 }
 
-export function LoadChart({ samples, threshold, state, thresholdKind }: { samples: DashboardData["monitoring"]["loadHistory"]; threshold: number; state?: DataAreaState; thresholdKind?: "current" }) {
-  const orderedSamples = [...samples].sort((leftSample, rightSample) => new Date(leftSample.bucketStartAt ?? leftSample.measuredAt).getTime() - new Date(rightSample.bucketStartAt ?? rightSample.measuredAt).getTime());
-  const firstTimestamp = new Date(orderedSamples[0]?.bucketStartAt ?? orderedSamples[0]?.measuredAt ?? state?.from ?? "").getTime();
-  const lastTimestamp = new Date(orderedSamples.at(-1)?.bucketEndAt ?? orderedSamples.at(-1)?.measuredAt ?? state?.to ?? "").getTime();
-  const hasTimestampRange = Number.isFinite(firstTimestamp) && Number.isFinite(lastTimestamp) && lastTimestamp > firstTimestamp;
-  const xValues = orderedSamples.map((sample, index) => {
-    const ratio = hasTimestampRange
-      ? (new Date(sample.measuredAt).getTime() - firstTimestamp) / (lastTimestamp - firstTimestamp)
-      : orderedSamples.length <= 1 ? 0.5 : index / (orderedSamples.length - 1);
-    return 40 + ratio * 370;
+type LoadSamples = DashboardData["monitoring"]["loadHistory"];
+
+const loadChartYMin = 0;
+const loadChartYMax = 100;
+const loadChartTop = 20;
+const loadChartBottom = 148;
+const loadChartToY = (value: number) => loadChartBottom - (value - loadChartYMin) * ((loadChartBottom - loadChartTop) / (loadChartYMax - loadChartYMin));
+
+function sameValue(left: unknown, right: unknown) {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right)) return left.length === right.length && left.every((item, index) => Object.is(item, right[index]));
+  return false;
+}
+
+// data source가 매번 새 배열로 복제하므로 참조 대신 표본의 모든 필드 값을 비교한다.
+function sameLoadSamples(left: LoadSamples, right: LoadSamples) {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  return left.every((sample, index) => {
+    const other = right[index] as Record<string, unknown>;
+    const current = sample as Record<string, unknown>;
+    const keys = Object.keys(current);
+    if (keys.length !== Object.keys(other).length) return false;
+    return keys.every((key) => key in other && sameValue(current[key], other[key]));
   });
-  const yMin = 0;
-  const yMax = 100;
+}
+
+function useStableLoadSamples(samples: LoadSamples) {
+  const [stable, setStable] = useState(samples);
+  if (sameLoadSamples(stable, samples)) return stable;
+  setStable(samples);
+  return samples;
+}
+
+export function LoadChart({ samples, threshold, state, thresholdKind }: { samples: LoadSamples; threshold: number; state?: DataAreaState; thresholdKind?: "current" }) {
+  const stableSamples = useStableLoadSamples(samples);
+  const stateFrom = state?.from;
+  const stateTo = state?.to;
+  const { orderedSamples, xValues, plottedSamples, xTicks } = useMemo(() => {
+    const orderedSamples = [...stableSamples].sort((leftSample, rightSample) => new Date(leftSample.bucketStartAt ?? leftSample.measuredAt).getTime() - new Date(rightSample.bucketStartAt ?? rightSample.measuredAt).getTime());
+    const firstTimestamp = new Date(orderedSamples[0]?.bucketStartAt ?? orderedSamples[0]?.measuredAt ?? stateFrom ?? "").getTime();
+    const lastTimestamp = new Date(orderedSamples.at(-1)?.bucketEndAt ?? orderedSamples.at(-1)?.measuredAt ?? stateTo ?? "").getTime();
+    const hasTimestampRange = Number.isFinite(firstTimestamp) && Number.isFinite(lastTimestamp) && lastTimestamp > firstTimestamp;
+    const xValues = orderedSamples.map((sample, index) => {
+      const ratio = hasTimestampRange
+        ? (new Date(sample.measuredAt).getTime() - firstTimestamp) / (lastTimestamp - firstTimestamp)
+        : orderedSamples.length <= 1 ? 0.5 : index / (orderedSamples.length - 1);
+      return 40 + ratio * 370;
+    });
+    const plottedSamples = orderedSamples.map((sample, index) => ({
+      ...sample,
+      time: thresholdKind === "current" ? seoulClock(Date.parse(sample.measuredAt), false) : sample.time,
+      x: xValues[index],
+      y: sample.value === null ? null : loadChartToY(sample.value),
+    }));
+    const tickHours = lastTimestamp - firstTimestamp <= 6 * 3_600_000 ? 1 : 3;
+    const xTicks = hasTimestampRange
+      ? timeAxisTicks(firstTimestamp, lastTimestamp, tickHours, clockOffsetMinutes).map(timestamp => ({
+          label: seoulClock(timestamp, false),
+          x: 40 + ((timestamp - firstTimestamp) / (lastTimestamp - firstTimestamp)) * 370,
+        }))
+      : [];
+    return { orderedSamples, xValues, plottedSamples, xTicks };
+  }, [stableSamples, stateFrom, stateTo, thresholdKind]);
   const yTickValues = [100, 80, 60, 40, 20, 0];
-  const chartTop = 20;
-  const chartBottom = 148;
-  const toY = (value: number) => chartBottom - (value - yMin) * ((chartBottom - chartTop) / (yMax - yMin));
+  const chartTop = loadChartTop;
+  const chartBottom = loadChartBottom;
+  const toY = loadChartToY;
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const plottedSamples = orderedSamples.map((sample, index) => ({
-    ...sample,
-    time: thresholdKind === "current" ? seoulClock(Date.parse(sample.measuredAt), false) : sample.time,
-    x: xValues[index],
-    y: sample.value === null ? null : toY(sample.value),
-  }));
   const previousResult = state?.status === "error" && state.stale === true && plottedSamples.some((sample) => sample.value !== null);
   const unavailable = (state?.status === "error" && !previousResult) || state?.status === "unsupported" || state?.status === "loading";
   const sampleSegments = contiguousSegments(unavailable ? [] : plottedSamples, (sample) => sample.y !== null);
   const simulation = unavailable ? null : simulationLabel(plottedSamples);
-  const tickHours = lastTimestamp - firstTimestamp <= 6 * 3_600_000 ? 1 : 3;
-  const xTicks = hasTimestampRange
-    ? timeAxisTicks(firstTimestamp, lastTimestamp, tickHours, clockOffsetMinutes).map(timestamp => ({
-        label: seoulClock(timestamp, false),
-        x: 40 + ((timestamp - firstTimestamp) / (lastTimestamp - firstTimestamp)) * 370,
-      }))
-    : [];
 
   const activeX = activeIndex === null ? 0 : xValues[activeIndex] ?? 0;
   const activeY = activeIndex === null ? 0 : plottedSamples[activeIndex]?.y ?? 0;

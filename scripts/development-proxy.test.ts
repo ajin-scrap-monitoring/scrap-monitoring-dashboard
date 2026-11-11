@@ -113,6 +113,9 @@ await test("browser gateway separates Backend reads and Media viewing from Edge 
   assert.match(config, /location ~ \^\/api\/\(v2\/monitoring\/events\|v1\/monitoring\/events\)\$/);
   assert.match(config, /include \/etc\/nginx\/includes\/proxy-streaming\.conf;/);
   assert.match(config, /auth_request \/_development_media_access;/);
+  assert.match(config, /^ {4}gzip on;$/m);
+  assert.match(config, /^ {4}gzip_types application\/json;$/m);
+  assert.doesNotMatch(config, /gzip_types[^;]*(text\/event-stream|video|image)/);
   const streaming = await readFile(new URL("../nginx/includes/proxy-streaming.conf", import.meta.url), "utf8");
   assert.match(streaming, /proxy_buffering off;/);
   assert.match(streaming, /proxy_cache off;/);
