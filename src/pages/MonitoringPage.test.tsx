@@ -404,3 +404,43 @@ test("loadHistoryState status가 loading이면 1시간 전 적재율에 '확인 
   const pastLoadStat = Array.from(miniStats).find((el) => el.querySelector(".label")?.textContent === "1시간 전 적재율");
   expect(pastLoadStat?.querySelector("strong")).toHaveTextContent("확인 중");
 });
+
+test("적재율 유지 중 kpi-label은 '갱신 대기'를 포함하고 title에 마지막 정상 관측 서울 시각을 표시한다", async () => {
+  const dataSource = createMockDashboardDataSource();
+  const data = await dataSource.getDashboardData();
+  data.monitoring.v2 = {
+    ...data.monitoring.v2!,
+    simulated: true,
+    filterState: "WARMING",
+  };
+  data.monitoring.summary.loadPercent = 78.5;
+  data.monitoring.summary.loadHold = {
+    observedAt: "2026-11-11T06:26:43.015000Z",
+  };
+  const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
+  const label = container.querySelector(".kpi-label");
+  expect(label).toHaveTextContent("추정 적재율 (시뮬레이션, 갱신 대기)");
+  expect(label).toHaveAttribute("title", "마지막 정상 관측 2026-11-11 15:26:43 (한국 표준시)을 최대 3초 표시합니다");
+  const value = container.querySelector(".kpi-value");
+  expect(value).toHaveTextContent("78.5%");
+  const progress = container.querySelector(".progress");
+  expect(progress).toHaveAttribute("aria-label", "추정 적재율 78.5%");
+});
+
+test("시뮬레이션이 아닌 적재율 유지 중 kpi-label은 '추정 적재율 (갱신 대기)'이다", async () => {
+  const dataSource = createMockDashboardDataSource();
+  const data = await dataSource.getDashboardData();
+  data.monitoring.v2 = {
+    ...data.monitoring.v2!,
+    simulated: false,
+    filterState: "WARMING",
+  };
+  data.monitoring.summary.loadPercent = 82;
+  data.monitoring.summary.loadHold = {
+    observedAt: "2026-11-11T06:00:00Z",
+  };
+  const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
+  const label = container.querySelector(".kpi-label");
+  expect(label).toHaveTextContent("추정 적재율 (갱신 대기)");
+  expect(label).toHaveAttribute("title", "마지막 정상 관측 2026-11-11 15:00:00 (한국 표준시)을 최대 3초 표시합니다");
+});

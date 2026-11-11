@@ -399,6 +399,139 @@ export function createHttpDashboardDataSource({
       listeners.forEach((listener) => listener(cloneDashboardData(data)));
     }
   };
+
+  type LastNormalLoad = {
+    loadPercent: number;
+    measuredAt: string;
+    measuredAtEpoch: number;
+    startedAt: number;
+  };
+
+  type LastNormalCurve = {
+    profile: LidarProfile;
+    measuredAt: string;
+    measuredAtEpoch: number;
+    startedAt: number;
+  };
+
+  type LastNormalAverage = {
+    average: string;
+    measuredAt: string;
+    measuredAtEpoch: number;
+    startedAt: number;
+  };
+
+  let lastNormalLoad: LastNormalLoad | null = null;
+  let loadHoldTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const lastNormalCurves = new Map<string, LastNormalCurve>();
+  const lastNormalAverages = new Map<string, LastNormalAverage>();
+  const profileHoldTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  const clearHoldState = () => {
+    if (loadHoldTimer !== undefined) {
+      clearTimeout(loadHoldTimer);
+      loadHoldTimer = undefined;
+    }
+    lastNormalLoad = null;
+
+    for (const timer of profileHoldTimers.values()) {
+      clearTimeout(timer);
+    }
+    profileHoldTimers.clear();
+    lastNormalCurves.clear();
+    lastNormalAverages.clear();
+
+    if (currentData?.monitoring) {
+      let changed = false;
+      if (currentData.monitoring.summary.loadHold) {
+        currentData.monitoring.summary.loadPercent = null;
+        currentData.monitoring.summary.loadHold = undefined;
+        changed = true;
+      }
+      if (currentData.monitoring.lidarProfiles) {
+        for (const profile of currentData.monitoring.lidarProfiles) {
+          if (profile.curveHeld) {
+            profile.samples = [];
+            profile.curveHeld = undefined;
+            changed = true;
+          }
+          if (profile.averageHeld) {
+            profile.average = "-";
+            profile.averageHeld = undefined;
+            changed = true;
+          }
+        }
+      }
+      if (changed) publishNotifications();
+    }
+  };
+
+  const applyLoadHold = (monitoring: DashboardData["monitoring"], snapshot: ApiMonitoringSnapshotV2) => {
+    const isFresh = snapshot.dataState === "FRESH";
+    const rawLoad = snapshot.summary.loadPercent;
+    const hasValidLoad = typeof rawLoad === "number" && Number.isFinite(rawLoad) && rawLoad >= 0 && rawLoad <= 100;
+    const measuredAt = snapshot.measuredAt;
+
+    if (isFresh && hasValidLoad) {
+      if (measuredAt !== null) {
+        const measuredAtEpoch = Date.parse(measuredAt);
+        if (lastNormalLoad && measuredAtEpoch < lastNormalLoad.measuredAtEpoch) {
+          monitoring.summary.loadPercent = lastNormalLoad.loadPercent;
+          monitoring.summary.loadHold = undefined;
+          return;
+        }
+        if (lastNormalLoad && lastNormalLoad.measuredAt === measuredAt) {
+          lastNormalLoad.loadPercent = rawLoad;
+        } else {
+          lastNormalLoad = {
+            loadPercent: rawLoad,
+            measuredAt,
+            measuredAtEpoch,
+            startedAt: performance.now(),
+          };
+        }
+      }
+      if (loadHoldTimer !== undefined) {
+        clearTimeout(loadHoldTimer);
+        loadHoldTimer = undefined;
+      }
+      monitoring.summary.loadPercent = rawLoad;
+      monitoring.summary.loadHold = undefined;
+      return;
+    }
+
+    const isWarmingUnknown = snapshot.dataState === "UNKNOWN"
+      && snapshot.summary.filterState === "WARMING"
+      && Array.isArray(snapshot.reasonCodes)
+      && snapshot.reasonCodes.includes("FILTER_WARMING");
+
+    const now = performance.now();
+    if (isWarmingUnknown && lastNormalLoad && now - lastNormalLoad.startedAt < 3000) {
+      monitoring.summary.loadPercent = lastNormalLoad.loadPercent;
+      monitoring.summary.loadHold = { observedAt: lastNormalLoad.measuredAt };
+      if (loadHoldTimer !== undefined) clearTimeout(loadHoldTimer);
+      const remaining = Math.max(0, lastNormalLoad.startedAt + 3000 - now);
+      loadHoldTimer = setTimeout(() => {
+        loadHoldTimer = undefined;
+        if (currentData?.monitoring?.summary?.loadHold) {
+          currentData.monitoring.summary.loadPercent = null;
+          currentData.monitoring.summary.loadHold = undefined;
+          publishNotifications();
+        }
+      }, remaining);
+      return;
+    }
+
+    if (loadHoldTimer !== undefined) {
+      clearTimeout(loadHoldTimer);
+      loadHoldTimer = undefined;
+    }
+    if (!isWarmingUnknown) lastNormalLoad = null;
+    monitoring.summary.loadPercent = null;
+    monitoring.summary.loadHold = undefined;
+  };
+
   const pitPath = (path: string) => backendContract
     ? `${path}${path.includes("?") ? "&" : "?"}${new URLSearchParams({ pit_id: pitId })}` : path;
   const snapshotPath = pitPath(useV2Monitoring ? "/api/v2/monitoring/snapshot" : V1_MONITORING_PATHS.snapshot);
@@ -414,6 +547,7 @@ export function createHttpDashboardDataSource({
       monitoring.videoStatus = "available";
     }
     if (monitoring.v2) {
+      applyLoadHold(monitoring, snapshot as ApiMonitoringSnapshotV2);
       applyCollectionInsights(monitoring, collectionInsights, snapshot.serverTime, snapshotAlerts, lidarProfilesState);
       monitoring.activeAlertsAreaState = snapshotAlertsAreaState;
     }
@@ -516,6 +650,7 @@ export function createHttpDashboardDataSource({
   };
 
   const publishAuthorizationError = (error: ApiError) => {
+    clearHoldState();
     if (!currentData) return;
     currentData.authError = { status: error.status === 401 ? 401 : 403,
       message: error.status === 401 ? "로그인이 만료되었습니다." : "조회 권한이 없습니다." };
@@ -580,11 +715,117 @@ export function createHttpDashboardDataSource({
   const lidarProfilesActive = () => backendContract && useV2Monitoring && monitoringDetailsRefCount > 0
     && (typeof document === "undefined" || document.visibilityState !== "hidden");
 
-  const applyLidarProfiles = (profiles: LidarProfile[] | null) => {
-    lidarProfilesState = profiles;
+  const HOLD_MS = 3000;
+  const timerKey = (sensorId: string, kind: "curve" | "average") => `${sensorId}:${kind}`;
+  const clearProfileTimer = (sensorId: string, kind: "curve" | "average") => {
+    const key = timerKey(sensorId, kind);
+    const timer = profileHoldTimers.get(key);
+    if (timer !== undefined) clearTimeout(timer);
+    profileHoldTimers.delete(key);
+  };
+  const sensorOf = (profile: LidarProfile) => profile.sensorId ?? (profile.label === "LiDAR 1" ? "lidar-a" : "lidar-b");
+
+  // 유지 시간이 끝나면 해당 센서의 유지 항목만 기존 빈 표시로 바꾸고 다른 센서와 유효한 현재 값은 건드리지 않는다.
+  const expireProfileHold = (sensorId: string, kind: "curve" | "average") => {
+    profileHoldTimers.delete(timerKey(sensorId, kind));
+    const target = lidarProfilesState?.find((profile) => sensorOf(profile) === sensorId);
+    if (!target) return;
+    if (kind === "curve" && target.curveHeld) {
+      Object.assign(target, { samples: [], average: "-", minimum: "-", maximum: "-", curveHeld: undefined, averageHeld: undefined });
+      clearProfileTimer(sensorId, "average");
+    } else if (kind === "average" && target.averageHeld) {
+      Object.assign(target, { average: "-", averageHeld: undefined });
+    } else return;
+    if (!currentData?.monitoring) return;
+    currentData.monitoring.lidarProfiles = lidarProfilesState ?? [];
+    publishNotifications();
+  };
+  const scheduleProfileExpiry = (sensorId: string, kind: "curve" | "average", startedAt: number, now: number) => {
+    clearProfileTimer(sensorId, kind);
+    profileHoldTimers.set(timerKey(sensorId, kind), setTimeout(() => expireProfileHold(sensorId, kind), Math.max(0, startedAt + HOLD_MS - now)));
+  };
+  const forgetSensorHold = (sensorId: string) => {
+    lastNormalCurves.delete(sensorId);
+    lastNormalAverages.delete(sensorId);
+    clearProfileTimer(sensorId, "curve");
+    clearProfileTimer(sensorId, "average");
+  };
+
+  // 새 응답을 센서별 표시로 정한다. 유효 곡선과 대표값은 즉시 교체하고, 대표값은 준비 중 사유일 때만 마지막 정상값을 유지한다.
+  const resolveProfile = (profile: LidarProfile, now: number): LidarProfile => {
+    const sensorId = sensorOf(profile);
+    const hasValidPoints = profile.samples.some((sample) => sample.height !== null && sample.positionRatio !== null);
+    if (!hasValidPoints) {
+      forgetSensorHold(sensorId);
+      return { ...profile, samples: [], curveHeld: undefined, averageHeld: undefined };
+    }
+    clearProfileTimer(sensorId, "curve");
+    const epoch = profile.measuredAt ? Date.parse(profile.measuredAt) : Number.NaN;
+    const previousCurve = lastNormalCurves.get(sensorId);
+    if (previousCurve && Number.isFinite(epoch) && epoch < previousCurve.measuredAtEpoch) {
+      return { ...previousCurve.profile, curveHeld: undefined, averageHeld: undefined };
+    }
+    if (profile.measuredAt && Number.isFinite(epoch)) {
+      lastNormalCurves.set(sensorId, previousCurve && previousCurve.measuredAt === profile.measuredAt
+        ? { ...previousCurve, profile }
+        : { profile, measuredAt: profile.measuredAt, measuredAtEpoch: epoch, startedAt: now });
+    }
+    if (profile.average !== "-") {
+      clearProfileTimer(sensorId, "average");
+      if (profile.measuredAt && Number.isFinite(epoch)) {
+        const previousAverage = lastNormalAverages.get(sensorId);
+        lastNormalAverages.set(sensorId, previousAverage && previousAverage.measuredAt === profile.measuredAt
+          ? { ...previousAverage, average: profile.average }
+          : { average: profile.average, measuredAt: profile.measuredAt, measuredAtEpoch: epoch, startedAt: now });
+      }
+      return { ...profile, curveHeld: undefined, averageHeld: undefined };
+    }
+    const previousAverage = lastNormalAverages.get(sensorId);
+    const warming = profile.reasonCodes?.includes("HEIGHT_TEMPORAL_WARMING_OR_MISSING") ?? false;
+    if (warming && previousAverage && now - previousAverage.startedAt < HOLD_MS) {
+      scheduleProfileExpiry(sensorId, "average", previousAverage.startedAt, now);
+      return { ...profile, average: previousAverage.average, curveHeld: undefined, averageHeld: true };
+    }
+    lastNormalAverages.delete(sensorId);
+    clearProfileTimer(sensorId, "average");
+    return { ...profile, curveHeld: undefined, averageHeld: undefined };
+  };
+
+  // 조회 실패(인증 오류 제외)에서만 센서별 마지막 유효 곡선을 시작점부터 3초까지 유지한다.
+  const holdProfileAfterFailure = (slot: { sensorId: string; label: string; color: "blue" | "teal" }, now: number): LidarProfile => {
+    const previousCurve = lastNormalCurves.get(slot.sensorId);
+    if (!previousCurve || now - previousCurve.startedAt >= HOLD_MS) {
+      forgetSensorHold(slot.sensorId);
+      return { average: "-", color: slot.color, label: slot.label, maximum: "-", minimum: "-", samples: [], sensorId: slot.sensorId, measuredAt: null };
+    }
+    scheduleProfileExpiry(slot.sensorId, "curve", previousCurve.startedAt, now);
+    const previousAverage = lastNormalAverages.get(slot.sensorId);
+    const averageHeld = Boolean(previousAverage && now - previousAverage.startedAt < HOLD_MS);
+    if (averageHeld && previousAverage) scheduleProfileExpiry(slot.sensorId, "average", previousAverage.startedAt, now);
+    else clearProfileTimer(slot.sensorId, "average");
+    return { ...previousCurve.profile, average: averageHeld && previousAverage ? previousAverage.average : "-", curveHeld: true, averageHeld: averageHeld || undefined };
+  };
+
+  const profileSlots = [
+    { sensorId: "lidar-a", label: "LiDAR 1", color: "blue" as const },
+    { sensorId: "lidar-b", label: "LiDAR 2", color: "teal" as const },
+  ];
+
+  const applyLidarProfiles = (profiles: LidarProfile[] | null, isFailure = false) => {
+    const now = performance.now();
+    if (profiles !== null) {
+      lidarProfilesState = profiles.map((profile) => resolveProfile(profile, now));
+    } else if (isFailure) {
+      const held = profileSlots.map((slot) => holdProfileAfterFailure(slot, now));
+      lidarProfilesState = held.some((profile) => profile.curveHeld) ? held : [];
+    } else {
+      for (const slot of profileSlots) forgetSensorHold(slot.sensorId);
+      lidarProfilesState = null;
+    }
+
     if (!currentData?.monitoring) return;
     const before = insightsSignature(currentData.monitoring);
-    currentData.monitoring.lidarProfiles = profiles ? profiles : [];
+    currentData.monitoring.lidarProfiles = lidarProfilesState ? lidarProfilesState : [];
     if (before !== insightsSignature(currentData.monitoring)) publishNotifications();
   };
 
@@ -595,14 +836,14 @@ export function createHttpDashboardDataSource({
     try {
       const profiles = parseLidarProfilesV2(await request<unknown>(pitPath("/api/v2/monitoring/profiles"), { signal: controller.signal }), pitId);
       if (!current()) return;
-      applyLidarProfiles(profiles);
+      applyLidarProfiles(profiles, false);
     } catch (error) {
       if (!current()) return;
       if (isAuthorizationError(error)) {
         publishAuthorizationError(error);
         return;
       }
-      applyLidarProfiles(null);
+      applyLidarProfiles(null, true);
     }
     if (!current() || !lidarProfilesActive()) return;
     lidarProfilesTimer = setTimeout(() => {
@@ -622,7 +863,7 @@ export function createHttpDashboardDataSource({
   const startLidarProfilesLoop = (): Promise<void> => {
     stopLidarProfilesLoop();
     if (!lidarProfilesActive()) return Promise.resolve();
-    applyLidarProfiles(null);
+    applyLidarProfiles(null, false);
     const controller = new AbortController();
     lidarProfilesController = controller;
     return requestLidarProfiles(controller);
@@ -857,6 +1098,7 @@ export function createHttpDashboardDataSource({
   const handleMonitoringDetailsVisibility = () => {
     if (typeof document === "undefined" || monitoringDetailsRefCount === 0) return;
     if (document.visibilityState === "hidden") {
+      clearHoldState();
       stopMonitoringDetailsTimer();
       stopLidarProfilesLoop();
     } else {
@@ -883,6 +1125,7 @@ export function createHttpDashboardDataSource({
     },
     deleteSession: async () => {
       await request<void>(API_PATHS.session, { method: "DELETE" });
+      clearHoldState();
       notificationActionsController.abort();
       csrfToken = "";
       hasAuthenticatedSession = false;
@@ -1169,6 +1412,7 @@ export function createHttpDashboardDataSource({
         released = true;
         monitoringDetailsRefCount -= 1;
         if (monitoringDetailsRefCount === 0) {
+          clearHoldState();
           stopMonitoringDetailsTimer();
           stopLidarProfilesLoop();
           if (typeof document !== "undefined") {
@@ -1256,6 +1500,7 @@ export function createHttpDashboardDataSource({
       const expireSession = () => {
         if (!active) return;
         active = false;
+        clearHoldState();
         sessionController.abort();
         notificationActionScope.abort();
         csrfToken = "";
@@ -1266,6 +1511,7 @@ export function createHttpDashboardDataSource({
       };
       const failAuthorization = (error: ApiError) => {
         if (!active || !currentData) return;
+        clearHoldState();
         currentData.authError = { status: error.status === 401 ? 401 : 403,
           message: error.status === 401 ? "로그인이 만료되었습니다." : "조회 권한이 없습니다." };
         listener(cloneDashboardData(currentData));
@@ -1374,11 +1620,17 @@ export function createHttpDashboardDataSource({
       });
       eventSource.addEventListener("error", () => {
         if (!active) return;
+        if (loadHoldTimer !== undefined) {
+          clearTimeout(loadHoldTimer);
+          loadHoldTimer = undefined;
+        }
+        lastNormalLoad = null;
         if (currentData) currentData.reception = { ...currentData.reception, status: "error" };
         if (currentData?.monitoring.v2) {
           currentData.monitoring.status = "disconnected";
           if (currentData.monitoring.alarmState) currentData.monitoring.alarmState = "UNKNOWN";
           currentData.monitoring.summary.loadPercent = null;
+          currentData.monitoring.summary.loadHold = undefined;
           currentData.monitoring.v2.streamState = "reconnecting";
           currentData.monitoring.devices = currentData.monitoring.devices.map((device) => ({
             ...device, status: "unknown", statusLabel: "UNKNOWN",

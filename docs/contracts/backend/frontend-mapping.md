@@ -19,6 +19,7 @@ Programming Interface (API)의 revision과 경로는 [manifest](manifest.json)�
 `null`, 0건과 비활성화는 서로 다른 상태다. 제공되지 않은 값을 0, 정상, 대기 또는 알림
 없음으로 변환하지 않는다. 서로 다른 데이터 출처의 적재율, profile과 시계열을 하나의
 관측 결과로 합치지 않는다.
+현황 적재율, LiDAR 곡선과 센서별 대표 평균은 일시 준비 중 또는 조회 실패 시 직전 정상 관측을 최대 3초간 유지하는 예외를 적용한다. 마지막 서로 다른 정상 관측의 측정 시각(`measuredAt`)을 처음 수신한 단조 시계 시각부터 3초 동안 유지하며 새 관측이 오면 즉시 교체하고 만료 시 기존 정보 없음 및 빈 곡선으로 전환한다. 같은 `measuredAt` 반복, 준비 중 응답, 조회 실패로 유지 시간을 연장하지 않는다. 적재율은 `dataState=UNKNOWN`, `filterState=WARMING`, `reasonCodes`에 `FILTER_WARMING`이 있을 때만 유지하며 "갱신 대기"로 표시한다. 명시적 오류, 무효, 만료 응답과 SSE 재연결 중에는 유지하지 않고 직전 정상 관측도 버린다. 대상 변경, 로그아웃, 인증 오류, 화면 이탈과 탭 숨김은 유지 상태를 버린다. 유지 값은 예상 도달, 경보, 이력, 24시간 그래프 등 다른 지표 계산에 사용하지 않는다.
 
 ## 항목 찾기
 
@@ -175,7 +176,8 @@ profile의 최신성은 Backend profiles 응답(빈 배열, null 높이, `reason
 filterState가 WARMING이어도 profile 응답에 유효점이 있으면 곡선을 표시한다.
 높이는 cm를 m로 한 번 변환하고 `positionRatio`는 0 이상 1 이하의 위치로 사용한다.
 평균은 `SCAN_MEAN_TEMPORAL_MEDIAN` 기준이면 `filteredAverage`, 아니면 `average`다.
-`filteredAverage`가 null이면 대표값은 "-"로 표시하고 곡선은 유지한다.
+새 profile에 유효점이 있고 대표값이 null이며 `reasonCodes`에 `HEIGHT_TEMPORAL_WARMING_OR_MISSING`이 있으면 마지막 정상 대표값을 최대 3초간 유지해 보조 표기 "평균 갱신 대기"와 title "마지막 정상 대표값을 최대 3초 표시합니다"로 표시한다. 그 외의 사유로 null이면 대표값은 "-"로 표시하고 곡선은 유지한다.
+profile 조회가 네트워크 오류, timeout 또는 5xx로 실패한 경우(인증 오류 제외)에만 마지막 유효 곡선과 대표값을 최대 3초간 보조 표기 "곡선 갱신 대기"로 유지한다. 응답이 도착했으나 `samples`가 빈 배열이거나 유효점이 없으면(예: `FILTERED_PROFILE_UNAVAILABLE`) 즉시 비우고 과거 곡선으로 덮지 않는다. 부분 무효점은 새 곡선의 유효점만 그리고 끊긴 구간을 유지하며 이전 스캔 점으로 보충하지 않는다. 유지 시간 3초가 만료되면 곡선은 비우고 평균은 "-"로 전환한다.
 `sampleSource`, `processingVersion`, `sourceScanId`의 3개 optional 필드는 계약 파서에서
 허용하지만 화면 모델에는 보존하지 않는다.
 `valid=false`, 높이 또는 위치가 null인 표본은 선을 끊는다. 관측 범위는 `positionRatio`가 null이
