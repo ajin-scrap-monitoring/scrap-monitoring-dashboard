@@ -234,7 +234,7 @@ export function LoadChart({ samples, threshold, state, thresholdKind }: { sample
   );
 }
 
-export function ProfileChart({ average, color, label, maximum, minimum, samples, simulated, calibrationState }: LidarProfile) {
+export function ProfileChart({ average, color, label, maximum, minimum, samples, simulated, calibrationState, curveHeld, averageHeld }: LidarProfile) {
   const stroke = color === "blue" ? "#1677e8" : "#0ba58f";
   const axisTextColor = color === "blue" ? "#0b3f8d" : "#066f5e";
   const yMin = 0;
@@ -260,7 +260,7 @@ export function ProfileChart({ average, color, label, maximum, minimum, samples,
       <div className="chart-title-row">
         <SectionTitle>{label}</SectionTitle>
         <div className={`profile-stat ${color}`} title={[simulated ? "시뮬레이션 높이" : "", calibrationState === "UNVERIFIED" ? "보정 미검증" : ""].filter(Boolean).join(", ") || undefined}>
-          <span className="average"><span className="average-label">평균</span>{average}</span>
+          <span className="average" title={averageHeld ? "마지막 정상 대표값을 최대 3초 표시합니다" : undefined}><span className="average-label">평균</span>{average}</span>
           <span className="range">최소 {minimum} / 최대 {maximum}</span>
         </div>
       </div>
@@ -311,7 +311,14 @@ export function ProfileChart({ average, color, label, maximum, minimum, samples,
             </text>
           ))}
         </g>
-        {simulated && <text x={chart.right} y="12" fill="#61708a" fontSize="10" textAnchor="end">시뮬레이션</text>}
+        {(() => {
+          const annotations: string[] = [];
+          if (simulated) annotations.push("시뮬레이션");
+          if (curveHeld) annotations.push("곡선 갱신 대기");
+          if (averageHeld) annotations.push("평균 갱신 대기");
+          if (annotations.length === 0) return null;
+          return <text x={chart.right} y="12" fill="#61708a" fontSize="10" textAnchor="end">{annotations.join(", ")}</text>;
+        })()}
         {profileSegments.length > 0 ? profileSegments.map((segment, index) => {
           const linePath = segment.map((sample, sampleIndex) => `${sampleIndex === 0 ? "M" : "L"}${sample.x} ${sample.y}`).join(" ");
           return <g key={`profile-segment-${index}`}>

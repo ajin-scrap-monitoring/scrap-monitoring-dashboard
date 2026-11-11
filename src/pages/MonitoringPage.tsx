@@ -33,10 +33,11 @@ const deviceStateLabels: Record<string, string> = {
 type AlertRow = { alert: ActiveAlert } | { notice: { id: string; title: string; detail: string; hint: string } };
 const coverageReasonLabels: Record<string, string> = { CAMERA_HEALTH_SOURCE_NOT_CONFIGURED: "상태 입력 계약 없음" };
 
-function formatKpiLabel(simulated?: boolean, filterState?: MonitoringFilterState | null) {
+function formatKpiLabel(simulated?: boolean, filterState?: MonitoringFilterState | null, loadHeld?: boolean) {
   const parts: string[] = [];
   if (simulated) parts.push("시뮬레이션");
-  if (filterState === "WARMING") parts.push("안정화 준비 중");
+  if (loadHeld) parts.push("갱신 대기");
+  else if (filterState === "WARMING") parts.push("안정화 준비 중");
   else if (filterState === "UNAVAILABLE") parts.push("안정화 불가");
   if (parts.length === 0) return "추정 적재율";
   return `추정 적재율 (${parts.join(", ")})`;
@@ -149,7 +150,7 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
           <section className="card top-card span-4 kpi-card">
             <div className="monitoring-card-title"><SectionTitle>현재 상태</SectionTitle></div>
             <div className="kpi-content">
-              <p className="kpi-label" title={state?.filterState === "WARMING" ? "시간 필터가 준비되는 동안의 값" : undefined}>{formatKpiLabel(state?.simulated, state?.filterState)}</p>
+              <p className="kpi-label" title={monitoring.summary.loadHold ? `마지막 정상 관측 ${seoulDisplayText(Date.parse(monitoring.summary.loadHold.observedAt))}을 최대 3초 표시합니다` : state?.filterState === "WARMING" ? "시간 필터가 준비되는 동안의 값" : undefined}>{formatKpiLabel(state?.simulated, state?.filterState, Boolean(monitoring.summary.loadHold))}</p>
               <div className={`kpi-value${monitoring.summary.loadPercent === null ? " unavailable-value" : valueLength > 5 ? " precise-value" : ""}`} style={valueLength > 5 ? { fontSize: Math.min(76, 500 / valueLength) } : undefined}>{monitoring.summary.loadPercent === null ? "판단 불가" : <>{monitoring.summary.loadPercent}<span>%</span></>}</div>
               {monitoring.summary.loadPercent === null
                 ? <div className="progress-unavailable">{state?.streamState === "reconnecting" && <span role="status">실시간 연결 재연결 중</span>}</div>

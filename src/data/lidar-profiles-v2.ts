@@ -52,7 +52,7 @@ export function parseLidarProfilesV2(value: unknown, pitId: string): LidarProfil
   }
   return slots.map((slot) => {
     const profile = bySensor.get(slot.sensorId);
-    if (!profile) return { average: "-", color: slot.color, label: slot.label, maximum: "-", minimum: "-", samples: [] };
+    if (!profile) return { average: "-", color: slot.color, label: slot.label, maximum: "-", minimum: "-", samples: [], sensorId: slot.sensorId, measuredAt: null };
     const representative = profile.summaryValuePolicy === "SCAN_MEAN_TEMPORAL_MEDIAN" ? profile.filteredAverage : profile.average;
     return {
       average: meters(representative as number | null | undefined),
@@ -61,6 +61,8 @@ export function parseLidarProfilesV2(value: unknown, pitId: string): LidarProfil
       maximum: meters(profile.maximum as number | null | undefined),
       minimum: meters(profile.minimum as number | null | undefined),
       samples: ((profile.samples ?? []) as unknown[]).map(sampleOf),
+      sensorId: slot.sensorId,
+      measuredAt: typeof profile.measuredAt === "string" ? profile.measuredAt : null,
       ...(profile.simulated === true && { simulated: true }),
       ...(typeof profile.calibrationState === "string" && { calibrationState: profile.calibrationState as LidarProfile["calibrationState"] }),
       ...(Array.isArray(profile.reasonCodes) && profile.reasonCodes.length > 0 && { reasonCodes: profile.reasonCodes as string[] }),

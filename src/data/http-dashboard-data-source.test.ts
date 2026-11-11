@@ -2529,7 +2529,7 @@ describe("HTTP 대시보드 데이터 소스", () => {
       }
     });
 
-    test("프로필 조회 실패(인증 오류 제외)는 프로필을 비운다", async () => {
+    test("프로필 조회 실패(인증 오류 제외)는 최대 3초 곡선을 유지한 후 만료 시 비운다", async () => {
       vi.useFakeTimers();
       try {
         let shouldFail = false;
@@ -2557,11 +2557,14 @@ describe("HTTP 대시보드 데이터 소스", () => {
         await activation.ready;
         expect(latestData?.monitoring.lidarProfiles).toHaveLength(2);
 
-        // 다음 요청에서 500 실패
+        // 다음 요청에서 500 실패 (1초 시점) -> 최대 3초 곡선 유지
         shouldFail = true;
         await vi.advanceTimersByTimeAsync(1000);
+        expect(latestData?.monitoring.lidarProfiles[0]?.curveHeld).toBe(true);
+        expect(latestData?.monitoring.lidarProfiles[0]?.samples).toHaveLength(1);
 
-        // 프로필이 비워짐
+        // 3초 경과 후(시작점 기준 3초 만료) 프로필이 비워짐
+        await vi.advanceTimersByTimeAsync(2000);
         expect(latestData?.monitoring.lidarProfiles).toEqual([]);
 
         activation.release();
@@ -2713,6 +2716,581 @@ describe("HTTP 대시보드 데이터 소스", () => {
         vi.useRealTimers();
       }
     });
+  });
+
+  describe("마지막 정상값 최대 3초 유지 정책 (D-1~D-6)", () => {
+    test("적재율 FRESH -> WARMING(FILTER_WARMING) 유지와 3초 만료 후 null 전환", async () => {
+      vi.useFakeTimers();
+      try {
+        const stream = new FakeEventSource();
+        const baseSnapshot = { ...monitoringV2StateFixture("FRESH", 75), measuredAt: "2026-11-11T06:00:00Z" };
+        const fetchImplementation = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/snapshot") return jsonResponse(baseSnapshot);
+          return undefined;
+        });
+        const source = createHttpDashboardDataSource({
+          apiContract: "backend",
+          monitoringVersion: "v2",
+          fetchImplementation,
+          eventSourceFactory: () => stream as unknown as EventSource,
+        });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((data) => { latestData = data; });
+        const data = await source.getDashboardData();
+        latestData = data;
+
+        expect(latestData?.monitoring.summary.loadPercent).toBe(75);
+        expect(latestData?.monitoring.summary.loadHold).toBeUndefined();
+
+        // 1초 뒤 UNKNOWN / WARMING / FILTER_WARMING 수신
+        await vi.advanceTimersByTimeAsync(1000);
+        const warmingSnapshot = {
+          ...monitoringV2StateFixture("UNKNOWN", 0, { filterState: "WARMING" }),
+          reasonCodes: ["FILTER_WARMING"],
+          measuredAt: "2026-11-11T06:00:01Z",
+        };
+        stream.emit("monitoring.snapshot", warmingSnapshot);
+
+        // 75% 유지 및 loadHold 설정
+        expect(latestData?.monitoring.summary.loadPercent).toBe(75);
+        expect(latestData?.monitoring.summary.loadHold).toEqual({ observedAt: "2026-11-11T06:00:00Z" });
+
+        // 시작점 기준 3초(남은 2초) 경과 후 만료
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(latestData?.monitoring.summary.loadPercent).toBeNull();
+        expect(latestData?.monitoring.summary.loadHold).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("같은 measuredAt 반복과 WARMING 반복이 유지 시간을 연장하지 않는다", async () => {
+      vi.useFakeTimers();
+      try {
+        const stream = new FakeEventSource();
+        const initial = { ...monitoringV2StateFixture("FRESH", 70), measuredAt: "2026-11-11T06:00:00Z" };
+        const source = createHttpDashboardDataSource({
+          apiContract: "backend",
+          monitoringVersion: "v2",
+          fetchImplementation: createV2ContractFetch((url) => url.pathname === "/api/v2/monitoring/snapshot" ? jsonResponse(initial) : undefined),
+          eventSourceFactory: () => stream as unknown as EventSource,
+        });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((d) => { latestData = d; });
+        await source.getDashboardData();
+
+        // 1초 경과 (t=1000ms): 같은 measuredAt의 FRESH 재수신 -> 시작점은 여전히 t=0이어야 함
+        await vi.advanceTimersByTimeAsync(1000);
+        stream.emit("monitoring.snapshot", { ...initial, measuredAt: "2026-11-11T06:00:00Z" });
+
+        // 1초 추가 경과 (t=2000ms): WARMING 수신 -> t=0 기준 3초이므로 1000ms 뒤 만료되어야 함
+        await vi.advanceTimersByTimeAsync(1000);
+        stream.emit("monitoring.snapshot", {
+          ...monitoringV2StateFixture("UNKNOWN", 0, { filterState: "WARMING" }),
+          reasonCodes: ["FILTER_WARMING"],
+          measuredAt: "2026-11-11T06:00:02Z",
+        });
+        expect(latestData?.monitoring.summary.loadPercent).toBe(70);
+        expect(latestData?.monitoring.summary.loadHold?.observedAt).toBe("2026-11-11T06:00:00Z");
+
+        // t=2500ms: 또 다른 WARMING 수신 -> 연장 불가
+        await vi.advanceTimersByTimeAsync(500);
+        stream.emit("monitoring.snapshot", {
+          ...monitoringV2StateFixture("UNKNOWN", 0, { filterState: "WARMING" }),
+          reasonCodes: ["FILTER_WARMING"],
+          measuredAt: "2026-11-11T06:00:02.5Z",
+        });
+        expect(latestData?.monitoring.summary.loadPercent).toBe(70);
+
+        // t=3000ms 도달 (500ms 추가 경과) -> 만료
+        await vi.advanceTimersByTimeAsync(500);
+        expect(latestData?.monitoring.summary.loadPercent).toBeNull();
+        expect(latestData?.monitoring.summary.loadHold).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("WARMING 유지 중 새 FRESH 수신 시 즉시 교체하고 유지 상태를 끝낸다", async () => {
+      vi.useFakeTimers();
+      try {
+        const stream = new FakeEventSource();
+        const initial = { ...monitoringV2StateFixture("FRESH", 60), measuredAt: "2026-11-11T06:00:00Z" };
+        const source = createHttpDashboardDataSource({
+          apiContract: "backend",
+          monitoringVersion: "v2",
+          fetchImplementation: createV2ContractFetch((url) => url.pathname === "/api/v2/monitoring/snapshot" ? jsonResponse(initial) : undefined),
+          eventSourceFactory: () => stream as unknown as EventSource,
+        });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((d) => { latestData = d; });
+        await source.getDashboardData();
+
+        await vi.advanceTimersByTimeAsync(1000);
+        stream.emit("monitoring.snapshot", {
+          ...monitoringV2StateFixture("UNKNOWN", 0, { filterState: "WARMING" }),
+          reasonCodes: ["FILTER_WARMING"],
+          measuredAt: "2026-11-11T06:00:01Z",
+        });
+        expect(latestData?.monitoring.summary.loadPercent).toBe(60);
+        expect(latestData?.monitoring.summary.loadHold).toBeDefined();
+
+        // 500ms 뒤 새 FRESH (80%) 도착
+        await vi.advanceTimersByTimeAsync(500);
+        stream.emit("monitoring.snapshot", {
+          ...monitoringV2StateFixture("FRESH", 80),
+          measuredAt: "2026-11-11T06:00:02Z",
+        });
+        expect(latestData?.monitoring.summary.loadPercent).toBe(80);
+        expect(latestData?.monitoring.summary.loadHold).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("STALE, UNAVAILABLE, 다른 사유는 즉시 해제하고 SSE 재연결 시 유지하지 않는다", async () => {
+      vi.useFakeTimers();
+      try {
+        const stream = new FakeEventSource();
+        const initial = { ...monitoringV2StateFixture("FRESH", 65), measuredAt: "2026-11-11T06:00:00Z" };
+        const source = createHttpDashboardDataSource({
+          apiContract: "backend",
+          monitoringVersion: "v2",
+          fetchImplementation: createV2ContractFetch((url) => url.pathname === "/api/v2/monitoring/snapshot" ? jsonResponse(initial) : undefined),
+          eventSourceFactory: () => stream as unknown as EventSource,
+        });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((d) => { latestData = d; });
+        await source.getDashboardData();
+
+        // 1. STALE 수신 시 즉시 해제
+        await vi.advanceTimersByTimeAsync(500);
+        stream.emit("monitoring.snapshot", { ...monitoringV2StateFixture("STALE", 0), measuredAt: "2026-11-11T06:00:01Z" });
+        expect(latestData?.monitoring.summary.loadPercent).toBeNull();
+        expect(latestData?.monitoring.summary.loadHold).toBeUndefined();
+
+        // 다시 FRESH
+        stream.emit("monitoring.snapshot", { ...monitoringV2StateFixture("FRESH", 70), measuredAt: "2026-11-11T06:00:02Z" });
+        expect(latestData?.monitoring.summary.loadPercent).toBe(70);
+
+        // 2. UNAVAILABLE 수신 시 즉시 해제
+        stream.emit("monitoring.snapshot", { ...monitoringV2StateFixture("UNAVAILABLE", 0), measuredAt: "2026-11-11T06:00:03Z" });
+        expect(latestData?.monitoring.summary.loadPercent).toBeNull();
+        expect(latestData?.monitoring.summary.loadHold).toBeUndefined();
+
+        // 다시 FRESH
+        stream.emit("monitoring.snapshot", { ...monitoringV2StateFixture("FRESH", 70), measuredAt: "2026-11-11T06:00:04Z" });
+        // UNKNOWN이지만 reasonCodes에 FILTER_WARMING 없음
+        stream.emit("monitoring.snapshot", { ...monitoringV2StateFixture("UNKNOWN", 0, { filterState: "WARMING" }), reasonCodes: ["OTHER_REASON"], measuredAt: "2026-11-11T06:00:05Z" });
+        expect(latestData?.monitoring.summary.loadPercent).toBeNull();
+
+        // 3. WARMING 유지 중 SSE error 발생 -> 재연결 표시 및 유지 해제
+        stream.emit("monitoring.snapshot", { ...monitoringV2StateFixture("FRESH", 70), measuredAt: "2026-11-11T06:00:06Z" });
+        stream.emit("monitoring.snapshot", { ...monitoringV2StateFixture("UNKNOWN", 0, { filterState: "WARMING" }), reasonCodes: ["FILTER_WARMING"], measuredAt: "2026-11-11T06:00:07Z" });
+        expect(latestData?.monitoring.summary.loadPercent).toBe(70);
+        expect(latestData?.monitoring.summary.loadHold).toBeDefined();
+
+        stream.emit("error", new Event("error"));
+        expect(latestData?.monitoring.summary.loadPercent).toBeNull();
+        expect(latestData?.monitoring.summary.loadHold).toBeUndefined();
+        expect(latestData?.monitoring.v2?.streamState).toBe("reconnecting");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("과거 measuredAt을 가진 정상 관측은 역순 적용하지 않는다", async () => {
+      vi.useFakeTimers();
+      try {
+        const stream = new FakeEventSource();
+        const initial = { ...monitoringV2StateFixture("FRESH", 75), measuredAt: "2026-11-11T06:00:10Z" };
+        const source = createHttpDashboardDataSource({
+          apiContract: "backend",
+          monitoringVersion: "v2",
+          fetchImplementation: createV2ContractFetch((url) => url.pathname === "/api/v2/monitoring/snapshot" ? jsonResponse(initial) : undefined),
+          eventSourceFactory: () => stream as unknown as EventSource,
+        });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((d) => { latestData = d; });
+        await source.getDashboardData();
+
+        // 과거 시각을 가진 관측 수신
+        stream.emit("monitoring.snapshot", { ...monitoringV2StateFixture("FRESH", 50), measuredAt: "2026-11-11T06:00:05Z" });
+        expect(latestData?.monitoring.summary.loadPercent).toBe(75);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("대표 평균 HEIGHT_TEMPORAL_WARMING_OR_MISSING 유지와 3초 만료, 다른 사유는 즉시 '-'", async () => {
+      vi.useFakeTimers();
+      try {
+        let currentProfile: unknown = {
+          pitId: "pit-01",
+          profiles: [
+            {
+              sensorId: "lidar-a",
+              measuredAt: "2026-11-11T06:00:00Z",
+              summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN",
+              filteredAverage: 240,
+              samples: [{ positionRatio: 0.5, height: 240, valid: true }],
+            },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:00Z", samples: [] },
+          ],
+        };
+        const fetchImplementation = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/profiles") {
+            return Promise.resolve(new Response(JSON.stringify(currentProfile), { status: 200, headers: { "Content-Type": "application/json" } }));
+          }
+          return undefined;
+        });
+        const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((d) => { latestData = d; });
+        await source.getDashboardData();
+
+        const activation = source.activateMonitoringDetails!();
+        await activation.ready;
+        expect(latestData?.monitoring.lidarProfiles[0]?.average).toBe("2.40 m");
+        expect(latestData?.monitoring.lidarProfiles[0]?.averageHeld).toBeUndefined();
+
+        // 1초 뒤: 유효점이 있고 filteredAverage=null이며 HEIGHT_TEMPORAL_WARMING_OR_MISSING
+        currentProfile = {
+          pitId: "pit-01",
+          profiles: [
+            {
+              sensorId: "lidar-a",
+              measuredAt: "2026-11-11T06:00:01Z",
+              summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN",
+              filteredAverage: null,
+              reasonCodes: ["HEIGHT_TEMPORAL_WARMING_OR_MISSING"],
+              samples: [{ positionRatio: 0.6, height: 250, valid: true }],
+            },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:01Z", samples: [] },
+          ],
+        };
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(latestData?.monitoring.lidarProfiles[0]?.average).toBe("2.40 m");
+        expect(latestData?.monitoring.lidarProfiles[0]?.averageHeld).toBe(true);
+        // 곡선은 새 profile 곡선(height: 2.5)이어야 함
+        expect(latestData?.monitoring.lidarProfiles[0]?.samples[0]?.height).toBe(2.5);
+        expect(latestData?.monitoring.lidarProfiles[0]?.curveHeld).toBeUndefined();
+
+        // 3초 만료 (시작점 t=0 기준 3초이므로 2초 추가 경과)
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(latestData?.monitoring.lidarProfiles[0]?.average).toBe("-");
+        expect(latestData?.monitoring.lidarProfiles[0]?.averageHeld).toBeUndefined();
+
+        // 다른 사유로 filteredAverage=null인 경우 즉시 "-"
+        // 다시 정상 평균 수신
+        currentProfile = {
+          pitId: "pit-01",
+          profiles: [
+            {
+              sensorId: "lidar-a",
+              measuredAt: "2026-11-11T06:00:04Z",
+              summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN",
+              filteredAverage: 300,
+              samples: [{ positionRatio: 0.5, height: 300, valid: true }],
+            },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:04Z", samples: [] },
+          ],
+        };
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(latestData?.monitoring.lidarProfiles[0]?.average).toBe("3.00 m");
+
+        // 다른 사유
+        currentProfile = {
+          pitId: "pit-01",
+          profiles: [
+            {
+              sensorId: "lidar-a",
+              measuredAt: "2026-11-11T06:00:05Z",
+              summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN",
+              filteredAverage: null,
+              reasonCodes: ["HEIGHT_REFERENCE_UNVERIFIED"],
+              samples: [{ positionRatio: 0.5, height: 300, valid: true }],
+            },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:05Z", samples: [] },
+          ],
+        };
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(latestData?.monitoring.lidarProfiles[0]?.average).toBe("-");
+        expect(latestData?.monitoring.lidarProfiles[0]?.averageHeld).toBeUndefined();
+
+        activation.release();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("profile 빈 배열 또는 FILTERED_PROFILE_UNAVAILABLE은 즉시 비우고 부분 무효점은 그대로 끊는다", async () => {
+      vi.useFakeTimers();
+      try {
+        let currentProfile: unknown = {
+          pitId: "pit-01",
+          profiles: [
+            {
+              sensorId: "lidar-a",
+              measuredAt: "2026-11-11T06:00:00Z",
+              samples: [{ positionRatio: 0.2, height: 150, valid: true }, { positionRatio: 0.8, height: 160, valid: true }],
+            },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:00Z", samples: [] },
+          ],
+        };
+        const fetchImplementation = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/profiles") {
+            return Promise.resolve(new Response(JSON.stringify(currentProfile), { status: 200, headers: { "Content-Type": "application/json" } }));
+          }
+          return undefined;
+        });
+        const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((d) => { latestData = d; });
+        await source.getDashboardData();
+
+        const activation = source.activateMonitoringDetails!();
+        await activation.ready;
+        expect(latestData?.monitoring.lidarProfiles[0]?.samples).toHaveLength(2);
+
+        // 부분 무효점이 있는 새 profile (중간 무효점은 null로 끊김)
+        currentProfile = {
+          pitId: "pit-01",
+          profiles: [
+            {
+              sensorId: "lidar-a",
+              measuredAt: "2026-11-11T06:00:01Z",
+              samples: [
+                { positionRatio: 0.2, height: 150, valid: true },
+                { positionRatio: null, height: null, valid: false },
+                { positionRatio: 0.8, height: 170, valid: true },
+              ],
+            },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:01Z", samples: [] },
+          ],
+        };
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(latestData?.monitoring.lidarProfiles[0]?.samples).toEqual([
+          { positionRatio: 0.2, height: 1.5 },
+          { positionRatio: null, height: null },
+          { positionRatio: 0.8, height: 1.7 },
+        ]);
+
+        // FILTERED_PROFILE_UNAVAILABLE (samples=[]) 수신 시 즉시 비움 (과거 곡선으로 덮지 않음)
+        currentProfile = {
+          pitId: "pit-01",
+          profiles: [
+            {
+              sensorId: "lidar-a",
+              measuredAt: "2026-11-11T06:00:02Z",
+              reasonCodes: ["FILTERED_PROFILE_UNAVAILABLE"],
+              samples: [],
+            },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:02Z", samples: [] },
+          ],
+        };
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(latestData?.monitoring.lidarProfiles[0]?.samples).toEqual([]);
+        expect(latestData?.monitoring.lidarProfiles[0]?.curveHeld).toBeUndefined();
+
+        activation.release();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("인증 오류, release, hidden 전환 시 유지 상태와 timer를 버리고 센서는 독립적이다", async () => {
+      vi.useFakeTimers();
+      try {
+        let profileResult: () => Promise<Response> = () => Promise.resolve(new Response(JSON.stringify({
+          pitId: "pit-01",
+          profiles: [
+            { sensorId: "lidar-a", measuredAt: "2026-11-11T06:00:00Z", summaryValuePolicy: "PROFILE_MEAN", average: 200, samples: [{ positionRatio: 0.5, height: 200, valid: true }] },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:00Z", summaryValuePolicy: "PROFILE_MEAN", average: 300, samples: [{ positionRatio: 0.5, height: 300, valid: true }] },
+          ],
+        }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+        const fetchImplementation = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/profiles") return profileResult();
+          return undefined;
+        });
+
+        const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((d) => { latestData = d; });
+        await source.getDashboardData();
+
+        const activation = source.activateMonitoringDetails!();
+        await activation.ready;
+
+        // lidar-a는 WARMING으로 평균 유지, lidar-b는 정상 유지
+        profileResult = () => Promise.resolve(new Response(JSON.stringify({
+          pitId: "pit-01",
+          profiles: [
+            { sensorId: "lidar-a", measuredAt: "2026-11-11T06:00:01Z", summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN", filteredAverage: null, reasonCodes: ["HEIGHT_TEMPORAL_WARMING_OR_MISSING"], samples: [{ positionRatio: 0.5, height: 210, valid: true }] },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:01Z", summaryValuePolicy: "PROFILE_MEAN", average: 350, samples: [{ positionRatio: 0.5, height: 350, valid: true }] },
+          ],
+        }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+        await vi.advanceTimersByTimeAsync(1000);
+        // 센서 독립 검증: lidar-a는 평균 유지(averageHeld: true), lidar-b는 새 값(3.50 m, averageHeld: undefined)
+        expect(latestData?.monitoring.lidarProfiles[0]?.average).toBe("2.00 m");
+        expect(latestData?.monitoring.lidarProfiles[0]?.averageHeld).toBe(true);
+        expect(latestData?.monitoring.lidarProfiles[1]?.average).toBe("3.50 m");
+        expect(latestData?.monitoring.lidarProfiles[1]?.averageHeld).toBeUndefined();
+
+        // hidden 전환 시 정리
+        Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true, writable: true });
+        document.dispatchEvent(new Event("visibilitychange"));
+        expect(latestData?.monitoring.lidarProfiles[0]?.averageHeld).toBeUndefined();
+
+        Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true, writable: true });
+        document.dispatchEvent(new Event("visibilitychange"));
+
+        activation.release();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("유지 값이 예상 도달과 1시간 전 적재율 계산에 쓰이지 않는다", async () => {
+      vi.useFakeTimers();
+      try {
+        const stream = new FakeEventSource();
+        const initial = {
+          ...monitoringV2StateFixture("FRESH", 70),
+          serverTime: "2026-11-11T06:00:00Z",
+          measuredAt: "2026-11-11T06:00:00Z",
+        };
+        const fetchImplementation = createV2ContractFetch((url) => {
+          if (url.pathname === "/api/v2/monitoring/snapshot") return jsonResponse(initial);
+          if (url.pathname === "/api/v2/monitoring/fill-forecast") {
+            return jsonResponse({
+              pitId: "pit-01",
+              computedAt: "2026-11-11T06:00:00Z",
+              state: "AVAILABLE",
+              expectedThresholdAt: "2026-11-11T07:00:00Z",
+              remainingSeconds: 3600,
+              validUntil: "2026-11-11T06:05:00Z",
+              reasonCodes: [],
+            });
+          }
+          return undefined;
+        });
+
+        const source = createHttpDashboardDataSource({
+          apiContract: "backend",
+          monitoringVersion: "v2",
+          fetchImplementation,
+          eventSourceFactory: () => stream as unknown as EventSource,
+        });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((d) => { latestData = d; });
+        await source.getDashboardData();
+
+        const activation = source.activateMonitoringDetails!();
+        await activation.ready;
+
+        // FRESH 상태에서는 예상 도달 사용됨
+        expect(latestData?.monitoring.summary.expectedArrivalAt).not.toBe("정보 없음");
+
+        // UNKNOWN / WARMING으로 전환 -> 적재율 유지되지만 예상 도달은 measuring=false이므로 정보 없음
+        stream.emit("monitoring.snapshot", {
+          ...monitoringV2StateFixture("UNKNOWN", 0, { filterState: "WARMING" }),
+          reasonCodes: ["FILTER_WARMING"],
+          measuredAt: "2026-11-11T06:00:01Z",
+        });
+        expect(latestData?.monitoring.summary.loadPercent).toBe(70);
+        expect(latestData?.monitoring.summary.loadHold).toBeDefined();
+        // 예상 도달은 정보 없음이어야 함
+        expect(latestData?.monitoring.summary.expectedArrivalAt).toBe("정보 없음");
+        expect(latestData?.monitoring.summary.remainingTime).toBe("정보 없음");
+
+        activation.release();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    describe("리뷰 회귀", () => {
+      const profileResponse = (body: unknown) => () => Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } }));
+      const failure = () => Promise.resolve(new Response(JSON.stringify({ detail: "unavailable" }), { status: 503, headers: { "Content-Type": "application/json" } }));
+      const validProfiles = (at: string, a = 200, b = 300) => ({
+        pitId: "pit-01",
+        profiles: [
+          { sensorId: "lidar-a", measuredAt: at, simulated: true, summaryValuePolicy: "PROFILE_MEAN", average: a, minimum: a - 10, maximum: a + 10, samples: [{ positionRatio: 0.5, height: a, valid: true }] },
+          { sensorId: "lidar-b", measuredAt: at, simulated: true, summaryValuePolicy: "PROFILE_MEAN", average: b, minimum: b - 10, maximum: b + 10, samples: [{ positionRatio: 0.5, height: b, valid: true }] },
+        ],
+      });
+      const start = async (initial: () => Promise<Response>) => {
+        let profileResult = initial;
+        const source = createHttpDashboardDataSource({
+          apiContract: "backend", monitoringVersion: "v2",
+          fetchImplementation: createV2ContractFetch((url) => url.pathname === "/api/v2/monitoring/profiles" ? profileResult() : undefined),
+        });
+        let latestData: DashboardData | undefined;
+        source.subscribe?.((d) => { latestData = d; });
+        await source.getDashboardData();
+        const activation = source.activateMonitoringDetails!();
+        await activation.ready;
+        return { set: (next: () => Promise<Response>) => { profileResult = next; }, latest: () => latestData, activation };
+      };
+
+      test("명시적 무효 뒤의 조회 실패는 무효 이전 곡선을 되살리지 않는다", async () => {
+        vi.useFakeTimers();
+        try {
+          const run = await start(profileResponse(validProfiles("2026-11-11T06:00:00Z")));
+          run.set(profileResponse({ pitId: "pit-01", profiles: [
+            { sensorId: "lidar-a", measuredAt: "2026-11-11T06:00:01Z", reasonCodes: ["FILTERED_PROFILE_UNAVAILABLE"], samples: [] },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:01Z", reasonCodes: ["FILTERED_PROFILE_UNAVAILABLE"], samples: [] },
+          ] }));
+          await vi.advanceTimersByTimeAsync(1000);
+          expect(run.latest()?.monitoring.lidarProfiles[0]?.samples).toEqual([]);
+          run.set(failure);
+          await vi.advanceTimersByTimeAsync(1000);
+          expect(run.latest()?.monitoring.lidarProfiles.every((profile) => profile.samples.length === 0 && !profile.curveHeld)).toBe(true);
+          run.activation.release();
+        } finally { vi.useRealTimers(); }
+      });
+
+      test("조회 실패로 유지한 곡선은 최소, 최대와 시뮬레이션 표기를 함께 유지하고 3초 뒤 비운다", async () => {
+        vi.useFakeTimers();
+        try {
+          const run = await start(profileResponse(validProfiles("2026-11-11T06:00:00Z")));
+          run.set(failure);
+          await vi.advanceTimersByTimeAsync(1000);
+          const held = run.latest()?.monitoring.lidarProfiles[0];
+          expect(held).toMatchObject({ curveHeld: true, averageHeld: true, average: "2.00 m", minimum: "1.90 m", maximum: "2.10 m", simulated: true });
+          expect(held?.samples).toEqual([{ positionRatio: 0.5, height: 2 }]);
+          await vi.advanceTimersByTimeAsync(2000);
+          // 만료 뒤에도 조회 실패가 이어지면 기존 실패 표시처럼 곡선 목록을 비운다.
+          expect(run.latest()?.monitoring.lidarProfiles.some((profile) => profile.curveHeld || profile.samples.length > 0)).toBe(false);
+          run.activation.release();
+        } finally { vi.useRealTimers(); }
+      });
+
+      test("한 센서의 평균 유지가 만료돼도 다른 센서와 현재 곡선을 지우지 않는다", async () => {
+        vi.useFakeTimers();
+        try {
+          const run = await start(profileResponse(validProfiles("2026-11-11T06:00:00Z")));
+          run.set(profileResponse({ pitId: "pit-01", profiles: [
+            { sensorId: "lidar-a", measuredAt: "2026-11-11T06:00:01Z", summaryValuePolicy: "SCAN_MEAN_TEMPORAL_MEDIAN", filteredAverage: null, reasonCodes: ["HEIGHT_TEMPORAL_WARMING_OR_MISSING"], samples: [{ positionRatio: 0.5, height: 210, valid: true }] },
+            { sensorId: "lidar-b", measuredAt: "2026-11-11T06:00:01Z", summaryValuePolicy: "PROFILE_MEAN", average: 310, samples: [{ positionRatio: 0.5, height: 310, valid: true }] },
+          ] }));
+          await vi.advanceTimersByTimeAsync(1000);
+          expect(run.latest()?.monitoring.lidarProfiles[0]?.averageHeld).toBe(true);
+          // 유지 시작점(t=0)에서 3초가 되는 시점의 만료 timer만 실행되도록 다음 조회를 멈춘다.
+          run.set(() => new Promise<Response>(() => undefined));
+          await vi.advanceTimersByTimeAsync(2100);
+          const [first, second] = run.latest()?.monitoring.lidarProfiles ?? [];
+          expect(first).toMatchObject({ average: "-", samples: [{ positionRatio: 0.5, height: 2.1 }] });
+          expect(first?.averageHeld).toBeUndefined();
+          expect(second).toMatchObject({ average: "3.10 m", samples: [{ positionRatio: 0.5, height: 3.1 }] });
+          run.activation.release();
+        } finally { vi.useRealTimers(); }
+      });
+    });
+
   });
 });
 

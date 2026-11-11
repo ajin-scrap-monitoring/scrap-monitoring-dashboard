@@ -272,3 +272,54 @@ test("최근 적재율 그래프는 서버가 simulated로 표시한 표본에 �
   rerender(<LoadChart threshold={80} state={{ status: "loading" }} samples={[sample(9, 44, true)]} />);
   expect(container.querySelector(".load-chart-simulation")).toBeNull();
 });
+
+test("ProfileChart 곡선 유지 중 보조 표기 '곡선 갱신 대기'를 표시한다", () => {
+  const { container } = render(
+    <ProfileChart
+      average="2.5 m"
+      color="blue"
+      label="LiDAR 1"
+      maximum="3.0 m"
+      minimum="1.0 m"
+      samples={[{ height: 2.5, positionRatio: 0.5 }]}
+      simulated={true}
+      curveHeld={true}
+    />,
+  );
+  expect(container.querySelector('text[y="12"]')).toHaveTextContent("시뮬레이션, 곡선 갱신 대기");
+});
+
+test("ProfileChart 평균 유지 중 보조 표기 '평균 갱신 대기'와 평균 title을 표시한다", () => {
+  const { container } = render(
+    <ProfileChart
+      average="2.5 m"
+      color="teal"
+      label="LiDAR 2"
+      maximum="3.0 m"
+      minimum="1.0 m"
+      samples={[{ height: 2.5, positionRatio: 0.5 }]}
+      simulated={false}
+      averageHeld={true}
+    />,
+  );
+  expect(container.querySelector('text[y="12"]')).toHaveTextContent("평균 갱신 대기");
+  const avg = container.querySelector(".average");
+  expect(avg).toHaveAttribute("title", "마지막 정상 대표값을 최대 3초 표시합니다");
+});
+
+test("ProfileChart 곡선과 평균이 모두 유지 중일 때 보조 표기를 조합한다", () => {
+  const { container } = render(
+    <ProfileChart
+      average="2.5 m"
+      color="blue"
+      label="LiDAR 1"
+      maximum="3.0 m"
+      minimum="1.0 m"
+      samples={[{ height: 2.5, positionRatio: 0.5 }]}
+      simulated={true}
+      curveHeld={true}
+      averageHeld={true}
+    />,
+  );
+  expect(container.querySelector('text[y="12"]')).toHaveTextContent("시뮬레이션, 곡선 갱신 대기, 평균 갱신 대기");
+});

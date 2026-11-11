@@ -120,6 +120,10 @@ export type LidarProfile = {
   simulated?: boolean;
   calibrationState?: "UNVERIFIED" | "VERIFIED" | "UNAVAILABLE" | "SIMULATION";
   reasonCodes?: string[];
+  sensorId?: string;
+  measuredAt?: string | null;
+  curveHeld?: boolean;
+  averageHeld?: boolean;
 };
 
 export type MeasurementLayoutStatus = {
@@ -141,6 +145,7 @@ export type MonitoringSummary = {
   loadOneHourAgo: { value: number; observedAt: string; dataState: "AVAILABLE" | "LIMITED" } | null;
   remainingTime: string;
   timeSinceCollection: string;
+  loadHold?: { observedAt: string };
 };
 
 export type HistoryEvent = {
