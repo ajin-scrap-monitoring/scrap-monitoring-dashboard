@@ -75,7 +75,7 @@ Content-Type으로 연결한다. 기반 이미지의 `default.conf`는 8080 port
 
 이 Repository는 `nginx.conf`와 `mime.types`를 그대로 둔다. 대신 기반 이미지의
 `default.conf`를 Repository의 `nginx/default.conf`로 교체한다. 정적 화면, Single Page
-Application (SPA) fallback, 캐시, gzip과 `/healthz`가 이 파일에 정의되어 있기 때문이다.
+Application (SPA) fallback, 캐시, gzip과 `/healthz`는 `nginx/includes/dashboard-site.conf`에 정의한다.
 
 Repository는 proxy와 log에 필요한 설정도 `/etc/nginx/` 아래에 추가한다. Vite가 만든
 `dist/index.html`은 기반 이미지의 기본 `index.html`을 교체하고, `dist/assets/`는 같은
@@ -133,17 +133,17 @@ HTTP Scope [BASE nginx.conf]
 |-- Logging [PROJECT 01-observability.conf]
 `-- Server 8080 [PROJECT default.conf]
     |-- Security Headers [PROJECT security-headers.conf]
-    |-- Static and Health Locations [PROJECT default.conf]
+    |-- Static and Health Locations [PROJECT includes/dashboard-site.conf]
     `-- Proxy Locations [DEPLOYMENT runtime/*.conf]
         `-- Proxy Helpers [PROJECT includes/*.conf]
 ```
 
 `00-proxy-map.conf`는 WebSocket 연결에 사용할 값을 만들고
 `/etc/nginx/upstreams/*.conf`를 포함한다. `01-observability.conf`는 구조화 access log와
-error log를 정의한다. `default.conf`는 `listen 8080`을 선언한 `server` 블록 안에 정적
-경로와 `/healthz`를 정의하고 `/etc/nginx/runtime/*.conf`를 포함한다.
+error log를 정의한다. `default.conf`는 `listen 8080`을 선언하고 `dashboard-site.conf`를
+포함한다. `dashboard-site.conf`는 정적 경로와 `/healthz`를 정의하고 `/etc/nginx/runtime/*.conf`를 포함한다.
 
-`nginx/includes/`의 파일들은 자동으로 읽히지 않는다. 배포 Repository가 만든 proxy
+`nginx/includes/dashboard-site.conf`는 HTTP server에서 화면 제공 설정을 포함한다. 다른 `nginx/includes/` 파일들은 참조할 때 읽힌다. 배포 Repository가 만든 proxy
 `location`이 필요한 공통 파일을 선택해 include한다. 일반 HTTP는
 `proxy-common.conf`, Server-Sent Events (SSE)는 `proxy-streaming.conf`, WebSocket은
 `proxy-websocket.conf`를 사용한다.
@@ -154,7 +154,7 @@ error log를 정의한다. `default.conf`는 `listen 8080`을 선언한 `server`
 
 ## 화면 요청 처리
 
-브라우저가 `/`를 요청하면 `default.conf`의 `root`에 따라
+브라우저가 `/`를 요청하면 `dashboard-site.conf`의 `root`에 따라
 `/usr/share/nginx/html/index.html`이 반환된다. `index.html`을 받은 브라우저는 다시
 `/assets/` 아래의 JavaScript, CSS, 글꼴과 이미지를 요청한다.
 
@@ -285,7 +285,7 @@ docker image rm scrap-monitoring-dashboard:learning
 ## 실제 파일 확인 순서
 
 설정을 직접 확인할 때는 `Dockerfile`에서 최종 이미지에 복사되는 경로를 먼저 본다. 그다음
-`nginx/default.conf`, `nginx/00-proxy-map.conf`와 `nginx/01-observability.conf`를 읽으면
+`nginx/includes/dashboard-site.conf`, `nginx/00-proxy-map.conf`와 `nginx/01-observability.conf`를 읽으면
 Nginx가 기본 server와 공통 설정을 어떻게 만드는지 알 수 있다.
 
 proxy 전달 내용은 `nginx/includes/`에서 확인한다. 배포 설정의 예시는 운영 계약이 아니라

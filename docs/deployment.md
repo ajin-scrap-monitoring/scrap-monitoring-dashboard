@@ -140,16 +140,23 @@ services:
         read_only: true
 ```
 
-이미지의 HTTP server는 `/etc/nginx/includes/runtime-config.conf`를 포함한다. 배포 Repository의
-별도 HTTPS server에도 같은 snippet을 server context에 포함한다.
+이미지의 HTTP server와 배포 Repository의 HTTPS server는 `/etc/nginx/includes/dashboard-site.conf`를
+server context에 포함한다. 배포 Repository는 HTTPS server의 인증서 경로를 지정하고 HTTP 8080
+server의 공개 여부와 redirect를 결정한다.
 
 ```nginx
-include /etc/nginx/includes/runtime-config.conf;
+server {
+    listen 8443 ssl;
+    server_name _;
+    server_tokens off;
+    ssl_certificate /run/certs/dashboard-fullchain.pem;
+    ssl_certificate_key /run/secrets/dashboard_tls_private_key;
+    include /etc/nginx/includes/dashboard-site.conf;
+}
 ```
 
-snippet은 exact location에서 JSON 파일을 제공하고 `Cache-Control: no-store`를 적용한다.
-파일이 없으면 `404`를 반환하고 SPA fallback을 사용하지 않는다. API upstream과 TLS 설정은
-기존 Nginx 주입 경계를 유지한다. 설정은 전체 페이지 로드(document 탐색 또는 새로고침) 시에만
+공통 설정은 runtime JSON 파일에 `Cache-Control: no-store`를 적용한다. 파일이 없으면 `404`를
+반환한다. 설정은 전체 페이지 로드(document 탐색 또는 새로고침) 시에만
 다시 읽히며 앱 내부 화면 전환 중에는 다시 읽지 않는다. 이미 열린 화면의 대상을 자동으로 변경하지
 않는다. 파일을 원자적으로 교체하면 single-file bind mount의 새 inode를 반영하도록 컨테이너를
 다시 생성한다. image 재빌드는 필요하지 않다.
@@ -230,9 +237,11 @@ Nginx `/healthz`는 정적 웹 컨테이너의 readiness만 나타내며 FastAPI
 기본 보안 응답 헤더는 `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`,
 Content Security Policy (CSP), `frame-ancestors`, Permissions-Policy와 request ID다. 기본 CSP는
 same-origin 정적 파일과 HLS 재생에 필요한 `media-src blob:`을 허용하고 framing을 금지한다.
-실제 API, signaling 또는 미디어 origin이
-확정되어 CSP 연결 출처가 필요하면 배포 Repository가 `/etc/nginx/security-headers.conf`를
-환경별 허용 출처로 주입한다.
+Nginx는 `add_header`를 가진 location에 server context의 `add_header`를 상속하지 않는다.
+`/index.html`, `/assets/`, SPA fallback과 runtime JSON location이 이 규칙에 해당한다.
+실제 API, signaling 또는 미디어 origin의 CSP 연결 출처와 `Strict-Transport-Security` 같은
+HTTPS 전용 응답 header가 필요하면 배포 Repository가 `/etc/nginx/security-headers.conf`를
+환경별 설정 파일로 교체 주입한다.
 
 현재 API와 미디어 경로는 실제 서비스 계약을 따른다. 환경별 upstream 이름, Docker service
 이름과 port, resolver 주소, timeout, rate limit, request body 최대 크기, readiness 및 CSP

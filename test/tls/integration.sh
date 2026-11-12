@@ -27,6 +27,7 @@ export TLS_TEST_IMAGE=$image
 export TLS_TEST_CERTIFICATE_FILE=$work_directory/dashboard-fullchain.pem
 export TLS_TEST_PRIVATE_KEY_FILE=$work_directory/dashboard-private-key.pem
 export TLS_TEST_NGINX_CONFIG=$script_directory/nginx.conf
+export TLS_TEST_RUNTIME_LOCATION_FILE=$script_directory/runtime-location.conf
 export TLS_TEST_RUNTIME_CONFIG_FILE=$work_directory/runtime-config.json
 cp "$repository_root/integration/runtime-config.json" "$TLS_TEST_RUNTIME_CONFIG_FILE"
 chmod 644 "$TLS_TEST_RUNTIME_CONFIG_FILE"
@@ -152,6 +153,45 @@ verify_runtime_config() {
   cmp "$TLS_TEST_RUNTIME_CONFIG_FILE" "$work_directory/runtime-response.json"
 }
 verify_runtime_config
+
+https_get() {
+  curl --fail --silent --show-error --cacert "$work_directory/root-ca.crt" \
+    --resolve "$server_name:$published_port:127.0.0.1" \
+    --dump-header "$work_directory/site-headers" \
+    --output "$work_directory/site-response" "https://$server_name:$published_port$1"
+}
+
+compose exec --no-TTY dashboard cat /usr/share/nginx/html/index.html > "$work_directory/index.html"
+https_get /
+cmp "$work_directory/index.html" "$work_directory/site-response"
+for header in \
+  'x-content-type-options: nosniff' \
+  'referrer-policy: no-referrer' \
+  'x-frame-options: deny' \
+  "content-security-policy: .*frame-ancestors 'none'" \
+  'permissions-policy: camera=(), microphone=()' \
+  'x-request-id: '; do
+  grep --ignore-case --quiet "^$header" "$work_directory/site-headers"
+done
+grep --ignore-case --quiet '^cache-control: no-store' "$work_directory/site-headers"
+if grep --ignore-case --quiet '^server: nginx/' "$work_directory/site-headers"; then
+  printf 'HTTPS response exposed the Nginx version.\n' >&2
+  exit 1
+fi
+https_get /recordings
+cmp "$work_directory/index.html" "$work_directory/site-response"
+grep --ignore-case --quiet '^cache-control: no-store' "$work_directory/site-headers"
+asset_path=$(compose exec --no-TTY dashboard sh -c "find /usr/share/nginx/html/assets -type f -name '*.js' | head -n 1")
+[[ -n $asset_path ]] || { printf 'JavaScript asset is missing.\n' >&2; exit 1; }
+https_get "/assets/${asset_path##*/}"
+grep --ignore-case --quiet '^cache-control: public, max-age=31536000, immutable' "$work_directory/site-headers"
+grep --ignore-case --quiet '^x-content-type-options: nosniff' "$work_directory/site-headers"
+[[ $(curl --silent --show-error --cacert "$work_directory/root-ca.crt" \
+  --resolve "$server_name:$published_port:127.0.0.1" \
+  --output /dev/null --write-out '%{http_code}' "https://$server_name:$published_port/assets/missing.js") == 404 ]]
+https_get /tls-test-runtime
+grep --fixed-strings --line-regexp --quiet 'runtime location ok' "$work_directory/site-response"
+
 first_image=$(docker inspect --format '{{.Image}}' "$(compose ps --quiet dashboard)")
 export TLS_TEST_RUNTIME_CONFIG_FILE=$work_directory/runtime-config-alt.json
 cp "$repository_root/integration/runtime-config-alt.json" "$TLS_TEST_RUNTIME_CONFIG_FILE"

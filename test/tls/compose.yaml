@@ -21,6 +21,10 @@ services:
         target: /etc/nginx/conf.d/tls-validation.conf
         read_only: true
       - type: bind
+        source: "${TLS_TEST_RUNTIME_LOCATION_FILE:?TLS_TEST_RUNTIME_LOCATION_FILE is required}"
+        target: /etc/nginx/runtime/tls-test.conf
+        read_only: true
+      - type: bind
         source: "${TLS_TEST_RUNTIME_CONFIG_FILE:?TLS_TEST_RUNTIME_CONFIG_FILE is required}"
         target: /usr/share/nginx/html/runtime-config.json
         read_only: true
