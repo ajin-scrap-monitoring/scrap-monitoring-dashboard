@@ -112,7 +112,9 @@ function sinceCollection(completedAt: string | null, serverTime: string) {
 }
 
 type CollectionInsights = {
-  collection: CollectionSummary;
+  collection: CollectionSummary | null;
+  // collection summary 조회가 실패하면 collection은 null이고 실패 원인을 보관한다.
+  collectionError?: unknown;
   forecast: FillForecast | null;
   layout: MeasurementLayoutStatus | null;
 };
@@ -170,6 +172,19 @@ function applyCollectionInsights(
       reasonCodes: reported.basis.reasonCodes,
     } : null,
   };
+}
+
+// 유지 중인 곡선 또는 대표 평균을 기존 빈 표시("-")로 바꾼다. 곡선 해제는 최소, 최대와 평균 유지도 함께 비운다.
+function releaseProfileHold(profile: LidarProfile, kind: "curve" | "average") {
+  if (kind === "curve" && profile.curveHeld) {
+    Object.assign(profile, { samples: [], average: "-", minimum: "-", maximum: "-", curveHeld: undefined, averageHeld: undefined });
+    return true;
+  }
+  if (kind === "average" && profile.averageHeld) {
+    Object.assign(profile, { average: "-", averageHeld: undefined });
+    return true;
+  }
+  return false;
 }
 
 function insightsSignature(monitoring: DashboardData["monitoring"]) {
@@ -379,7 +394,11 @@ export function createHttpDashboardDataSource({
   let monitoringDetailsTimer: number | undefined;
   let monitoringDetailsController: AbortController | null = null;
   let refreshingCollection = false;
+  // 대상 변경마다 올려 이전 대상의 수거 요약 조회 결과를 버리는 데 쓴다.
+  let collectionScopeEpoch = 0;
   let refreshingLoadHistory = false;
+  // 422 HISTORY_* 또는 503 HISTORY_QUERY_TIMEOUT 오류 뒤에는 자동 갱신으로 최근 이력을 다시 요청하지 않는다.
+  let loadHistoryAutoRetryBlocked = false;
   let lastSuccessfulRecordings: { userId?: string; source: "daily" | "event"; recordings: Recording[] } | null = null;
   let dataVersion = 0;
   let getDashboardDataVersion = 0;
@@ -451,20 +470,32 @@ export function createHttpDashboardDataSource({
       }
       if (currentData.monitoring.lidarProfiles) {
         for (const profile of currentData.monitoring.lidarProfiles) {
-          if (profile.curveHeld) {
-            profile.samples = [];
-            profile.curveHeld = undefined;
-            changed = true;
-          }
-          if (profile.averageHeld) {
-            profile.average = "-";
-            profile.averageHeld = undefined;
-            changed = true;
-          }
+          if (releaseProfileHold(profile, "curve")) changed = true;
+          if (releaseProfileHold(profile, "average")) changed = true;
         }
       }
       if (changed) publishNotifications();
     }
+  };
+
+  // 대상(siteId 또는 edgeId)이 바뀌면 이전 대상의 유지 상태, 곡선, 수거 요약, 예상 도달, 배치와 활성 알림을 버리고
+  // 진행 중인 조회의 결과를 적용하지 않는다. 현황 상세가 활성이면 새 대상 기준 조회를 기존 경로로 다시 시작한다.
+  const resetForTargetChange = () => {
+    clearHoldState();
+    loadHistoryAutoRetryBlocked = false;
+    collectionInsights = null;
+    collectionRequestedAt = -Infinity;
+    lastCollectionSuccessAt = -Infinity;
+    collectionScopeEpoch += 1;
+    refreshingCollection = false;
+    snapshotAlerts = null;
+    snapshotAlertsAreaState = { status: "loading" };
+    snapshotAlertsSequence += 1;
+    snapshotAlertsInFlight = null;
+    lastForcedAlertsAt = -Infinity;
+    lidarProfilesState = null;
+    if (currentData?.monitoring) currentData.monitoring.completedCollectionState = undefined;
+    if (lidarProfilesController) void startLidarProfilesLoop();
   };
 
   const applyLoadHold = (monitoring: DashboardData["monitoring"], snapshot: ApiMonitoringSnapshotV2) => {
@@ -547,6 +578,10 @@ export function createHttpDashboardDataSource({
       monitoring.videoStatus = "available";
     }
     if (monitoring.v2) {
+      // siteId 또는 edgeId가 바뀌면 이전 대상의 유지 상태와 timer를 새 관측 적용 전에 버린다.
+      if (monitoringScope && (monitoringScope.siteId !== monitoring.v2.siteId || monitoringScope.edgeId !== monitoring.v2.edgeId)) {
+        resetForTargetChange();
+      }
       applyLoadHold(monitoring, snapshot as ApiMonitoringSnapshotV2);
       applyCollectionInsights(monitoring, collectionInsights, snapshot.serverTime, snapshotAlerts, lidarProfilesState);
       monitoring.activeAlertsAreaState = snapshotAlertsAreaState;
@@ -698,19 +733,28 @@ export function createHttpDashboardDataSource({
 
   const getCollectionSummary = async (signal?: AbortSignal): Promise<CollectionInsights> => {
     collectionRequestedAt = performance.now();
-    const optional = <T,>(operation: Promise<T>) => operation.catch((error: unknown) => {
+    // 인증 오류와 취소는 그대로 전달하고, 그 밖의 실패는 해당 값만 정보 없음(null)으로 둔다.
+    const optional = <T,>(operation: Promise<T>, onFailure?: (error: unknown) => void) => operation.catch((error: unknown) => {
       if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError") || isAuthorizationError(error)) throw error;
+      onFailure?.(error);
       return null;
     });
     // 활성 알림은 자기 영역 상태로 따로 반영하므로 현황 본문 표시 조건(이 Promise)에 넣지 않는다.
-    void refreshSnapshotAlerts(signal);
+    // 결합 조회는 동시에 한 요청만 진행하므로 이미 진행 중이면 새로 시작하지 않는다.
+    if (snapshotAlertsInFlight === null) void refreshSnapshotAlerts(signal);
+    let collectionError: unknown;
     const [collection, forecast, layout] = await Promise.all([
-      request<unknown>(pitPath("/api/v2/monitoring/collection-summary"), { signal }).then((value) => parseCollectionSummaryV2(value, pitId)),
+      optional(request<unknown>(pitPath("/api/v2/monitoring/collection-summary"), { signal }).then((value) => parseCollectionSummaryV2(value, pitId)),
+        (error) => { collectionError = error; }),
       optional(request<unknown>(pitPath("/api/v2/monitoring/fill-forecast"), { signal }).then((value) => parseFillForecastV2(value, pitId))),
       optional(request<unknown>(pitPath("/api/v2/monitoring/layout"), { signal }).then((value) => parseMeasurementLayoutV2(value, pitId))),
     ]);
-    return { collection, forecast, layout };
+    return { collection, forecast, layout, ...(collection === null && { collectionError }) };
   };
+
+  // 수거 요약 영역 상태는 collection summary 조회 결과만 반영한다.
+  const completedCollectionStateOf = (summary: CollectionInsights): DataAreaState =>
+    summary.collection === null ? areaError(summary.collectionError, collectionHistoryFailureMessage, false) : readyState;
 
   const lidarProfilesActive = () => backendContract && useV2Monitoring && monitoringDetailsRefCount > 0
     && (typeof document === "undefined" || document.visibilityState !== "hidden");
@@ -730,12 +774,8 @@ export function createHttpDashboardDataSource({
     profileHoldTimers.delete(timerKey(sensorId, kind));
     const target = lidarProfilesState?.find((profile) => sensorOf(profile) === sensorId);
     if (!target) return;
-    if (kind === "curve" && target.curveHeld) {
-      Object.assign(target, { samples: [], average: "-", minimum: "-", maximum: "-", curveHeld: undefined, averageHeld: undefined });
-      clearProfileTimer(sensorId, "average");
-    } else if (kind === "average" && target.averageHeld) {
-      Object.assign(target, { average: "-", averageHeld: undefined });
-    } else return;
+    if (!releaseProfileHold(target, kind)) return;
+    if (kind === "curve") clearProfileTimer(sensorId, "average");
     if (!currentData?.monitoring) return;
     currentData.monitoring.lidarProfiles = lidarProfilesState ?? [];
     publishNotifications();
@@ -904,14 +944,26 @@ export function createHttpDashboardDataSource({
   const recentHistory = (to: string, signal?: AbortSignal) => requestV2LoadHistory(
     rfc3339AtOffset(Date.parse(to) - 24 * 3_600_000, displayTimeOffset), to, signal);
 
+  const isNonRetryableHistoryError = (error: unknown) => error instanceof ApiError
+    && ((error.status === 422 && typeof error.code === "string" && error.code.startsWith("HISTORY_"))
+      || (error.status === 503 && error.code === "HISTORY_QUERY_TIMEOUT"));
+  const sameMonitoringScope = (scope: LoadHistoryScope | null) => scope !== null && monitoringScope !== null
+    && scope.siteId === monitoringScope.siteId && scope.edgeId === monitoringScope.edgeId;
+  // 요청을 시작할 때의 대상이 현재 대상과 같을 때만 자동 재시도 차단을 설정한다.
+  const blockHistoryRetry = (error: unknown, requestScope: LoadHistoryScope | null) => {
+    if (isNonRetryableHistoryError(error) && sameMonitoringScope(requestScope)) loadHistoryAutoRetryBlocked = true;
+  };
+
   const refreshRecentLoadHistory = async (signal?: AbortSignal) => {
-    if (!currentData?.monitoring.v2 || !serverClock || refreshingLoadHistory) return;
+    if (!currentData?.monitoring.v2 || !serverClock || refreshingLoadHistory || loadHistoryAutoRetryBlocked) return;
     refreshingLoadHistory = true;
+    const historyScope = monitoringScope && { ...monitoringScope };
     const to = rfc3339AtOffset(serverClock.timestamp + performance.now() - serverClock.receivedAt, displayTimeOffset);
     try {
       const load = await recentHistory(to, signal);
       if (signal?.aborted || !currentData) return;
       lastLoadHistorySuccessAt = performance.now();
+      loadHistoryAutoRetryBlocked = false;
       currentData.monitoring.loadHistory = load.monitoringSamples;
       currentData.monitoring.loadHistoryState = { status: "ready", from: load.from, to: load.to };
       updateLoadOneHourAgo(currentData.monitoring);
@@ -919,6 +971,7 @@ export function createHttpDashboardDataSource({
     } catch (error) {
       if (isAuthorizationError(error)) { publishAuthorizationError(error); return; }
       if (signal?.aborted || !currentData) return;
+      blockHistoryRetry(error, historyScope);
       currentData.monitoring.loadHistoryState = {
         ...areaError(error, loadHistoryFailureMessage, currentData.monitoring.loadHistory.length > 0),
         from: currentData.monitoring.loadHistoryState?.from, to: currentData.monitoring.loadHistoryState?.to,
@@ -931,16 +984,19 @@ export function createHttpDashboardDataSource({
   const refreshCompletedCollection = async (signal?: AbortSignal) => {
     if (refreshingCollection || performance.now() - collectionRequestedAt < MONITORING_REFRESH_MS) return;
     refreshingCollection = true;
+    const epoch = collectionScopeEpoch;
     try {
       if (currentData?.monitoring.v2) {
         const summary = await getCollectionSummary(signal);
-        if (signal?.aborted || !currentData?.monitoring.v2) return;
-        lastCollectionSuccessAt = performance.now();
+        if (signal?.aborted || !currentData?.monitoring.v2 || epoch !== collectionScopeEpoch) return;
+        if (summary.collection !== null) lastCollectionSuccessAt = performance.now();
         collectionInsights = summary;
         const before = insightsSignature(currentData.monitoring);
         applyCollectionInsights(currentData.monitoring, summary, currentData.monitoring.v2.serverTime, snapshotAlerts, lidarProfilesState);
-        if (before !== insightsSignature(currentData.monitoring) || currentData.monitoring.completedCollectionState?.status === "error") {
-          currentData.monitoring.completedCollectionState = readyState;
+        const nextState = completedCollectionStateOf(summary);
+        if (before !== insightsSignature(currentData.monitoring) || currentData.monitoring.completedCollectionState?.status !== nextState.status
+          || currentData.monitoring.completedCollectionState?.code !== nextState.code) {
+          currentData.monitoring.completedCollectionState = nextState;
           publishNotifications();
         }
       }
@@ -949,12 +1005,12 @@ export function createHttpDashboardDataSource({
         publishAuthorizationError(error);
         return;
       }
-      if (signal?.aborted) return;
+      if (signal?.aborted || epoch !== collectionScopeEpoch) return;
       if (currentData?.monitoring.v2) {
         currentData.monitoring.completedCollectionState = areaError(error, collectionHistoryFailureMessage, collectionInsights !== null);
         publishNotifications();
       }
-    } finally { refreshingCollection = false; }
+    } finally { if (epoch === collectionScopeEpoch) refreshingCollection = false; }
   };
 
   // 이력 이벤트 표와 녹화 조회는 해당 화면에서 처음 쓸 때 불러온 모듈이 처리한다.
@@ -1063,7 +1119,7 @@ export function createHttpDashboardDataSource({
     if (backendContract && now - lastCollectionSuccessAt >= MONITORING_REFRESH_MS) {
       void refreshCompletedCollection(signal);
     }
-    if (now - lastLoadHistorySuccessAt >= MONITORING_REFRESH_MS) {
+    if (now - lastLoadHistorySuccessAt >= MONITORING_REFRESH_MS && !loadHistoryAutoRetryBlocked) {
       const previousSamples = currentData?.monitoring.loadHistory ?? [];
       if (currentData?.monitoring) {
         currentData.monitoring.loadHistory = [];
@@ -1072,6 +1128,7 @@ export function createHttpDashboardDataSource({
         publishNotifications();
       }
       void (async () => {
+        const historyScope = monitoringScope && { ...monitoringScope };
         const to = monitoringDetailsReferenceTime();
         if (to === null) {
           failLoadHistoryWithoutServerTime(previousSamples);
@@ -1081,6 +1138,7 @@ export function createHttpDashboardDataSource({
           const load = await recentHistory(to, signal);
           if (signal.aborted) return;
           lastLoadHistorySuccessAt = performance.now();
+          loadHistoryAutoRetryBlocked = false;
           if (currentData?.monitoring) {
             currentData.monitoring.loadHistory = load.monitoringSamples;
             currentData.monitoring.loadHistoryState = { status: "ready", from: load.from, to: load.to };
@@ -1093,6 +1151,7 @@ export function createHttpDashboardDataSource({
             publishAuthorizationError(error);
             return;
           }
+          blockHistoryRetry(error, historyScope);
           if (currentData?.monitoring) {
             if (previousSamples.length > 0) {
               currentData.monitoring.loadHistory = previousSamples;
@@ -1345,18 +1404,19 @@ export function createHttpDashboardDataSource({
           collectionReady = Promise.resolve();
         } else {
           collectionReady = (async () => {
+            const epoch = collectionScopeEpoch;
             try {
               const summary = await getCollectionSummary(signal);
-              if (signal.aborted) return;
-              lastCollectionSuccessAt = performance.now();
+              if (signal.aborted || epoch !== collectionScopeEpoch) return;
+              if (summary.collection !== null) lastCollectionSuccessAt = performance.now();
               collectionInsights = summary;
               if (currentData?.monitoring) {
                 applyCollectionInsights(currentData.monitoring, summary, currentData.monitoring.v2?.serverTime ?? "", snapshotAlerts, lidarProfilesState);
-                currentData.monitoring.completedCollectionState = readyState;
+                currentData.monitoring.completedCollectionState = completedCollectionStateOf(summary);
                 publishNotifications();
               }
             } catch (error) {
-              if (signal.aborted) return;
+              if (signal.aborted || epoch !== collectionScopeEpoch) return;
               if (isAuthorizationError(error)) {
                 publishAuthorizationError(error);
               } else if (currentData?.monitoring) {
@@ -1376,6 +1436,8 @@ export function createHttpDashboardDataSource({
 
       const loadHistoryElapsed = performance.now() - lastLoadHistorySuccessAt;
       if (loadHistoryElapsed >= MONITORING_REFRESH_MS) {
+        // 화면 진입에 따른 조회는 자동 재시도가 아니므로 이전 오류의 차단을 해제한다.
+        loadHistoryAutoRetryBlocked = false;
         const previousSamples = currentData?.monitoring.loadHistory ?? [];
         if (currentData?.monitoring) {
           currentData.monitoring.loadHistory = [];
@@ -1384,6 +1446,7 @@ export function createHttpDashboardDataSource({
           publishNotifications();
         }
         void (async () => {
+          const historyScope = monitoringScope && { ...monitoringScope };
           const to = monitoringDetailsReferenceTime();
           if (to === null) {
             failLoadHistoryWithoutServerTime(previousSamples);
@@ -1393,6 +1456,7 @@ export function createHttpDashboardDataSource({
             const load = await recentHistory(to, signal);
             if (signal.aborted) return;
             lastLoadHistorySuccessAt = performance.now();
+            loadHistoryAutoRetryBlocked = false;
             if (currentData?.monitoring) {
               currentData.monitoring.loadHistory = load.monitoringSamples;
               currentData.monitoring.loadHistoryState = { status: "ready", from: load.from, to: load.to };
@@ -1405,6 +1469,7 @@ export function createHttpDashboardDataSource({
               publishAuthorizationError(error);
               return;
             }
+            blockHistoryRetry(error, historyScope);
             if (currentData?.monitoring) {
               if (previousSamples.length > 0) {
                 currentData.monitoring.loadHistory = previousSamples;
@@ -1635,11 +1700,8 @@ export function createHttpDashboardDataSource({
       });
       eventSource.addEventListener("error", () => {
         if (!active) return;
-        if (loadHoldTimer !== undefined) {
-          clearTimeout(loadHoldTimer);
-          loadHoldTimer = undefined;
-        }
-        lastNormalLoad = null;
+        // SSE 재연결 중에는 적재율, LiDAR 곡선과 대표 평균의 유지 상태와 timer를 모두 버린다.
+        clearHoldState();
         if (currentData) currentData.reception = { ...currentData.reception, status: "error" };
         if (currentData?.monitoring.v2) {
           currentData.monitoring.status = "disconnected";

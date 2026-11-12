@@ -326,6 +326,22 @@ test("ProfileChart 곡선과 평균이 모두 유지 중일 때 보조 표기를
   expect(container.querySelector('text[y="12"]')).toHaveTextContent("시뮬레이션, 곡선 갱신 대기, 평균 갱신 대기");
 });
 
+test("ProfileChart는 calibrationState가 SIMULATION이면 simulated 값이 없어도 시뮬레이션으로 표시한다", () => {
+  const { container } = render(
+    <ProfileChart
+      average="2.5 m"
+      color="blue"
+      label="LiDAR 1"
+      maximum="3.0 m"
+      minimum="1.0 m"
+      samples={[{ height: 2.5, positionRatio: 0.5 }]}
+      calibrationState="SIMULATION"
+    />,
+  );
+  expect(container.querySelector('text[y="12"]')).toHaveTextContent("시뮬레이션");
+  expect(container.querySelector(".profile-stat")).toHaveAttribute("title", "시뮬레이션 높이");
+});
+
 vi.mock("../display-time", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../display-time")>();
   return { ...actual, seoulClock: vi.fn(actual.seoulClock) };

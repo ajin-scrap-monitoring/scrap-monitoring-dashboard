@@ -92,14 +92,14 @@ export default function RecordingCoverageDetails({
   const detail = current.detail;
   return <>
     <DetailFields fields={[
-      ["요청 시작", detail.requestedStart],
-      ["요청 종료", detail.requestedEnd],
-      ["확보 시작", detail.actualStart ?? "정보 없음"],
-      ["확보 종료", detail.actualEnd ?? "정보 없음"],
+      ["요청 시작", wallClock(detail.requestedStart, true)],
+      ["요청 종료", wallClock(detail.requestedEnd, true)],
+      ["확보 시작", wallClock(detail.actualStart, true)],
+      ["확보 종료", wallClock(detail.actualEnd, true)],
       ["녹화 범위", detail.coverage === "complete" ? "전체 구간" : detail.coverage === "partial" ? "부분 저장" : detail.coverage === "none" ? "영상 없음" : "정보 없음"],
     ]} />
     <h3>누락 구간</h3>
-    {detail.gaps.length ? <ul>{detail.gaps.map((gap, index) => <li key={`${index}-${gap.start}`}>{gap.start} ~ {gap.end}</li>)}</ul> : <p>서버 응답에 누락 구간 없음</p>}
+    {detail.gaps.length ? <ul>{detail.gaps.map((gap, index) => <li key={`${index}-${gap.start}`}>{wallClock(gap.start, true)} ~ {wallClock(gap.end, true)}</li>)}</ul> : <p>서버 응답에 누락 구간 없음</p>}
     <p>구간별 누락 원인은 API에서 제공하지 않습니다.</p>
     {detail.errorCode && <p>녹화 처리 오류 코드 {recordingErrorCode(detail.errorCode) ?? "확인 불가"}</p>}
   </>;

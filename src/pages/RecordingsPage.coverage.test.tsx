@@ -25,8 +25,11 @@ test("기존 부분 저장 표시를 선택한 경우에만 범위를 조회하�
   opener.focus();
   fireEvent.click(opener);
   const dialog = screen.getByRole("dialog", { name: "녹화 범위 상세" });
-  expect(await within(dialog).findByText(detail.requestedStart)).toBeVisible();
-  expect(within(dialog).getByText(detail.actualStart!)).toBeVisible();
+  // 서버가 UTC(Z)로 응답해도 한국 표준시(+09:00)로 표시한다.
+  expect(await within(dialog).findByText("2026-09-09 09:00:00")).toBeVisible();
+  expect(within(dialog).getByText("2026-09-09 09:00:05", { selector: "dd" })).toBeVisible();
+  expect(within(dialog).getByText("2026-09-09 09:00:00 ~ 2026-09-09 09:00:05")).toBeVisible();
+  expect(within(dialog).queryByText(/Z$/)).not.toBeInTheDocument();
   expect(within(dialog).getByText("구간별 누락 원인은 API에서 제공하지 않습니다.")).toBeVisible();
   expect(getRecordingCoverage).toHaveBeenCalledTimes(1);
   fireEvent.keyDown(window, { key: "Escape" });
@@ -45,7 +48,7 @@ test("녹화 범위 조회 오류와 재시도를 기본 카드 밖에서 처리
   expect(await within(dialog).findByRole("alert")).toHaveTextContent("조회 실패");
   expect(dialog).not.toHaveTextContent("Temporary failure");
   fireEvent.click(within(dialog).getByRole("button", { name: "다시 조회" }));
-  expect(await within(dialog).findByText(detail.requestedStart)).toBeVisible();
+  expect(await within(dialog).findByText("2026-09-09 09:00:00")).toBeVisible();
 });
 
 test("최초 녹화 조회 실패를 빈 목록과 0건으로 표시하지 않는다", async () => {
