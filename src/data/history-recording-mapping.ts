@@ -49,7 +49,11 @@ const errorStateLabels: Record<string, string> = {
 function backendEventStatus(event: ApiEvent) {
   if (event.category === "collection") {
     if (event.type !== "collection_completed" || event.status !== "completed") return null;
-    return event.confirmedCompletion === false ? "종료 감지" : "완료";
+    if (event.confirmedCompletion === true || event.collectionSource === "MANUAL_CONFIRMATION") return "완료";
+    // 자동 수거 종료(HEIGHT_SETTLED)는 작업자 확인이 없으면 종료 감지이다.
+    if (event.collectionSource === "HEIGHT_SETTLED") return "종료 감지";
+    // 출처가 없고 confirmedCompletion=false이면 상태를 표시하지 않고, 그 밖에는 서버 status completed를 따른다.
+    return event.confirmedCompletion === false ? null : "완료";
   }
   if (event.category === "alert") {
     if (event.status === "active" && event.statusBasis === "CURRENT_EVALUATION") return "활성";

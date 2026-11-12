@@ -283,6 +283,8 @@ export function ProfileChart({ average, color, label, maximum, minimum, samples,
   const gridXValues = [{ positionRatio: 0, value: "A" }, { positionRatio: 1, value: "B" }];
   const toY = (value: number) => chart.bottom - (value - yMin) * ((chart.bottom - chart.top) / (yMax - yMin));
   const toX = (positionRatio: number) => chart.left + (chart.right - chart.left) * Math.max(0, Math.min(1, positionRatio));
+  // simulated=true 또는 calibrationState=SIMULATION이면 시뮬레이션으로 표시한다.
+  const isSimulation = simulated === true || calibrationState === "SIMULATION";
   const unmeasuredRanges = calculateUnmeasuredRanges(samples);
   const ariaLabel = unmeasuredRanges.length > 0 ? `${label} (${unmeasuredRanges.map((r) => r.label).join(", ")})` : label;
   // 배열 순서를 유지하고 x는 positionRatio로 정한다. 위치나 높이가 없는 표본은 선을 끊는다.
@@ -297,7 +299,7 @@ export function ProfileChart({ average, color, label, maximum, minimum, samples,
     <section className="card chart-card span-4">
       <div className="chart-title-row">
         <SectionTitle>{label}</SectionTitle>
-        <div className={`profile-stat ${color}`} title={[simulated ? "시뮬레이션 높이" : "", calibrationState === "UNVERIFIED" ? "보정 미검증" : ""].filter(Boolean).join(", ") || undefined}>
+        <div className={`profile-stat ${color}`} title={[isSimulation ? "시뮬레이션 높이" : "", calibrationState === "UNVERIFIED" ? "보정 미검증" : ""].filter(Boolean).join(", ") || undefined}>
           <span className="average" title={averageHeld ? "마지막 정상 대표값을 최대 3초 표시합니다" : undefined}><span className="average-label">평균</span>{average}</span>
           <span className="range">최소 {minimum} / 최대 {maximum}</span>
         </div>
@@ -351,7 +353,7 @@ export function ProfileChart({ average, color, label, maximum, minimum, samples,
         </g>
         {(() => {
           const annotations: string[] = [];
-          if (simulated) annotations.push("시뮬레이션");
+          if (isSimulation) annotations.push("시뮬레이션");
           if (curveHeld) annotations.push("곡선 갱신 대기");
           if (averageHeld) annotations.push("평균 갱신 대기");
           if (annotations.length === 0) return null;

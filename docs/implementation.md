@@ -168,12 +168,18 @@ snapshot만 대기하고 알림 응답을 기다리지 않고 반환한다. 알�
 않는다. data source의 `isMonitoringDetailsReady`는 부수 효과 없이 마지막 성공 뒤 60초 이내인지
 반환하며, 이 경우 현황 화면은 로딩 화면을 그리지 않고 첫 render부터 현황을 표시한다. 마지막
 성공 뒤 60초가 지난 재진입은 collection summary, fill forecast, layout 조회와 첫 profile 조회의
-완료를 기다린다. 조회 실패도 처리한 뒤 대기를 끝내며, collection summary 또는 인증 오류가 먼저
-발생하면 fill forecast와 layout의 완료는 기다리지 않지만 첫 profile 조회의 완료는 기다린다. 활성 알림 결합 조회는
+완료를 기다린다. 조회 실패도 처리한 뒤 대기를 끝내며, 인증 오류가 먼저
+발생하면 fill forecast와 layout의 완료는 기다리지 않지만 첫 profile 조회의 완료는 기다린다.
+collection summary, fill forecast와 layout은 서로 독립적으로 반영하며 한 조회가 실패하면 해당 값만 정보 없음으로 둔다. 활성 알림 결합 조회는
 이 대기에 포함하지 않고 활성 알림 카드만 확인 중으로 둔다. load-history 기준 시각은 서버 시각만
 사용하며 서버 시각이 없으면 조회하지 않고 해당 영역을 오류 상태로 둔다. 브라우저 탭이 숨겨지면(`document.visibilityState === "hidden"`) 현황 상세 갱신 timer를
 중지하고 `monitoring.snapshot` SSE 수신이 유발하는 60초 경과 상세 갱신, 판정 변경의 결합 재조회와
 source 변경의 load-history 조회도 보내지 않는다.
+최근 24시간 load-history 조회가 422 `HISTORY_*` 또는 503 `HISTORY_QUERY_TIMEOUT`으로 실패하면 현황 상세 갱신 timer와
+탭 복귀는 최근 이력을 다시 요청하지 않으며 현황 상세 재활성화 또는 대상 변경 때 조회를 재개한다.
+SSE 재연결과 대상(siteId 또는 edgeId) 변경은 적재율, LiDAR 곡선과 대표 평균의 유지 상태와 timer를 버린다.
+대상 변경은 이전 대상의 LiDAR 곡선, collection summary, fill forecast, layout과 활성 알림 결합 결과도 버리고 진행 중인
+결합 조회를 기다리지 않으며 새 대상 기준으로 다시 조회한다. 이전 대상 요청의 응답과 오류는 적용하지 않는다.
 탭이 다시 표시되면 마지막 성공 시각 이후 60초가 지난 경우 현황 보조 조회와 최근 24시간
 load-history를 즉시 재조회하고 timer를 다시 시작한다. 60초가 지난 load-history 표본은 비우고
 loading 상태로 둔 뒤 조회한다. SSE 연결은 탭 숨김 중에도 유지한다. 보조 조회의 실패는
@@ -296,8 +302,9 @@ SVG viewBox 좌표계에서 폭이 24단위 이상이면 "미측정" 글자를 �
 `basis` 객체와 필수 `coverage` 배열을 검증하고, 장비 항목의 `CAMERA` 및 `MEDIA_CAMERA_STATUS`를
 허용하며 카메라 항목 이름은 "카메라"로 지정한다. 선택 필드인 `validUntilAt`, `evaluatedAt`,
 `evidenceSource`를 보존한다. HTTP adapter는 snapshot-with-alerts의 snapshot을 기존 v2
-snapshot 검사로, activeAlerts를 `parseActiveAlertsV2`로 검사한다. 결합 요청마다 순번을 부여해
-가장 최근 시작한 요청만 적용하며 현황 상세 release 뒤의 응답은 적용하지 않는다. 같은
+snapshot 검사로, activeAlerts를 `parseActiveAlertsV2`로 검사한다. 결합 요청은 진행 중인 요청이 있으면
+새로 시작하지 않고, 요청마다 순번을 부여해 가장 최근 시작한 요청만 적용하며 현황 상세 release 뒤의
+응답은 적용하지 않는다. 같은
 snapshotId의 응답도 적용한다. 결합 조회와 판정 비교의 근거 및 강제 재조회 조건은
 [활성 알림 매핑](contracts/backend/frontend-mapping.md#활성-알림)을 따른다.
 예상 도달은 `validUntil` 경과와 재연결 중에 숨긴다.
@@ -467,6 +474,7 @@ Graphics)의 path로 묶으며 모든 원본 경계와 누락을 유지한다. �
 v1 clip 상세는 `getRecordingCoverage`로 추가 조회하고 이벤트와 날짜 누락 상세는 선택한 녹화 객체의 데이터를 사용한다.
 이벤트 창은 요청 구간, 요청 및 확보와 재생 길이, 누락 구간의 시작과 종료 시각 및 종류와 사유 코드를 표시한다.
 날짜 창은 녹화 날짜와 누락 구간의 시작 및 종료 시각과 사유 코드를 표시한다.
+v1 clip 상세의 요청과 확보 시각 및 누락 구간 시각도 한국 표준시로 표시한다.
 구간별 누락 원인은 API에서 제공하지 않는다는 문구는 v1 clip 상세에만 유지한다.
 녹화 목록 미리보기 썸네일은 날짜 녹화 및 이벤트 녹화에 대해 thumbnail-info API를 조회해 연결한다. 날짜 녹화는 status가 recording, finalizing, closed, failed인 항목을 조회 대상에 포함하며 expired와 deleted는 제외한다. 이벤트 녹화는 `dailyThumbnailInfoPath`가 제공되면 이를 날짜 대표 이미지 경로(`/api/v2/recordings/daily/by-date/{YYYY-MM-DD}/thumbnail-info`)로 우선 사용하고, 응답이 null, unavailable 또는 오류여도 clip 흐름으로 대체하지 않는다. `dailyThumbnailInfoPath`가 없을 때만 `thumbnailInfoPath`(`/api/v2/recordings/events/{event_id}/thumbnail-info`)와 기존 clip ID 흐름을 순차적으로 유지한다. 이벤트와 clip 대상의 ready 정보는 같은 data source와 계정의 화면 재진입에서 메모리로 재사용한다. 날짜 녹화의 ready 정보는 화면에서 status가 closed 또는 failed로 확인될 때 재사용한다. 날짜 대표 이미지는 화면 재진입 시 다시 조회한다. data source 또는 계정이 변경되거나 새 document가 로드되면 메모리 캐시를 폐기한다. 목록 이미지는 lazy loading과 비동기 decoding을 사용한다. 이미지 응답의 cache 정책은 [썸네일 location](deployment.md#nginx-reverse-proxy-배포-경계)을 따른다. 동시 요청은 최대 3개로 제한하며 화면에 보이는 항목과 선택 녹화만 조회하고, 페이지 이동이나 조건 변경 시 진행 중인 요청은 abort한다. 캐시 키는 날짜 대표 이미지와 이벤트 경로 대상 모두 전체 경로를 사용해 동일 날짜나 조건 변경을 분리한다. 날짜 대표 이미지 응답의 `recording_id`는 canonical 소문자 UUID여야 하며, ready 판정의 `content_path`는 `/media/daily-recordings/{recording_id}/thumbnail`과 일치해야 한다. ready이면서 `representative_at=null`, `time_basis=null`, `reason_code=TIMELINE_UNAVAILABLE`인 응답도 정상 이미지로 허용한다. 썸네일 응답이 `null`이면 정상 결과로 취급해 목록은 기존 "미리보기 없음", 녹화 상태 상세 popover의 대표 이미지는 날짜 대표 이미지 대상(`dailyDate`)의 경우 "날짜 대표 이미지 없음", 그 외 대상(이벤트와 날짜 녹화 `daily`)의 경우 "연결된 구간 파일 없음"으로 표시하고 원본 녹화 부재로 해석하지 않는다. `unavailable` 상태 중 사유가 `RECORDING_BUSY`인 항목은 보류로 취급해 pending과 동일하게 5초, 10초, 20초 간격으로 최대 3회 재조회하며 상태 상세 popover의 대표 이미지는 "녹화 중 생성 보류"로 표시한다. ready 상태는 `content_path`가 규칙과 일치할 때만 이미지 자리에 표시하고 선택 녹화의 재생 컴포넌트 poster로 연결하며, 날짜 대표 이미지는 상태 상세 문구 앞에 "날짜 대표 이미지" 접두어를 붙인다(예: "날짜 대표 이미지, 서버 수신 기준 {시각}", "날짜 대표 이미지, 시각 정보 없음"). 그 외 상태나 `content_path` 불일치 및 이미지 로드 실패 시에는 thumbnail-info 이미지를 제거하고 목록은 기존 `thumbnailUrl` 또는 sample 이미지가 있으면 이를 사용하며 없으면 "미리보기 없음"을 유지한다. 재생 컴포넌트 poster는 기존 `thumbnailUrl`로 대체한다. 404와 410 응답은 재사용하고 5xx와 네트워크 실패는 캐시하지 않는다. pending 상태는 5초, 10초, 20초 간격으로 최대 3회 재조회하며 failed 상태는 자동 재시도하지 않는다. 이벤트 대상과 날짜 녹화 대상의 ready 시각은 time_basis가 server_received_at이면 "서버 수신 기준 {시각}", 대표 시각이 없으면 "시각 정보 없음"으로 표시한다. 관리자에게만 미준비(`unavailable/NOT_PREPARED`) 또는 failed 상태의 준비/재시도 버튼을 제공한다. 이벤트 대상에서는 응답의 `clip_id`로 기존 clip 준비 POST를 호출하고 성공 뒤 해당 이벤트 대상을 다시 조회해 pending 재조회로 연계한다. 날짜 대표 이미지 대상과 `RECORDING_BUSY` 보류 상태에는 준비 버튼을 제공하지 않으며 날짜 대표 이미지 대상의 준비 요청은 거부한다.
 `RecordingsPage`는 이벤트 선택 시 `findEventRecordingExport`로 서버 작업을 복구한다.

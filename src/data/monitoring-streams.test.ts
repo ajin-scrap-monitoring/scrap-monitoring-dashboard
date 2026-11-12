@@ -97,16 +97,16 @@ describe("결합 snapshot과 활성 알림", () => {
     activation.release(); h.stop();
   });
 
-  test("가장 최근 시작 요청만 적용하고 release 뒤 응답은 적용하지 않는다", async () => {
+  test("진행 중인 결합 조회가 있으면 새 결합 조회를 시작하지 않고 release 뒤 응답은 적용하지 않는다", async () => {
     const h = harness(); await h.start();
-    const first = deferred<Response>(); const second = deferred<Response>();
+    const first = deferred<Response>();
     h.response(() => first.promise);
     const a = h.source.activateMonitoringDetails!();
-    h.response(() => second.promise);
     const b = h.source.activateMonitoringDetails!();
-    second.resolve(json(pair({ activeAlerts: activeAlertsFixture({ evaluationState: "WARNING", items: [] }) })));
     await b.ready;
-    first.resolve(json(pair())); await a.ready;
+    first.resolve(json(pair({ activeAlerts: activeAlertsFixture({ evaluationState: "WARNING", items: [] }) })));
+    await a.ready; await settle();
+    expect(h.urls.filter(url => url.pathname.endsWith("/snapshot-with-alerts"))).toHaveLength(1);
     expect(h.latest().activeAlertsState?.evaluationState).toBe("WARNING");
     a.release(); b.release(); h.stop();
 
@@ -117,6 +117,27 @@ describe("결합 snapshot과 활성 알림", () => {
     pending.resolve(json(pair())); await settle();
     expect(late.updates).toHaveLength(count);
     late.stop();
+  });
+
+  test("대상이 바뀌면 이전 대상의 진행 중 결합 조회를 기다리지 않고 새 조회를 시작하며 이전 응답은 적용하지 않는다", async () => {
+    const h = harness(); await h.start();
+    const old = deferred<Response>();
+    h.response(() => old.promise);
+    const activation = h.source.activateMonitoringDetails!(); await activation.ready;
+    const alertRequests = () => h.urls.filter(url => url.pathname.endsWith("/snapshot-with-alerts")).length;
+    expect(alertRequests()).toBe(1);
+    const target = { ...snapshot.source, edge_id: "reassigned-edge" };
+    const moved = { ...snapshot, source: target, assessment: snapshot.assessment && { ...snapshot.assessment, edge_id: target.edge_id },
+      deviceStatus: { ...snapshot.deviceStatus, edge_id: target.edge_id } };
+    h.response(() => Promise.resolve(json(pair({ snapshot: moved, activeAlerts: activeAlertsFixture({ evaluationState: "WARNING", items: [] }) }))));
+    h.stream.emit("monitoring.snapshot", moved);
+    await settle();
+    expect(alertRequests()).toBe(2);
+    expect(h.latest().activeAlertsState?.evaluationState).toBe("WARNING");
+    old.resolve(json(pair()));
+    await settle();
+    expect(h.latest().activeAlertsState?.evaluationState).toBe("WARNING");
+    activation.release(); h.stop();
   });
 
   test("SSE 판정 변경은 결합 조회만 한 번 요청하고 5초 제한과 같은 ID의 새 응답을 적용한다", async () => {
