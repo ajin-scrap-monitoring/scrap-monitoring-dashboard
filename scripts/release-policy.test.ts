@@ -63,6 +63,7 @@ await test("Release 배포 파일은 공개 설정, digest와 검증 가능한 c
     assert.equal(expected.status, 0, expected.stderr);
     assert.equal(archive.stdout, expected.stdout);
     assert.match(archive.stdout, /nginx\/includes\/runtime-config\.conf/);
+    assert.match(archive.stdout, /^nginx\/includes\/dashboard-site\.conf$/m);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

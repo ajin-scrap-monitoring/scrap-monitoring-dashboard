@@ -33,7 +33,7 @@ cleanup_resources() {
     fi
   done
   timeout --signal=TERM --kill-after=5s 20s env TLS_TEST_IMAGE="$dashboard_image" TLS_TEST_CERTIFICATE_FILE="$work_directory/removed.crt" \
-    TLS_TEST_PRIVATE_KEY_FILE="$work_directory/removed.key" TLS_TEST_NGINX_CONFIG="$repository_root/test/tls/nginx.conf" TLS_TEST_RUNTIME_CONFIG_FILE="$work_directory/removed.json" \
+    TLS_TEST_PRIVATE_KEY_FILE="$work_directory/removed.key" TLS_TEST_NGINX_CONFIG="$repository_root/test/tls/nginx.conf" TLS_TEST_RUNTIME_CONFIG_FILE="$work_directory/removed.json" TLS_TEST_RUNTIME_LOCATION_FILE="$work_directory/removed.conf" \
     docker compose --project-name "scrap-tls-test-$run_id" --file "$repository_root/test/tls/compose.yaml" down --volumes --remove-orphans >>"$step_log" 2>&1 || result=1
   found=$(timeout 10s docker network ls --filter "name=^proxy-integration-$run_id$" --format '{{.ID}}' 2>>"$step_log") || result=1
   if [[ -n $found ]]; then timeout 10s docker network rm "proxy-integration-$run_id" >>"$step_log" 2>&1 || result=1; fi
