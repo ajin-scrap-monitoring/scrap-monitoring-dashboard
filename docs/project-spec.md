@@ -122,7 +122,7 @@ synthetic data로 보충하지 않는다. 이력과 관리 기능은 v2 관측 �
 
 운영 pit 및 camera 식별자는 이미지와 분리한 same-origin runtime JSON 설정으로 제공한다.
 프론트엔드는 설정을 검증한 뒤 해당 대상의 데이터와 영상을 요청하며 설정 누락 및 오류를
-build 기본 식별자로 대체하지 않는다. 설정 변경은 다음 전체 페이지 로드에 적용한다.
+build 기본 식별자로 대체하지 않는다. 설정을 다시 읽는 시점은 [runtime 설정](deployment.md#runtime-설정)을 따른다.
 
 ## 접근 제어
 

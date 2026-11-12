@@ -59,7 +59,7 @@ mount로 제공하며 인증서와 개인 키의 주입 및 검증은 `TLS 인�
 
 배포 Repository는 이 Repository가 게시한 이미지의 digest를 선택하고 환경별 Nginx
 설정, FastAPI upstream, Transport Layer Security (TLS), 인증서, 컨테이너 네트워크,
-Docker Compose, 이미지 버전 결합과 롤백을 관리한다. CA 개인 키와 서버 개인 키는 Git
+Docker Compose, 이미지 버전 결합과 롤백을 관리한다. Certificate Authority (CA) 개인 키와 서버 개인 키는 Git
 Repository와 컨테이너 이미지에 포함하지 않는다.
 
 빌드 단계는 digest로 고정한 `node:24.19.0-bookworm-slim` 이미지와 pnpm 11.23.0을
@@ -157,9 +157,9 @@ server {
 ```
 
 공통 설정은 runtime JSON 파일에 `Cache-Control: no-store`를 적용한다. 파일이 없으면 `404`를
-반환한다. 설정은 전체 페이지 로드(document 탐색 또는 새로고침) 시에만
-다시 읽히며 앱 내부 화면 전환 중에는 다시 읽지 않는다. 이미 열린 화면의 대상을 자동으로 변경하지
-않는다. 파일을 원자적으로 교체하면 single-file bind mount의 새 inode를 반영하도록 컨테이너를
+반환한다. HTTP data source의 설정은 전체 페이지 로드(document 탐색 또는 새로고침)와
+back-forward cache 복원 시 다시 읽힌다. 화면이 활성 상태인 동안에는 앱 내부 화면 전환을 포함해 설정 변경을
+자동으로 반영하지 않으며 back-forward cache 복원 시 새 설정을 적용한다. 파일을 원자적으로 교체하면 single-file bind mount의 새 inode를 반영하도록 컨테이너를
 다시 생성한다. image 재빌드는 필요하지 않다.
 
 `scripts/quick-start.sh`는 synthetic 모드에서 runtime 파일 없이 실행한다. HTTP data source를
@@ -277,7 +277,8 @@ Intermediate CA 인증서 순서로 구성하며 Root CA 인증서를 포함하�
 
 `/absolute/tls-directory`를 인증서 파일을 보관한 host 디렉토리의 절대 경로로 바꾸고 다음
 명령을 실행한다. 검증 컨테이너는 해당 디렉토리를 읽기 전용으로 연결하고 DNS SAN,
-전체 인증서 chain의 서버 인증 용도, 개인 키 일치와 남은 유효 기간을 검사한다.
+전체 인증서 chain의 서버 인증 용도와 현재 유효성, 개인 키 일치를 검사한다. 서버 인증서의
+남은 유효 기간은 30일을 초과해야 한다.
 
 ```bash
 sudo docker compose build verification
