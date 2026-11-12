@@ -19,7 +19,7 @@ snapshot 검사 및 명시적 갱신 절차는
 [검증 기준](../../testing.md#정적-검사와-테스트-기준선)을 따른다.
 
 이 snapshot은 실행 가능한 구현을 확인한 근거이며 전체 시스템 계약이나 현장 운영 정책의
-승인을 대신하지 않는다. `../proposal/`은 v1 제안과 WHEP 대역 서버 검증에만 사용한다.
+승인을 대신하지 않는다. `../proposal/`은 v1 제안과 WHEP 대역 서버 검증에 사용하며 생성 타입은 실제 v1 관리자와 이력 및 녹화 경로의 타입 검사에도 사용한다.
 
 ## 현재 상태와 데이터 의미
 
@@ -37,7 +37,7 @@ snapshot 검사 및 명시적 갱신 절차는
 | `UNKNOWN` | 장비 상태 확인 불가 | `null` |
 | `NO_DATA` | STATE 판단 없음 | `null` |
 
-`measuredAt`은 STATE assessment의 `observed_to`다. 서버가 assessment를 받은 시각은
+`measuredAt`은 STATE assessment의 `observed_to`이며 Backend의 `EDGE_V2_HEIGHT_FILL_ENABLED`가 켜져 있으면 fill observation의 `observed_to`(없으면 `null`)다. 서버가 assessment를 받은 시각은
 측정 시각이나 freshness 기준을 대신하지 않는다. `0`은 유효한 적재율이며 결측값이 아니다.
 프론트엔드는 `null`을 0으로 변환하지 않고 상태, reason code와 capability를 화면 모델에
 보존한다. 기본 화면의 표시 범위는 화면 데이터 매핑을 따른다.
@@ -125,8 +125,8 @@ MJPEG client는 `multipart/x-mixed-replace`, boundary와 `Content-Length`로 JPE
 `include_playback=true`는 목록 항목에 `playback`(상태, 길이, 사유 코드) 요약을 더한다.
 보관 만료 계산은 [화면 매핑](frontend-mapping.md#녹화)을 따른다.
 
-Frontend는 `eventId` 형식, `parts`의 날짜 녹화 UUID와 `playbackPath`, 재생 시간축의 연속성과
-`playbackSeconds` 합계를 검사하고 위반하면 오류로 처리한다. 이력과 녹화의 연결은 `/api/v1/events`
+Frontend는 `eventId` 형식, `parts`의 날짜 녹화 UUID와 `playbackPath`, 재생 시간축에서 구간이 이전 구간 종료보다 앞서지 않는지, 첫 구간이 0초에서 시작하는지와 마지막 구간 종료가
+`playbackSeconds`와 같은지를 검사하고 위반하면 오류로 처리한다. 구간 사이의 빈 시간은 허용하며 구간 길이의 합계는 검사하지 않는다. 이력과 녹화의 연결은 `/api/v1/events`
 항목의 `recordingEventId`만 사용한다.
 
 날짜 녹화는 Backend의 다음 4개 endpoint를 사용하며 이벤트 녹화와 별도로 조회한다.
@@ -152,7 +152,7 @@ Frontend는 화면의 종료 날짜 다음 날을 `to_date`로 전달하고 UUID
 재생 경로와 다운로드 경로는 Backend가 반환한 위 `/media/` 경로만 허용한다. Nginx는
 HLS 목록과 각 segment 및 MP4 요청마다 session을 검사하고 Media 내부 경로로 변환한다.
 HLS 목록 안의 Media 절대 경로도 브라우저 경로로 변환한다. Media에는 session Cookie와
-Authorization 및 임의의 query를 전달하지 않으며 MP4의 `download=true`와 Range만 보존한다.
+Authorization 및 임의의 query를 전달하지 않으며 MP4의 `download=true`와 Range만 보존한다. 통합 검증용 `integration/nginx/runtime.conf`의 clip location은 query를 제한하지 않고 전달한다.
 공통 Nginx snippet과 배포 주입 경계는
 [배포 경계](../../deployment.md#nginx-reverse-proxy-배포-경계)를 따른다.
 
@@ -166,11 +166,11 @@ MP4 재생은 HTTP Range 요청을 사용한다. 삭제된 파일은 gateway에�
 날짜 녹화 삭제는 administrator에게만 표시하고 확인창에서 같은 날짜 영상을 쓰는 이벤트
 구간도 재생할 수 없게 됨을 알린다. 삭제는 `X-CSRF-Token`과 함께 요청하며 204 뒤 목록과
 선택 상세를 갱신한다. 409는 녹화 중, 마감 중 또는 내보내기 진행 중의 충돌이며 상태를 다시
-조회한다. 404, 410 및 5xx 응답은 해당 녹화를 재조회해 이미 없는 경우에만 삭제 반영으로
+조회한다. 404, 410, 500, 502, 503 및 504 응답은 해당 녹화를 재조회해 이미 없는 경우에만 삭제 반영으로
 처리하고 저장 공간 정리 완료 여부는 확인하지 못한 것으로 구분한다.
-날짜 녹화 응답은 삭제 시각 `deleted_at`, 파일 정리 상태 `cleanup_state`(pending, failed, complete,
+날짜 녹화 응답은 선택 필드로 삭제 시각 `deleted_at`, 파일 정리 상태 `cleanup_state`(pending, failed, complete,
 null), 정리 완료 시각 `cleanup_completed_at`, 정리 오류 `cleanup_error`와 물리 디스크 회수
-미추정값 `space_reclaimed`(null)를 제공한다. `status`가 deleted 또는 expired이면 재생 및
+미추정값 `space_reclaimed`(null)를 제공할 수 있으며 생략하면 null로 처리한다. `status`가 deleted 또는 expired이면 재생 및
 다운로드 불가로 처리하며 원래의 `expires_at` 날짜 대신 각각 삭제됨 또는 만료됨으로 표시한다.
 프론트엔드는 수동 clip 생성과 보관 정책 변경 화면을 제공하지 않는다.
 
@@ -198,14 +198,14 @@ revision과 작업 트리가 일치하지 않으면 실패한다. 운영 데이�
 
 통합 검증은 OpenAPI 일치, 실제 session, Edge 판단 불가, MJPEG 수신과 확대 종료, v2 SSE의
 0% 및 STALE과 session 종료를 확인한다. 과거 STATE의 0%, 25%, 68.5%, 100%와 결측 및
-LIMITED를 실제 Backend에 입력해 7일 및 24시간 이력의 그래프 좌표와 현재 임계율 선을
-검사한다. v2 경보의 실시간 알림 표시, 모두 읽음의 서버
+LIMITED를 실제 Backend에 입력해 7일 이력의 그래프 좌표와 현재 임계율 선을 검사하고 24시간 조회는 대표 적재율 표시와
+그래프 선 개수를 검사한다. v2 경보의 실시간 알림 표시, 모두 읽음의 서버
 저장과 전체 페이지 reload 후의 읽음 상태 유지를 검사한다. 이벤트 녹화는 v2 목록과 상세의
 계약, 수거, 알림 및 오류 필터, 결과가 없는 구간, 날짜 녹화 part의 HLS 재생, 닫힌 이벤트의
 구간 파일 준비 지원과 exportPath 생성, 실제 구간 파일 준비와 MP4 다운로드, 파일 정보(비디오
 코덱, 해상도, 프레임 속도, 파일 용량) 표시 및 새로고침 후 캐시 복구를 확인한다. 진행 중인 날짜
-녹화의 삭제 요청은 CSRF 없이 403, CSRF와 함께 409이며 녹화가 남는지 확인한다. 1280, 1440과
-1920 너비에서 현재 상태 및 녹화 화면을 검사하고 1280 너비에서 영상 확대의 키보드 종료와 focus
+녹화의 삭제 요청은 CSRF 없이 403, CSRF와 함께 409이며 녹화가 남는지 확인한다. 현재 상태 화면은
+1280, 1440과 1920 너비에서, 녹화 화면은 기본 1440 너비에서 검사하고 1280 너비에서 영상 확대의 키보드 종료와 focus
 복원을 확인한다.
 runtime 검증은 동일한 local image ID를 확인하고 두 Nginx의 실제 JSON mount를 읽은 Browser의
 pit query 및 camera 경로를 검사한다. 이 검사의 API 및 영상 응답은 별도 synthetic fixture이며

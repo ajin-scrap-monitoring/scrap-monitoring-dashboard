@@ -69,12 +69,11 @@ Playwright는 `e2e/`의 브라우저 테스트를 1280 x 900, 1440 x 900과 1920
 `pnpm run test:e2e:browser`로 synthetic 데이터가 포함된 별도 빌드를 Vite preview 서버에서
 검증한다. `pnpm run test:e2e:browser`는 synthetic 빌드와 브라우저 테스트만 실행하며 CI의
 `browser` job이 project 인자와 함께 사용한다. 운영 빌드 뒤 `scripts/verify-build-output.mjs`가
-초기와 전체 JavaScript, CSS, 웹폰트와 전체 정적 자산의 크기 기준을 검사한다. 실패한 테스트의
+초기와 전체 JavaScript, CSS, 웹폰트와 `dist/assets` 전체 자산의 크기 기준을 검사한다. 실패한 테스트의
 screenshot과 trace는 Git에서 제외한 `test-results/`에 저장한다.
 
 빌드 크기 기준은 초기 JavaScript 340 KiB, 전체 JavaScript 975 KiB, CSS 65 KiB, 웹폰트 4.9 MiB와
-전체 정적 자산 6.4 MiB다. 기준값은 main `8a9af44` 실측 크기에 1.3을 곱하고 KiB 단위는 5 KiB,
-MiB 단위는 0.1 MiB로 올린 값이다. 사설망 데스크톱 관리 화면 환경이므로 기준 초과는 비정상적인
+`dist/assets` 전체 자산 6.4 MiB다. 사설망 데스크톱 관리 화면 환경이므로 기준 초과는 비정상적인
 크기 급증을 알리는 경고로 전환해 병합을 차단하지 않는다. 기준 초과 시 GitHub Actions 환경에서는
 경고 annotation과 작업 요약 표를 출력하고 로컬에서는 경고 문구를 출력한다. 날짜 녹화의
 HLS light 모듈은 지연 로딩하며 전체 JavaScript 및 자산 기준에 포함한다. production에서 선택한
@@ -99,7 +98,7 @@ ICE 전달, 종료와 재연결도 Vitest에서 검증한다. 계약 예제의 �
 v2 fixture는 실제 생성 타입을 사용하고 제안 HTTP 및 SSE fixture와 구분한다.
 v2 adapter 및 화면 테스트는 모든 dataState, 0%와 소수 및 결측값, 계약 위반 입력, 단일 pit,
 인증 선행, event ID가 없는 SSE, 연결 끊김 및 동일 snapshot 복구와 session 종료를 검사한다.
-공통 현황 화면의 카드 순서와 위치 및 크기는 실제 API와 synthetic data를 비교해 검사한다.
+공통 현황 화면의 카드 순서와 위치 및 크기는 실제 API 계약을 사용하는 fixture와 synthetic data를 비교해 검사한다.
 `e2e/layout-baseline.json`은 승인된 기본 화면의 배치 기준이며 세 viewport의 현황, 이력,
 녹화 및 관리자 화면의 카드와 표 행 및 영상 영역을 검사한다. 긴 상세 내용의 표시와 종료도
 기본 화면 좌표 및 크기를 바꾸지 않는지 검사한다. 배치 차이를 해소하기 위해 이 기준을
@@ -116,12 +115,12 @@ header 및 frame 크기 제한, timeout, 취소, decode 실패, 인증 오류, S
 이력 이벤트 표와 이벤트 녹화 목록은 요청 횟수, 요청한 `page`와 `pageSize`, 전체 건수의 서버 값 사용,
 이전 요청 취소와 늦은 응답 격리, 그래프와 표의 독립 표시를 검사한다.
 이벤트 녹화는 목록과 상세의 계약 검증, `stable=true` 및 `pageSize=50` 고정과 `snapshot_token` 페이징,
-409/410 재시작과 `occurredAt` 정렬 보존, 90일 범위 제한, part 사이 이동과 마지막 끝의 정지를
+`EVENT_LIST_QUERY_CHANGED`와 `EVENT_LIST_SNAPSHOT_GONE` code의 재시작, code가 없는 409 및 410 상태의 재시작, 다른 code의 409에서 재시작하지 않음과 `occurredAt` 정렬 보존, 90일 범위 제한, part 사이 이동과 마지막 끝의 정지를
 검사한다. 이벤트 구간 다운로드는 서버 조회 복구, export 요청, 응답 requestId와 retryFailed, 3초 폴링과
 준비 완료 시 downloadPath 다운로드를 검사한다. 상태 조회의 5xx 및 네트워크 오류에 대한 2초, 4초,
 8초 재시도, 연속 실패 횟수 초기화, 재시도 소진 및 4xx와 완료 상태의 조회 중단, 재시도 중 선택 변경과
 화면 종료의 요청 취소도 검사한다. 영상 파일 정보는 daily media-info와 clip media-info
-연동, 30초 timeout, 동시 요청 2개 제한 큐와 성공 응답 재사용 및 크기 불일치 시 재조회를 검사한다.
+연동, 동시 요청 2개 제한 큐와 성공 응답 재사용 및 크기 불일치 시 재조회를 검사한다.
 이벤트, clip과 완료 상태가 확인된 날짜 녹화의 썸네일 ready 정보 재진입 재사용, 날짜 대표 이미지와 녹화 중이거나 상태를 판단할 수 없는 날짜 녹화의 재조회, 계정 및 data source 변경 시 재조회, 목록 이미지의 lazy loading과 비동기 decoding을 검사한다. 날짜 녹화 삭제는 CSRF 전달, 204와
 409 및 5xx 뒤 재조회, 관리자에게만 표시되는 버튼과 확인창을 검사한다. 브라우저 테스트는
 이벤트 녹화의 v2 목록과 상세, 날짜 녹화 삭제의 취소, 409, 204와 카드 배치 유지,
@@ -146,11 +145,11 @@ header 및 frame 크기 제한, timeout, 취소, decode 실패, 인증 오류, S
 - 1280 x 900에서 이력 scroll 150, 영상 보기 진입, 녹화 scroll 150 뒤 뒤로 이동의 이력 scroll 150 복원과 앞으로 이동의 녹화 scroll 150 복원.
 - 앱 내부 이동으로 관리자와 녹화를 처음 열 때 "화면을 불러오는 중입니다." 문구의 MutationObserver 기준 부재.
 - 탭 숨김 제어 중 snapshot SSE 수신 때 현황 상세 요청 0회와 복귀 시 조회.
-- 경로 직접 접속과 새로고침 정상 동작, Ctrl 클릭 시 새 탭 열림과 현재 화면 유지.
+- 경로 직접 접속과 새로고침 정상 동작, Ctrl 클릭 후 현재 화면 유지.
 - 앱 내부 이동 중 `session.expired` SSE 수신 시 로그인 화면으로 이동.
 - 키보드로 메뉴 선택 시 새 화면의 h1 포커스와 맨 위 스크롤.
-- 녹화 화면 영상 재생 중 다른 화면 이동 시 video DOM 요소, Object URL과 요청 정리.
-- 브라우저 탭 숨김 전환 시 load-history 요청 중단 및 표시 복귀 시 재개, camera-status GET 0회와 SSE 연결 1개 유지.
+- 녹화 화면 영상 재생 중 다른 화면 이동 시 video DOM 요소와 Object URL 정리.
+- 브라우저 탭 숨김 전환 시 load-history 요청 중단 및 표시 복귀 후 camera-status GET 0회와 SSE 연결 1개 유지.
 - 현황 상세를 재사용하는 60초 이내 현황 재진입 시 로딩 화면 미표시.
 - 반복 화면 이동 뒤 garbage collection 후 `HTMLImageElement` 객체 수의 증가 최대 2개와 `SVGCircleElement` 객체 수의 증가 최대 10개 제한.
 
@@ -198,7 +197,7 @@ artifact에 넣지 않는다. `private/`는 mode 700이며 원본 report와 로�
 `private/service-logs.txt`는 자원 회수 전 수집한 격리 환경의 Backend, Media와 synthetic 입력 로그다.
 임시 `compose.env`는 mode 600이고 cleanup 성공 후 삭제한다. runtime 및 TLS wrapper의
 로그는 출력된 `/tmp/dashboard-container-integration.<id>/`에 남으며 임시 개인 키는 자원
-회수 뒤 삭제한다. source checkout은 출력된 임시 경로에 유지한다.
+회수 뒤 삭제한다. source checkout은 기본적으로 `/tmp`의 임시 경로에 만들며 `SYNC_SOURCE_ROOT`로 지정한 경로를 포함해 출력된 경로에 유지한다.
 `.gitignore`와 `.dockerignore`는 로컬 `.env`, 비밀 파일, pnpm cache, build cache, 로그와
 검증 산출물을 제외한다. 계약 snapshot, 생성 타입과 재현 fixture는 추적 대상이다.
 
@@ -212,7 +211,7 @@ artifact에 넣지 않는다. `private/`는 mode 700이며 원본 report와 로�
 | Browser 의존성 설치 | 180초 |
 | Edge 입력 | 120초 |
 | 실제 서비스 browser 테스트 | 300초 |
-| 실제 서비스 cleanup | 45초 |
+| 실제 서비스 자원 회수 명령 | 45초 |
 | runtime 도구 및 production build | 각각 600초 |
 | runtime, TLS 및 reverse proxy 검사 | 각각 120초 |
 

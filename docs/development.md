@@ -63,7 +63,7 @@ sudo docker compose down --volumes
 | `development-gateway` | 기존 Backend의 API와 session 검사 및 Media Service의 영상 전달 |
 
 Vite는 서버의 `127.0.0.1:5173`에만 공개한다. gateway에는 host port를 공개하지 않고 기존
-서비스의 external Docker network에 연결한다. v2와 MJPEG를 사용하며 API 실패를 v1이나
+서비스의 external Docker network에 연결한다. Compose 기본 설정은 API, v2와 MJPEG이며 개발 모드의 `source` query와 session 저장값으로 data source를 바꿀 수 있다. API 실패를 v1이나
 synthetic data로 대체하지 않는다. Backend와 Media Service의 배포 및 상태 확인은 이
 script의 범위가 아니다.
 gateway는 gzip을 지원하는 요청에 대해 1024 byte 이상인 `application/json` 응답을 gzip으로 압축하며 SSE, 영상과 이미지는 압축하지 않는다.
@@ -74,7 +74,7 @@ Source 동기화 client에는 Git, OpenSSH와 `--from0`, `--delete-missing-args`
 `/scrap-monitoring-dashboard-dev`로 끝나는 절대 경로를 사용한다. 첫 실행은 빈 디렉토리만
 사용하며 기존 Git worktree는 덮어쓰지 않는다.
 
-Git이 제외하지 않은 source와 작업 중인 변경을 전달하며 `.git`, 로컬 환경변수, 비밀 파일과
+Git이 제외하지 않은 source와 작업 중인 변경을 전달하며 `.git`, `.secrets`, `.env`, `.env.*`(`.env.example` 제외), `*.key`, `*.pem`, `*.crt`, `*.p12`, `*.pfx` 파일과
 루트 runtime JSON은 전달하지 않는다. `start`만 `.env.remote`를 서버에 mode `0600`으로 복사한다.
 동기화 client는 Git 디렉토리에 대상별 성공 및 진행 중 전송 목록을 보관한다.
 성공 목록은 전송 성공 뒤 갱신한다. 전송 중단 시 부분 전송한 경로도 삭제 추적에 포함하며,
@@ -121,7 +121,7 @@ ssh -N -o ExitOnForwardFailure=yes \
 
 브라우저는 `http://127.0.0.1:5173/?source=api`로 접속한다. 영상 요청은 gateway가 Backend의
 session을 확인한 뒤 전달한다. Media Service에는 `Host`, `Range`, `If-Range` header와 클립
-다운로드의 `download=true` query만 전달한다. Session 검사 실패는 영상 요청을 거부한다.
+다운로드와 날짜 녹화 `content` 다운로드의 `download=true` query만 전달한다. Session 검사 실패는 영상 요청을 거부한다.
 썸네일 요청은 Backend가 session과 자원을 검증한 뒤 내부 `X-Accel-Redirect` 경로를 통해
 Media Service에서 이미지를 전달받으며 불필요한 header를 제거한다.
 
@@ -143,7 +143,7 @@ Playwright Chromium을 실행한다. 별도 port나 SSH forwarding은 필요하�
 세션을 공유하지 않는다.
 
 브라우저 이미지는 `Dockerfile`의 `browser-inspection` target으로 생성한다. 실행은
-non-root 사용자, read-only root filesystem과 제한된 임시 저장소를 사용한다. 캡처마다
+SSH 사용자의 UID와 GID(SSH 사용자가 root가 아니면 non-root), read-only root filesystem과 제한된 임시 저장소를 사용한다. 캡처마다
 임시 컨테이너를 실행하고 종료 시 제거한다. 기존 개발 컨테이너와 Backend 및 Media Service는
 변경하지 않는다. 브라우저 요청은 same-origin GET, HEAD와 로그인 POST만 허용한다.
 관리 설정, 알림 상태와 계정 변경 요청은 차단한다.
@@ -174,15 +174,15 @@ bash scripts/remote-browser.sh clear-session
 ```
 
 `--path`는 `/`, `/login`, `/history`, `/recordings`, `/admin`을 허용한다.
-`--width`와 `--height`로 viewport를 지정하며 `--recording-index`는 현재 녹화 목록의
-0부터 시작하는 위치다. 기존 역할의 접근 권한은 그대로 적용한다. 로그인 실패 시 계정이나
+`--width`는 1280-3840, `--height`는 600-2160 범위로 viewport를 지정하며 `--recording-index`는 현재 녹화 목록의
+0부터 49까지의 위치이고 `/recordings` 경로에서만 사용한다. 기존 역할의 접근 권한은 그대로 적용한다. 로그인 실패 시 계정이나
 인증 정책을 변경하지 않는다. 이미지 build 상한은 900초, 캡처 실행 상한은 120초다.
 
 캡처 결과는 서버의 `.secrets/dashboard-browser/captures/run.<id>/`에 생성하고 로컬
 `test-results/browser-inspection/run.<id>/`로 가져온다. `capture.png`는 화면 원본이고
 `metadata.json`은 viewport, 카드 좌표, 가로 overflow, 오류 개수와 녹화 API 진단 요약을
-기록한다. 진단 요약은 HTTP 상태, 조회 조건의 형식 검사, 녹화 상태, 누락 메타데이터와
-짧은 오류 코드를 포함하며 식별자, 실제 시각과 오류 원문은 기록하지 않는다.
+기록한다. 진단 요약은 v1 녹화 API와 v2 이벤트 녹화 API 응답의 HTTP 상태, 조회 조건의 형식 검사, 녹화 상태와
+짧은 오류 코드를 포함하고 누락 메타데이터는 v1 녹화 응답에만 포함한다. 날짜 녹화 API는 진단 대상이 아니다. 식별자, 실제 시각과 오류 원문은 기록하지 않는다.
 자격 증명과 `session.json`은 서버의 `.secrets/dashboard-browser/`에 유지하며 세션 만료 시
 기존 계정으로 다시 로그인한다. 이 경로와 캡처 산출물은 Git, Docker build context와 source
 자동 동기화에서 제외한다. 화면에는 현장 정보가 포함될 수 있으므로 공개 artifact와 PR에

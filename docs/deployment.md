@@ -226,8 +226,10 @@ Backend upstream으로 전달하며 Authorization은 비운다. Backend는 sessi
 internal로 보호되는 이 경로는 `/api/$1`로 rewrite한 뒤 Media upstream에서 이미지 byte를 받는다. Media
 요청에는 Cookie, Authorization, Range와 조건부 header를 전달하지 않으며 Media의 리다이렉트는 502로
 차단하고 upstream `X-Accel-Redirect`는 무시한다. 공용 snippet `/etc/nginx/includes/proxy-thumbnail-auth.conf`와
-`/etc/nginx/includes/proxy-thumbnail-image.conf`는 `security-headers.conf`를 포함해 `X-Content-Type-Options: nosniff`와
-`Cache-Control: no-store`를 보장하고 header 중복을 방지한다. 운영 배포 Repository는 `runtime/*.conf`에 이와
+`/etc/nginx/includes/proxy-thumbnail-image.conf`는 `security-headers.conf`를 포함해 `X-Content-Type-Options: nosniff`를
+보장하고 upstream의 같은 header를 숨겨 중복을 방지한다. 검증 응답은 auth snippet이 `Cache-Control: no-store`를
+붙인다. 이미지 응답은 Media의 `Cache-Control`을 숨기고 Backend가 `X-Accel-Redirect`와 함께 보낸 `Cache-Control`을
+사용한다. 운영 배포 Repository는 `runtime/*.conf`에 이와
 동일한 썸네일 location 3개를 주입해야 한다.
 
 선택적 WebRTC 모드는 signaling만 FastAPI에 전달하고 미디어는 Nginx를 경유하지 않는다.
@@ -335,8 +337,8 @@ ssl_certificate_key /run/secrets/dashboard_tls_private_key;
 
 일반 Docker Compose는 file 기반 Secret source를 bind mount하며 host의 소유권과 접근
 mode를 유지한다. 배포 담당자는 `sudo docker compose config --quiet`로 보간 결과를 확인하고,
-컨테이너 안에서 `/run/secrets/dashboard_tls_private_key`를 Nginx UID와 GID `101`이 읽고
-쓸 수는 없는지 검사한다.
+컨테이너 안에서 `/run/secrets/dashboard_tls_private_key`를 Nginx UID `101`이 읽을 수 있고
+쓸 수 없는지와 키 파일의 GID `101` 및 mode `640`을 검사한다.
 
 ### 인증서 갱신과 교체
 

@@ -238,8 +238,8 @@ Security (TLS), API와 미디어 proxy, 실시간 갱신, 미디어 서비스, �
 선택적 Web Real-Time Communication (WebRTC) 미디어는 Nginx를 경유하지 않고 브라우저와
 미디어 서비스 사이에서 검증한다.
 
-GitHub Actions는 PR과 `main` push에서 이미지를 게시하지 않고 빌드와 런타임을 검증한다.
-`vX.Y.Z` Git tag는 검증한 `linux/amd64` 이미지를 GHCR에 게시하고 digest를 기록한다.
+GitHub Actions는 `main`을 대상으로 하는 PR과 `main` push에서 이미지를 게시하지 않고 빌드와 런타임을 검증한다.
+`vX.Y.Z` Git tag는 tag가 가리키는 commit이 실행 revision과 일치하고 `origin/main` 이력에 포함될 때 검증한 `linux/amd64` 이미지를 GHCR에 게시하고 digest를 기록한다.
 
 ## 역할과 기록 경계
 
