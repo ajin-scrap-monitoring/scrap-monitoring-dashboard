@@ -3804,6 +3804,30 @@ export interface components {
             /** Sensor Id */
             readonly sensor_id: string;
         };
+        /**
+         * ScanUpdateAlarm
+         * @description Optional operational alarm; never changes calculation freshness.
+         */
+        readonly ScanUpdateAlarm: {
+            /** Active */
+            readonly active: boolean | null;
+            /**
+             * Confirm After Ms
+             * @constant
+             */
+            readonly confirm_after_ms: 3000;
+            /** Last Valid Scan At */
+            readonly last_valid_scan_at: string | null;
+            /** Reason Codes */
+            readonly reason_codes: readonly string[];
+            /** Scan Age Ms */
+            readonly scan_age_ms: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            readonly state: "UNKNOWN" | "CLEAR" | "PENDING" | "ACTIVE" | "RECOVERING";
+        };
         /** SectionBin */
         readonly SectionBin: {
             /** Ceiling Z Mm */
@@ -3924,6 +3948,7 @@ export interface components {
             readonly last_scan_at: string | null;
             /** Reason Codes */
             readonly reason_codes: readonly string[];
+            readonly scan_update_alarm?: components["schemas"]["ScanUpdateAlarm"] | null;
             /** Sensor Id */
             readonly sensor_id: string;
         };
