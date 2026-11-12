@@ -183,7 +183,10 @@ LiDAR 단면(`profiles`)은 collection summary와 분리한 루프로 갱신한�
 표시되는 동안 한 번에 하나의 요청만 보내고, 응답을 받으면 요청 시작 1초 뒤(응답이 1초보다 늦으면 응답 직후)
 다음 요청을 예약한다. 루프마다 별도 AbortController를 두며, 탭 숨김과 현황 상세 해제는 진행 중 요청을 abort한다.
 탭이 다시 표시되거나 현황 상세가 다시 활성화되면 새 루프가 단면 표본을 비우고 즉시 1회 조회하며 이전 루프의 응답은
-적용하지 않는다. 새 응답은 이전 표본 배열을 교체하고, 401과 403은 기존 인증 처리 후 루프를 멈춘다. `src/data/http-dashboard-data-source.ts`는 센서별 대표 평균 준비 중과 일시 조회 실패(인증 오류 제외)에서 마지막 정상 대표값과 유효 곡선을 최대 3초간 유지한다. 유지 규칙과 만료 동작의 정본은 [LiDAR 높이 곡선](contracts/backend/frontend-mapping.md#lidar-높이-곡선)을 따른다. 단면 표시는 snapshot `dataState`와 분리해 profile 응답 결과로 표시한다.
+적용하지 않는다. 새 응답은 이전 표본 배열을 교체하고, 401과 403은 기존 인증 처리 후 루프를 멈춘다.
+센서별 대표 평균 준비 중과 profile 조회의 네트워크 오류, timeout 또는 5xx 실패 시 유지 조건과
+만료 동작은 [LiDAR 높이 곡선](contracts/backend/frontend-mapping.md#lidar-높이-곡선)을 따른다.
+단면 표시는 snapshot `dataState`와 분리해 profile 응답 결과로 표시한다.
 
 `LoadChart`는 data source가 매번 새 배열로 복제하는 표본을 필드 값 단위로 비교하고, 표본 내용과 기간 및 시각 표시 방식이 같으면 정렬, 시각 문자열과 좌표 계산 결과를 재사용한다.
 

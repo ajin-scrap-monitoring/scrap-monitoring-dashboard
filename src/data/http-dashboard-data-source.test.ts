@@ -3440,11 +3440,34 @@ describe("HTTP 대시보드 데이터 소스", () => {
         } finally { vi.useRealTimers(); }
       });
 
-      test("조회 실패로 유지한 곡선은 최소, 최대와 시뮬레이션 표기를 함께 유지하고 3초 뒤 비운다", async () => {
+      test.each([
+        ["404", () => Promise.resolve(new Response(null, { status: 404 }))],
+        ["422", () => Promise.resolve(new Response(null, { status: 422 }))],
+        ["해석 실패", profileResponse({ pitId: "pit-01", profiles: [{ sensorId: "lidar-a" }] })],
+      ])("%s 응답은 곡선과 대표값을 즉시 비우고 이후 503에서도 복원하지 않는다", async (_name, invalid) => {
         vi.useFakeTimers();
         try {
           const run = await start(profileResponse(validProfiles("2026-11-11T06:00:00Z")));
+          expect(run.latest()?.monitoring.lidarProfiles[0]).toMatchObject({ average: "2.00 m", samples: [{ positionRatio: 0.5, height: 2 }] });
+          run.set(invalid);
+          await vi.advanceTimersByTimeAsync(1000);
+          expect(run.latest()?.monitoring.lidarProfiles).toEqual([]);
           run.set(failure);
+          await vi.advanceTimersByTimeAsync(1000);
+          expect(run.latest()?.monitoring.lidarProfiles).toEqual([]);
+          run.activation.release();
+        } finally { vi.useRealTimers(); }
+      });
+
+      test.each([
+        ["503", failure],
+        ["timeout", () => Promise.reject(new ApiError(504, "timeout", "REQUEST_TIMEOUT"))],
+        ["네트워크 오류", () => Promise.reject(new TypeError("network error"))],
+      ])("%s 실패로 유지한 곡선은 최소, 최대와 시뮬레이션 표기를 함께 유지하고 3초 뒤 비운다", async (_name, transientFailure) => {
+        vi.useFakeTimers();
+        try {
+          const run = await start(profileResponse(validProfiles("2026-11-11T06:00:00Z")));
+          run.set(transientFailure);
           await vi.advanceTimersByTimeAsync(1000);
           const held = run.latest()?.monitoring.lidarProfiles[0];
           expect(held).toMatchObject({ curveHeld: true, averageHeld: true, average: "2.00 m", minimum: "1.90 m", maximum: "2.10 m", simulated: true });
