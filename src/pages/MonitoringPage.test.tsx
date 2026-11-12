@@ -345,6 +345,7 @@ test.each([
   ["UNVERIFIED", "MATCHED", "실측 배치 미검증"],
   ["UNAVAILABLE", "UNKNOWN", "배치 정보 확인 불가"],
   ["SIMULATION", "MISMATCH", "배치 정보 확인 불가"],
+  ["SIMULATION", "UNKNOWN", "배치 정보 확인 불가"],
 ] as const)("측정 영역 카드는 layout state %s와 binding %s를 한 줄 상태로 표시하고 그림은 유지한다", async (layoutState, bindingState, label) => {
   const { data, dataSource } = await alertData({ evaluationState: "NORMAL", reasonCodes: [], coverage: [] });
   data.monitoring.measurementLayout = { state: layoutState, bindingState, simulated: true, reasonCodes: ["SIMULATION_GEOMETRY"],
