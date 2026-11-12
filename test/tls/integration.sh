@@ -229,4 +229,21 @@ if curl \
   exit 1
 fi
 
-printf 'Verified TLS certificate chain, Docker Secret and Nginx HTTPS for %s.\n' "$image"
+example_directory=$repository_root/deploy/example
+cat > "$work_directory/example-override.env" <<EOF
+DASHBOARD_IMAGE=$image
+DASHBOARD_TLS_CERTIFICATE_FILE=$TLS_TEST_CERTIFICATE_FILE
+DASHBOARD_TLS_PRIVATE_KEY_FILE=$TLS_TEST_PRIVATE_KEY_FILE
+DASHBOARD_RUNTIME_CONFIG_FILE=$TLS_TEST_RUNTIME_CONFIG_FILE
+EOF
+docker compose --project-directory "$example_directory" --file "$example_directory/compose.yaml" \
+  --env-file "$example_directory/example.env" --env-file "$work_directory/example-override.env" config --quiet
+docker run --rm --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+  --mount "type=bind,source=$TLS_TEST_CERTIFICATE_FILE,target=/run/certs/dashboard-fullchain.pem,readonly" \
+  --mount "type=bind,source=$TLS_TEST_PRIVATE_KEY_FILE,target=/run/secrets/dashboard_tls_private_key,readonly" \
+  --mount "type=bind,source=$example_directory/nginx/https.conf,target=/etc/nginx/conf.d/https.conf,readonly" \
+  --mount "type=bind,source=$example_directory/nginx/upstreams/10-dashboard-upstreams.conf,target=/etc/nginx/upstreams/10-dashboard-upstreams.conf,readonly" \
+  --mount "type=bind,source=$example_directory/nginx/runtime/20-dashboard-locations.conf,target=/etc/nginx/runtime/20-dashboard-locations.conf,readonly" \
+  "$image" nginx -t >/dev/null 2>&1 || { printf 'Deployment example Nginx configuration failed nginx -t.\n' >&2; exit 1; }
+
+printf 'Verified TLS certificate chain, Docker Secret, Nginx HTTPS and deployment example for %s.\n' "$image"

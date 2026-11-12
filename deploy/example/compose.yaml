@@ -1,0 +1,54 @@
+# 배포 Repository가 Dashboard 이미지를 HTTPS로 실행하는 참조 구성이다.
+name: scrap-monitoring-dashboard
+
+services:
+  dashboard:
+    image: "${DASHBOARD_IMAGE:?}"
+    platform: linux/amd64
+    read_only: true
+    restart: unless-stopped
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    # Nginx 사용자 101에게 서버 개인 키 파일의 group 읽기 권한을 부여한다.
+    group_add:
+      - "${DASHBOARD_TLS_KEY_GROUP_ID:?}"
+    ports:
+      - "${DASHBOARD_BIND_ADDRESS:?}:${DASHBOARD_HTTPS_PORT:?}:8443"
+    secrets:
+      - dashboard_tls_private_key
+    volumes:
+      - type: bind
+        source: "${DASHBOARD_TLS_CERTIFICATE_FILE:?}"
+        target: /run/certs/dashboard-fullchain.pem
+        read_only: true
+      - type: bind
+        source: "${DASHBOARD_RUNTIME_CONFIG_FILE:?}"
+        target: /usr/share/nginx/html/runtime-config.json
+        read_only: true
+      - type: bind
+        source: ./nginx/https.conf
+        target: /etc/nginx/conf.d/https.conf
+        read_only: true
+      - type: bind
+        source: ./nginx/upstreams/10-dashboard-upstreams.conf
+        target: /etc/nginx/upstreams/10-dashboard-upstreams.conf
+        read_only: true
+      - type: bind
+        source: ./nginx/runtime/20-dashboard-locations.conf
+        target: /etc/nginx/runtime/20-dashboard-locations.conf
+        read_only: true
+    networks:
+      - services
+    mem_limit: 128m
+    cpus: 0.5
+
+networks:
+  services:
+    external: true
+    name: "${DASHBOARD_SERVICE_NETWORK:?}"
+
+secrets:
+  dashboard_tls_private_key:
+    file: "${DASHBOARD_TLS_PRIVATE_KEY_FILE:?}"

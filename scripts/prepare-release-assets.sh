@@ -14,9 +14,13 @@ cp "$repository_root/runtime-config.example.json" "$repository_root/docs/contrac
 printf '%s\n' "$image_reference" > "$release_directory/image-reference.txt"
 git -C "$repository_root" ls-files -z nginx | tar --directory "$repository_root" --null --files-from - \
   --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner --create --gzip --file "$release_directory/nginx-config.tar.gz"
+git -C "$repository_root" ls-files -z deploy/example | tar --directory "$repository_root" --null --files-from - \
+  --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner --create --gzip --file "$release_directory/deployment-example.tar.gz"
+cp "$repository_root/docs/contracts/backend/manifest.json" "$release_directory/contract-manifest.json"
 (
   cd -- "$release_directory"
-  sha256sum runtime-config.example.json runtime-config.schema.json image-reference.txt nginx-config.tar.gz > SHA256SUMS
+  sha256sum runtime-config.example.json runtime-config.schema.json image-reference.txt nginx-config.tar.gz \
+    deployment-example.tar.gz contract-manifest.json > SHA256SUMS
 )
 
 echo "Prepared public release assets and SHA256SUMS."

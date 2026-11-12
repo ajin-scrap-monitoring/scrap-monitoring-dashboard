@@ -187,7 +187,7 @@ SIGKILL 등으로 정리하지 못한 실행은 출력된 `Recovery command`로 
 | [`docs/implementation.md`](docs/implementation.md) | 채택한 기술과 현재 클라이언트 구현 |
 | [`docs/development.md`](docs/development.md) | 개발 컨테이너, source 동기화와 원격 화면 확인 |
 | [`docs/testing.md`](docs/testing.md) | 검사 계층, 빌드 예산, 통합 자원 회수와 리뷰 |
-| [`docs/deployment.md`](docs/deployment.md) | 이미지 책임, runtime 설정, Nginx와 TLS |
+| [`docs/deployment.md`](docs/deployment.md) | 이미지 책임, runtime 설정, Nginx와 TLS, 배포 참조 예시 |
 | [`docs/development-workflow.md`](docs/development-workflow.md) | 작업 시작, 로컬 진행과 원격 반영 및 완료 조건 |
 | [`docs/contracts/README.md`](docs/contracts/README.md) | 외부 계약의 확인 순서와 정본 선택 |
 | [`docs/contracts/backend/README.md`](docs/contracts/backend/README.md) | 고정한 실제 서비스 계약과 통합 검증 경계 |

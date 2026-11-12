@@ -171,7 +171,8 @@ Repository의 전체 commit SHA로 고정한다.
 정적 검사, 검증 도구 및 컴포넌트 테스트, 타입 검사, 프로덕션 빌드와 브라우저 테스트를 순서대로 실행하는
 전체 검증 명령이다. Container job은 임시 Root CA, Intermediate CA와 서버 인증서를
 생성하고 fullchain, 개인 키, Docker Secret, Nginx HTTPS, 신뢰 체인과 SAN 불일치를
-검증한다. 임시 CA 개인 키와 서버 개인 키는 job의 임시 디렉토리에서만 사용하고 종료 시
+검증하며 [배포 참조 예시](deployment.md#배포-참조-예시)의 compose 해석과 `nginx -t`를
+확인한다. 임시 CA 개인 키와 서버 개인 키는 job의 임시 디렉토리에서만 사용하고 종료 시
 삭제한다.
 
 ## 컨테이너 통합 검증
