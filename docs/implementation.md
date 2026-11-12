@@ -216,7 +216,8 @@ AbortSignal을 전달하고 화면 종료는 요청을 취소한다. 이미 수�
 
 화면 시각의 표시와 기간 입력의 해석은 `src/display-time.ts`의 `Asia/Seoul`(+09:00)로
 고정하며 브라우저 시간대를 사용하지 않는다. HTTP 요청은 offset을 포함한 ISO 8601을
-사용하고 서버의 UTC 원본은 보존한다.
+사용하며 서버 시각의 변환 범위는
+[표시 시간대](contracts/backend/frontend-mapping.md#표시-시간대)를 따른다.
 
 ### 데이터 소스와 synthetic 시나리오
 
@@ -297,8 +298,8 @@ bucket 및 결측을 검사한다. `load-history-v2.ts`는 `view=chart` 응답 �
 오류로 처리하고 `samples=[]`는 표본 없음 상태로 보존한다. `ProfileChart`는 0~10m 높이축과
 A~B 가로축 배치를 유지하고, `positionRatio`가 있는 표본의 최솟값~최댓값을 관측 범위로 계산한다.
 가로축의 [0, 최솟값)과 (최댓값, 1] 구간은 미측정 영역으로 옅은 회색 음영을 렌더링하고,
-SVG viewBox 좌표계에서 폭이 24단위 이상이면 "미측정" 글자를 표시한다. SVG aria-label과 title에 미측정 구간 비율을 명시하고,
-표본 위치가 없으면 전체를 미측정 처리한다. `active-alerts-v2.ts`는 필수
+SVG viewBox 좌표계에서 폭이 24단위 이상이면 "미측정" 글자를 표시한다. SVG aria-label과 음영 title에 미측정 구간 비율을 명시하고,
+유효점이 없는 profile은 `samples`를 빈 배열로 바꿔 곡선을 비운다. `active-alerts-v2.ts`는 필수
 `basis` 객체와 필수 `coverage` 배열을 검증하고, 장비 항목의 `CAMERA` 및 `MEDIA_CAMERA_STATUS`를
 허용하며 카메라 항목 이름은 "카메라"로 지정한다. 선택 필드인 `validUntilAt`, `evaluatedAt`,
 `evidenceSource`를 보존한다. HTTP adapter는 snapshot-with-alerts의 snapshot을 기존 v2
