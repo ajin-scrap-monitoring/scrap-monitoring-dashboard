@@ -88,18 +88,17 @@ image 참조와 `SHA256SUMS`를 draft Release에 첨부한 뒤 게시한다. Rel
 게시 후 변경하지 않는다. job에 부여한 `contents: write`는 Release 게시에,
 `packages: write`는 image 게시에 사용한다.
 
-TLS 종료 위치는 두 가지다.
+운영 브라우저는 사설 Domain Name System (DNS) 이름으로 고정 사설 Internet Protocol
+(IP) 주소의 Nginx에 접속한다. 인터넷에서 모니터링 서버로 들어오는 연결, 공개 도메인,
+공개 DNS와 public CA를 사용하지 않는다. 내부 브라우저에서
+Nginx의 Transmission Control Protocol (TCP) 443 포트로 연결할 수 있어야 한다. 서버
+인증서의 Subject Alternative Name (SAN)은 브라우저가 사용하는 사설 DNS 이름을 포함한다.
 
-- Dashboard Nginx가 프로젝트 사설 Public Key Infrastructure (PKI) 인증서로 HTTPS를 직접 처리한다.
-- 접근이 제한된 사설 네트워크의 앞단 TLS proxy가 HTTPS를 처리하고 Dashboard Nginx의 HTTP 8080으로 전달한다. Virtual Private Network (VPN)가 제공하는 HTTPS proxy도 사용할 수 있다.
-
-배포 Repository는 TLS 종료 방식과 인증서 발급 주체, 인증서 주입 및 갱신을 정한다.
-두 방식 모두 [실행 제약](project-spec.md#실행-제약)에 따라 인터넷에 직접 공개하지 않는다.
-사설 PKI 인증서의 Subject Alternative Name (SAN)은 브라우저가 사용하는 Domain Name
-System (DNS) 이름을 포함한다.
+TLS는 Dashboard Nginx가 처리하며 프로젝트 전용 사설 Public Key Infrastructure (PKI)를 사용한다.
+CA 구성, 서버 인증서 주입, Nginx TLS 설정과 갱신 절차는 배포 Repository의 책임이다.
 
 GHCR container package는 public이다. 배포 환경은 공개 image를 pull할 때 별도 image pull
-자격 증명을 사용하지 않는다. 고정 사설 Internet Protocol (IP) 주소와 환경별 내부 service port는 배포 환경에서
+자격 증명을 사용하지 않는다. 고정 사설 IP와 환경별 내부 service port는 배포 환경에서
 결정한다.
 
 ## Runtime 설정
@@ -142,8 +141,8 @@ services:
 ```
 
 이미지의 HTTP server와 배포 Repository의 HTTPS server는 `/etc/nginx/includes/dashboard-site.conf`를
-server context에 포함한다. Dashboard Nginx가 TLS를 종료할 때 배포 Repository는 HTTPS
-server의 인증서 경로와 HTTP 8080 server의 접근 범위 및 redirect를 결정한다.
+server context에 포함한다. 배포 Repository는 HTTPS server의 인증서 경로를 지정하고 HTTP 8080
+server의 접근 범위와 redirect를 결정한다.
 
 ```nginx
 server {
@@ -205,9 +204,7 @@ upstream `zone`을 함께 선언해 컨테이너 IP 변경 뒤 Nginx가 이름�
 
 공통 HTTP proxy snippet은 HTTP/1.1, 빈 `Connection` 헤더, `Host`, `X-Real-IP`,
 `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Forwarded-Host`와 Nginx `$request_id`를 upstream에
-전달한다. `X-Forwarded-Proto`는 Dashboard Nginx의 `$scheme`을 사용하므로 앞단 TLS proxy가
-HTTP 8080으로 전달하면 upstream에 `http`가 전달된다. WebSocket signaling snippet은
-같은 헤더에 `Upgrade`, map으로 만든 `Connection`을
+전달한다. WebSocket signaling snippet은 같은 헤더에 `Upgrade`, map으로 만든 `Connection`을
 추가하고 `proxy_buffering off`를 적용한다. SSE streaming snippet은 buffering과 cache를
 비활성화한다. access log는 standard output에 JSON 한 줄로
 기록하며 시각, request ID, 원격 주소, method, query string을 제외한 URI, 상태, 전송량,
@@ -256,8 +253,6 @@ HTTPS 전용 응답 header가 필요하면 배포 Repository가 `/etc/nginx/secu
 유지한다.
 
 ## TLS 인증서 운영
-
-다음 절차는 Dashboard Nginx가 사설 PKI 인증서로 TLS를 직접 종료하는 배포에 적용한다.
 
 TLS 배포 산출물은 4개로 구분한다.
 
