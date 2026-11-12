@@ -8059,6 +8059,82 @@
         "title": "ScanReference",
         "type": "object"
       },
+      "ScanUpdateAlarm": {
+        "additionalProperties": false,
+        "description": "Optional operational alarm; never changes calculation freshness.",
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "confirm_after_ms": {
+            "const": 3000,
+            "title": "Confirm After Ms",
+            "type": "integer"
+          },
+          "last_valid_scan_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Valid Scan At"
+          },
+          "reason_codes": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "scan_age_ms": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Age Ms"
+          },
+          "state": {
+            "enum": [
+              "UNKNOWN",
+              "CLEAR",
+              "PENDING",
+              "ACTIVE",
+              "RECOVERING"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "active",
+          "scan_age_ms",
+          "last_valid_scan_at",
+          "confirm_after_ms",
+          "reason_codes"
+        ],
+        "title": "ScanUpdateAlarm",
+        "type": "object"
+      },
       "SectionBin": {
         "additionalProperties": false,
         "properties": {
@@ -8525,6 +8601,16 @@
             },
             "title": "Reason Codes",
             "type": "array"
+          },
+          "scan_update_alarm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScanUpdateAlarm"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "sensor_id": {
             "maxLength": 128,
@@ -18496,5 +18582,5 @@
     }
   },
   "x-source-repository": "https://github.com/ajin-scrap-monitoring/scrap-monitoring-backend",
-  "x-source-revision": "7a2d6902bdd078b1faf94ec04f03107edc0249f3"
+  "x-source-revision": "0ae47351afa1d252c18194926d7abfbd4f4a6f94"
 }
