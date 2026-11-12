@@ -42,6 +42,7 @@ cp .env.example .env
 | --- | --- | --- |
 | `VITE_APP_VERSION` | 개발 서버와 빠른 시작 정적 이미지 | 표시할 버전 문자열 |
 | `VITE_ENABLE_MOCK_DATA` | 빠른 시작 정적 이미지 | `true` 또는 `false` |
+| `VITE_DEV_DATA_SOURCE` | Vite 개발 서버 | 기본 data source인 `api` 또는 `mock` |
 | `VITE_MONITORING_API_VERSION` | 개발 서버와 정적 이미지 | 현재 Backend의 `v2` 또는 기존 모니터링의 `v1` |
 | `VITE_LIVE_VIDEO_MODE` | 개발 서버와 정적 이미지 | 현재 Media Service의 `mjpeg` 또는 v1 및 WebRTC-HTTP Egress Protocol (WHEP) 서비스의 `webrtc` |
 | `VITE_PIT_ID` | Vite 개발 서버 | Backend에 등록된 pit 식별자 |
@@ -148,7 +149,7 @@ sudo ./scripts/verify-container-integration.sh
 
 ```bash
 # 실제 서비스와 production 프론트엔드 이미지를 빌드하고 브라우저에서 연동을 검증한다.
-# 종료 시 이 검증이 만든 컨테이너, volume과 image를 제거한다.
+# 종료 시 이 검증이 만든 컨테이너, volume과 image를 제거하며 source checkout과 실행 디렉토리는 유지한다.
 sudo ./scripts/verify-service-integration.sh
 ```
 
@@ -168,7 +169,7 @@ sudo docker compose down --volumes
 두 통합 검증 스크립트는 정상 종료, 실패와 `Ctrl+C` 시 실행별 자원을 정리한다.
 SIGKILL 등으로 정리하지 못한 실행은 출력된 `Recovery command`로 회수한다.
 검증 로그와 산출물은 Git 추적 대상이 아니며 저장 위치와 recovery 절차는
-[개발 환경](docs/development.md#개발과-검증-컨테이너)을 따른다.
+[검증 기준](docs/testing.md#컨테이너-통합-검증)을 따른다.
 
 ## 배포
 
