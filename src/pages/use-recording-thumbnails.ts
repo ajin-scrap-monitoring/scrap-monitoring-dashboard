@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import type { DashboardDataSource } from "../data/dashboard-data-source";
 import type { EventExportStatus } from "../data/event-recordings";
@@ -35,6 +35,18 @@ export type ThumbnailStore = {
   getSnapshot: (this: void) => Record<string, ThumbnailCacheEntry>;
 };
 
+let cacheSource: DashboardDataSource | undefined;
+let cacheUser: string | undefined;
+let readyCache: Record<string, ThumbnailCacheEntry> = {};
+
+function canReuseReady(entry: ThumbnailCacheEntry, recordings: Recording[]): boolean {
+  const { target } = entry;
+  if (target.kind === "dailyDate") return false;
+  if (target.kind !== "daily") return true;
+  const matching = recordings.filter(({ daily }) => daily && daily.id === target.id);
+  return matching.length > 0 && matching.every(({ daily }) => daily?.status === "closed" || daily?.status === "failed");
+}
+
 export function createThumbnailStore(): ThumbnailStore {
   let state: Record<string, ThumbnailCacheEntry> = {};
   const listeners = new Set<() => void>();
@@ -42,7 +54,8 @@ export function createThumbnailStore(): ThumbnailStore {
   return {
     get: (key: string) => state[key],
     update: (key: string, updater: (prev?: ThumbnailCacheEntry) => ThumbnailCacheEntry) => {
-      state = { ...state, [key]: updater(state[key]) };
+      const entry = updater(state[key]);
+      state = { ...state, [key]: entry };
       listeners.forEach((listener) => listener());
     },
     subscribe: (listener: () => void) => {
@@ -96,13 +109,39 @@ export function useRecordingThumbnails({
   pagedRecordings,
   selectedRecording,
   eventExport,
+  userId,
 }: {
   dataSource?: DashboardDataSource;
   pagedRecordings: Recording[];
   selectedRecording?: Recording;
   eventExport?: EventExportStatus | null;
+  userId?: string;
 }) {
-  const [store] = useState(() => createThumbnailStore());
+  const storeContext = useMemo(() => ({ store: createThumbnailStore(), dataSource, userId }), [dataSource, userId]);
+  const store = storeContext.store;
+  const recordingsRef = useRef<Recording[]>([]);
+  useEffect(() => {
+    recordingsRef.current = selectedRecording ? [...pagedRecordings, selectedRecording] : pagedRecordings;
+  }, [pagedRecordings, selectedRecording]);
+  useEffect(() => {
+    if (cacheSource !== dataSource || cacheUser !== userId) {
+      cacheSource = dataSource;
+      cacheUser = userId;
+      readyCache = {};
+    }
+    const cache = readyCache;
+    for (const [key, entry] of Object.entries(cache)) {
+      if (canReuseReady(entry, recordingsRef.current)) store.update(key, () => entry);
+      else delete cache[key];
+    }
+    return store.subscribe(() => {
+      if (cache !== readyCache) return;
+      for (const [key, entry] of Object.entries(store.getSnapshot())) {
+        if (entry.info?.status === "ready" && canReuseReady(entry, recordingsRef.current)) cache[key] = { target: entry.target, info: entry.info, pollCount: 0 };
+        else delete cache[key];
+      }
+    });
+  }, [store, dataSource, userId]);
   const thumbnails = useSyncExternalStore(store.subscribe, store.getSnapshot);
 
   const [knownClipIds, setKnownClipIds] = useState<Record<string, string>>({});

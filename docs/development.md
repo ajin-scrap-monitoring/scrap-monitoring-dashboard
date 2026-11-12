@@ -66,6 +66,7 @@ Vite는 서버의 `127.0.0.1:5173`에만 공개한다. gateway에는 host port�
 서비스의 external Docker network에 연결한다. v2와 MJPEG를 사용하며 API 실패를 v1이나
 synthetic data로 대체하지 않는다. Backend와 Media Service의 배포 및 상태 확인은 이
 script의 범위가 아니다.
+gateway는 gzip을 지원하는 요청에 대해 1024 byte 이상인 `application/json` 응답을 gzip으로 압축하며 SSE, 영상과 이미지는 압축하지 않는다.
 
 Source 동기화 client에는 Git, OpenSSH와 `--from0`, `--delete-missing-args`를 지원하는 rsync가
 필요하다. 서버에는 Docker Engine, Compose plugin, 기존 서비스 network와 비대화형

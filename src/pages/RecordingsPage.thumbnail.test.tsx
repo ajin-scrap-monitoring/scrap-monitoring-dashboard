@@ -1,10 +1,11 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ThumbnailInfo, ThumbnailTarget } from "../data/recording-thumbnail";
 import type { DailyRecordingFull } from "../domain/daily-recording";
 import type { EventReplay, Recording, UserSession } from "../domain/dashboard";
 import { RecordingsPage } from "./RecordingsPage";
+import { useRecordingThumbnails } from "./use-recording-thumbnails";
 
 vi.mock("../components/DailyRecordingVideo", () => ({
   default: ({ label, poster, onError }: { label: string; poster?: string; onError: () => void }) => (
@@ -147,6 +148,69 @@ describe("RecordingsPage thumbnail", () => {
       replay: options.replay,
     };
   }
+
+  it("ready 결과를 재진입에 재사용하고 계정과 source 변경 시 다시 조회한다", async () => {
+    const recording = createDailyRecording("1");
+    const getThumbnailInfo = vi.fn().mockResolvedValue({ kind: "daily", id: recording.id, cameraId: "cam-1", status: "ready",
+      contentPath: `/media/daily-recordings/${recording.id}/thumbnail`, width: 640, height: 360, sizeBytes: 1000,
+      reasonCode: null, representativeAt: null, timeBasis: null, generatedAt: null });
+    const source = { getDashboardData: () => Promise.resolve({} as never), getRecording: vi.fn().mockResolvedValue(recording), getThumbnailInfo };
+    const props = { headerNotifications: [], reception: { status: "connected" as const, lastReceivedAt: "2026-10-20T00:00:00Z" },
+      recordings: [recording], recordingsSource: "daily" as const, dataSource: source, session: adminSession };
+    const first = render(<RecordingsPage {...props} />);
+    await act(async () => { await Promise.resolve(); });
+    const img = first.container.querySelector(`img[src="/media/daily-recordings/${recording.id}/thumbnail"]`);
+    expect(img).toHaveAttribute("loading", "lazy");
+    expect(img).toHaveAttribute("decoding", "async");
+    first.unmount();
+    const second = render(<RecordingsPage {...props} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(getThumbnailInfo).toHaveBeenCalledTimes(1);
+    second.unmount();
+    const third = render(<RecordingsPage {...props} session={viewerSession} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(getThumbnailInfo).toHaveBeenCalledTimes(2);
+    third.unmount();
+    render(<RecordingsPage {...props} dataSource={{ ...source }} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(getThumbnailInfo).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(["recording", "finalizing"] as const)("날짜 녹화 status가 %s이면 기존 ready 정보도 재사용하지 않는다", async (status) => {
+    const closed = createDailyRecording("1");
+    const active = createDailyRecording("1", { status });
+    const getThumbnailInfo = vi.fn().mockResolvedValue({ kind: "daily", id: closed.id, status: "ready",
+      contentPath: `/media/daily-recordings/${closed.id}/thumbnail` });
+    const dataSource = { getDashboardData: () => Promise.resolve({} as never), getThumbnailInfo };
+    const first = renderHook(() => useRecordingThumbnails({ dataSource, pagedRecordings: [closed] }));
+    await act(async () => { await Promise.resolve(); });
+    first.unmount();
+    const second = renderHook(() => useRecordingThumbnails({ dataSource, pagedRecordings: [active] }));
+    await act(async () => { await Promise.resolve(); });
+    expect(getThumbnailInfo).toHaveBeenCalledTimes(2);
+    second.unmount();
+    renderHook(() => useRecordingThumbnails({ dataSource, pagedRecordings: [active] }));
+    await act(async () => { await Promise.resolve(); });
+    expect(getThumbnailInfo).toHaveBeenCalledTimes(3);
+  });
+
+  it("날짜 대표 이미지는 완료된 날짜 녹화가 화면에 있어도 재진입 시 다시 조회한다", async () => {
+    const daily = createDailyRecording("1");
+    const event = createEventRecording("1", "event-1", { dailyThumbnailInfoPath: `/api/v2/recordings/daily/by-date/${daily.date}/thumbnail-info` });
+    const getThumbnailInfo = vi.fn((target: ThumbnailTarget): Promise<ThumbnailInfo> => Promise.resolve({
+      kind: target.kind, id: daily.id, recordingId: daily.id, cameraId: "cam-1", status: "ready",
+      contentPath: `/media/daily-recordings/${daily.id}/thumbnail`, width: 640, height: 360, sizeBytes: 1000,
+      reasonCode: null, representativeAt: null, timeBasis: null, generatedAt: null,
+    }));
+    const dataSource = { getDashboardData: () => Promise.resolve({} as never), getThumbnailInfo };
+    const first = renderHook(() => useRecordingThumbnails({ dataSource, pagedRecordings: [event, daily] }));
+    await act(async () => { await Promise.resolve(); });
+    first.unmount();
+    renderHook(() => useRecordingThumbnails({ dataSource, pagedRecordings: [event, daily] }));
+    await act(async () => { await Promise.resolve(); });
+    expect(getThumbnailInfo.mock.calls.filter(([target]) => target.kind === "dailyDate")).toHaveLength(2);
+    expect(getThumbnailInfo.mock.calls.filter(([target]) => target.kind === "daily")).toHaveLength(1);
+  });
 
   it("현재 보이는 항목 중 조건에 맞는 항목(recording, finalizing, closed, failed)만 정보 GET을 실행하고 expired, deleted는 요청하지 않는다", async () => {
     const r1 = createDailyRecording("1", { status: "closed", exportState: "ready" });

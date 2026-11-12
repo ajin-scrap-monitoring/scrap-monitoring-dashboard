@@ -1,7 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { calculateUnmeasuredRanges } from "../data/lidar-profiles-v2";
+import type { LoadHistorySample } from "../domain/dashboard";
+import * as displayTime from "../display-time";
 import { LoadChart, MeasurementDiagram, ProfileChart } from "./MonitoringVisuals";
 
 test("측정 참고도의 SVG 태그, 좌표, 색상과 순서를 고정한다", () => {
@@ -322,4 +324,50 @@ test("ProfileChart 곡선과 평균이 모두 유지 중일 때 보조 표기를
     />,
   );
   expect(container.querySelector('text[y="12"]')).toHaveTextContent("시뮬레이션, 곡선 갱신 대기, 평균 갱신 대기");
+});
+
+vi.mock("../display-time", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../display-time")>();
+  return { ...actual, seoulClock: vi.fn(actual.seoulClock) };
+});
+
+function loadSamples(lastValue = 50): LoadHistorySample[] {
+  return [
+    { measuredAt: "2026-09-09T09:00:00+09:00", time: "09:00", value: 44 },
+    { measuredAt: "2026-09-09T10:00:00+09:00", time: "10:00", value: null },
+    { measuredAt: "2026-09-09T11:00:00+09:00", time: "11:00", value: lastValue, reasonCodes: ["A"] },
+  ];
+}
+
+test("같은 내용의 새 표본 배열은 그래프 계산을 재사용하고 바뀐 표본은 다시 계산한다", () => {
+  const clock = vi.mocked(displayTime.seoulClock);
+  const { container, rerender } = render(<LoadChart threshold={80} thresholdKind="current" samples={loadSamples()} />);
+  const initialMarkup = container.innerHTML;
+  const initialCalls = clock.mock.calls.length;
+  expect(initialCalls).toBeGreaterThan(0);
+
+  rerender(<LoadChart threshold={80} thresholdKind="current" samples={loadSamples()} />);
+  expect(clock.mock.calls.length).toBe(initialCalls);
+  expect(container.innerHTML).toBe(initialMarkup);
+
+  rerender(<LoadChart threshold={70} thresholdKind="current" samples={loadSamples()} />);
+  expect(clock.mock.calls.length).toBe(initialCalls);
+  expect(container.innerHTML).not.toBe(initialMarkup);
+
+  rerender(<LoadChart threshold={80} thresholdKind="current" samples={loadSamples(51)} />);
+  expect(clock.mock.calls.length).toBeGreaterThan(initialCalls);
+  expect(container.querySelectorAll(".chart-point-target")[1]).toHaveAttribute("aria-label", expect.stringContaining("51%"));
+
+  const afterValueChange = clock.mock.calls.length;
+  const changedTime = loadSamples(51);
+  changedTime[0] = { ...changedTime[0], measuredAt: "2026-09-09T09:30:00+09:00" };
+  rerender(<LoadChart threshold={80} thresholdKind="current" samples={changedTime} />);
+  expect(clock.mock.calls.length).toBeGreaterThan(afterValueChange);
+
+  const afterTimeChange = clock.mock.calls.length;
+  const changedReason = loadSamples(51);
+  changedReason[0] = { ...changedReason[0], measuredAt: "2026-09-09T09:30:00+09:00" };
+  changedReason[2] = { ...changedReason[2], reasonCodes: ["B"] };
+  rerender(<LoadChart threshold={80} thresholdKind="current" samples={changedReason} />);
+  expect(clock.mock.calls.length).toBeGreaterThan(afterTimeChange);
 });
