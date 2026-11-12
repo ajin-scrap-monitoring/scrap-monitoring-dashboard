@@ -252,6 +252,18 @@ HTTPS 전용 응답 header가 필요하면 배포 Repository가 `/etc/nginx/secu
 설정과 FastAPI 구현에 기록한다. 이 Repository에는 환경 독립적인 공통 설정과 검증만
 유지한다.
 
+## 배포 시 고려사항
+
+배포 Repository가 이 이미지를 실행할 때 확인할 항목은 4개다. 인증서 이름과 단말의 Root CA 설치는
+[최초 발급과 배포](#최초-발급과-배포), HTTP 8080 server의 접근 범위는 [Runtime 설정](#runtime-설정)을 따른다.
+
+| 항목 | 고려사항 |
+| --- | --- |
+| HTTPS port의 bind 주소와 시작 순서 | 443을 VPN interface 같은 특정 주소에만 bind하면 host 재부팅 때 Docker가 그 주소가 생기기 전에 컨테이너를 시작해 port bind에 실패할 수 있음. 재부팅 뒤 컨테이너 상태 확인 또는 해당 interface 준비 뒤의 시작 순서 보장 필요 |
+| `runtime/*.conf`의 적용 범위 | `dashboard-site.conf`가 include하므로 HTTP 8080과 HTTPS server 모두에 적용. 이미지가 정의한 `location /`, `location = /healthz`, `location = /index.html`, `location /assets/`와 runtime JSON 경로를 다시 정의하면 `nginx -t`가 중복 location으로 실패 |
+| 서버 개인 키의 읽기 권한 | Nginx 사용자 `101`이 Docker Secret으로 연결한 개인 키를 읽어야 함. 개인 키 group을 `101`로 바꿀 수 없으면 개인 키 파일의 group ID를 컨테이너의 `group_add`로 부여 |
+| Backend session cookie의 `Secure` 속성 | Backend는 자체 설정(`APP_ENV`)에 따라 session cookie에 `Secure`를 붙이며 브라우저는 `Secure` cookie를 HTTPS 응답에서만 저장. Backend 설정과 브라우저의 접속 scheme 일치 필요 |
+
 ## TLS 인증서 운영
 
 TLS 배포 산출물은 4개로 구분한다.
