@@ -256,6 +256,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
     pagedRecordings,
     selectedRecording,
     eventExport,
+    userId: currentUserId,
   });
   const selectedSource = selectedRecording?.source ?? "event";
   const selectedSample = selectedRecording?.sample;
@@ -986,10 +987,10 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                     {(() => {
                       const dynamicThumbnailUrl = getThumbnailUrl(recording);
                       if (dynamicThumbnailUrl) {
-                        return <img src={dynamicThumbnailUrl} alt="" onError={() => handleRecordingImageError(recording)} />;
+                        return <img loading="lazy" decoding="async" src={dynamicThumbnailUrl} alt="" onError={() => handleRecordingImageError(recording)} />;
                       }
                       return recording.thumbnailUrl || recording.sample
-                        ? <img src={recording.thumbnailUrl ?? cameraFrame} alt="" />
+                        ? <img loading="lazy" decoding="async" src={recording.thumbnailUrl ?? cameraFrame} alt="" />
                         : <span className="recording-thumbnail-empty" aria-hidden="true">미리보기 없음</span>;
                     })()}
                     <span className="recording-item-main">
