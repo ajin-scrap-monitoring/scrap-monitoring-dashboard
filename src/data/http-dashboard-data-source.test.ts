@@ -3440,11 +3440,34 @@ describe("HTTP 대시보드 데이터 소스", () => {
         } finally { vi.useRealTimers(); }
       });
 
-      test("조회 실패로 유지한 곡선은 최소, 최대와 시뮬레이션 표기를 함께 유지하고 3초 뒤 비운다", async () => {
+      test.each([
+        ["404", () => Promise.resolve(new Response(null, { status: 404 }))],
+        ["422", () => Promise.resolve(new Response(null, { status: 422 }))],
+        ["REQUEST_TIMEOUT 코드가 있는 422", () => Promise.resolve(new Response(JSON.stringify({ detail: "REQUEST_TIMEOUT" }), { status: 422, headers: { "Content-Type": "application/json" } }))],
+        ["해석 실패", profileResponse({ pitId: "pit-01", profiles: [{ sensorId: "lidar-a" }] })],
+      ])("%s 응답은 곡선과 대표값을 즉시 비우고 이후 503에서도 복원하지 않는다", async (_name, invalid) => {
         vi.useFakeTimers();
         try {
           const run = await start(profileResponse(validProfiles("2026-11-11T06:00:00Z")));
+          expect(run.latest()?.monitoring.lidarProfiles[0]).toMatchObject({ average: "2.00 m", samples: [{ positionRatio: 0.5, height: 2 }] });
+          run.set(invalid);
+          await vi.advanceTimersByTimeAsync(1000);
+          expect(run.latest()?.monitoring.lidarProfiles).toEqual([]);
           run.set(failure);
+          await vi.advanceTimersByTimeAsync(1000);
+          expect(run.latest()?.monitoring.lidarProfiles).toEqual([]);
+          run.activation.release();
+        } finally { vi.useRealTimers(); }
+      });
+
+      test.each([
+        ["503", failure],
+        ["네트워크 오류", () => Promise.reject(new TypeError("network error"))],
+      ])("%s 실패로 유지한 곡선은 최소, 최대와 시뮬레이션 표기를 함께 유지하고 3초 뒤 비운다", async (_name, transientFailure) => {
+        vi.useFakeTimers();
+        try {
+          const run = await start(profileResponse(validProfiles("2026-11-11T06:00:00Z")));
+          run.set(transientFailure);
           await vi.advanceTimersByTimeAsync(1000);
           const held = run.latest()?.monitoring.lidarProfiles[0];
           expect(held).toMatchObject({ curveHeld: true, averageHeld: true, average: "2.00 m", minimum: "1.90 m", maximum: "2.10 m", simulated: true });
@@ -3452,6 +3475,28 @@ describe("HTTP 대시보드 데이터 소스", () => {
           await vi.advanceTimersByTimeAsync(2000);
           // 만료 뒤에도 조회 실패가 이어지면 기존 실패 표시처럼 곡선 목록을 비운다.
           expect(run.latest()?.monitoring.lidarProfiles.some((profile) => profile.curveHeld || profile.samples.length > 0)).toBe(false);
+          run.activation.release();
+        } finally { vi.useRealTimers(); }
+      });
+
+      test("profile 요청의 10초 deadline이 만료되면 곡선과 대표값을 비우고 조회를 재개한다", async () => {
+        vi.useFakeTimers();
+        try {
+          const run = await start(profileResponse(validProfiles("2026-11-11T06:00:00Z")));
+          let calls = 0;
+          run.set(() => {
+            calls += 1;
+            return calls === 1 ? new Promise<Response>(() => undefined) : failure();
+          });
+          await vi.advanceTimersByTimeAsync(1000);
+          await vi.advanceTimersByTimeAsync(9999);
+          expect(run.latest()?.monitoring.lidarProfiles[0]).toMatchObject({ average: "2.00 m", samples: [{ positionRatio: 0.5, height: 2 }] });
+          expect(calls).toBe(1);
+          await vi.advanceTimersByTimeAsync(1);
+          expect(run.latest()?.monitoring.lidarProfiles).toEqual([]);
+          await vi.advanceTimersByTimeAsync(1);
+          expect(calls).toBe(2);
+          expect(run.latest()?.monitoring.lidarProfiles).toEqual([]);
           run.activation.release();
         } finally { vi.useRealTimers(); }
       });

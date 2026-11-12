@@ -835,17 +835,30 @@ export function createHttpDashboardDataSource({
   const requestLidarProfiles = async (controller: AbortController) => {
     const startedAt = performance.now();
     const current = () => controller === lidarProfilesController && !controller.signal.aborted;
+    let response: unknown;
+    let requestSucceeded = false;
     try {
-      const profiles = parseLidarProfilesV2(await request<unknown>(pitPath("/api/v2/monitoring/profiles"), { signal: controller.signal }), pitId);
-      if (!current()) return;
-      applyLidarProfiles(profiles, false);
+      response = await request<unknown>(pitPath("/api/v2/monitoring/profiles"), { signal: controller.signal });
+      requestSucceeded = true;
     } catch (error) {
       if (!current()) return;
       if (isAuthorizationError(error)) {
         publishAuthorizationError(error);
         return;
       }
-      applyLidarProfiles(null, true);
+      const isTransientFailure = error instanceof TypeError
+        || (error instanceof ApiError && error.status >= 500);
+      applyLidarProfiles(null, isTransientFailure);
+    }
+    if (requestSucceeded) {
+      let profiles: ReturnType<typeof parseLidarProfilesV2> | null = null;
+      try {
+        profiles = parseLidarProfilesV2(response, pitId);
+      } catch {
+        // 해석 오류는 무효 응답으로 처리한다.
+      }
+      if (!current()) return;
+      applyLidarProfiles(profiles, false);
     }
     if (!current() || !lidarProfilesActive()) return;
     lidarProfilesTimer = setTimeout(() => {
