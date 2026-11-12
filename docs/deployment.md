@@ -84,7 +84,10 @@ Repository는 tag가 아닌 digest로 이미지를 선택한다. 화면의 버�
 `src/application-version.ts`의 기본값을 사용한다.
 
 Release workflow는 공개 runtime 설정 예시, JSON schema, Git 추적 Nginx 설정 archive,
-image 참조와 `SHA256SUMS`를 draft Release에 첨부한 뒤 게시한다. Release의 tag와 asset은
+[배포 참조 예시](#배포-참조-예시) archive(`deployment-example.tar.gz`), 외부 계약 manifest
+(`contract-manifest.json`), image 참조와 `SHA256SUMS`를 draft Release에 첨부한 뒤 게시한다.
+`contract-manifest.json`은 해당 이미지가 검증된 Backend, Camera Media Service와 Edge의 source
+revision이며 정본은 [계약 manifest](contracts/backend/manifest.json)다. Release의 tag와 asset은
 게시 후 변경하지 않는다. job에 부여한 `contents: write`는 Release 게시에,
 `packages: write`는 image 게시에 사용한다.
 
@@ -121,39 +124,19 @@ runtime `pitId`는 두 경계가 함께 사용하는 1~50자의 공통 범위를
 문자 pattern은 없으며 값을 정규화하지 않고 query parameter로 encode한다.
 Unicode 길이는 code point로 계산한다.
 `cameraId`는 Backend의 `MEDIA_CAMERA_ID`와 gateway 경로 규칙을 따라 1~128자의
-`[A-Za-z0-9][A-Za-z0-9._~-]*` 전체 일치만 허용한다. Media Service에 등록된 camera와
-Backend의 `MEDIA_PIT_ID`, `MEDIA_CAMERA_ID` 및 `EDGE_V2_MONITORING_SOURCES` 설정을 맞추는
-책임은 배포 Repository에 있다. 이 검증은 서비스의 등록 여부 조회나 접근 권한 검사를
+`[A-Za-z0-9][A-Za-z0-9._~-]*` 전체 일치만 허용한다. 두 식별자와 맞출 Backend 및 Media Service
+설정은 [다른 컴포넌트와 맞출 설정](#다른-컴포넌트와-맞출-설정)을 따른다. 이 검증은 서비스의 등록 여부 조회나 접근 권한 검사를
 대신하지 않는다. 확인한 외부 source revision은 Backend 계약의 manifest를 따른다.
 
 배포 Repository는 Git 외부의 host JSON 파일을 `/usr/share/nginx/html/runtime-config.json`에
 읽기 전용으로 mount한다. Nginx 사용자 `101`이 읽을 수 있는 `0644` 등 적절한 mode를 사용한다.
-이미지에는 runtime JSON 기본 파일이나 환경별 식별자를 넣지 않는다.
-
-```yaml
-services:
-  dashboard:
-    volumes:
-      - type: bind
-        source: "${DASHBOARD_RUNTIME_CONFIG_FILE:?}"
-        target: /usr/share/nginx/html/runtime-config.json
-        read_only: true
-```
+이미지에는 runtime JSON 기본 파일이나 환경별 식별자를 넣지 않는다. mount 예시는
+[`deploy/example/compose.yaml`](../deploy/example/compose.yaml)이다.
 
 이미지의 HTTP server와 배포 Repository의 HTTPS server는 `/etc/nginx/includes/dashboard-site.conf`를
 server context에 포함한다. 배포 Repository는 HTTPS server의 인증서 경로를 지정하고 HTTP 8080
-server의 접근 범위와 redirect를 결정한다.
-
-```nginx
-server {
-    listen 8443 ssl;
-    server_name _;
-    server_tokens off;
-    ssl_certificate /run/certs/dashboard-fullchain.pem;
-    ssl_certificate_key /run/secrets/dashboard_tls_private_key;
-    include /etc/nginx/includes/dashboard-site.conf;
-}
-```
+server의 접근 범위와 redirect를 결정한다. HTTPS server 예시는
+[`deploy/example/nginx/https.conf`](../deploy/example/nginx/https.conf)다.
 
 공통 설정은 runtime JSON 파일에 `Cache-Control: no-store`를 적용한다. 파일이 없으면 `404`를
 반환한다. HTTP data source의 설정은 전체 페이지 로드(document 탐색 또는 새로고침)와
@@ -213,7 +196,7 @@ upstream `zone`을 함께 선언해 컨테이너 IP 변경 뒤 Nginx가 이름�
 MJPEG, HLS와 MP4 location은 Backend의 session 검사와 Media Service proxy를 조합하며 인증 Cookie와
 service token을 Media Service에 전달하지 않는다. MP4의 Range header와 응답은 보존하고
 MJPEG의 buffering을 비활성화한다. 기본 이미지에는 환경별 location을 포함하지 않는다.
-날짜 녹화 location은 `integration/nginx/runtime.conf`처럼 각 요청에 `auth_request`를 적용하고
+날짜 녹화 location은 각 요청에 `auth_request`를 적용하고
 `/etc/nginx/includes/proxy-daily-recording.conf`와 Media upstream을 지정한다. 이 snippet은
 `GET`과 `HEAD` 및 허용한 경로만 전달하고 Media 경로와 HLS 목록 내부 경로를 변환한다.
 실제 브라우저와 Media의 경로 목록 및 인증 계약은
@@ -230,7 +213,8 @@ internal로 보호되는 이 경로는 `/api/$1`로 rewrite한 뒤 Media upstrea
 보장하고 upstream의 같은 header를 숨겨 중복을 방지한다. 검증 응답은 auth snippet이 `Cache-Control: no-store`를
 붙인다. 이미지 응답은 Media의 `Cache-Control`을 숨기고 Backend가 `X-Accel-Redirect`와 함께 보낸 `Cache-Control`을
 사용한다. 운영 배포 Repository는 `runtime/*.conf`에 이와
-동일한 썸네일 location 3개를 주입해야 한다.
+동일한 썸네일 location 3개를 주입해야 한다. 영상, 날짜 녹화와 썸네일 location의 예시는
+[`20-dashboard-locations.conf`](../deploy/example/nginx/runtime/20-dashboard-locations.conf)다.
 
 선택적 WebRTC 모드는 signaling만 FastAPI에 전달하고 미디어는 Nginx를 경유하지 않는다.
 FastAPI readiness endpoint는 upstream 컨테이너의 healthcheck와 배포 orchestration이 사용한다.
@@ -254,9 +238,35 @@ HTTPS 전용 응답 header가 필요하면 배포 Repository가 `/etc/nginx/secu
 설정과 FastAPI 구현에 기록한다. 이 Repository에는 환경 독립적인 공통 설정과 검증만
 유지한다.
 
+## 배포 참조 예시
+
+[`deploy/example/`](../deploy/example)은 배포 Repository가 이 이미지를 HTTPS로 실행하는 참조
+구성이며 파일은 5개다. Container job의 TLS 통합 검사가 예시 compose의 해석과 예시 Nginx
+설정의 `nginx -t`를 확인한다.
+
+| 파일 | 내용 | 배포 환경에서 정하는 값 |
+| --- | --- | --- |
+| `compose.yaml` | 읽기 전용 실행, HTTPS port 공개, 인증서 mount, 개인 키 Docker Secret, runtime 설정과 Nginx 설정 mount | 없음(값은 env 파일에서 읽음) |
+| `example.env` | `compose.yaml`이 읽는 환경변수 8개 | image digest, bind 주소와 port, 인증서와 개인 키 경로, 개인 키 group ID, runtime 설정 경로, Docker network |
+| `nginx/https.conf` | 8443 HTTPS server와 공통 server 설정 include | TLS protocol 정책 |
+| `nginx/upstreams/10-dashboard-upstreams.conf` | Docker DNS resolver, Backend와 Media upstream, 구간 파일 다운로드 query map | upstream의 Docker service 이름과 port |
+| `nginx/runtime/20-dashboard-locations.conf` | API, SSE, 실시간 영상, 날짜 녹화와 썸네일 location | timeout, request body 최대 크기, rate limit 추가 여부 |
+
+### 다른 컴포넌트와 맞출 설정
+
+배포 Repository가 Dashboard와 다른 컴포넌트 사이에서 일치시킬 설정은 5개다.
+
+| 설정 | Dashboard 값 | 맞출 대상 |
+| --- | --- | --- |
+| pit 식별자 | runtime 설정의 `pitId` | Backend의 `MEDIA_PIT_ID`와 `EDGE_V2_MONITORING_SOURCES`의 `pit_id` |
+| camera 식별자 | runtime 설정의 `cameraId` | Backend의 `MEDIA_CAMERA_ID`와 Camera Media Service에 등록된 camera |
+| upstream 주소 | 예시 upstream의 `server` | Backend와 Camera Media Service의 Docker service 이름과 port |
+| 영상과 썸네일 검사 경로 | 내부 location의 `/api/v1/media/access` 호출과 `/_thumbnail/` 내부 경로 | Backend의 media access API와 썸네일 `X-Accel-Redirect` 응답 경로 |
+| session cookie의 `Secure` 속성 | 브라우저의 HTTPS 접속 | Backend의 `APP_ENV`. 브라우저는 `Secure` cookie를 HTTPS 응답에서만 저장 |
+
 ## 배포 시 고려사항
 
-배포 Repository가 이 이미지를 실행할 때 확인할 항목은 4개다. 인증서 이름과 단말의 Root CA 설치는
+배포 Repository가 이 이미지를 실행할 때 확인할 항목은 3개다. 인증서 이름과 단말의 Root CA 설치는
 [최초 발급과 배포](#최초-발급과-배포), HTTP 8080 server의 접근 범위는 [Runtime 설정](#runtime-설정)을 따른다.
 
 | 항목 | 고려사항 |
@@ -264,7 +274,6 @@ HTTPS 전용 응답 header가 필요하면 배포 Repository가 `/etc/nginx/secu
 | HTTPS port의 bind 주소와 시작 순서 | 443을 VPN interface 같은 특정 주소에만 bind하면 host 재부팅 때 Docker가 그 주소가 생기기 전에 컨테이너를 시작해 port bind에 실패할 수 있음. 재부팅 뒤 컨테이너 상태 확인 또는 해당 interface 준비 뒤의 시작 순서 보장 필요 |
 | `runtime/*.conf`의 적용 범위 | `dashboard-site.conf`가 include하므로 HTTP 8080과 HTTPS server 모두에 적용. 이미지가 정의한 `location /`, `location = /healthz`, `location = /index.html`, `location /assets/`와 runtime JSON 경로를 다시 정의하면 `nginx -t`가 중복 location으로 실패 |
 | 서버 개인 키의 읽기 권한 | Nginx 사용자 `101`이 Docker Secret으로 연결한 개인 키를 읽어야 함. 개인 키 group을 `101`로 바꿀 수 없으면 개인 키 파일의 group ID를 컨테이너의 `group_add`로 부여 |
-| Backend session cookie의 `Secure` 속성 | Backend는 자체 설정(`APP_ENV`)에 따라 session cookie에 `Secure`를 붙이며 브라우저는 `Secure` cookie를 HTTPS 응답에서만 저장. Backend 설정과 브라우저의 접속 scheme 일치 필요 |
 
 ## TLS 인증서 운영
 

@@ -118,7 +118,8 @@ jobs:
           release_directory=$(mktemp -d "$RUNNER_TEMP/dashboard-release.XXXXXXXX")
           bash scripts/prepare-release-assets.sh "$release_directory" "$IMAGE_REFERENCE"
           gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "$GITHUB_REF_NAME" \
-            --notes "Source: $GITHUB_SHA. Image: $IMAGE_REFERENCE. Runtime 설정 예시와 schema 및 Nginx 공개 설정을 함께 제공한다." \
+            --notes "Source: $GITHUB_SHA. Image: $IMAGE_REFERENCE. Runtime 설정 예시와 schema, Nginx 공개 설정, 배포 참조 예시와 검증한 외부 계약 manifest를 함께 제공한다." \
             "$release_directory/runtime-config.example.json" "$release_directory/runtime-config.schema.json" \
-            "$release_directory/nginx-config.tar.gz" "$release_directory/image-reference.txt" "$release_directory/SHA256SUMS"
+            "$release_directory/nginx-config.tar.gz" "$release_directory/deployment-example.tar.gz" \
+            "$release_directory/contract-manifest.json" "$release_directory/image-reference.txt" "$release_directory/SHA256SUMS"
           gh release edit "$GITHUB_REF_NAME" --draft=false --latest

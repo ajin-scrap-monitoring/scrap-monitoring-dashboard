@@ -50,9 +50,9 @@ await test("Release 배포 파일은 공개 설정, digest와 검증 가능한 c
   try {
     const result = spawnSync("bash", ["scripts/prepare-release-assets.sh", directory, image], { cwd: repositoryRoot, encoding: "utf8", timeout: 10_000 });
     assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual((await readdir(directory)).sort(), ["SHA256SUMS", "image-reference.txt", "nginx-config.tar.gz", "runtime-config.example.json", "runtime-config.schema.json"]);
+    assert.deepEqual((await readdir(directory)).sort(), ["SHA256SUMS", "contract-manifest.json", "deployment-example.tar.gz", "image-reference.txt", "nginx-config.tar.gz", "runtime-config.example.json", "runtime-config.schema.json"]);
     assert.equal(await readFile(join(directory, "image-reference.txt"), "utf8"), `${image}\n`);
-    for (const [asset, source] of [["runtime-config.example.json", "runtime-config.example.json"], ["runtime-config.schema.json", "docs/contracts/runtime-config.schema.json"]]) {
+    for (const [asset, source] of [["runtime-config.example.json", "runtime-config.example.json"], ["runtime-config.schema.json", "docs/contracts/runtime-config.schema.json"], ["contract-manifest.json", "docs/contracts/backend/manifest.json"]]) {
       assert.equal(await readFile(join(directory, asset), "utf8"), await readFile(join(repositoryRoot, source), "utf8"));
     }
     const checksums = spawnSync("sha256sum", ["--check", "SHA256SUMS"], { cwd: directory, encoding: "utf8" });
@@ -64,6 +64,12 @@ await test("Release 배포 파일은 공개 설정, digest와 검증 가능한 c
     assert.equal(archive.stdout, expected.stdout);
     assert.match(archive.stdout, /nginx\/includes\/runtime-config\.conf/);
     assert.match(archive.stdout, /^nginx\/includes\/dashboard-site\.conf$/m);
+    const exampleArchive = spawnSync("tar", ["--list", "--gzip", "--file", join(directory, "deployment-example.tar.gz")], { encoding: "utf8" });
+    assert.equal(exampleArchive.status, 0, exampleArchive.stderr);
+    const exampleExpected = spawnSync("git", ["ls-files", "deploy/example"], { cwd: repositoryRoot, encoding: "utf8" });
+    assert.equal(exampleExpected.status, 0, exampleExpected.stderr);
+    assert.equal(exampleArchive.stdout, exampleExpected.stdout);
+    assert.match(exampleArchive.stdout, /^deploy\/example\/compose\.yaml$/m);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
