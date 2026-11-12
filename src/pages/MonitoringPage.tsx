@@ -53,7 +53,7 @@ const sensorNames: Record<string, string> = { "lidar-a": "LiDAR 1", "lidar-b": "
 function layoutPresentation(layout: MeasurementLayoutStatus | null | undefined) {
   if (layout === undefined) return null;
   if (layout === null) return { label: "배치 정보 없음", hint: undefined };
-  const label = layout.bindingState === "MISMATCH" || layout.state === "UNAVAILABLE" ? "배치 정보 확인 불가"
+  const label = layout.bindingState !== "MATCHED" || layout.state === "UNAVAILABLE" ? "배치 정보 확인 불가"
     : layout.state === "SIMULATION" ? "시뮬레이션 배치, 실측 설치 미확인"
       : layout.state === "PARTIAL" ? "일부 배치 정보 없음" : "실측 배치 미검증";
   const hint = [
