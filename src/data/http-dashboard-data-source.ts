@@ -847,7 +847,7 @@ export function createHttpDashboardDataSource({
         return;
       }
       const isTransientFailure = error instanceof TypeError
-        || (error instanceof ApiError && (error.code === "REQUEST_TIMEOUT" || error.status >= 500));
+        || (error instanceof ApiError && error.status >= 500);
       applyLidarProfiles(null, isTransientFailure);
     }
     if (requestSucceeded) {
