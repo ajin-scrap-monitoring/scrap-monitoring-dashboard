@@ -87,11 +87,15 @@ Vite는 TypeScript 파일을 JavaScript로 변환하지만 타입 검사를 수�
 `pnpm run typecheck`는 TypeScript 프로젝트 참조 전체를 검사한다. `pnpm run build`는
 같은 타입 검사를 통과한 뒤 Vite가 `dist/`에 정적 산출물을 생성한다. 현재 Vite
 빌드 출력 대상은 별도로 재정의하지 않으며 고정된 Vite 버전의 기본값을 사용한다.
-현재 개발 및 브라우저 검증 기준은 데스크톱 Chrome, 최소 너비 1280 Cascading Style
+제품 범위는 [프로젝트 명세](project-spec.md#범위)를 따른다. v1과 WHEP 코드는 선택 빌드
+검증 경계로 유지한다.
+
+코드 포맷은 별도 formatter 없이 ESLint 규칙만 적용한다.
+
+현재 개발 및 브라우저 검증 기준은 데스크톱 Chrome 151 이상, 최소 너비 1280 Cascading Style
 Sheets (CSS) 픽셀, 기본 Full HD (FHD) 1920 x 1080 뷰포트다. 높이를 초과하는
-콘텐츠는 페이지 세로 스크롤을 사용한다. 정확한 Chrome 최소 버전은 결정 대기 상태다. 실제
-접속 단말의 Chrome 버전을 확인한 뒤 Vite 빌드 출력과 브라우저 Web API (Application
-Programming Interface) 호환성을 검증한다.
+콘텐츠는 페이지 세로 스크롤을 사용한다. Chrome 최소 버전은 `@playwright/test` 1.62.1이
+검증하는 Chromium 151.0.7922.34를 기준으로 한다.
 
 ## 코드 구조와 작업 재개 기준
 
@@ -548,17 +552,13 @@ v1 SSE는 최근 event ID 1024개로 중복을 제거하고 알림함은 최근 
 
 다음 항목은 결정 대기 상태다.
 
-- Chrome 최소 버전, 빌드 출력 호환성과 브라우저 Web API 지원 범위
-- 코드 포맷 정책
 - 장기 운영의 계정 제공, session 저장 및 수명 정책
 - 실제 적재율 산출, calibration과 현장 측정 정확도
 - 센서와 화면 slot의 대응, 측정 영역 실측 배치와 실제 수거 작업 상태의 계약
-- 다중 pit 및 camera 선택, 수동 clip 생성과 미디어 정책 관리의 제품 범위
-- 선택적 WHEP 서비스의 지원 계약과 시청자 제한
-- 환경별 upstream, DNS, readiness, timeout, 요청 제한, TLS와 CSP 값
 
 제품 및 외부 의미의 상세 책임은 [계약 매핑](contracts/backend/frontend-mapping.md)을
-따른다. 확정한 기술 결정만 이 문서에 반영한다.
+따른다. 환경별 upstream, DNS, readiness, timeout, 요청 제한, TLS와 Content Security
+Policy (CSP) 값은 [배포 Repository 책임](deployment.md#제품-배포-경계)을 따른다.
 
 ## 제품 배포 경계
 

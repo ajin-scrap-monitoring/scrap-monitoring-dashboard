@@ -67,7 +67,7 @@ chmod 644 runtime-config.json
 ```
 
 배포 mount 경로, JSON schema와 오류 처리는
-[`docs/implementation.md`](docs/deployment.md#runtime-설정)를 따른다.
+[배포 문서](docs/deployment.md#runtime-설정)를 따른다.
 synthetic 빠른 시작에는 이 파일이 필요하지 않다.
 버전, synthetic 포함 여부, API 버전과 영상 모드의 `VITE_*` 값은 정적 빌드 때 적용한다.
 실행 중인 컨테이너의 환경변수로 이미 생성된 브라우저용 정적 파일을 변경할 수 없다. 전체 설정 경계는
@@ -168,7 +168,7 @@ sudo docker compose down --volumes
 두 통합 검증 스크립트는 정상 종료, 실패와 `Ctrl+C` 시 실행별 자원을 정리한다.
 SIGKILL 등으로 정리하지 못한 실행은 출력된 `Recovery command`로 회수한다.
 검증 로그와 산출물은 Git 추적 대상이 아니며 저장 위치와 recovery 절차는
-[`docs/implementation.md`](docs/development.md#개발과-검증-컨테이너)를 따른다.
+[개발 환경](docs/development.md#개발과-검증-컨테이너)을 따른다.
 
 ## 배포
 
