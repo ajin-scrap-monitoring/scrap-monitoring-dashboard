@@ -152,14 +152,14 @@ header 및 frame 크기 제한, timeout, 취소, decode 실패, 인증 오류, S
 - 녹화 화면 영상 재생 중 다른 화면 이동 시 video DOM 요소, Object URL과 요청 정리.
 - 브라우저 탭 숨김 전환 시 load-history 요청 중단 및 표시 복귀 시 재개, camera-status GET 0회와 SSE 연결 1개 유지.
 - 현황 상세를 재사용하는 60초 이내 현황 재진입 시 로딩 화면 미표시.
-- 반복 화면 이동 뒤 garbage collection 후 `HTMLImageElement`와 `SVGCircleElement` 객체 수의 증가 부재(이전 화면 DOM 해제).
+- 반복 화면 이동 뒤 garbage collection 후 `HTMLImageElement` 객체 수의 증가 최대 2개와 `SVGCircleElement` 객체 수의 증가 최대 10개 제한.
 
 날짜 녹화는 대량 구간의 표시 요소 수, 재생 시각 갱신 시 시간축 재사용, 단건 조회의
 제한된 재시도와 기존 player 유지 및 권한 오류의 재생 중단도 검사한다.
 서비스 통합 검증은 `pnpm run check`와 분리해 실행하며 검증 범위와 fixture 구성은
 `docs/contracts/backend/README.md`를 따른다.
 
-Continuous Integration (CI)의 호스트 runner는 Ubuntu 24.04로 고정한다. CI 작업은 `@playwright/test` 1.62.1과
+Continuous Integration (CI)의 호스트 runner는 Ubuntu 24.04로 고정한다. `static`과 `browser` job은 `@playwright/test` 1.62.1과
 버전이 일치하는 공식 Playwright Noble 컨테이너
 `mcr.microsoft.com/playwright:v1.62.1-noble`에서 실행하고 OCI image digest를 고정한다.
 컨테이너는 사용자 `1001`로 실행한다. 컨테이너가 Chromium과 실행에 필요한 Linux 시스템

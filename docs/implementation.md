@@ -87,11 +87,15 @@ Vite는 TypeScript 파일을 JavaScript로 변환하지만 타입 검사를 수�
 `pnpm run typecheck`는 TypeScript 프로젝트 참조 전체를 검사한다. `pnpm run build`는
 같은 타입 검사를 통과한 뒤 Vite가 `dist/`에 정적 산출물을 생성한다. 현재 Vite
 빌드 출력 대상은 별도로 재정의하지 않으며 고정된 Vite 버전의 기본값을 사용한다.
-현재 개발 및 브라우저 검증 기준은 데스크톱 Chrome, 최소 너비 1280 Cascading Style
+제품 범위는 [프로젝트 명세](project-spec.md#범위)를 따른다. v1과 WHEP 코드는 선택 빌드
+검증 경계로 유지한다.
+
+코드 포맷은 별도 formatter 없이 ESLint 규칙만 적용한다.
+
+현재 개발 및 브라우저 검증 기준은 데스크톱 Chrome 151 이상, 최소 너비 1280 Cascading Style
 Sheets (CSS) 픽셀, 기본 Full HD (FHD) 1920 x 1080 뷰포트다. 높이를 초과하는
-콘텐츠는 페이지 세로 스크롤을 사용한다. 정확한 Chrome 최소 버전은 결정 대기 상태다. 실제
-접속 단말의 Chrome 버전을 확인한 뒤 Vite 빌드 출력과 브라우저 Web API (Application
-Programming Interface) 호환성을 검증한다.
+콘텐츠는 페이지 세로 스크롤을 사용한다. Chrome 최소 버전은 `@playwright/test` 1.62.1이
+검증하는 Chromium 151.0.7922.34를 기준으로 한다.
 
 ## 코드 구조와 작업 재개 기준
 
@@ -163,8 +167,9 @@ snapshot만 대기하고 알림 응답을 기다리지 않고 반환한다. 알�
 현황 화면은 해제할 때 준비 완료 기록을 지우므로 재진입 때 이전 활성화의 완료 기록을 사용하지
 않는다. data source의 `isMonitoringDetailsReady`는 부수 효과 없이 마지막 성공 뒤 60초 이내인지
 반환하며, 이 경우 현황 화면은 로딩 화면을 그리지 않고 첫 render부터 현황을 표시한다. 마지막
-성공 뒤 60초가 지난 재진입은 새 collection summary 응답과 첫 프로필 응답이 완료될 때까지 로딩 화면을
-유지한다(프로필 조회 실패는 준비 완료 판정을 막지 않음). 활성 알림 결합 조회는
+성공 뒤 60초가 지난 재진입은 collection summary, fill forecast, layout 조회와 첫 profile 조회의
+완료를 기다린다. 조회 실패도 처리한 뒤 대기를 끝내며, collection summary 또는 인증 오류가 먼저
+발생하면 fill forecast와 layout의 완료는 기다리지 않지만 첫 profile 조회의 완료는 기다린다. 활성 알림 결합 조회는
 이 대기에 포함하지 않고 활성 알림 카드만 확인 중으로 둔다. load-history 기준 시각은 서버 시각만
 사용하며 서버 시각이 없으면 조회하지 않고 해당 영역을 오류 상태로 둔다. 브라우저 탭이 숨겨지면(`document.visibilityState === "hidden"`) 현황 상세 갱신 timer를
 중지하고 `monitoring.snapshot` SSE 수신이 유발하는 60초 경과 상세 갱신, 판정 변경의 결합 재조회와
@@ -188,9 +193,10 @@ LiDAR 단면(`profiles`)은 collection summary와 분리한 루프로 갱신한�
 변경한 조회는 그래프 재요청 없이 즉시 완료한다. 이벤트 표 조회(`queryHistoryEvents`)는 캐시를
 적용하지 않는다.
 
-HTTP 요청은 응답 body 수신을 포함해 10초로 제한한다. 같은 화면 초기화 요청에 같은
-AbortSignal을 전달하고 화면 종료는 요청을 취소한다. Timeout은 `REQUEST_TIMEOUT`으로
-구분하며 이미 수신한 401과 403은 권한 오류로 유지한다. `DataAreaState`는 실패, 미지원과
+HTTP 요청은 응답 body 수신을 포함해 기본 10초로 제한한다. v2 load-history는 25초, 날짜 녹화와
+clip의 media-info는 30초로 제한한다. Timeout은 `REQUEST_TIMEOUT`으로 구분하며 v2
+load-history는 `HISTORY_CLIENT_TIMEOUT`으로 변환한다. 같은 화면 초기화 요청에 같은
+AbortSignal을 전달하고 화면 종료는 요청을 취소한다. 이미 수신한 401과 403은 권한 오류로 유지한다. `DataAreaState`는 실패, 미지원과
 이전 응답 사용을 구분한다. 권한 오류는 보조 실패로 숨기지 않는다.
 
 `src/use-latest-request.ts`는 후속 목록 조회, source 변경과 화면 종료 시 이전 요청을
@@ -206,10 +212,10 @@ AbortSignal을 전달하고 화면 종료는 요청을 취소한다. Timeout은 
 ### 데이터 소스와 synthetic 시나리오
 
 `src/data/http-dashboard-data-source.ts`는 Backend 응답 변환, HTTP 요청과
-Server-Sent Events (SSE)를 처리한다. 운영 빌드는 HTTP adapter를 사용한다.
+Server-Sent Events (SSE)를 처리한다. synthetic 기능이 비활성화된 운영 빌드는 HTTP adapter를 사용한다.
 개발 서버는 `VITE_DEV_DATA_SOURCE`로 기본 source를 선택하며 미설정은 synthetic이다.
 `source=api`, `source=mock`과 session에 저장한 선택은 개발 기본값보다 우선한다.
-Production은 이 선택과 제안 검증용 sessionStorage 값을 사용하지 않는다.
+synthetic 기능이 비활성화된 production 빌드는 이 선택과 제안 검증용 sessionStorage 값을 사용하지 않는다.
 
 `src/data/mock-dashboard-data-source.ts`는 현황, 이력, 녹화, 알림과 관리자 설정의
 synthetic data를 제공한다. 인스턴스 안의 설정과 읽음 변경을 유지하며 인스턴스 간에는
@@ -282,7 +288,7 @@ bucket 및 결측을 검사한다. `load-history-v2.ts`는 `view=chart` 응답 �
 오류로 처리하고 `samples=[]`는 표본 없음 상태로 보존한다. `ProfileChart`는 0~10m 높이축과
 A~B 가로축 배치를 유지하고, `positionRatio`가 있는 표본의 최솟값~최댓값을 관측 범위로 계산한다.
 가로축의 [0, 최솟값)과 (최댓값, 1] 구간은 미측정 영역으로 옅은 회색 음영을 렌더링하고,
-폭이 24px 이상이면 "미측정" 글자를 표시한다. SVG aria-label과 title에 미측정 구간 비율을 명시하고,
+SVG viewBox 좌표계에서 폭이 24단위 이상이면 "미측정" 글자를 표시한다. SVG aria-label과 title에 미측정 구간 비율을 명시하고,
 표본 위치가 없으면 전체를 미측정 처리한다. `active-alerts-v2.ts`는 필수
 `basis` 객체와 필수 `coverage` 배열을 검증하고, 장비 항목의 `CAMERA` 및 `MEDIA_CAMERA_STATUS`를
 허용하며 카메라 항목 이름은 "카메라"로 지정한다. 선택 필드인 `validUntilAt`, `evaluatedAt`,
@@ -339,11 +345,12 @@ MJPEG는 최초 frame을 최대 3초, 이후 frame을 최대 2초 기다린다. 
 
 빠른 기간은 최근 24시간, 7일, 30일과 90일이며 기본은 7일이다. 데이터 source의 종료 시각을
 기준으로 입력을 채우고 직접 입력은 preset을 해제한다. 기간과 유형은 조회 버튼으로
-적용하며 임계율과 추이 선은 이벤트 유형으로 필터링하지 않는다. 잘못된 기간과 조회 실패는
+적용하며 임계율과 추이 선은 이벤트 유형으로 필터링하지 않는다. 잘못된 기간과 적재율 조회 실패는
 기존 결과를 유지하고 조회 조건 제목 행의 한 줄 안내와 title 및 접근성 설명을 사용한다.
+새 조건의 이벤트 조회가 실패하면 이벤트 목록을 비우고 오류를 표시한다.
 이벤트 표는 표에 보이는 페이지만 서버에 요청한다. `queryHistoryEvents`는 표의 페이지 크기(8건),
-0부터 시작하는 페이지, 기간과 유형을 서버의 `page`, `pageSize`, `from`, `to`, `category`로
-전달하고 응답의 `page.totalItems`와 `page.totalPages`를 총 건수와 페이지 수로 쓴다.
+기간과 유형을 서버의 `pageSize`, `from`, `to`, `category`로 전달한다. 화면 페이지는 0부터
+시작하며 서버의 `page`에는 화면 페이지에 1을 더해 전달한다. 화면은 응답의 `page.totalItems`와 `page.totalPages`를 총 건수와 페이지 수로 쓴다.
 페이지 이동과 필터 변경은 `useLatestRequest`로 이전 요청을 취소하고 늦은 응답을 무시한다.
 이력 화면은 진입 직후 적재율 그래프와 이벤트 표를 각각 조회하며 한쪽 응답을 기다리지 않고
 표시한다. `queryHistory`는 적재율만 조회하고 이벤트 전체 목록을 만들지 않는다.
@@ -455,7 +462,7 @@ Graphics)의 path로 묶으며 모든 원본 경계와 누락을 유지한다. �
 상태 표시는 hover와 선택으로 popover를 열어 사용자용 사유, 짧은 오류 코드와 누락 수를
 표시한다. 오류 원문 및 stack trace는 서버 로그에서 확인한다. 영상 없음은 별도 popup으로
 표시하지 않는다. 녹화 범위 상세 창은 v1 media clip의 부분 저장 버튼뿐 아니라 누락 구간이 있는 이벤트 상세와 날짜 녹화의 누락 구간 버튼에서도 열린다.
-추가 API 호출 없이 선택한 녹화 객체의 데이터를 직접 사용한다.
+v1 clip 상세는 `getRecordingCoverage`로 추가 조회하고 이벤트와 날짜 누락 상세는 선택한 녹화 객체의 데이터를 사용한다.
 이벤트 창은 요청 구간, 요청 및 확보와 재생 길이, 누락 구간의 시작과 종료 시각 및 종류와 사유 코드를 표시한다.
 날짜 창은 녹화 날짜와 누락 구간의 시작 및 종료 시각과 사유 코드를 표시한다.
 구간별 누락 원인은 API에서 제공하지 않는다는 문구는 v1 clip 상세에만 유지한다.
@@ -500,8 +507,8 @@ HTTP 408, 429, 500, 502, 503, 504는 2초, 4초와 8초 간격으로 최대 세 
 
 ### 관리자 설정과 알림
 
-관리자 화면은 서버 설정과 수신 대상으로 초기화한다. 임계율은 1~100의 정수이고 사전
-기준은 그보다 낮게 검증한다. 저장은 서버 응답을 적용하고 취소는 마지막 저장값을 복원한다.
+관리자 화면은 서버 설정과 수신 대상으로 초기화한다. 수거 임계율은 5~100의 정수이고 사전
+기준은 0 이상이며 수거 임계율보다 5%p 이상 낮은 정수로 검증한다. 저장은 서버 응답을 적용하고 취소는 마지막 저장값을 복원한다.
 수거 및 알림 정책은 같은 resource여서 저장 중 두 영역의 입력과 버튼을 잠근다.
 대상 생성과 편집은 저장 중 입력과 닫기를 잠근다. 알림 채널은 이메일만 제공하고
 SMS (Short Message Service)는 선택지에서 제외하며 서버로 전송하지 않는다. 대상 전화번호는
@@ -516,7 +523,7 @@ SMS (Short Message Service)는 선택지에서 제외하며 서버로 전송하�
 `ctx.collectionThresholdPercent`로 구성한 안내 문구를 기존 피드백 위치에 표시한다.
 테스트 대상은 등록 인원의 사용 여부와 무관하게 전체 등록 인원에서 선택하며 채널은 이메일만
 요청한다. 202 본문에 `emailDeliveryId`가 있으면 기존 안내 위치에 발송 상태를 표시하고 `QUEUED`와
-`SENDING` 동안 3초 간격으로 최대 20회 재조회한다. 새 테스트 요청, 대상 변경과 화면 이탈은 진행 중인
+`SENDING` 동안 최초 즉시 조회를 포함해 최대 20회 조회하며 이후 조회는 이전 응답을 받은 3초 뒤 시작한다. 새 테스트 요청, 대상 변경과 화면 이탈은 진행 중인
 재조회를 중단한다. 상태 의미와 재전송 금지는 관리자 협의 항목을 따른다. 중복 요청과 이전
 source의 늦은 응답을 막는다. 테스트 접수 후 알림함을 재조회하며 후속 실패로 접수를 실패로
 바꾸지 않는다. 실제 수신을 접수 성공으로 단정하거나 고정 발송 본문을 표시하지 않는다.
@@ -548,17 +555,13 @@ v1 SSE는 최근 event ID 1024개로 중복을 제거하고 알림함은 최근 
 
 다음 항목은 결정 대기 상태다.
 
-- Chrome 최소 버전, 빌드 출력 호환성과 브라우저 Web API 지원 범위
-- 코드 포맷 정책
 - 장기 운영의 계정 제공, session 저장 및 수명 정책
 - 실제 적재율 산출, calibration과 현장 측정 정확도
 - 센서와 화면 slot의 대응, 측정 영역 실측 배치와 실제 수거 작업 상태의 계약
-- 다중 pit 및 camera 선택, 수동 clip 생성과 미디어 정책 관리의 제품 범위
-- 선택적 WHEP 서비스의 지원 계약과 시청자 제한
-- 환경별 upstream, DNS, readiness, timeout, 요청 제한, TLS와 CSP 값
 
 제품 및 외부 의미의 상세 책임은 [계약 매핑](contracts/backend/frontend-mapping.md)을
-따른다. 확정한 기술 결정만 이 문서에 반영한다.
+따른다. 환경별 upstream, DNS, readiness, timeout, 요청 제한, TLS와 Content Security
+Policy (CSP) 값은 [배포 Repository 책임](deployment.md#제품-배포-경계)을 따른다.
 
 ## 제품 배포 경계
 

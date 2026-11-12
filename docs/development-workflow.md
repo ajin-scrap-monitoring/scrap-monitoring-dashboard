@@ -218,8 +218,10 @@ Style Sheets (CSS), Web API 사용 범위와 브라우저 검증으로 별도 �
 
 ## 8. 빌드, 배포 산출물과 운영 검증
 
-로컬에서 재현 가능한 검사, 타입 검사, 테스트와 빌드 명령을 CI에 적용한다. CI 통과 후
-프로덕션 빌드를 Nginx OCI 이미지로 패키징하고 같은 image digest를 검증과 배포에 사용한다.
+로컬에서 재현 가능한 검사, 타입 검사, 테스트와 빌드 명령을 CI에 적용한다. `container` job은
+CI 집계 job과 독립적으로 production 빌드를 Nginx OCI 이미지로 패키징하고 검증한다.
+Release workflow는 CI 결과와 독립적으로 이미지를 빌드하고 검증한 뒤 게시한다. 배포는 게시된
+image digest를 사용한다.
 
 이 Repository의 산출물 검증에는 다음 내용을 포함한다.
 

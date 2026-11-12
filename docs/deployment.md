@@ -59,7 +59,7 @@ mount로 제공하며 인증서와 개인 키의 주입 및 검증은 `TLS 인�
 
 배포 Repository는 이 Repository가 게시한 이미지의 digest를 선택하고 환경별 Nginx
 설정, FastAPI upstream, Transport Layer Security (TLS), 인증서, 컨테이너 네트워크,
-Docker Compose, 이미지 버전 결합과 롤백을 관리한다. CA 개인 키와 서버 개인 키는 Git
+Docker Compose, 이미지 버전 결합과 롤백을 관리한다. Certificate Authority (CA) 개인 키와 서버 개인 키는 Git
 Repository와 컨테이너 이미지에 포함하지 않는다.
 
 빌드 단계는 digest로 고정한 `node:24.19.0-bookworm-slim` 이미지와 pnpm 11.23.0을
@@ -88,17 +88,18 @@ image 참조와 `SHA256SUMS`를 draft Release에 첨부한 뒤 게시한다. Rel
 게시 후 변경하지 않는다. job에 부여한 `contents: write`는 Release 게시에,
 `packages: write`는 image 게시에 사용한다.
 
-운영 브라우저는 사설 Domain Name System (DNS) 이름으로 고정 사설 Internet Protocol
-(IP) 주소의 Nginx에 접속한다. 인터넷에서 모니터링 서버로 들어오는 연결, 공개 도메인,
-공개 DNS와 public Certificate Authority (CA)를 사용하지 않는다. 내부 브라우저에서
-Nginx의 Transmission Control Protocol (TCP) 443 포트로 연결할 수 있어야 한다. 서버
-인증서의 Subject Alternative Name (SAN)은 브라우저가 사용하는 사설 DNS 이름을 포함한다.
+TLS 종료 위치는 두 가지다.
 
-TLS는 프로젝트 전용 사설 Public Key Infrastructure (PKI)를 사용한다. CA 구성, 서버
-인증서 주입, Nginx TLS 설정과 갱신 절차는 배포 Repository의 책임이다.
+- Dashboard Nginx가 프로젝트 사설 Public Key Infrastructure (PKI) 인증서로 HTTPS를 직접 처리한다.
+- 접근이 제한된 사설 네트워크의 앞단 TLS proxy가 HTTPS를 처리하고 Dashboard Nginx의 HTTP 8080으로 전달한다. Virtual Private Network (VPN)가 제공하는 HTTPS proxy도 사용할 수 있다.
+
+배포 Repository는 TLS 종료 방식과 인증서 발급 주체, 인증서 주입 및 갱신을 정한다.
+두 방식 모두 [실행 제약](project-spec.md#실행-제약)에 따라 인터넷에 직접 공개하지 않는다.
+사설 PKI 인증서의 Subject Alternative Name (SAN)은 브라우저가 사용하는 Domain Name
+System (DNS) 이름을 포함한다.
 
 GHCR container package는 public이다. 배포 환경은 공개 image를 pull할 때 별도 image pull
-자격 증명을 사용하지 않는다. 고정 사설 IP와 환경별 내부 service port는 배포 환경에서
+자격 증명을 사용하지 않는다. 고정 사설 Internet Protocol (IP) 주소와 환경별 내부 service port는 배포 환경에서
 결정한다.
 
 ## Runtime 설정
@@ -141,8 +142,8 @@ services:
 ```
 
 이미지의 HTTP server와 배포 Repository의 HTTPS server는 `/etc/nginx/includes/dashboard-site.conf`를
-server context에 포함한다. 배포 Repository는 HTTPS server의 인증서 경로를 지정하고 HTTP 8080
-server의 공개 여부와 redirect를 결정한다.
+server context에 포함한다. Dashboard Nginx가 TLS를 종료할 때 배포 Repository는 HTTPS
+server의 인증서 경로와 HTTP 8080 server의 접근 범위 및 redirect를 결정한다.
 
 ```nginx
 server {
@@ -156,9 +157,9 @@ server {
 ```
 
 공통 설정은 runtime JSON 파일에 `Cache-Control: no-store`를 적용한다. 파일이 없으면 `404`를
-반환한다. 설정은 전체 페이지 로드(document 탐색 또는 새로고침) 시에만
-다시 읽히며 앱 내부 화면 전환 중에는 다시 읽지 않는다. 이미 열린 화면의 대상을 자동으로 변경하지
-않는다. 파일을 원자적으로 교체하면 single-file bind mount의 새 inode를 반영하도록 컨테이너를
+반환한다. HTTP data source의 설정은 전체 페이지 로드(document 탐색 또는 새로고침)와
+back-forward cache 복원 시 다시 읽힌다. 화면이 활성 상태인 동안에는 앱 내부 화면 전환을 포함해 설정 변경을
+자동으로 반영하지 않으며 back-forward cache 복원 시 새 설정을 적용한다. 파일을 원자적으로 교체하면 single-file bind mount의 새 inode를 반영하도록 컨테이너를
 다시 생성한다. image 재빌드는 필요하지 않다.
 
 `scripts/quick-start.sh`는 synthetic 모드에서 runtime 파일 없이 실행한다. HTTP data source를
@@ -204,7 +205,9 @@ upstream `zone`을 함께 선언해 컨테이너 IP 변경 뒤 Nginx가 이름�
 
 공통 HTTP proxy snippet은 HTTP/1.1, 빈 `Connection` 헤더, `Host`, `X-Real-IP`,
 `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Forwarded-Host`와 Nginx `$request_id`를 upstream에
-전달한다. WebSocket signaling snippet은 같은 헤더에 `Upgrade`, map으로 만든 `Connection`을
+전달한다. `X-Forwarded-Proto`는 Dashboard Nginx의 `$scheme`을 사용하므로 앞단 TLS proxy가
+HTTP 8080으로 전달하면 upstream에 `http`가 전달된다. WebSocket signaling snippet은
+같은 헤더에 `Upgrade`, map으로 만든 `Connection`을
 추가하고 `proxy_buffering off`를 적용한다. SSE streaming snippet은 buffering과 cache를
 비활성화한다. access log는 standard output에 JSON 한 줄로
 기록하며 시각, request ID, 원격 주소, method, query string을 제외한 URI, 상태, 전송량,
@@ -254,6 +257,8 @@ HTTPS 전용 응답 header가 필요하면 배포 Repository가 `/etc/nginx/secu
 
 ## TLS 인증서 운영
 
+다음 절차는 Dashboard Nginx가 사설 PKI 인증서로 TLS를 직접 종료하는 배포에 적용한다.
+
 TLS 배포 산출물은 4개로 구분한다.
 
 | 산출물 | 사용 위치 | 보안 경계 |
@@ -272,7 +277,8 @@ Intermediate CA 인증서 순서로 구성하며 Root CA 인증서를 포함하�
 
 `/absolute/tls-directory`를 인증서 파일을 보관한 host 디렉토리의 절대 경로로 바꾸고 다음
 명령을 실행한다. 검증 컨테이너는 해당 디렉토리를 읽기 전용으로 연결하고 DNS SAN,
-전체 인증서 chain의 서버 인증 용도, 개인 키 일치와 남은 유효 기간을 검사한다.
+전체 인증서 chain의 서버 인증 용도와 현재 유효성, 개인 키 일치를 검사한다. 서버 인증서의
+남은 유효 기간은 30일을 초과해야 한다.
 
 ```bash
 sudo docker compose build verification

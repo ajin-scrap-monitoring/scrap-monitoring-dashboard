@@ -106,7 +106,7 @@ MJPEG client는 `multipart/x-mixed-replace`, boundary와 `Content-Length`로 JPE
 제공한다. decode 실패도 연결 오류로 처리하며 화면 종료 시 stream reader, timer와 Blob URL을
 정리한다. Media Service는 프레임 촬영 시각을 제공하지 않는다.
 
-이벤트 녹화는 다음 2개 endpoint를 사용하며 날짜 녹화의 HLS를 이벤트 구간으로 잘라 재생한다.
+이벤트 녹화의 목록과 재생 조회는 다음 2개 endpoint를 사용하며 날짜 녹화의 HLS를 이벤트 구간으로 잘라 재생한다.
 
 | Method | 경로 | 용도 |
 | --- | --- | --- |
@@ -118,11 +118,12 @@ MJPEG client는 `multipart/x-mixed-replace`, boundary와 `Content-Length`로 JPE
 `state`는 `AVAILABLE`, `PARTIAL`, `PROCESSING`, `UNAVAILABLE`이고 `parts`는 날짜 녹화의
 `recordingId`, `playbackPath`, 날짜 녹화 안의 `startSeconds`와 `endSeconds`, 이벤트 재생
 시간축의 `relativeStartSeconds`와 `relativeEndSeconds`를 제공한다. `unavailableIntervals`는
-재생할 수 없는 구간이며 `downloadPath`는 항상 null이고 `downloadReasonCode`는
-`EVENT_RANGE_EXPORT_UNSUPPORTED`다. 이벤트 구간 MP4, 파일 용량, codec, 해상도와
-frame rate는 제공하지 않는다. `include_playback=true`는 목록 항목에 `playback`(상태, 길이,
-사유 코드) 요약을 더한다. 보관 만료는 `parts`가 가리키는 날짜 녹화 상세의
-`expires_at`에서 읽는다.
+재생할 수 없는 구간이며 `downloadPath`는 항상 null이다. `downloadReasonCode`는
+`EVENT_RANGE_EXPORT_UNSUPPORTED`, `EVENT_EXPORT_NOT_REQUESTED`, `EVENT_WINDOW_NOT_CLOSED`,
+`EVENT_EXPORT_RANGE_TOO_LONG`, `EVENT_RECORDING_UNAVAILABLE`을 허용한다. 별도 export 요청으로
+이벤트 구간 MP4를 준비하며 clip media-info에서 파일 용량, codec, 해상도와 frame rate를 조회한다.
+`include_playback=true`는 목록 항목에 `playback`(상태, 길이, 사유 코드) 요약을 더한다.
+보관 만료 계산은 [화면 매핑](frontend-mapping.md#녹화)을 따른다.
 
 Frontend는 `eventId` 형식, `parts`의 날짜 녹화 UUID와 `playbackPath`, 재생 시간축의 연속성과
 `playbackSeconds` 합계를 검사하고 위반하면 오류로 처리한다. 이력과 녹화의 연결은 `/api/v1/events`
