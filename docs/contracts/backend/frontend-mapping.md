@@ -87,7 +87,7 @@ Backend 기준은 manifest의 revision이다. 현황 보조 조회는 5개(`fill
 | 평균 수거 주기 | `collection-summary`의 `averageSettledCollectionCycleSeconds` | 변환 사용 | 자동 수거 종료 감지 사이의 평균 간격, null은 자료 부족 |
 | 실시간 영상 | Media Service의 MJPEG stream | 직접 사용 | 기존 영상 영역과 확대 기능, 실제 frame decode 뒤 LIVE 표시 |
 | 영상 촬영 시각 | 제공 정보 없음 | 추가 계약 필요 | frame 촬영 시각의 출처와 전달 형식 |
-| 측정 영역 | 제공 정보 없음 | 추가 계약 필요 | 참고도 유지, 실측 좌표계와 센서 및 측정선 연결 |
+| 측정 영역 | `layout` 응답의 `coordinateFrame`, `region`, `measurementLine`, `position` | 미사용 | 참고도 사용, 실측 배치 연결은 Q-10 |
 | 최근 24시간 적재율 | `/api/v2/monitoring/load-history` | 변환 사용 | [적재율 추이](#적재율-추이) |
 | LiDAR 1, LiDAR 2 | `/api/v2/monitoring/profiles` | 변환 사용 | 화면 활성 중 약 1초 간격 갱신, 이전 스캔 교체, [LiDAR 높이 곡선](#lidar-높이-곡선) |
 | 활성 알림 | `/api/v2/monitoring/snapshot-with-alerts` | 변환 사용 | [활성 알림](#활성-알림) |
@@ -120,8 +120,8 @@ service 상태를 표시한다. 카메라 관측은 LiDAR 측정 시각과 독�
 
 최근 24시간 이력에서 같은 source의 과거 관측을 선택한다. 기준 시각은 snapshot의
 `serverTime`과 이력 조회 종료 시각 중 늦은 값이며 브라우저 시각을 사용하지 않는다.
-기준의 1시간 전부터 이전 60초 이내에서 가장 가까운 `observedAt`을 선택하고, 선택한 표본이
-무효이거나 `generatedAt` 또는 `observedAt`이 없으면 더 이전 표본으로 대체하지 않고 정보
+기준의 1시간 전부터 이전 60초 이내에서 `observedAt`이 있는 표본 중 가장 가까운 표본을 선택하고,
+선택한 표본이 무효이거나 `generatedAt`이 없으면 더 이전 표본으로 대체하지 않고 정보
 없음으로 표시한다. 조회 범위 밖, 조건에 맞는 표본 부재와 이력 조회 실패도 정보 없음이다.
 현재 적재율의 역산, v1 변화량이나 수거량 추정으로 보충하지 않는다.
 
@@ -151,8 +151,8 @@ service 상태를 표시한다. 카메라 관측은 LiDAR 측정 시각과 독�
 ## 표시 시간대
 
 화면의 시각은 `Asia/Seoul`(+09:00)로 고정해 표시하고 브라우저 시간대를 따르지 않는다.
-요청 파라미터는 offset을 포함한 ISO 8601을 유지하며 서버가 준 UTC 원본은 변환 없이
-보존한다. 시각 문자열에 시간대가 필요한 위치는 `(한국 표준시)`를 덧붙인다.
+요청 파라미터는 offset을 포함한 ISO 8601을 유지하며 적재율 이력 표본의 `measuredAt`은
+`+09:00` offset 문자열로 변환한다. 시각 문자열에 시간대가 필요한 위치는 `(한국 표준시)`를 덧붙인다.
 
 ## 오류 응답
 
@@ -173,7 +173,8 @@ Backend 오류 본문은 `{detail: 문자열}`, `{detail: [{loc, msg, type}]}` �
 `samples=[]`는 표본 없음 상태로 두고 빈 피트나 높이 0으로 바꾸지 않는다.
 profile의 최신성은 Backend profiles 응답(빈 배열, null 높이, `reasonCodes`)이 판단하며
 적재율 준비 상태(`dataState`)와 독립적이다. snapshot `dataState`가 UNKNOWN, STALE 또는
-filterState가 WARMING이어도 profile 응답에 유효점이 있으면 곡선을 표시한다.
+filterState가 WARMING이어도 profile 응답에 유효점이 있으면 곡선을 표시한다. 실시간 연결이
+재연결 중이면 LiDAR 카드는 곡선 대신 정보 없음을 표시한다.
 높이는 cm를 m로 한 번 변환하고 `positionRatio`는 0 이상 1 이하의 위치로 사용한다.
 평균은 `SCAN_MEAN_TEMPORAL_MEDIAN` 기준이면 `filteredAverage`, 아니면 `average`다.
 새 profile에 유효점이 있고 대표값이 null일 때 `reasonCodes`에 `HEIGHT_TEMPORAL_MISSING`이 있으면 유지하지 않고 직전 정상 대표값을 버린다. 그렇지 않고 `HEIGHT_TEMPORAL_WARMING`이 있으면 마지막 정상 대표값을 최대 3초간 유지해 보조 표기 "평균 갱신 대기"와 title "마지막 정상 대표값을 최대 3초 표시합니다"로 표시한다(혼합 코드 `HEIGHT_TEMPORAL_WARMING_OR_MISSING` 단독은 유지하지 않는다). 그 외의 사유로 null이면 대표값은 "-"로 표시하고 곡선은 유지한다.
@@ -182,9 +183,11 @@ profile 조회가 네트워크 오류, timeout 또는 5xx로 실패한 경우(�
 허용하지만 화면 모델에는 보존하지 않는다.
 `valid=false`, 높이 또는 위치가 null인 표본은 선을 끊는다. 관측 범위는 `positionRatio`가 null이
 아닌 표본의 최솟값~최댓값이다. 가로축의 [0, 최솟값)과 (최댓값, 1] 구간은 미측정 영역으로 옅은
-회색 음영을 렌더링하고 음영 폭이 약 24px 이상이면 가운데에 "미측정" 글자를 표시한다. 음영의
-title과 그래프의 SVG aria-label에 미측정 구간 비율(예: "미측정 A 0%~13%")을 넣는다. 위치가 있는
-표본이 없으면 전체를 미측정으로 처리하고 `samples=[]`는 표본 없음 상태로 둔다. 원래 높이값,
+회색 음영을 렌더링한다. 양끝 구간이 가로축 길이의 1% 미만이면 해당 음영을 만들지 않는다.
+음영 폭이 SVG viewBox 좌표 단위 24 이상이면 가운데에 "미측정" 글자를 표시한다. 음영 rect의
+title은 미측정 구간 비율(예: "미측정 A 0%~13%")이고 그래프의 SVG aria-label은 그래프 라벨 뒤
+괄호에 같은 구간 비율을 쉼표로 나열한다. 높이와 위치가 모두 null이 아닌 유효점이 없는
+profile은 `samples`를 빈 배열로 바꿔 곡선을 비우며 `samples=[]`는 표본 없음 상태로 둔다. 원래 높이값,
 cm에서 m 변환, 세로축 0~10m 범위, A와 B 위치는 변경하지 않는다. `simulated`와
 `calibrationState`가 실측을 보증하지 않으면 시뮬레이션 또는 미검증으로 표시한다.
 `lidar-a`는 LiDAR 1, `lidar-b`는 LiDAR 2에 대응한다. `positionRatio` 0 -> 1이 측정선
@@ -214,7 +217,8 @@ site 및 edge가 현재 monitoring scope와 같고 `snapshot.snapshotId === acti
 SSE 재연결 중에는 활성 알림 항목을 숨기고 연결 복구 뒤 다시 표시한다고 안내한다.
 
 `evaluationState`가 `UNKNOWN` 또는 `ERROR`이면 "적재율 판정 불가"로 표시하고,
-`basis.lastKnownState`가 있으면 "마지막 판정 NORMAL" 같은 보조 표기를 붙인다.
+`basis.lastKnownState`가 있으면 "적재율 판정 불가 (마지막 판정 경고 기준 미만)"처럼 상태 문구를
+괄호 보조 표기로 붙인다.
 카메라 중단의 `startedAt=null`, `startBasis=UNKNOWN`은 시작 정보 없음으로 둔다.
 `startedAt`은 `startBasis`가 `SERVER_EVALUATION`일 때만 서버 최초 확인 시각으로 표시하고
 그 외에는 시작 정보 없음이다. `evaluatedAt`은 판정 시각이며 경보 시작 시각이 아니다.
@@ -225,8 +229,8 @@ SSE 재연결 중에는 활성 알림 항목을 숨기고 연결 복구 뒤 다�
 ## 측정 영역 배치 상태
 
 `/api/v2/monitoring/layout`은 센서별 `calibrationState`와 전체 `state`, `bindingState`를
-제공한다. 측정 영역 카드는 제목 행에 한 줄 상태(시뮬레이션 배치, 일부 배치 정보 없음,
-실측 배치 미검증, 배치 정보 확인 불가)만 표시하고 그림은 변경하지 않는다. 사유와
+제공한다. 측정 영역 카드는 제목 행에 한 줄 상태("시뮬레이션 배치, 실측 설치 미확인", "일부 배치 정보 없음",
+"실측 배치 미검증", "배치 정보 확인 불가")만 표시하고 그림은 변경하지 않는다. 사유와
 센서별 상태는 title에 둔다. `bindingState`가 `MISMATCH` 또는 `UNKNOWN`이면 확인 불가이며
 조회 실패는 배치 정보 없음이다.
 
@@ -271,8 +275,10 @@ COLLECTION의 CONFIRMED는 판단 조건 충족이며 실제 수거 완료가 �
 
 | 서버 값 | 화면 상태 |
 | --- | --- |
-| 자동 수거 종료(`HEIGHT_SETTLED`)이며 `confirmedCompletion=false` | 종료 감지 |
-| 수동 확인 수거 | 완료 |
+| 작업자 확인(`confirmedCompletion=true`) 또는 수동 확인 수거(`MANUAL_CONFIRMATION`) | 완료 |
+| 자동 수거 종료(`HEIGHT_SETTLED`)이며 `confirmedCompletion`이 true가 아님 | 종료 감지 |
+| 수거 출처가 없고 `confirmedCompletion=false` | 상태 미표시 |
+| 수거 출처와 `confirmedCompletion`이 모두 없음 | 완료(서버 `completed` 상태) |
 | 경보 `active`이고 근거가 현재 평가 | 활성 |
 | 경보 `resolved`이고 근거가 저장된 해제 | 해제 |
 | `status=unknown` | 확인 불가 |
@@ -305,8 +311,10 @@ v2 경보와 수거 판단 목록(`/api/v2/monitoring/alerts`, `collection-event
 목록 단계의 `Recording.gaps`는 빈 배열 대신 undefined로 두고 tone은 `has_gaps`로 계산한다.
 녹화 항목 선택 시 `GET /api/v2/recordings/daily/{recording_id}` 상세를 호출해 full 녹화로
 교체하기 전에는 timeline, 누락 구간 버튼, 재생 버튼을 확정하지 않고 로딩 표시를 유지한다.
-상세 수신 전에는 "누락 없음", "영상 없음", "전체 구간 확보"를 표시하지 않는다. 삭제, 다운로드
-준비, 보관 만료와 cleanup 표시는 단건 상세 결과를 사용한다.
+목록 행은 서버 요약 상태(`playback_state`)로 "영상 없음" 등을 상세 수신 전부터 표시한다. timeline의
+"전체 구간 확보"는 full 상세를 받은 뒤에만 표시한다. 다운로드 준비는 단건 상세 결과를 사용하고
+보관 만료와 cleanup 표시는 목록 요약 값을 상세 수신 전부터 표시한 뒤 상세 수신 후 상세 값으로
+교체한다.
 
 날짜 녹화는 `deleted_at`, `cleanup_state`(pending, failed, complete, null), `cleanup_completed_at`,
 `cleanup_error`를 수신 및 보존하고 `space_reclaimed`는 null만 허용하며 그 외 값은 계약 오류로 처리한다. `status`가 deleted 또는 expired면
@@ -319,7 +327,9 @@ v2 경보와 수거 판단 목록(`/api/v2/monitoring/alerts`, `collection-event
 이벤트 선택은 `GET /api/v2/recordings/events/{event_id}/exports`에 `before_seconds=30`과
 `after_seconds=30`을 전달해 기존 작업을 복구한다. JSON null은 작업 없음, 404는 이벤트 없음이다.
 조회 중에는 "확인 중" 버튼을 비활성화하고 404는 준비를 차단한다. 다른 조회 실패는 기존 작업
-확인 실패를 알리고, 상세에 `exportPath`가 있는 이벤트만 명시 준비를 허용한다. 브라우저의 export
+확인 실패를 알린다. 기존 작업이 없는 첫 준비는 상세에 `exportPath`가 있는 이벤트만 허용하고,
+failed의 재추출, deleted 및 expired의 새 준비와 상태 조회 오류 뒤 준비는 기존 작업이 있으면
+`exportPath` 없이 허용한다. 브라우저의 export
 localStorage 기억은 사용하지 않는다.
 조회, 진입과 재생만으로 POST를 보내지 않는다. 첫 준비와 deleted 및 expired의 새 준비는 새
 UUID (Universally Unique Identifier), failed의 명시 재시도는 응답 `requestId`와
@@ -348,8 +358,9 @@ RECORDING_BOUNDARY_UNAVAILABLE, EXPORT_INCOMPATIBLE_MEDIA, EVENT_EXPORT_NOT_FOUN
 EVENT_WINDOW_IN_FUTURE, MEDIA_UNAVAILABLE, MEDIA_TIMEOUT 등)는 정의된 code별 문구를 표시한다.
 준비 요청 실패에서 정의되지 않은 오류 code는 기존 HTTP status별 기본 문구를 표시하고 title에 해당 code를 남긴다. 상태 조회의 failed에서 정의되지 않은 code는 "구간 파일 준비에 실패했습니다.", blocked에서는 "blocked 상태입니다."를 표시하고 title에 해당 code를 남긴다.
 
-이벤트 녹화의 `windowState`는 `CLOSED`, `OPEN`, `UNKNOWN`, `POINT`이며 목록은 구간 상태를,
-상세는 `state`(`AVAILABLE`, `PARTIAL`, `PROCESSING`, `UNAVAILABLE`)를 상태 문구로 사용한다.
+이벤트 녹화의 `windowState`는 `CLOSED`, `OPEN`, `UNKNOWN`, `POINT`이며 목록은 `playbackSummary`가 있으면
+`playback.state`(`UNKNOWN`은 "확인 불가")를 우선하고 없으면 구간 상태를, 상세는 `state`(`AVAILABLE`,
+`PARTIAL`, `PROCESSING`, `UNAVAILABLE`)를 상태 문구로 사용한다.
 재생 위치는 이벤트 구간의 0초부터 `playbackSeconds`까지이며 `parts`의 `startSeconds`와
 `endSeconds`는 해당 날짜 녹화 안의 위치, `relativeStartSeconds`와 `relativeEndSeconds`는
 이벤트 재생 시간축의 위치다. 한 part가 끝나면 다음 part로 이동하고 마지막 part의 끝에서
