@@ -87,7 +87,8 @@ Release workflow는 공개 runtime 설정 예시, JSON schema, Git 추적 Nginx 
 [배포 참조 예시](#배포-참조-예시) archive(`deployment-example.tar.gz`), 외부 계약 manifest
 (`contract-manifest.json`), image 참조와 `SHA256SUMS`를 draft Release에 첨부한 뒤 게시한다.
 `contract-manifest.json`은 해당 이미지가 검증된 Backend, Camera Media Service와 Edge의 source
-revision이며 정본은 [계약 manifest](contracts/backend/manifest.json)다. Release의 tag와 asset은
+revision이며 정본은 [계약 manifest](contracts/backend/manifest.json)다. 배포 Repository는 Backend
+revision을 Backend Release의 source commit과 대조해 함께 배포할 Backend 이미지를 선택한다. Release의 tag와 asset은
 게시 후 변경하지 않는다. job에 부여한 `contents: write`는 Release 게시에,
 `packages: write`는 image 게시에 사용한다.
 
@@ -254,7 +255,8 @@ HTTPS 전용 응답 header가 필요하면 배포 Repository가 `/etc/nginx/secu
 
 ### 다른 컴포넌트와 맞출 설정
 
-배포 Repository가 Dashboard와 다른 컴포넌트 사이에서 일치시킬 설정은 5개다.
+배포 Repository가 Dashboard와 다른 컴포넌트 사이에서 일치시킬 설정은 5개다. Backend 설정의 의미,
+필수 여부와 예시는 Backend Release의 `docs/CONFIGURATION.md`를 따른다.
 
 | 설정 | Dashboard 값 | 맞출 대상 |
 | --- | --- | --- |
