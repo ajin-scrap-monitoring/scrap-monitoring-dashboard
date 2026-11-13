@@ -86,8 +86,8 @@ Backend 기준은 manifest의 revision이다. 현황 보조 조회는 5개(`fill
 | 최근 수거 후 경과 | `/api/v2/monitoring/collection-summary`의 `lastCollectionActivityAt` | 변환 사용 | 서버 시각과의 차이, null과 미래 시각은 정보 없음 |
 | 평균 수거 주기 | `collection-summary`의 `averageSettledCollectionCycleSeconds` | 변환 사용 | 자동 수거 종료 감지 사이의 평균 간격, null은 자료 부족 |
 | 실시간 영상 | Media Service의 MJPEG stream | 직접 사용 | 기존 영상 영역과 확대 기능, 실제 frame decode 뒤 LIVE 표시 |
-| 영상 촬영 시각 | 제공 정보 없음 | 추가 계약 필요 | frame 촬영 시각의 출처와 전달 형식 |
-| 측정 영역 | `layout` 응답의 `coordinateFrame`, `region`, `measurementLine`, `position` | 미사용 | 참고도 사용, 실측 배치 연결은 Q-10 |
+| 영상 촬영 시각 | 제공 정보 없음(Media Service 원천 미지원) | 미사용 | 프레임 수신 시각 표시 |
+| 측정 영역 | `layout` 응답의 `coordinateFrame`, `region`, `measurementLine`, `position` | 미사용 | 참고도 사용. 실측 배치는 현장 실측 자료 확보 시 새 요청으로 등록 |
 | 최근 24시간 적재율 | `/api/v2/monitoring/load-history` | 변환 사용 | [적재율 추이](#적재율-추이) |
 | LiDAR 1, LiDAR 2 | `/api/v2/monitoring/profiles` | 변환 사용 | 화면 활성 중 약 1초 간격 갱신, 이전 스캔 교체, [LiDAR 높이 곡선](#lidar-높이-곡선) |
 | 활성 알림 | `/api/v2/monitoring/snapshot-with-alerts` | 변환 사용 | [활성 알림](#활성-알림) |
@@ -388,18 +388,12 @@ Backend 회신서의 요청 목록은 이 절의 표를 정본으로 사용한�
 | 완료 기준 | 요청 문구의 모든 선택지를 완료로 인정. 수신한 계약의 제한값과 Dashboard의 요청 timeout을 넘는 기준을 요구하지 않음 |
 | 종료 | 요청한 결과나 대안을 받으면 항목을 종료. 새 요구는 새 ID로 등록 |
 
-미해결 요청은 다음 8개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
+미해결 요청은 다음 2개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
 
 | ID | 항목 | 화면 위치 | 책임 | 상태 |
 | --- | --- | --- | --- | --- |
-| Q-1 | 응답 지연과 간헐 504(썸네일 정보와 이미지, 날짜 녹화 상세와 삭제, media-info, 구간 파일 상태 조회) | 녹화 목록 썸네일, 녹화 정보 카드, 날짜 녹화 삭제 | Media Service, Backend | 요청 종류별 정상 응답 시간과 허용 실패율 미합의 |
-| Q-2 | 날짜 녹화의 짧은 누락 반복과 실시간 frame 공백 | 녹화 정보 카드의 누락 구간과 녹화 범위 상세 창, 현황 실시간 영상 | Media Service | 일반 공백 문의 보류, 11-10 녹화 확인 완료(1.203초 공백 원인 미확정) |
-| Q-3 | 구간 파일 조각 경계 공백의 원인 | 녹화 정보 카드의 일부 구간 누락 표시 | Media Service, Backend | 양의 공백 보존 기준 계약 명시, 사용자 요청으로 추가 문의 보류 |
-| Q-4 | 실시간 영상의 촬영 시각 | 현황 실시간 영상의 시각 표시 | Media Service | 원천 미지원, 선택 사항(미제공 시 현재 영상 수신 시각 표시 유지) |
-| Q-10 | 측정 영역의 실측 배치 | 현황 측정 영역 카드 | Backend, Edge | 현재 참고도 유지, 실측 자료 확보 시 별도 진행 |
-| Q-14 | 미해결 요청의 담당과 예정 시점 | 없음(일정) | Backend | 담당 회신 수신, 나머지 항목의 목표 날짜 미정 |
-| Q-15 | Scrap 서버의 Gmail 인증 파일과 관리자 로그인 자료 | 없음(개발 서버 절차) | Backend | Backend가 Scrap 서버에 직접 등록. 실제 값을 뺀 파일 형식 예시와 설정 방법을 Backend Repository 문서에 기록 요청 |
-| Q-16 | Scrap 서버 디스크 용량 확보의 적극적 관리 | 없음(개발 서버 절차) | Backend, Media Service | 11/13 디스크 부족으로 PostgreSQL 중단 후 Dashboard가 이전 Media 사본, 미사용 이미지와 이전 dump 정리로 임시 확보. 데이터와 배포 산출물을 남기는 담당의 적극적 용량 관리(Edge 원본과 백업 보관 기준, 배포 산출물 정리, 디스크 감시 담당과 절차) 요청 |
+| Q-15 | Scrap 서버의 Gmail 인증 파일과 관리자 로그인 자료 | 없음(개발 서버 절차) | Backend | Backend가 Scrap 서버에 직접 만들고 등록. 실제 값을 뺀 파일 형식 예시와 설정 방법을 Backend Repository 문서에 기록 요청 |
+| Q-16 | Scrap 서버 디스크 용량 확보의 적극적 관리 | 없음(개발 서버 절차) | Backend, Media Service | 11/13 디스크 부족으로 PostgreSQL 중단 후 Dashboard가 이전 Media 사본, 미사용 이미지와 이전 dump 정리로 임시 확보. 데이터와 배포 산출물을 남기는 담당의 적극적 용량 관리(Backend의 Edge 원본과 백업 보관 기준, Media Service의 녹화 보관 기준, 각자의 배포 산출물 정리, 디스크 감시 담당과 절차) 요청 |
 
 ### 이력 및 녹화 영상의 일괄 협의 항목
 
