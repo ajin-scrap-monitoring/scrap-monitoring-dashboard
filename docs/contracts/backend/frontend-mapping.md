@@ -392,8 +392,8 @@ Backend 회신서의 요청 목록은 이 절의 표를 정본으로 사용한�
 
 | ID | 항목 | 화면 위치 | 책임 | 상태 |
 | --- | --- | --- | --- | --- |
-| Q-15 | Scrap 서버의 Gmail 인증 파일과 관리자 로그인 자료 | 없음(개발 서버 절차) | Backend | Backend가 Scrap 서버에 직접 등록. 실제 값을 뺀 파일 형식 예시와 설정 방법을 Backend Repository 문서에 기록 요청 |
-| Q-16 | Scrap 서버 디스크 용량 확보의 적극적 관리 | 없음(개발 서버 절차) | Backend, Media Service | 11/13 디스크 부족으로 PostgreSQL 중단 후 Dashboard가 이전 Media 사본, 미사용 이미지와 이전 dump 정리로 임시 확보. 데이터와 배포 산출물을 남기는 담당의 적극적 용량 관리(Edge 원본과 백업 보관 기준, 배포 산출물 정리, 디스크 감시 담당과 절차) 요청 |
+| Q-15 | Scrap 서버의 Gmail 인증 파일과 관리자 로그인 자료 | 없음(개발 서버 절차) | Backend | Backend가 Scrap 서버에 직접 만들고 등록. 실제 값을 뺀 파일 형식 예시와 설정 방법을 Backend Repository 문서에 기록 요청 |
+| Q-16 | Scrap 서버 디스크 용량 확보의 적극적 관리 | 없음(개발 서버 절차) | Backend, Media Service | 11/13 디스크 부족으로 PostgreSQL 중단 후 Dashboard가 이전 Media 사본, 미사용 이미지와 이전 dump 정리로 임시 확보. 데이터와 배포 산출물을 남기는 담당의 적극적 용량 관리(Backend의 Edge 원본과 백업 보관 기준, Media Service의 녹화 보관 기준, 각자의 배포 산출물 정리, 디스크 감시 담당과 절차) 요청 |
 
 ### 이력 및 녹화 영상의 일괄 협의 항목
 
