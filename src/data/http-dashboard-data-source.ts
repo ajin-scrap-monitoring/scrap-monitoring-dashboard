@@ -325,6 +325,9 @@ function cloneDashboardData(data: DashboardData): DashboardData {
 }
 
 const readyState: DataAreaState = { status: "ready" };
+const EVENT_SOURCE_CLOSED = 2;
+const SSE_RECONNECT_INITIAL_MS = 1000;
+const SSE_RECONNECT_MAX_MS = 30000;
 
 const emptyAdminData: DashboardData["admin"] = {
   alertSettings: {
@@ -1558,7 +1561,14 @@ export function createHttpDashboardDataSource({
       return (await loadAdminApi()).getEmailDelivery(adminContext(), id, signal);
     },
     subscribe: (listener) => {
-      const eventSource = eventSourceFactory(eventsPath);
+      let eventSource = eventSourceFactory(eventsPath);
+      let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+      let reconnectDelay = SSE_RECONNECT_INITIAL_MS;
+      const stopStream = () => {
+        if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
+        reconnectTimer = undefined;
+        eventSource.close();
+      };
       listeners.add(listener);
       if (dataVersion > getDashboardDataVersion && currentData) {
         listener(cloneDashboardData(currentData));
@@ -1575,7 +1585,7 @@ export function createHttpDashboardDataSource({
         active = false;
         sessionController.abort();
         notificationActionScope.abort();
-        eventSource.close();
+        stopStream();
       };
       const expireSession = () => {
         if (!active) return;
@@ -1586,7 +1596,7 @@ export function createHttpDashboardDataSource({
         csrfToken = "";
         hasAuthenticatedSession = false;
         lastCameraStatus = null;
-        eventSource.close();
+        stopStream();
         onSessionExpired();
       };
       const failAuthorization = (error: ApiError) => {
@@ -1598,7 +1608,7 @@ export function createHttpDashboardDataSource({
         active = false;
         sessionController.abort();
         notificationActionScope.abort();
-        eventSource.close();
+        stopStream();
       };
       const isDuplicate = (event: Event) => {
         if (useV2Monitoring) return false;
@@ -1647,160 +1657,179 @@ export function createHttpDashboardDataSource({
           }
         })().finally(() => { refreshingNotifications = false; });
       };
-      if (useV2Monitoring) eventSource.addEventListener("monitoring.camera-status", (event) => {
-        if (!active || !hasAuthenticatedSession || !(event instanceof MessageEvent) || typeof event.data !== "string") return;
-        let status: CameraStatusV2;
-        try { status = parseCameraStatusV2(JSON.parse(event.data), pitId); }
-        catch { return; }
-        lastCameraStatus = { status, receivedAt: performance.now() };
-        cameraListeners.forEach((subscriber) => subscriber(status, lastCameraStatus!.receivedAt));
-      });
-      eventSource.addEventListener("monitoring.snapshot", (event) => {
-        if (!active || !currentData || !(event instanceof MessageEvent) || isDuplicate(event)) return;
-        if (typeof event.data !== "string") return;
-        let snapshot: ApiMonitoringSnapshot | ApiMonitoringSnapshotV2;
-        let monitoring: DashboardData["monitoring"];
-        let measuredAt: string | null;
-        try {
-          snapshot = JSON.parse(event.data) as typeof snapshot;
-          monitoring = mapMonitoring(snapshot, null);
-          measuredAt = timeOnly(snapshot.measuredAt, true);
-        } catch { return; }
-        monitoringRevision += 1;
-        if (monitoring.v2) monitoring.v2.streamState = "connected";
-        const headerNotifications = currentData.monitoring.headerNotifications;
-        const unreadNotificationCount = currentData.monitoring.unreadNotificationCount;
-        const sourceChanged = monitoring.v2 && currentData.monitoring.v2
-          && (monitoring.v2.siteId !== currentData.monitoring.v2.siteId || monitoring.v2.edgeId !== currentData.monitoring.v2.edgeId);
-        if (sourceChanged) lastLoadHistorySuccessAt = -Infinity;
-        currentData = {
-          ...currentData,
-          reception: receivedSnapshot(),
-          lastMeasuredAt: measuredAt,
-          monitoring: { ...monitoring, headerNotifications, unreadNotificationCount,
-            notificationState: currentData.monitoring.notificationState,
-            completedCollectionState: currentData.monitoring.completedCollectionState,
-            ...(useV2Monitoring ? { loadHistory: sourceChanged ? [] : currentData.monitoring.loadHistory,
-              loadHistoryState: sourceChanged ? { status: "loading" } : currentData.monitoring.loadHistoryState } : {}),
-          },
-        };
-        updateLoadOneHourAgo(currentData.monitoring);
-        listener(cloneDashboardData(currentData));
-        const notificationId = monitoring.v2?.operations?.notificationId;
-        if (notificationRefreshRequired || (notificationId && notificationId !== synchronizedNotificationId)) refreshV2Notifications();
-        const detailsVisible = typeof document === "undefined" || document.visibilityState !== "hidden";
-        if (detailsVisible && useV2Monitoring && monitoring.v2 && backendContract && monitoringDetailsRefCount > 0 && monitoringDetailsController) {
-          // 60초가 지난 상세를 먼저 갱신한다. 이 갱신이 결합 조회를 시작하면 판정 변경 재조회는 생략된다.
-          void refreshCompletedCollection(monitoringDetailsController.signal);
-          refreshChangedSnapshotAlerts(monitoringDetailsController.signal);
-        }
-        if (detailsVisible && useV2Monitoring && monitoringDetailsRefCount > 0 && sourceChanged && monitoringDetailsController) {
-          void refreshRecentLoadHistory(monitoringDetailsController.signal);
-        }
-      });
-      eventSource.addEventListener("error", () => {
-        if (!active) return;
-        // SSE 재연결 중에는 적재율, LiDAR 곡선과 대표 평균의 유지 상태와 timer를 모두 버린다.
-        clearHoldState();
-        if (currentData) currentData.reception = { ...currentData.reception, status: "error" };
-        if (currentData?.monitoring.v2) {
-          currentData.monitoring.status = "disconnected";
-          if (currentData.monitoring.alarmState) currentData.monitoring.alarmState = "UNKNOWN";
-          currentData.monitoring.summary.loadPercent = null;
-          currentData.monitoring.summary.loadHold = undefined;
-          currentData.monitoring.v2.streamState = "reconnecting";
-          currentData.monitoring.devices = currentData.monitoring.devices.map((device) => ({
-            ...device, status: "unknown", statusLabel: "UNKNOWN",
-          }));
-          updateLoadOneHourAgo(currentData.monitoring);
-        }
-        if (currentData) listener(cloneDashboardData(currentData));
-        if (!backendContract || !hasAuthenticatedSession || checkingSession) return;
-        checkingSession = true;
-        void getSession(sessionController.signal)
-          .then((session) => { if (active && session === null) expireSession(); })
-          .catch((error: unknown) => { if (isAuthorizationError(error)) failAuthorization(error); })
-          .finally(() => { checkingSession = false; });
-      });
-      if (v1MonitoringEnabled) eventSource.addEventListener("notification.created", (event) => {
-        if (!active || !currentData || !(event instanceof MessageEvent) || isDuplicate(event)) return;
-        if (typeof event.data !== "string") return;
-        let notification: BackendComponents["schemas"]["Notification"];
-        try {
-          notification = JSON.parse(event.data) as typeof notification;
-          validateNotifications({ items: [notification], unreadCount: 0, page: { page: 1, pageSize: 1, totalItems: 1, totalPages: 1 } });
-        } catch { return; }
-        if (currentData.monitoring.headerNotifications.some((item) => item.id === notification.id)) return;
-        notificationRevision += 1;
-        const read = (notification.readAt ?? null) !== null;
-        currentData.monitoring.headerNotifications.unshift({
-          detail: notification.detail,
-          id: notification.id,
-          level: alertLevel(notification.severity),
-          read,
-          time: timeOnly(notification.occurredAt),
-          title: notification.title,
+      const scheduleReconnect = () => {
+        if (!active || reconnectTimer !== undefined) return;
+        const delay = reconnectDelay;
+        reconnectDelay = Math.min(reconnectDelay * 2, SSE_RECONNECT_MAX_MS);
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = undefined;
+          if (!active) return;
+          eventSource.close();
+          eventSource = eventSourceFactory(eventsPath);
+          bind(eventSource);
+        }, delay);
+      };
+      const bind = (source: EventSource) => {
+        source.addEventListener("open", () => { reconnectDelay = SSE_RECONNECT_INITIAL_MS; });
+        if (useV2Monitoring) source.addEventListener("monitoring.camera-status", (event) => {
+          if (!active || !hasAuthenticatedSession || !(event instanceof MessageEvent) || typeof event.data !== "string") return;
+          let status: CameraStatusV2;
+          try { status = parseCameraStatusV2(JSON.parse(event.data), pitId); }
+          catch { return; }
+          lastCameraStatus = { status, receivedAt: performance.now() };
+          cameraListeners.forEach((subscriber) => subscriber(status, lastCameraStatus!.receivedAt));
         });
-        currentData.monitoring.headerNotifications.splice(HEADER_NOTIFICATION_LIMIT);
-        if (!read && currentData.monitoring.unreadNotificationCount !== null) currentData.monitoring.unreadNotificationCount += 1;
-        listener(cloneDashboardData(currentData));
-      });
-      eventSource.addEventListener("session.expired", (event) => {
-        if (!active || isDuplicate(event)) return;
-        expireSession();
-      });
-      if (v1MonitoringEnabled) eventSource.addEventListener("stream.resync-required", (event) => {
-        if (!active || !currentData || isDuplicate(event)) return;
-        const expectedMonitoringRevision = monitoringRevision;
-        const expectedNotificationRevision = notificationRevision;
-        const session = currentData.session;
-        void Promise.all([
-          request<ApiMonitoringSnapshot | ApiMonitoringSnapshotV2>(snapshotPath, { signal: sessionController.signal }),
-          optionalArea(getNotifications(session, sessionController.signal), null, notificationFailureMessage, sessionController.signal,
-            currentData.monitoring.unreadNotificationCount !== null),
-        ])
-          .then(([snapshot, notificationResult]) => {
-            if (!active || !currentData) return;
-            let changed = false;
-            if (expectedMonitoringRevision === monitoringRevision) {
-                      currentData = {
-                ...currentData,
-                reception: receivedSnapshot(),
-                lastMeasuredAt: timeOnly(snapshot.measuredAt, true),
-                monitoring: {
-                  ...mapMonitoring(snapshot, null),
-                  headerNotifications: currentData.monitoring.headerNotifications,
-                  unreadNotificationCount: currentData.monitoring.unreadNotificationCount,
-                  notificationState: currentData.monitoring.notificationState,
-                  completedCollectionState: currentData.monitoring.completedCollectionState,
-                  ...(useV2Monitoring ? { loadHistory: currentData.monitoring.loadHistory, loadHistoryState: currentData.monitoring.loadHistoryState } : {}),
-                },
-              };
-              monitoringRevision += 1;
-              updateLoadOneHourAgo(currentData.monitoring);
-              changed = true;
-            }
-            if (expectedNotificationRevision === notificationRevision) {
-              if (notificationResult.state.status === "error") {
-                currentData.monitoring.notificationState = notificationResult.state;
-                notificationRefreshRequired = true;
-              } else if (notificationResult.value) {
-                currentData.monitoring = { ...currentData.monitoring, ...notificationData(notificationResult.value), notificationState: { status: "ready" } };
-                notificationRevision += 1;
-                notificationRefreshRequired = false;
+        source.addEventListener("monitoring.snapshot", (event) => {
+          if (!active || !currentData || !(event instanceof MessageEvent) || isDuplicate(event)) return;
+          if (typeof event.data !== "string") return;
+          let snapshot: ApiMonitoringSnapshot | ApiMonitoringSnapshotV2;
+          let monitoring: DashboardData["monitoring"];
+          let measuredAt: string | null;
+          try {
+            snapshot = JSON.parse(event.data) as typeof snapshot;
+            monitoring = mapMonitoring(snapshot, null);
+            measuredAt = timeOnly(snapshot.measuredAt, true);
+          } catch { return; }
+          reconnectDelay = SSE_RECONNECT_INITIAL_MS;
+          monitoringRevision += 1;
+          if (monitoring.v2) monitoring.v2.streamState = "connected";
+          const headerNotifications = currentData.monitoring.headerNotifications;
+          const unreadNotificationCount = currentData.monitoring.unreadNotificationCount;
+          const sourceChanged = monitoring.v2 && currentData.monitoring.v2
+            && (monitoring.v2.siteId !== currentData.monitoring.v2.siteId || monitoring.v2.edgeId !== currentData.monitoring.v2.edgeId);
+          if (sourceChanged) lastLoadHistorySuccessAt = -Infinity;
+          currentData = {
+            ...currentData,
+            reception: receivedSnapshot(),
+            lastMeasuredAt: measuredAt,
+            monitoring: { ...monitoring, headerNotifications, unreadNotificationCount,
+              notificationState: currentData.monitoring.notificationState,
+              completedCollectionState: currentData.monitoring.completedCollectionState,
+              ...(useV2Monitoring ? { loadHistory: sourceChanged ? [] : currentData.monitoring.loadHistory,
+                loadHistoryState: sourceChanged ? { status: "loading" } : currentData.monitoring.loadHistoryState } : {}),
+            },
+          };
+          updateLoadOneHourAgo(currentData.monitoring);
+          listener(cloneDashboardData(currentData));
+          const notificationId = monitoring.v2?.operations?.notificationId;
+          if (notificationRefreshRequired || (notificationId && notificationId !== synchronizedNotificationId)) refreshV2Notifications();
+          const detailsVisible = typeof document === "undefined" || document.visibilityState !== "hidden";
+          if (detailsVisible && useV2Monitoring && monitoring.v2 && backendContract && monitoringDetailsRefCount > 0 && monitoringDetailsController) {
+            // 60초가 지난 상세를 먼저 갱신한다. 이 갱신이 결합 조회를 시작하면 판정 변경 재조회는 생략된다.
+            void refreshCompletedCollection(monitoringDetailsController.signal);
+            refreshChangedSnapshotAlerts(monitoringDetailsController.signal);
+          }
+          if (detailsVisible && useV2Monitoring && monitoringDetailsRefCount > 0 && sourceChanged && monitoringDetailsController) {
+            void refreshRecentLoadHistory(monitoringDetailsController.signal);
+          }
+        });
+        source.addEventListener("error", () => {
+          if (!active) return;
+          // SSE 재연결 중에는 적재율, LiDAR 곡선과 대표 평균의 유지 상태와 timer를 모두 버린다.
+          clearHoldState();
+          if (currentData) currentData.reception = { ...currentData.reception, status: "error" };
+          if (currentData?.monitoring.v2) {
+            currentData.monitoring.status = "disconnected";
+            if (currentData.monitoring.alarmState) currentData.monitoring.alarmState = "UNKNOWN";
+            currentData.monitoring.summary.loadPercent = null;
+            currentData.monitoring.summary.loadHold = undefined;
+            currentData.monitoring.v2.streamState = "reconnecting";
+            currentData.monitoring.devices = currentData.monitoring.devices.map((device) => ({
+              ...device, status: "unknown", statusLabel: "UNKNOWN",
+            }));
+            updateLoadOneHourAgo(currentData.monitoring);
+          }
+          if (currentData) listener(cloneDashboardData(currentData));
+          // EventSource는 200이 아닌 응답을 받으면 CLOSED가 되어 스스로 재연결하지 않는다.
+          if (source.readyState === EVENT_SOURCE_CLOSED) scheduleReconnect();
+          if (!backendContract || !hasAuthenticatedSession || checkingSession) return;
+          checkingSession = true;
+          void getSession(sessionController.signal)
+            .then((session) => { if (active && session === null) expireSession(); })
+            .catch((error: unknown) => { if (isAuthorizationError(error)) failAuthorization(error); })
+            .finally(() => { checkingSession = false; });
+        });
+        if (v1MonitoringEnabled) source.addEventListener("notification.created", (event) => {
+          if (!active || !currentData || !(event instanceof MessageEvent) || isDuplicate(event)) return;
+          if (typeof event.data !== "string") return;
+          let notification: BackendComponents["schemas"]["Notification"];
+          try {
+            notification = JSON.parse(event.data) as typeof notification;
+            validateNotifications({ items: [notification], unreadCount: 0, page: { page: 1, pageSize: 1, totalItems: 1, totalPages: 1 } });
+          } catch { return; }
+          if (currentData.monitoring.headerNotifications.some((item) => item.id === notification.id)) return;
+          notificationRevision += 1;
+          const read = (notification.readAt ?? null) !== null;
+          currentData.monitoring.headerNotifications.unshift({
+            detail: notification.detail,
+            id: notification.id,
+            level: alertLevel(notification.severity),
+            read,
+            time: timeOnly(notification.occurredAt),
+            title: notification.title,
+          });
+          currentData.monitoring.headerNotifications.splice(HEADER_NOTIFICATION_LIMIT);
+          if (!read && currentData.monitoring.unreadNotificationCount !== null) currentData.monitoring.unreadNotificationCount += 1;
+          listener(cloneDashboardData(currentData));
+        });
+        source.addEventListener("session.expired", (event) => {
+          if (!active || isDuplicate(event)) return;
+          expireSession();
+        });
+        if (v1MonitoringEnabled) source.addEventListener("stream.resync-required", (event) => {
+          if (!active || !currentData || isDuplicate(event)) return;
+          const expectedMonitoringRevision = monitoringRevision;
+          const expectedNotificationRevision = notificationRevision;
+          const session = currentData.session;
+          void Promise.all([
+            request<ApiMonitoringSnapshot | ApiMonitoringSnapshotV2>(snapshotPath, { signal: sessionController.signal }),
+            optionalArea(getNotifications(session, sessionController.signal), null, notificationFailureMessage, sessionController.signal,
+              currentData.monitoring.unreadNotificationCount !== null),
+          ])
+            .then(([snapshot, notificationResult]) => {
+              if (!active || !currentData) return;
+              let changed = false;
+              if (expectedMonitoringRevision === monitoringRevision) {
+                        currentData = {
+                  ...currentData,
+                  reception: receivedSnapshot(),
+                  lastMeasuredAt: timeOnly(snapshot.measuredAt, true),
+                  monitoring: {
+                    ...mapMonitoring(snapshot, null),
+                    headerNotifications: currentData.monitoring.headerNotifications,
+                    unreadNotificationCount: currentData.monitoring.unreadNotificationCount,
+                    notificationState: currentData.monitoring.notificationState,
+                    completedCollectionState: currentData.monitoring.completedCollectionState,
+                    ...(useV2Monitoring ? { loadHistory: currentData.monitoring.loadHistory, loadHistoryState: currentData.monitoring.loadHistoryState } : {}),
+                  },
+                };
+                monitoringRevision += 1;
+                updateLoadOneHourAgo(currentData.monitoring);
+                changed = true;
               }
-              changed = true;
-            }
-            if (changed) listener(cloneDashboardData(currentData));
-          })
-          .catch((error: unknown) => { if (isAuthorizationError(error)) failAuthorization(error); });
-      });
+              if (expectedNotificationRevision === notificationRevision) {
+                if (notificationResult.state.status === "error") {
+                  currentData.monitoring.notificationState = notificationResult.state;
+                  notificationRefreshRequired = true;
+                } else if (notificationResult.value) {
+                  currentData.monitoring = { ...currentData.monitoring, ...notificationData(notificationResult.value), notificationState: { status: "ready" } };
+                  notificationRevision += 1;
+                  notificationRefreshRequired = false;
+                }
+                changed = true;
+              }
+              if (changed) listener(cloneDashboardData(currentData));
+            })
+            .catch((error: unknown) => { if (isAuthorizationError(error)) failAuthorization(error); });
+        });
+      };
+      bind(eventSource);
       return () => {
         active = false;
         listeners.delete(listener);
         if (listeners.size === 0) notificationActionScope.abort();
         sessionController.abort();
-        eventSource.close();
+        stopStream();
       };
     },
     updateNotificationRecipient: async (recipient, settings) => (await loadAdminApi()).updateRecipient(adminContext(), recipient, settings),

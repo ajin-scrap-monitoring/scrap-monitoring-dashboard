@@ -57,6 +57,7 @@ function historyWithBaseline(url: URL, snapshot: ApiMonitoringSnapshotV2, valueP
 class Stream {
   listeners = new Map<string, EventListener>();
   closed = false;
+  readyState = 1;
   addEventListener(type: string, callback: EventListener) { this.listeners.set(type, callback); }
   close() { this.closed = true; }
   emit(type: string, data: unknown) { this.listeners.get(type)?.(new MessageEvent(type, { data: JSON.stringify(data) })); }
@@ -792,6 +793,62 @@ describe("Backend v2 모니터링", () => {
     await vi.waitFor(() => expect(onSessionExpired).not.toHaveBeenCalled());
     expect(stream.closed).toBe(false);
     unsubscribe?.();
+  });
+  test("CLOSED 상태의 SSE 오류는 backoff 뒤 새 연결을 만들고 새 연결의 snapshot으로 복구한다", async () => {
+    const api = contract();
+    const streams: Stream[] = [];
+    const factory = vi.fn(() => { const stream = new Stream(); streams.push(stream); return stream as unknown as EventSource; });
+    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend", eventSourceFactory: factory });
+    await source.getDashboardData();
+    const listener = vi.fn<(data: DashboardData) => void>();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const unsubscribe = source.subscribe?.(listener);
+      streams[0].readyState = 2;
+      streams[0].emit("error", {});
+      expect(listener.mock.lastCall?.[0].monitoring.v2?.streamState).toBe("reconnecting");
+      vi.advanceTimersByTime(999);
+      expect(factory).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(1);
+      expect(factory).toHaveBeenCalledTimes(2);
+      expect(streams[0].closed).toBe(true);
+      streams[1].readyState = 2;
+      streams[1].emit("error", {});
+      vi.advanceTimersByTime(1999);
+      expect(factory).toHaveBeenCalledTimes(2);
+      vi.advanceTimersByTime(1);
+      expect(factory).toHaveBeenCalledTimes(3);
+      streams[2].emit("monitoring.snapshot", monitoringV2Fixture);
+      expect(listener.mock.lastCall?.[0].monitoring.v2?.streamState).toBe("connected");
+      expect(listener.mock.lastCall?.[0].reception.status).not.toBe("error");
+      unsubscribe?.();
+      expect(streams[2].closed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  test("CONNECTING 상태의 SSE 오류는 브라우저 재연결에 맡기고 구독 종료는 예약한 재연결을 취소한다", async () => {
+    const api = contract();
+    const streams: Stream[] = [];
+    const factory = vi.fn(() => { const stream = new Stream(); streams.push(stream); return stream as unknown as EventSource; });
+    const source = createHttpDashboardDataSource({ ...api, monitoringVersion: "v2", apiContract: "backend", eventSourceFactory: factory });
+    await source.getDashboardData();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const unsubscribe = source.subscribe?.(vi.fn());
+      streams[0].readyState = 0;
+      streams[0].emit("error", {});
+      vi.advanceTimersByTime(60000);
+      expect(factory).toHaveBeenCalledTimes(1);
+      streams[0].readyState = 2;
+      streams[0].emit("error", {});
+      unsubscribe?.();
+      vi.advanceTimersByTime(60000);
+      expect(factory).toHaveBeenCalledTimes(1);
+      expect(streams[0].closed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
   test("구독 종료 뒤 session 401과 snapshot은 로그인이나 상태 변경을 발생시키지 않는다", async () => {
     const api = contract();
