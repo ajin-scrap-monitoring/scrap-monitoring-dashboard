@@ -7,7 +7,7 @@ React 기반 대시보드다. 브라우저는 Backend의 same-origin Application
 ## 주요 기능
 
 - Backend v2의 현재 판단, 적재율 추이, 데이터 유효성과 장비 상태 표시
-- Camera Media Service의 Motion JPEG (MJPEG) 실시간 영상과 MP4 녹화 영상 재생
+- Camera Media Service의 Motion JPEG (MJPEG) 실시간 영상과 HTTP Live Streaming (HLS) 및 MP4 녹화 영상 재생
 - 기간과 유형을 사용하는 이력 및 녹화 영상 조회
 - 로그인, 알림 읽음 처리와 관리자 설정 사용자 흐름
 
@@ -31,8 +31,9 @@ sudo ./scripts/install-docker.sh
 
 ## 설정
 
-`.env.example`은 공개 이미지 단독 확인과 배포 Docker Compose가 사용하는 공개 기본값을
-제공한다. 설정을 적용하려면 다음 명령으로 `.env`를 만든다.
+`.env.example`은 개발 서버, 빠른 시작과 Transport Layer Security (TLS) 검증이 사용하는 공개 기본값과
+검증된 기본 이미지 digest를 제공한다. [배포 참조 예시](deploy/example/compose.yaml)의 환경변수 예시는
+[`deploy/example/example.env`](deploy/example/example.env)다. 설정을 적용하려면 다음 명령으로 `.env`를 만든다.
 
 ```bash
 cp .env.example .env
@@ -48,14 +49,9 @@ cp .env.example .env
 | `VITE_PIT_ID` | Vite 개발 서버 | Backend에 등록된 pit 식별자 |
 | `VITE_CAMERA_ID` | Vite 개발 서버 | Media Service에 등록된 camera 식별자 |
 | `DASHBOARD_RUNTIME_CONFIG_FILE` | HTTP data source를 사용하는 로컬 이미지의 read-only mount | runtime JSON file host 경로 |
-| `DASHBOARD_IMAGE` | 배포 Repository Docker Compose | GHCR image digest 참조 |
-| `DASHBOARD_CONTAINER_NAME` | 배포 Repository Docker Compose | Docker container name |
-| `DASHBOARD_PLATFORM` | 배포 Repository Docker Compose | OCI platform 값 |
-| `DASHBOARD_BIND_ADDRESS` | 배포 Repository Docker Compose | bind address |
-| `DASHBOARD_HOST_PORT` | 배포 Repository Docker Compose | 사용하지 않는 TCP port 번호 |
-| `DASHBOARD_TMPFS_SIZE` | 배포 Repository Docker Compose | Docker tmpfs size |
-| `DASHBOARD_TLS_CERTIFICATE_FILE` | 배포 Repository TLS certificate mount | fullchain file host 경로 |
-| `DASHBOARD_TLS_PRIVATE_KEY_FILE` | 배포 Repository Docker Secret | private key file host 경로 |
+| `DASHBOARD_IMAGE` | 검증된 기본 이미지 digest 기록 | GHCR image digest 참조 |
+| `DASHBOARD_TLS_CERTIFICATE_FILE` | TLS material 검증과 배포 TLS certificate mount | fullchain file host 경로 |
+| `DASHBOARD_TLS_PRIVATE_KEY_FILE` | TLS material 검증과 배포 Docker Secret | private key file host 경로 |
 | `DASHBOARD_ROOT_CA_FILE` | TLS material 검증 | Root CA certificate file host 경로 |
 
 운영 pit 및 camera 식별자는 build 입력이 아니라 `/runtime-config.json`에서 읽는다.

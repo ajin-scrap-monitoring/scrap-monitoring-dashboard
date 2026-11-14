@@ -24,7 +24,7 @@ snapshot 검사 및 명시적 갱신 절차는
 ## 현재 상태와 데이터 의미
 
 현재 판단은 검증한 runtime 설정의 단일 pit으로 `/api/v2/monitoring/snapshot?pit_id=...`와
-`/api/v2/monitoring/events?pit_id=...`를 사용한다. 응답은 `schemaVersion="2"`이며
+`/api/v2/monitoring/events?include_camera_status=true&pit_id=...`를 사용한다. 응답은 `schemaVersion="2"`이며
 `snapshotId`는 상태 내용의 hash다. ID를 순번으로 비교하지 않는다.
 
 데이터 상태는 5개다.
@@ -139,7 +139,7 @@ Frontend는 `eventId` 형식, `parts`의 날짜 녹화 UUID와 `playbackPath`, �
 | `DELETE` | `/api/v2/recordings/daily/{recording_id}` | 지난 날짜 영상 삭제(administrator와 CSRF) |
 
 목록은 Backend에 설정한 camera를 대상으로 `from_date` 이상, `to_date` 미만의 한국 날짜를
-조회한다. `limit`은 1부터 100까지이며 `next_cursor`는 해석하지 않고 다음 요청에 전달한다.
+조회한다. `limit`은 1부터 100까지이며 응답의 `next_cursor`는 해석하지 않고 다음 요청의 `cursor` query parameter로 전달한다.
 Frontend는 화면의 종료 날짜 다음 날을 `to_date`로 전달하고 UUID 및 camera 식별자,
 `Asia/Seoul` 날짜 경계와 반환 범위를 검사한다. 날짜 녹화를 경보 또는 수거 사건으로 변환하지
 않으며 날짜 조회 실패를 이벤트 목록으로 대체하지 않는다.
@@ -203,10 +203,10 @@ LIMITED를 실제 Backend에 입력해 7일 이력의 그래프 좌표와 현재
 저장과 전체 페이지 reload 후의 읽음 상태 유지를 검사한다. 이벤트 녹화는 v2 목록과 상세의
 계약, 수거, 알림 및 오류 필터, 결과가 없는 구간, 날짜 녹화 part의 HLS 재생, 닫힌 이벤트의
 구간 파일 준비 지원과 exportPath 생성, 실제 구간 파일 준비와 MP4 다운로드, 파일 정보(비디오
-코덱, 해상도, 프레임 속도, 파일 용량) 표시 및 새로고침 후 캐시 복구를 확인한다. 진행 중인 날짜
+코덱, 해상도, 프레임 속도, 파일 용량) 표시 및 새로고침 후 추가 POST 요청 없는 기존 구간 파일 복구를 확인한다. 진행 중인 날짜
 녹화의 삭제 요청은 CSRF 없이 403, CSRF와 함께 409이며 녹화가 남는지 확인한다. 현재 상태 화면은
-1280, 1440과 1920 너비에서, 녹화 화면은 기본 1440 너비에서 검사하고 1280 너비에서 영상 확대의 키보드 종료와 focus
-복원을 확인한다.
+1440, 1280과 1920 너비에서 검사하고 1280 너비에서 영상 확대의 키보드 종료와 focus 복원을
+확인한다. 녹화 화면은 기본 1440 너비와 1280 너비에서의 layout overflow를 확인한다.
 runtime 검증은 동일한 local image ID를 확인하고 두 Nginx의 실제 JSON mount를 읽은 Browser의
 pit query 및 camera 경로를 검사한다. 이 검사의 API 및 영상 응답은 별도 synthetic fixture이며
 두 번째 환경의 실제 서비스 배포 검증을 대신하지 않는다.

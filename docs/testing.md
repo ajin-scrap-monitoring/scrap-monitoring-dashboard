@@ -17,7 +17,7 @@
 | --- | --- | --- |
 | 계약 검사 | snapshot 추출기, Redocly CLI와 openapi-typescript | manifest 일치, OpenAPI 문법 및 참조와 생성 타입 일치 |
 | 정적 검사 | ESLint와 typescript-eslint | TypeScript 타입 기반 규칙, React Hooks와 Fast Refresh 경계 |
-| 검증 도구 테스트 | Node.js test runner와 OpenSSL | 계약 추출, 공개 artifact 정제, runner 종료 및 cleanup과 TLS material 오류 거부 |
+| 검증 도구 테스트 | Node.js test runner와 OpenSSL | 계약 추출 및 타입 생성, 빌드 크기 검사, 개발 proxy, 원격 브라우저 진단, release 정책, 공개 artifact 정제, runner 종료 및 cleanup과 TLS material 오류 거부 |
 | 컴포넌트 테스트 | Vitest, jsdom과 Testing Library | `src/`의 렌더링, 상태와 사용자 상호작용 |
 | 브라우저 테스트 | Playwright Chromium | synthetic data, 실제 v2 fixture와 v1 제안 API의 사용자 흐름 및 대상 뷰포트 렌더링 |
 | 컨테이너 통합 테스트 | Docker, Nginx와 OpenSSL | OCI 이미지, reverse proxy, 임시 PKI와 TLS Secret 주입 |
@@ -168,8 +168,8 @@ Node.js와 pnpm은 컨테이너 안에서도 각각 `.node-version`과 `package.
 Repository의 전체 commit SHA로 고정한다.
 
 검증 컨테이너의 `pnpm run check`는 비밀 파일 추적 및 Docker build context 제외, 계약 검사,
-정적 검사, 검증 도구 및 컴포넌트 테스트, 타입 검사, 프로덕션 빌드와 브라우저 테스트를 순서대로 실행하는
-전체 검증 명령이다. Container job은 임시 Root CA, Intermediate CA와 서버 인증서를
+정적 검사, 검증 도구 테스트, 컴포넌트 테스트, 타입 검사, 프로덕션 빌드, 빌드 크기 검사와 브라우저
+테스트를 순서대로 실행하는 전체 검증 명령이다. Container job은 임시 Root CA, Intermediate CA와 서버 인증서를
 생성하고 fullchain, 개인 키, Docker Secret, Nginx HTTPS, 신뢰 체인과 SAN 불일치를
 검증하며 [배포 참조 예시](deployment.md#배포-참조-예시)의 compose 해석과 `nginx -t`를
 확인한다. 임시 CA 개인 키와 서버 개인 키는 job의 임시 디렉토리에서만 사용하고 종료 시

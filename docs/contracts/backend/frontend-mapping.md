@@ -61,7 +61,6 @@ Backend는 장비 보고가 30초 이상 없으면 연결 상태를 UNKNOWN으�
 | 장비 scan 및 진행 시각, clock, delivery와 storage | 진단 정보 또는 숨김 대상, 촬영 시각과 latency로 대체하지 않음 |
 | 센서별 `scan_update_alarm`(스캔 지연 3초 판정) | 계약 허용, 장비 상태 카드에 별도 표시하지 않음. 경고는 Backend가 활성 알림으로 제공할 때 기존 활성 알림 카드에 표시 |
 | v1 이력의 `resolved` 단독 값 | `statusBasis`가 해제 근거를 확인한 경우에만 해제로 표시 |
-| clip ID가 없는 녹화 job | 기존 `/api/v1/media/clip-jobs`에서 조회 가능, 날짜 및 이벤트 녹화 목록과 별도 범위 |
 | 날짜 녹화의 구간별 reason code | 수신 및 보존, 녹화 범위 상세 창에서 누락 구간 시각과 함께 사유 코드를 표시 |
 | export cache 만료 시각 | 다운로드 가능 여부에 사용, 원본 보관 만료와 별도 표시하지 않음 |
 | 수신 대상 이름과 연락처 편집 | Backend PATCH 지원, 현재 수신 정책 패널의 편집 범위 밖 |
@@ -301,7 +300,7 @@ v2 경보와 수거 판단 목록(`/api/v2/monitoring/alerts`, `collection-event
 | 보관 만료 | 날짜 녹화의 `expires_at`, `status` | 변환 사용 | `status`가 deleted 또는 expired면 "삭제됨" 또는 "만료됨" 표시, 이벤트는 `parts`의 날짜별 요약 목록(`view=summary`)에서 찾은 모든 날짜 녹화 중 가장 빠른 만료를 사용하며 하나라도 확인하지 못하면 정보 없음 |
 | codec, 해상도, frame rate | `/api/v2/recordings/daily/{recording_id}/media-info`, `/api/v1/media/clips/{clip_id}/media-info` | 직접 사용 | 날짜 녹화는 file 정보(측정 시각, 출처)와 segments(미디어 항목의 `title`), 이벤트는 export 완료 후 clip media-info(측정 시각, 출처) 연동 |
 | 이벤트 구간 용량과 MP4 | `GET/POST /api/v2/recordings/events/{event_id}/exports`, `GET statusPath` | 직접 사용 | 서버 조회 복구와 명시 준비 및 재시도, 응답 requestId 및 statusPath 사용 |
-| 미리보기 썸네일 | `/api/v2/recordings/daily/{id}/thumbnail-info`, `/api/v2/recordings/daily/by-date/{recording_date}/thumbnail-info`, `/api/v2/recordings/events/{event_id}/thumbnail-info`, `/api/v1/media/clips/{clipId}/thumbnail-info` | 직접 사용 | 날짜 녹화(recording, finalizing, closed, failed이며 expired와 deleted 제외) 및 이벤트 녹화 썸네일 조회, 이벤트 녹화의 `dailyThumbnailInfoPath` 우선 조회 및 클립 미대체, ready 시 content_path 이미지를 기존 썸네일 자리와 재생 poster에 연결, `RECORDING_BUSY` 보류 폴링 재조회와 준비 버튼 미제공 |
+| 미리보기 썸네일 | `/api/v2/recordings/daily/{identifier}/thumbnail-info`, `/api/v2/recordings/daily/{identifier}/thumbnail`, `/api/v2/recordings/daily/by-date/{recording_date}/thumbnail-info`, `/api/v2/recordings/events/{event_id}/thumbnail-info`, `/api/v1/media/clips/{identifier}/thumbnail-info`, `/api/v1/media/clips/{identifier}/thumbnail` | 직접 사용 | 날짜 녹화(recording, finalizing, closed, failed이며 expired와 deleted 제외) 및 이벤트 녹화 썸네일 조회, 이벤트 녹화의 `dailyThumbnailInfoPath` 우선 조회 및 클립 미대체, ready 시 content_path 이미지를 기존 썸네일 자리와 재생 poster에 연결, `NOT_PREPARED`/`failed` 관리자 준비 및 `retry_failed` 재시도 제공, `dailyDate`/`RECORDING_BUSY` 준비 버튼 미제공 및 `RECORDING_BUSY` 보류 폴링 재조회 |
 
 날짜 녹화 목록은 `GET /api/v2/recordings/daily`에 `view=summary`를 전달해 요청하며
 `next_cursor` 페이징 시에도 같은 파라미터를 유지한다. 목록 응답의 `view`가 `"summary"`이면
