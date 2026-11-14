@@ -92,6 +92,7 @@ Backend 제공 범위에 맞추어 카드를 제거하거나 별도 화면 구�
 - 모바일 애플리케이션 구현
 - 다중 pit 및 camera 선택
 - 수동 clip 생성과 미디어 정책 관리 화면
+- 서버 디스크 사용률과 디스크 경고 표시(Backend와 Media Service가 자체 채널로 운영)
 - 제품 기본 구성의 WebRTC-HTTP Egress Protocol (WHEP) 실시간 영상(선택 build와 개발 검증은 [구현 정보](implementation.md#선택적-v1과-제안-검증)에 기록)
 
 ## 외부 계약
