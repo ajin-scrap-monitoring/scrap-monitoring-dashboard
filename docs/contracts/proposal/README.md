@@ -91,7 +91,7 @@ RFC 3339 형식과 명시적인 UTC offset을 사용한다.
 `frontend-mapping.md`를 따른다. 백엔드는 합의한 OpenAPI와 같은 예제로 contract test를
 구성한다.
 
-OpenAPI 제안서는 다음 명령으로 문법, 참조와 권장 규칙을 검사한다.
+OpenAPI 제안서와 Backend 계약은 다음 명령으로 snapshot 일치, 문법, 참조, 권장 규칙과 생성 타입을 검사한다.
 
 ```bash
 pnpm run contract:check
