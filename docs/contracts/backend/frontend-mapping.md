@@ -387,13 +387,14 @@ Backend 회신서의 요청 목록은 이 절의 표를 정본으로 사용한�
 | 완료 기준 | 요청 문구의 모든 선택지를 완료로 인정. 수신한 계약의 제한값과 Dashboard의 요청 timeout을 넘는 기준을 요구하지 않음 |
 | 종료 | 요청한 결과나 대안을 받으면 항목을 종료. 새 요구는 새 ID로 등록 |
 
-미해결 요청은 다음 3개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
+미해결 요청은 다음 4개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
 
 | ID | 항목 | 화면 위치 | 책임 | 상태 |
 | --- | --- | --- | --- | --- |
-| Q-17 | 날짜 녹화 목록 조회의 Backend 메모리 한도 도달 | 녹화 화면 녹화 목록 | Backend | `GET /api/v2/recordings/daily?view=summary` 1회 뒤 Backend 메모리 1GiB 한도 도달, 30초 뒤 504와 다른 API 정지. 원인 수정 요청 |
+| Q-17 | 녹화 중인 날짜 녹화 조회의 Backend 메모리 한도 도달 | 녹화 화면 녹화 목록과 녹화 정보 | Backend | 녹화 중인 오늘 날짜 녹화의 단건 조회 또는 이를 포함한 목록 조회 1회 뒤 Backend 메모리 1GiB 한도 도달, 30초 뒤 504와 다른 API 정지. 마감된 날짜 녹화 조회는 정상. 원인 수정 요청 |
 | Q-18 | 날짜 녹화 저장 중단 | 녹화 화면 날짜 녹화와 이벤트 녹화 재생 | Media Service | 날짜 녹화 예산(`daily_limit_bytes`)이 30일 보관 기준보다 작아 예산 도달 시 새 녹화 저장 중단. 보관 기준과 예산 정합과 예산 도달 시 처리 요청 |
 | Q-19 | 데이터 정상 중 적재율 경보 평가의 간헐적 `UNKNOWN` | 현재 상태 카드 적재율 경보 | Backend | `dataState=FRESH`에서 `operations.effectiveState=UNKNOWN`(`OPERATIONS_EVALUATION_UNAVAILABLE`) 반복으로 "확인 불가" 깜박임. 원인과 의도된 동작 회신 요청 |
+| Q-20 | 이벤트 구간 파일 준비 요청의 504 응답 | 녹화 화면 녹화 파일 | Backend | `POST /api/v2/recordings/events/{event_id}/exports`가 약 8초 뒤 Backend 504를 반환하지만 구간 파일 준비는 진행되어 완료. Dashboard는 재조회로 준비 상태를 찾음. 요청 접수 응답 반환 요청 |
 
 ### 이력 및 녹화 영상의 일괄 협의 항목
 
