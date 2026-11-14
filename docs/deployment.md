@@ -49,10 +49,10 @@ pit 및 camera 식별자는 [Runtime 설정](#runtime-설정)을 따른다. v2�
 v1 및 WHEP 선택 빌드는 해당 기능을 유지하며 개발과 synthetic 빌드에는 회귀 검증에 필요한
 모든 모드를 포함한다. 이 선택은 runtime의 pit 및 camera 설정을 변경하지 않는다.
 same-origin 경로를 사용하므로 API upstream 주소를
-브라우저 설정으로 주입하지 않는다. Repository 루트의 `.env.example`은 검증된 이미지 digest, 컨테이너 이름,
-플랫폼, 단독 실행 bind 주소와 port, `/tmp` 크기 및 TLS 파일 host 경로의 공개 기본값을
-제공한다. 사용자가 복사한 `.env`는 빠른 시작 script, Vite 개발 서버나 배포 Repository의
-Docker Compose가 읽는다. `VITE_PIT_ID`와 `VITE_CAMERA_ID`는 개발 서버에서만 사용하고
+브라우저 설정으로 주입하지 않는다. Repository 루트의 `.env.example`은 개발 및 빠른 시작 변수,
+runtime 설정 경로, 검증된 이미지 digest와 TLS 파일 host 경로의 공개 기본값을 제공한다. 사용자가 복사한 `.env`는 빠른 시작
+script와 Vite 개발 서버가 읽고, [배포 참조 예시](#배포-참조-예시)의 Compose는
+`deploy/example/example.env`를 사용한다. `VITE_PIT_ID`와 `VITE_CAMERA_ID`는 개발 서버에서만 사용하고
 운영 runtime 설정 누락을 대신하지 않는다. TLS 관련 환경변수는
 인증서 파일의 host 경로만 나타내며 인증서 내용을 포함하지 않는다. Nginx 설정은 파일
 mount로 제공하며 인증서와 개인 키의 주입 및 검증은 `TLS 인증서 운영`을 따른다.
@@ -311,7 +311,7 @@ sudo docker compose run --rm \
 ```
 
 Container 내부 경로는 host에서 사용하는 `.env` 경로와 별개다. 파일 이름이 다르면 위
-3개 입력을 맞춘다. 인증서의 남은 유효 기간이 30일 미만이면 검사는 실패한다.
+3개 입력을 맞춘다. 인증서가 만료되었거나 남은 유효 기간이 30일 이하이면 검사는 실패한다.
 
 ### 최초 발급과 배포
 
@@ -319,7 +319,7 @@ Container 내부 경로는 host에서 사용하는 `.env` 경로와 별개다. �
 2. Intermediate CA는 서버 인증 용도의 인증서를 발급한다.
 3. 배포 담당자는 서버 인증서 뒤에 Intermediate CA 인증서를 연결해 `dashboard-fullchain.pem`을 만든다.
 4. 배포 담당자는 Secret source의 상위 디렉토리를 `0700`으로 제한하고 서버 개인 키를 소유자와 Nginx GID `101`만 읽는 `0640`으로 제공한다. fullchain은 Nginx가 읽을 수 있는 `0644`로 제공한다.
-5. 배포 담당자는 `.env.example`을 복사한 `.env`에 인증서 경로만 기록하고 인증서 또는 개인 키 내용은 기록하지 않는다.
+5. 배포 담당자는 `deploy/example/example.env` 또는 `.env.example`을 복사한 환경 파일에 인증서 경로와 group ID만 기록하고 인증서 또는 개인 키 내용은 기록하지 않는다.
 6. 배포 담당자는 `인증서 검사`의 컨테이너 명령을 실행한다.
 7. 배포 Repository의 Docker Compose는 서버 개인 키를 `dashboard_tls_private_key` Secret으로 부여하고 fullchain을 읽기 전용으로 mount한다.
 8. 배포 담당자는 Root CA 인증서를 운영 브라우저의 신뢰 저장소에 설치한 뒤 HTTPS 연결을 확인한다.

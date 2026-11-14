@@ -103,6 +103,9 @@ export DASHBOARD_DEV_REMOTE_PATH='/home/<server-user>/scrap-monitoring-dashboard
 # Source와 설정을 전달하고 개발 컨테이너 2개를 빌드 및 시작한다.
 bash scripts/remote-development.sh start
 
+# 컨테이너 재시작 없이 source 변경을 한 번 동기화한다.
+bash scripts/remote-development.sh sync
+
 # 2초 간격으로 source를 동기화하며 Ctrl+C로 중지한다.
 bash scripts/remote-development.sh watch
 ```
@@ -180,7 +183,7 @@ bash scripts/remote-browser.sh clear-session
 
 캡처 결과는 서버의 `.secrets/dashboard-browser/captures/run.<id>/`에 생성하고 로컬
 `test-results/browser-inspection/run.<id>/`로 가져온다. `capture.png`는 화면 원본이고
-`metadata.json`은 viewport, 카드 좌표, 가로 overflow, 오류 개수와 녹화 API 진단 요약을
+`metadata.json`은 viewport, 녹화 화면 영역 좌표, 가로 overflow, 오류 개수와 녹화 API 진단 요약을
 기록한다. 진단 요약은 v1 녹화 API와 v2 이벤트 녹화 API 응답의 HTTP 상태, 조회 조건의 형식 검사, 녹화 상태와
 짧은 오류 코드를 포함하고 누락 메타데이터는 v1 녹화 응답에만 포함한다. 날짜 녹화 API는 진단 대상이 아니다. 식별자, 실제 시각과 오류 원문은 기록하지 않는다.
 자격 증명과 `session.json`은 서버의 `.secrets/dashboard-browser/`에 유지하며 세션 만료 시
