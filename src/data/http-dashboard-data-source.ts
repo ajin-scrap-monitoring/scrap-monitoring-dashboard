@@ -674,8 +674,22 @@ export function createHttpDashboardDataSource({
       if (measuredAt !== null) {
         const measuredAtEpoch = Date.parse(measuredAt);
         if (lastNormalLoad && measuredAtEpoch < lastNormalLoad.measuredAtEpoch) {
+          const isHoldingLoad = loadHoldTimer !== undefined
+            || sseDisconnectHoldTimer !== undefined
+            || Boolean(currentData?.monitoring.summary.loadHold);
           monitoring.summary.loadPercent = lastNormalLoad.loadPercent;
-          monitoring.summary.loadHold = undefined;
+          monitoring.summary.loadHold = isHoldingLoad ? { observedAt: lastNormalLoad.measuredAt } : undefined;
+          if (isHoldingLoad && loadHoldTimer === undefined) {
+            scheduleLoadHoldExpiry(lastNormalLoad.startedAt, now);
+          }
+          const preservedAlarm = lastNormalLoad.alarmState
+            ?? (currentData?.monitoring.alarmState === "UNKNOWN" ? "UNKNOWN" : monitoring.alarmState);
+          if (preservedAlarm !== undefined && preservedAlarm !== null) {
+            monitoring.alarmState = preservedAlarm;
+            if (monitoring.v2?.operations) {
+              monitoring.v2.operations.effectiveState = preservedAlarm;
+            }
+          }
           return;
         }
         const canHoldAlarm = incomingAlarm === "UNKNOWN"
@@ -1089,17 +1103,20 @@ export function createHttpDashboardDataSource({
   // 새 응답을 센서별 표시로 정한다. 유효 곡선과 대표값은 즉시 교체하고, 대표값은 준비 중 사유일 때만 마지막 정상값을 유지한다.
   const resolveProfile = (profile: LidarProfile, now: number): LidarProfile => {
     const sensorId = sensorOf(profile);
+    const epoch = profile.measuredAt ? Date.parse(profile.measuredAt) : Number.NaN;
+    const previousCurve = lastNormalCurves.get(sensorId);
+    if (previousCurve && Number.isFinite(epoch) && epoch < previousCurve.measuredAtEpoch) {
+      const currentProfileState = lidarProfilesState?.find((item) => sensorOf(item) === sensorId);
+      return currentProfileState
+        ? { ...currentProfileState }
+        : { ...previousCurve.profile, curveHeld: undefined, averageHeld: undefined };
+    }
     const hasValidPoints = profile.samples.some((sample) => sample.height !== null && sample.positionRatio !== null);
     if (!hasValidPoints) {
       forgetSensorHold(sensorId);
       return { ...profile, samples: [], curveHeld: undefined, averageHeld: undefined };
     }
     clearProfileTimer(sensorId, "curve");
-    const epoch = profile.measuredAt ? Date.parse(profile.measuredAt) : Number.NaN;
-    const previousCurve = lastNormalCurves.get(sensorId);
-    if (previousCurve && Number.isFinite(epoch) && epoch < previousCurve.measuredAtEpoch) {
-      return { ...previousCurve.profile, curveHeld: undefined, averageHeld: undefined };
-    }
     if (profile.measuredAt && Number.isFinite(epoch)) {
       lastNormalCurves.set(sensorId, { profile, measuredAt: profile.measuredAt, measuredAtEpoch: epoch, startedAt: now });
     }
