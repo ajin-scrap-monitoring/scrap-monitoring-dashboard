@@ -124,6 +124,24 @@ describe("LiDAR profile 표본", () => {
     };
     expect(() => parseLidarProfilesV2(withInvalidScanId, "pit-01")).toThrow("Unexpected v2 LiDAR profile contract.");
   });
+
+  test("최상위 meanSectionReasonCodes를 각 profile.reasonCodes에 병합하고 잘못된 형식은 거부한다", () => {
+    const base = lidarProfilesFixture();
+    const withMeanReasons = {
+      ...base,
+      meanSectionReasonCodes: ["HEIGHT_PAIR_UNMATCHED", "HEIGHT_TEMPORAL_WARMING"],
+      profiles: [
+        { ...base.profiles[0], sensorId: "lidar-a", reasonCodes: ["HEIGHT_PAIR_UNMATCHED"] },
+        { ...base.profiles[1], sensorId: "lidar-b", reasonCodes: [] },
+      ],
+    };
+    const [first, second] = parseLidarProfilesV2(withMeanReasons, "pit-01");
+    expect(first.reasonCodes).toEqual(["HEIGHT_PAIR_UNMATCHED", "HEIGHT_TEMPORAL_WARMING"]);
+    expect(second.reasonCodes).toEqual(["HEIGHT_PAIR_UNMATCHED", "HEIGHT_TEMPORAL_WARMING"]);
+
+    expect(() => parseLidarProfilesV2({ ...base, meanSectionReasonCodes: "HEIGHT_PAIR_UNMATCHED" }, "pit-01"))
+      .toThrow("Unexpected v2 LiDAR profile contract.");
+  });
 });
 
 describe("calculateUnmeasuredRanges", () => {

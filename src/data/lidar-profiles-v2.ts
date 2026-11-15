@@ -37,6 +37,8 @@ function sampleOf(value: unknown): LidarProfileSample {
 export function parseLidarProfilesV2(value: unknown, pitId: string): LidarProfile[] {
   const fail = (): never => { throw new Error("Unexpected v2 LiDAR profile contract."); };
   if (!record(value) || value.pitId !== pitId || !Array.isArray(value.profiles)) return fail();
+  const meanSectionReasonCodes = value.meanSectionReasonCodes === undefined ? []
+    : strings(value.meanSectionReasonCodes) ? value.meanSectionReasonCodes : fail();
   const bySensor = new Map<string, Record<string, unknown>>();
   for (const profile of value.profiles) {
     if (!record(profile) || typeof profile.sensorId !== "string" || bySensor.has(profile.sensorId)
@@ -54,6 +56,10 @@ export function parseLidarProfilesV2(value: unknown, pitId: string): LidarProfil
     const profile = bySensor.get(slot.sensorId);
     if (!profile) return { average: "-", color: slot.color, label: slot.label, maximum: "-", minimum: "-", samples: [], sensorId: slot.sensorId, measuredAt: null };
     const representative = profile.summaryValuePolicy === "SCAN_MEAN_TEMPORAL_MEDIAN" ? profile.filteredAverage : profile.average;
+    const mergedReasonCodes = Array.from(new Set([
+      ...(Array.isArray(profile.reasonCodes) ? (profile.reasonCodes as string[]) : []),
+      ...meanSectionReasonCodes,
+    ]));
     return {
       average: meters(representative as number | null | undefined),
       color: slot.color,
@@ -65,7 +71,7 @@ export function parseLidarProfilesV2(value: unknown, pitId: string): LidarProfil
       measuredAt: typeof profile.measuredAt === "string" ? profile.measuredAt : null,
       ...(profile.simulated === true && { simulated: true }),
       ...(typeof profile.calibrationState === "string" && { calibrationState: profile.calibrationState as LidarProfile["calibrationState"] }),
-      ...(Array.isArray(profile.reasonCodes) && profile.reasonCodes.length > 0 && { reasonCodes: profile.reasonCodes as string[] }),
+      ...(mergedReasonCodes.length > 0 && { reasonCodes: mergedReasonCodes }),
     };
   });
 }

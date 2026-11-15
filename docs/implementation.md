@@ -177,7 +177,7 @@ collection summary, fill forecast와 layout은 서로 독립적으로 반영하�
 source 변경의 load-history 조회도 보내지 않는다. 현황 상세 해제(`monitoringDetailsRefCount === 0`), 탭 숨김, SSE 재연결 오류와 대상 변경 시에는 결합 재조회 지연 timer(`forcedAlertsTimer`)와 카메라 상태 변경 보류 표지도 함께 정리한다.
 최근 24시간 load-history 조회가 422 `HISTORY_*` 또는 503 `HISTORY_QUERY_TIMEOUT`으로 실패하면 현황 상세 갱신 timer와
 탭 복귀는 최근 이력을 다시 요청하지 않으며 현황 상세 재활성화 또는 대상 변경 때 조회를 재개한다.
-SSE 재연결과 대상(siteId 또는 edgeId) 변경은 적재율, LiDAR 곡선과 대표 평균의 유지 상태와 timer를 버린다.
+SSE 연결 오류의 유지 조건과 만료 동작은 [기준과 평가 분류](contracts/backend/frontend-mapping.md#기준과-평가-분류)를 따른다. 대상(siteId 또는 edgeId) 변경은 적재율, LiDAR 곡선과 대표 평균의 유지 상태와 timer를 버린다.
 대상 변경은 이전 대상의 LiDAR 곡선, collection summary, fill forecast, layout과 활성 알림 결합 결과도 버리고 진행 중인
 결합 조회를 기다리지 않으며 새 대상 기준으로 다시 조회한다. 이전 대상 요청의 응답과 오류는 적용하지 않는다.
 탭이 다시 표시되면 마지막 성공 시각 이후 60초가 지난 경우 현황 보조 조회와 최근 24시간
@@ -266,7 +266,7 @@ token을 사용한다. Synthetic 로그인은 `sessionStorage`를 사용하고 �
 관리 기능과 개인 알림함을 표시하지 않는다.
 
 현황, 이력과 녹화의 우측 상단은 모니터링 수신 상태이며 대기 중에는 문구를 숨긴다.
-유효한 snapshot 수신은 연결 정상, 조회 또는 SSE 오류는 연결 문제로 표시한다.
+유효한 snapshot 수신은 연결 정상으로 표시한다. 조회 또는 SSE 오류의 연결 문제 표시는 [유지 조건](contracts/backend/frontend-mapping.md#기준과-평가-분류)을 따른다.
 마지막 수신 시각은 브라우저가 유효한 snapshot을 받은 시각이며 Asia/Seoul의
 `HH:mm:ss`와 상세 날짜를 제공한다. 알림과 부가 조회는 이 값을 갱신하지 않는다.
 연결 오류에는 마지막 시각을 유지하며 같은 snapshot의 재수신도 상태와 시각을 복원한다.
@@ -315,7 +315,7 @@ snapshotId의 응답도 적용한다. 결합 조회의 트리거, 5초 지연 �
 `lastKnownState`가 있으면 보조 표기한다. 장비 활성 알림은 평가 상태와 무관하게 표시한다.
 `error-body.ts`는 Backend의 3가지 오류 본문을 하나의 코드, 메시지와 검증 항목으로 정규화한다.
 `summary.filterState`는 WARMING이면 안정화 준비 중, UNAVAILABLE이면 안정화 불가 보조 표기를 추정 적재율 라벨에 덧붙이며 `WARMING` 안내는 title 속성으로 제공한다. `simulated` 값으로 시뮬레이션과 실측 구분 문구를 화면에 표시하지 않는다.
-`src/data/http-dashboard-data-source.ts`는 적재율 일시 준비 중 상태에서 마지막 정상값을 최대 3초간 유지하며, 유지 중에는 "안정화 준비 중" 대신 "갱신 대기" 라벨과 마지막 정상 관측 시각 안내 title을 제공한다. 유지 조건과 만료 규칙의 정본은 [기준과 평가 분류](contracts/backend/frontend-mapping.md#기준과-평가-분류)를 따른다.
+`src/data/http-dashboard-data-source.ts`는 적재율 일시 준비 중 또는 공백 상태에서 마지막 정상값을 최대 10초간 유지하며, 유지 중에는 "안정화 준비 중" 대신 "갱신 대기" 라벨과 마지막 정상 관측 시각 안내 title을 제공한다. 유지 조건과 만료 규칙의 정본은 [기준과 평가 분류](contracts/backend/frontend-mapping.md#기준과-평가-분류)를 따른다.
 1280 CSS 픽셀 너비에서도 줄바꿈이나 카드 높이 변경 없이 카드의 크기를 유지한다.
 
 추정 적재율 아래 6개 지표는 같은 크기의 2행 3열 카드다. 제목은 작고 옅게, 값은 같은
@@ -343,13 +343,17 @@ tooltip 너비를 조정한다. v2 tooltip과 눈금은 `Asia/Seoul`을 사용�
 `LiveVideo.tsx`는 Motion JPEG (MJPEG)와 선택적 WHEP (WebRTC-HTTP Egress Protocol)를
 분기한다. `mjpeg-client.ts`와 `MjpegVideo.tsx`는 frame 및 연결 수명을,
 `whep-client.ts`와 `WhepVideo.tsx`는 제안 검증의 signaling과 연결을 처리한다.
-MJPEG는 최초 frame을 최대 3초, 이후 frame을 최대 2초 기다린다. 수신 중단이나 오류에는
-기존 연결을 취소하고 250ms, 500ms와 1000ms 간격으로 자동 재연결하며 이후 간격은
-1000ms로 유지한다. 정상 frame 표시 뒤에는 재시도 간격을 초기화하며 수동 재연결 버튼은
-제공하지 않는다. 인증 오류와 화면 종료는 자동 재연결을 중단한다.
+MJPEG는 최초 frame을 최대 3초, 이후 frame을 최대 2초 기다린다. 이미 표시된 정상 frame과
+decode 성공 시각이 있는 상태에서 frame 수신 중단이나 일시적 연결 오류(HTTP 4xx 및 응답 형식 오류 제외)가
+발생하면 마지막 정상 frame을 지우지 않고 `.live-indicator`에 "갱신 대기"(`title="마지막 정상 영상을 최대 5초 표시합니다"`)를
+표시한 채 마지막 정상 frame의 decode 성공 시각부터 최대 5초간 유지하며, 5초가 만료되면 frame을 숨기고
+"영상 연결 중"으로 전환한다. 수신 중단이나 오류에는 기존 연결을 취소하고 250ms, 500ms와
+1000ms 간격으로 자동 재연결하며 이후 간격은 1000ms로 유지한다. 정상 frame 표시 뒤에는
+재시도 간격을 초기화하며 수동 재연결 버튼은 제공하지 않는다. 인증 오류와 화면 종료는 자동
+재연결을 중단한다.
 `VideoTimestamp`는 실제 촬영 시각을 우선하고 없으면 마지막으로 표시한 MJPEG frame의
 브라우저 수신 시각을 사용한다. 촬영과 영상 수신을 구분하며 snapshot 시각은 사용하지
-않는다. 최초 decode 전과 연결 오류에는 숨기고 새 frame 없이 현재 시각으로 갱신하지
+않는다. 최초 decode 전과 frame을 표시하지 않는 연결 오류에는 숨기고 새 frame 없이 현재 시각으로 갱신하지
 않는다. 기본 및 확대 화면에 같은 규칙을 적용한다.
 
 ### 이력과 기간 조회
@@ -390,6 +394,8 @@ Backend 응답의 유효한 `recordingEventId`로 이벤트 녹화에 연결한�
 종료 분 경계를 사용한다. 이벤트 녹화의 기간은 최대 90일이며 초과하면 조회하지 않고
 종료 시각 입력에 안내한다. 조회는 첫 페이지와 첫 영상을 선택하고 요청 표시를 초기화한다.
 실제 v2의 기본 source는 날짜 녹화이며 API 날짜와 pagination 변환은 계약을 따른다.
+녹화 목록 재조회가 실패하면 기존 목록과 선택 영상을 유지하고 조회 중 상태만 해제한다.
+재조회 실패와 이전 결과 유지에 대한 화면 안내는 제공하지 않는다.
 
 녹화 유형은 전체, 날짜, 수거, 알림과 오류다. 전체는 날짜 목록을 먼저 조회한 뒤 이벤트 페이지를 조회하고
 시작 시각 내림차순으로 통합하며 이벤트의 시각은 `occurredAt`을 사용한다. 하나라도 실패하면 기존 결과를 유지하며 식별자는 source와

@@ -296,7 +296,7 @@ export function ProfileChart({ average, color, label, maximum, minimum, samples,
       <div className="chart-title-row">
         <SectionTitle>{label}</SectionTitle>
         <div className={`profile-stat ${color}`} title={calibrationState === "UNVERIFIED" ? "보정 미검증" : undefined}>
-          <span className="average" title={averageHeld ? "마지막 정상 대표값을 최대 3초 표시합니다" : undefined}><span className="average-label">평균</span>{average}</span>
+          <span className="average" title={averageHeld ? "마지막 정상 대표값을 최대 10초 표시합니다" : undefined}><span className="average-label">평균</span>{average}</span>
           <span className="range">최소 {minimum} / 최대 {maximum}</span>
         </div>
       </div>

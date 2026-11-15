@@ -37,7 +37,10 @@ test("이력 그래프는 null 구간을 연결하지 않고 단독 0%도 표시
   const { container } = await renderHistory({ loadSamples: [{ hour: 0, value: 0 }, { hour: 1, value: null }, { hour: 2, value: 50 }] });
   expect(container.querySelectorAll(".history-load-line")).toHaveLength(2);
   expect(container.querySelector('circle[fill="#f58a07"]')).toHaveAttribute("cy", "192");
-  for (const path of container.querySelectorAll(".history-load-line")) expect(path.getAttribute("d")).not.toContain("L");
+  for (const path of container.querySelectorAll(".history-load-line")) {
+    expect(path.getAttribute("d")).not.toContain("L");
+    expect(path).toHaveAttribute("stroke-width", "2");
+  }
   expect(screen.getByRole("columnheader", { name: "이벤트 유형" })).toBeVisible();
 });
 

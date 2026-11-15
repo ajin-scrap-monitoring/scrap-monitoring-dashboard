@@ -951,6 +951,11 @@ describe("Backend v2 모니터링", () => {
     expect(updates.at(-1)?.monitoring.summary.loadPercent).toBe(0);
     expect(updates.at(-1)?.monitoring.alarmState).toBe("NORMAL");
     stream.emit("error", {});
+    expect(updates.at(-1)?.monitoring.summary.loadPercent).toBe(0);
+    expect(updates.at(-1)?.monitoring.alarmState).toBe("NORMAL");
+    expect(updates.at(-1)?.monitoring.v2?.streamState).toBe("connected");
+    stream.emit("monitoring.snapshot", { ...monitoringV2StateFixture("UNAVAILABLE", 0), operations: fresh.operations });
+    stream.emit("error", {});
     expect(updates.at(-1)?.monitoring.summary.loadPercent).toBeNull();
     expect(updates.at(-1)?.monitoring.alarmState).toBe("UNKNOWN");
     expect(updates.at(-1)?.monitoring.v2?.streamState).toBe("reconnecting");

@@ -161,7 +161,7 @@ function applyCollectionInsights(
   paired: SnapshotAlerts | null,
   profiles: LidarProfile[] | null = null,
 ) {
-  const measuring = monitoring.v2?.dataState === "FRESH";
+  const measuring = monitoring.v2?.dataState === "FRESH" && monitoring.summary.loadPercent !== null && !monitoring.summary.loadHold;
   const { summary } = monitoring;
   applyForecast(summary, insights?.forecast ?? null, serverTime, measuring);
   const collection = insights?.collection ?? null;
@@ -446,8 +446,14 @@ export function createHttpDashboardDataSource({
     }
   };
 
+  type NormalAlarmState = "NORMAL" | "WARNING" | "CRITICAL";
+  const isNormalAlarmState = (state: string | null | undefined): state is NormalAlarmState =>
+    state === "NORMAL" || state === "WARNING" || state === "CRITICAL";
+
   type LastNormalLoad = {
     loadPercent: number;
+    alarmState: NormalAlarmState | null;
+    alarmStartedAt: number;
     measuredAt: string;
     measuredAtEpoch: number;
     startedAt: number;
@@ -467,8 +473,47 @@ export function createHttpDashboardDataSource({
     startedAt: number;
   };
 
+  const HOLD_MS = 10_000;
+  const EXPLICIT_DEVICE_ISSUE_STATES = new Set([
+    "STALE",
+    "UNAVAILABLE",
+    "MEASUREMENT_UNAVAILABLE",
+    "CONFIG_ERROR",
+    "FATAL",
+  ]);
+  const isTransientFailure = (error: unknown) => error instanceof TypeError
+    || (error instanceof ApiError && error.status >= 500);
+  const hasExplicitDeviceIssue = (snapshot: ApiMonitoringSnapshotV2): boolean => {
+    const device = snapshot.deviceStatus;
+    if (EXPLICIT_DEVICE_ISSUE_STATES.has(device.connection_state) || EXPLICIT_DEVICE_ISSUE_STATES.has(device.effective_state)) {
+      return true;
+    }
+    if (device.snapshot?.sensors.some((sensor) => EXPLICIT_DEVICE_ISSUE_STATES.has(sensor.data_state))) {
+      return true;
+    }
+    if (device.snapshot?.services?.some((service) => EXPLICIT_DEVICE_ISSUE_STATES.has(service.state))) {
+      return true;
+    }
+    return false;
+  };
+  const isHoldableLoadGapSnapshot = (snapshot: ApiMonitoringSnapshotV2) =>
+    !hasExplicitDeviceIssue(snapshot) && (
+      snapshot.dataState === "FRESH"
+      || (snapshot.dataState === "UNKNOWN"
+        && snapshot.summary.filterState === "WARMING"
+        && Array.isArray(snapshot.reasonCodes)
+        && snapshot.reasonCodes.includes("FILTER_WARMING"))
+    );
+
   let lastNormalLoad: LastNormalLoad | null = null;
   let loadHoldTimer: ReturnType<typeof setTimeout> | undefined;
+  let alarmHoldTimer: ReturnType<typeof setTimeout> | undefined;
+  let heldRawAlarmWasUnknown = false;
+  let sseDisconnectHoldTimer: ReturnType<typeof setTimeout> | undefined;
+  let lastSnapshotAlertsSuccessAt = -Infinity;
+  let snapshotAlertsHoldTimer: ReturnType<typeof setTimeout> | undefined;
+  let snapshotAlertsHoldMode: "none" | "unknown" | "failure" = "none";
+  let pendingSnapshotAlertsError: unknown = null;
 
   const lastNormalCurves = new Map<string, LastNormalCurve>();
   const lastNormalAverages = new Map<string, LastNormalAverage>();
@@ -481,14 +526,94 @@ export function createHttpDashboardDataSource({
     }
   };
 
-  const clearHoldState = () => {
-    clearForcedAlertsTimer();
-    cameraAlertRefreshPending = false;
+  const clearLoadHoldTimer = () => {
     if (loadHoldTimer !== undefined) {
       clearTimeout(loadHoldTimer);
       loadHoldTimer = undefined;
     }
+  };
+
+  const clearSseDisconnectHoldTimer = () => {
+    if (sseDisconnectHoldTimer !== undefined) {
+      clearTimeout(sseDisconnectHoldTimer);
+      sseDisconnectHoldTimer = undefined;
+    }
+  };
+
+  const clearSnapshotAlertsHoldTimer = () => {
+    if (snapshotAlertsHoldTimer !== undefined) {
+      clearTimeout(snapshotAlertsHoldTimer);
+      snapshotAlertsHoldTimer = undefined;
+    }
+    snapshotAlertsHoldMode = "none";
+    pendingSnapshotAlertsError = null;
+  };
+
+  const clearAlarmHoldTimer = () => {
+    if (alarmHoldTimer !== undefined) {
+      clearTimeout(alarmHoldTimer);
+      alarmHoldTimer = undefined;
+    }
+  };
+
+  const revertHeldAlarmToUnknown = (monitoring: DashboardData["monitoring"]) => {
+    monitoring.alarmState = "UNKNOWN";
+    if (monitoring.v2?.operations) {
+      monitoring.v2.operations.effectiveState = "UNKNOWN";
+    }
+  };
+
+  const scheduleAlarmHoldExpiry = (alarmStartedAt: number, now: number) => {
+    clearAlarmHoldTimer();
+    alarmHoldTimer = setTimeout(() => {
+      alarmHoldTimer = undefined;
+      if (!heldRawAlarmWasUnknown) return;
+      heldRawAlarmWasUnknown = false;
+      if (lastNormalLoad) {
+        lastNormalLoad = { ...lastNormalLoad, alarmState: null, alarmStartedAt: -Infinity };
+      }
+      if (currentData?.monitoring) {
+        revertHeldAlarmToUnknown(currentData.monitoring);
+        if (currentData.monitoring.v2) {
+          applyCollectionInsights(currentData.monitoring, collectionInsights, currentData.monitoring.v2.serverTime, snapshotAlerts, lidarProfilesState);
+        }
+        publishNotifications();
+      }
+    }, Math.max(0, alarmStartedAt + HOLD_MS - now));
+  };
+
+  const scheduleLoadHoldExpiry = (startedAt: number, now: number) => {
+    clearLoadHoldTimer();
+    loadHoldTimer = setTimeout(() => {
+      loadHoldTimer = undefined;
+      const shouldRevertAlarm = heldRawAlarmWasUnknown;
+      heldRawAlarmWasUnknown = false;
+      clearAlarmHoldTimer();
+      lastNormalLoad = null;
+      if (currentData?.monitoring?.summary?.loadHold) {
+        currentData.monitoring.summary.loadPercent = null;
+        currentData.monitoring.summary.loadHold = undefined;
+        if (shouldRevertAlarm) {
+          revertHeldAlarmToUnknown(currentData.monitoring);
+        }
+        if (currentData.monitoring.v2) {
+          applyCollectionInsights(currentData.monitoring, collectionInsights, currentData.monitoring.v2.serverTime, snapshotAlerts, lidarProfilesState);
+        }
+        publishNotifications();
+      }
+    }, Math.max(0, startedAt + HOLD_MS - now));
+  };
+
+  const clearHoldState = () => {
+    clearForcedAlertsTimer();
+    clearSseDisconnectHoldTimer();
+    clearSnapshotAlertsHoldTimer();
+    cameraAlertRefreshPending = false;
+    clearLoadHoldTimer();
+    clearAlarmHoldTimer();
+    heldRawAlarmWasUnknown = false;
     lastNormalLoad = null;
+    lastSnapshotAlertsSuccessAt = -Infinity;
 
     for (const timer of profileHoldTimers.values()) {
       clearTimeout(timer);
@@ -542,8 +667,10 @@ export function createHttpDashboardDataSource({
     const rawLoad = snapshot.summary.loadPercent;
     const hasValidLoad = typeof rawLoad === "number" && Number.isFinite(rawLoad) && rawLoad >= 0 && rawLoad <= 100;
     const measuredAt = snapshot.measuredAt;
+    const incomingAlarm = snapshot.operations?.effectiveState ?? null;
 
     if (isFresh && hasValidLoad) {
+      const now = performance.now();
       if (measuredAt !== null) {
         const measuredAtEpoch = Date.parse(measuredAt);
         if (lastNormalLoad && measuredAtEpoch < lastNormalLoad.measuredAtEpoch) {
@@ -551,53 +678,88 @@ export function createHttpDashboardDataSource({
           monitoring.summary.loadHold = undefined;
           return;
         }
-        if (lastNormalLoad && lastNormalLoad.measuredAt === measuredAt) {
-          lastNormalLoad.loadPercent = rawLoad;
-        } else {
-          lastNormalLoad = {
-            loadPercent: rawLoad,
-            measuredAt,
-            measuredAtEpoch,
-            startedAt: performance.now(),
-          };
+        const canHoldAlarm = incomingAlarm === "UNKNOWN"
+          && lastNormalLoad !== null
+          && lastNormalLoad.alarmState !== null
+          && now - lastNormalLoad.alarmStartedAt < HOLD_MS;
+        const heldAlarmState = canHoldAlarm && lastNormalLoad ? lastNormalLoad.alarmState : null;
+        if (heldAlarmState !== null) {
+          monitoring.alarmState = heldAlarmState;
+          if (monitoring.v2?.operations) {
+            monitoring.v2.operations.effectiveState = heldAlarmState;
+          }
         }
+        const preservedAlarm = isNormalAlarmState(incomingAlarm) ? incomingAlarm : heldAlarmState;
+        const preservedAlarmStartedAt = isNormalAlarmState(incomingAlarm)
+          ? now
+          : heldAlarmState !== null && lastNormalLoad
+            ? lastNormalLoad.alarmStartedAt
+            : -Infinity;
+        lastNormalLoad = {
+          loadPercent: rawLoad,
+          alarmState: preservedAlarm,
+          alarmStartedAt: preservedAlarmStartedAt,
+          measuredAt,
+          measuredAtEpoch,
+          startedAt: now,
+        };
+        if (heldAlarmState !== null) {
+          heldRawAlarmWasUnknown = true;
+          scheduleAlarmHoldExpiry(preservedAlarmStartedAt, now);
+        } else {
+          heldRawAlarmWasUnknown = false;
+          clearAlarmHoldTimer();
+        }
+      } else if (lastNormalLoad && isNormalAlarmState(incomingAlarm)) {
+        lastNormalLoad = { ...lastNormalLoad, alarmState: incomingAlarm, alarmStartedAt: now };
+        heldRawAlarmWasUnknown = false;
+        clearAlarmHoldTimer();
       }
-      if (loadHoldTimer !== undefined) {
-        clearTimeout(loadHoldTimer);
-        loadHoldTimer = undefined;
-      }
+      clearLoadHoldTimer();
+      clearSseDisconnectHoldTimer();
       monitoring.summary.loadPercent = rawLoad;
       monitoring.summary.loadHold = undefined;
       return;
     }
 
-    const isWarmingUnknown = snapshot.dataState === "UNKNOWN"
-      && snapshot.summary.filterState === "WARMING"
-      && Array.isArray(snapshot.reasonCodes)
-      && snapshot.reasonCodes.includes("FILTER_WARMING");
-
+    const isHoldableLoadGap = isHoldableLoadGapSnapshot(snapshot);
     const now = performance.now();
-    if (isWarmingUnknown && lastNormalLoad && now - lastNormalLoad.startedAt < 3000) {
+    if (isHoldableLoadGap && lastNormalLoad && now - lastNormalLoad.startedAt < HOLD_MS) {
+      clearSseDisconnectHoldTimer();
       monitoring.summary.loadPercent = lastNormalLoad.loadPercent;
       monitoring.summary.loadHold = { observedAt: lastNormalLoad.measuredAt };
-      if (loadHoldTimer !== undefined) clearTimeout(loadHoldTimer);
-      const remaining = Math.max(0, lastNormalLoad.startedAt + 3000 - now);
-      loadHoldTimer = setTimeout(() => {
-        loadHoldTimer = undefined;
-        if (currentData?.monitoring?.summary?.loadHold) {
-          currentData.monitoring.summary.loadPercent = null;
-          currentData.monitoring.summary.loadHold = undefined;
-          publishNotifications();
+      if (isNormalAlarmState(incomingAlarm)) {
+        lastNormalLoad = { ...lastNormalLoad, alarmState: incomingAlarm, alarmStartedAt: now };
+        heldRawAlarmWasUnknown = false;
+        clearAlarmHoldTimer();
+      } else if (
+        incomingAlarm === "UNKNOWN"
+        && lastNormalLoad.alarmState !== null
+        && now - lastNormalLoad.alarmStartedAt < HOLD_MS
+      ) {
+        monitoring.alarmState = lastNormalLoad.alarmState;
+        if (monitoring.v2?.operations) {
+          monitoring.v2.operations.effectiveState = lastNormalLoad.alarmState;
         }
-      }, remaining);
+        heldRawAlarmWasUnknown = true;
+        if (lastNormalLoad.alarmStartedAt < lastNormalLoad.startedAt) {
+          scheduleAlarmHoldExpiry(lastNormalLoad.alarmStartedAt, now);
+        } else {
+          clearAlarmHoldTimer();
+        }
+      } else {
+        heldRawAlarmWasUnknown = false;
+        clearAlarmHoldTimer();
+      }
+      scheduleLoadHoldExpiry(lastNormalLoad.startedAt, now);
       return;
     }
 
-    if (loadHoldTimer !== undefined) {
-      clearTimeout(loadHoldTimer);
-      loadHoldTimer = undefined;
-    }
-    if (!isWarmingUnknown) lastNormalLoad = null;
+    clearLoadHoldTimer();
+    clearAlarmHoldTimer();
+    clearSseDisconnectHoldTimer();
+    heldRawAlarmWasUnknown = false;
+    if (!isHoldableLoadGap) lastNormalLoad = null;
     monitoring.summary.loadPercent = null;
     monitoring.summary.loadHold = undefined;
   };
@@ -738,6 +900,12 @@ export function createHttpDashboardDataSource({
     snapshotAlertsInFlight = sequence;
     const scope = monitoringScope && { ...monitoringScope };
     let refreshedSnapshot = false;
+    const publishSnapshotAlertsUpdate = () => {
+      if (!currentData?.monitoring.v2) return;
+      currentData.monitoring.activeAlertsAreaState = snapshotAlertsAreaState;
+      applyCollectionInsights(currentData.monitoring, collectionInsights, currentData.monitoring.v2.serverTime, snapshotAlerts, lidarProfilesState);
+      publishNotifications();
+    };
     try {
       const value = await request<unknown>(pitPath("/api/v2/monitoring/snapshot-with-alerts?scope=ALL"), { signal });
       if (!record(value)) throw new Error("Unexpected snapshot-with-alerts contract.");
@@ -750,21 +918,70 @@ export function createHttpDashboardDataSource({
         throw new Error("Unexpected snapshot-with-alerts basis or source.");
       }
       if (signal?.aborted || sequence !== snapshotAlertsSequence || monitoringDetailsRefCount === 0) return;
-      snapshotAlerts = { snapshot, alerts };
-      snapshotAlertsAreaState = readyState;
-      refreshedSnapshot = true;
+      const now = performance.now();
+      const rawSnapshot = value.snapshot as ApiMonitoringSnapshotV2;
+      const canHoldUnknownAlerts = alerts.evaluationState === "UNKNOWN"
+        && isHoldableLoadGapSnapshot(rawSnapshot)
+        && snapshotAlerts !== null
+        && isNormalAlarmState(snapshotAlerts.alerts.evaluationState)
+        && now - lastSnapshotAlertsSuccessAt < HOLD_MS;
+      clearSnapshotAlertsHoldTimer();
+      if (canHoldUnknownAlerts) {
+        const deferredAlerts: SnapshotAlerts = { snapshot, alerts };
+        snapshotAlertsAreaState = readyState;
+        snapshotAlertsHoldMode = "unknown";
+        snapshotAlertsHoldTimer = setTimeout(() => {
+          snapshotAlertsHoldTimer = undefined;
+          snapshotAlertsHoldMode = "none";
+          lastSnapshotAlertsSuccessAt = -Infinity;
+          snapshotAlerts = deferredAlerts;
+          snapshotAlertsAreaState = readyState;
+          publishSnapshotAlertsUpdate();
+        }, Math.max(0, lastSnapshotAlertsSuccessAt + HOLD_MS - now));
+      } else {
+        lastSnapshotAlertsSuccessAt = now;
+        snapshotAlerts = { snapshot, alerts };
+        snapshotAlertsAreaState = readyState;
+        refreshedSnapshot = true;
+      }
     } catch (error) {
       if (signal?.aborted || sequence !== snapshotAlertsSequence || monitoringDetailsRefCount === 0) return;
-      snapshotAlerts = null;
-      snapshotAlertsAreaState = areaError(error, "활성 알림을 불러오지 못했습니다.", false);
-      if (isAuthorizationError(error)) { publishAuthorizationError(error); return; }
+      if (isAuthorizationError(error)) {
+        clearSnapshotAlertsHoldTimer();
+        lastSnapshotAlertsSuccessAt = -Infinity;
+        snapshotAlerts = null;
+        snapshotAlertsAreaState = areaError(error, "활성 알림을 불러오지 못했습니다.", false);
+        publishAuthorizationError(error);
+        return;
+      }
+      const now = performance.now();
+      if (isTransientFailure(error) && snapshotAlerts !== null && now - lastSnapshotAlertsSuccessAt < HOLD_MS) {
+        snapshotAlertsAreaState = readyState;
+        if (snapshotAlertsHoldMode === "unknown") clearSnapshotAlertsHoldTimer();
+        pendingSnapshotAlertsError = error;
+        if (snapshotAlertsHoldTimer === undefined) {
+          snapshotAlertsHoldMode = "failure";
+          snapshotAlertsHoldTimer = setTimeout(() => {
+            snapshotAlertsHoldTimer = undefined;
+            snapshotAlertsHoldMode = "none";
+            pendingSnapshotAlertsError = null;
+            lastSnapshotAlertsSuccessAt = -Infinity;
+            snapshotAlerts = null;
+            snapshotAlertsAreaState = areaError(error, "활성 알림을 불러오지 못했습니다.", false);
+            publishSnapshotAlertsUpdate();
+          }, Math.max(0, lastSnapshotAlertsSuccessAt + HOLD_MS - now));
+        }
+      } else {
+        clearSnapshotAlertsHoldTimer();
+        lastSnapshotAlertsSuccessAt = -Infinity;
+        snapshotAlerts = null;
+        snapshotAlertsAreaState = areaError(error, "활성 알림을 불러오지 못했습니다.", false);
+      }
     } finally {
       if (snapshotAlertsInFlight === sequence) snapshotAlertsInFlight = null;
     }
     if (signal?.aborted || sequence !== snapshotAlertsSequence || !currentData?.monitoring.v2) return;
-    currentData.monitoring.activeAlertsAreaState = snapshotAlertsAreaState;
-    applyCollectionInsights(currentData.monitoring, collectionInsights, currentData.monitoring.v2.serverTime, snapshotAlerts, lidarProfilesState);
-    publishNotifications();
+    publishSnapshotAlertsUpdate();
     if (refreshedSnapshot && snapshotAlerts) {
       checkStreamNotificationId?.(snapshotAlerts.snapshot.operations?.notificationId);
     }
@@ -838,7 +1055,6 @@ export function createHttpDashboardDataSource({
   const lidarProfilesActive = () => backendContract && useV2Monitoring && monitoringDetailsRefCount > 0
     && (typeof document === "undefined" || document.visibilityState !== "hidden");
 
-  const HOLD_MS = 3000;
   const timerKey = (sensorId: string, kind: "curve" | "average") => `${sensorId}:${kind}`;
   const clearProfileTimer = (sensorId: string, kind: "curve" | "average") => {
     const key = timerKey(sensorId, kind);
@@ -885,24 +1101,23 @@ export function createHttpDashboardDataSource({
       return { ...previousCurve.profile, curveHeld: undefined, averageHeld: undefined };
     }
     if (profile.measuredAt && Number.isFinite(epoch)) {
-      lastNormalCurves.set(sensorId, previousCurve && previousCurve.measuredAt === profile.measuredAt
-        ? { ...previousCurve, profile }
-        : { profile, measuredAt: profile.measuredAt, measuredAtEpoch: epoch, startedAt: now });
+      lastNormalCurves.set(sensorId, { profile, measuredAt: profile.measuredAt, measuredAtEpoch: epoch, startedAt: now });
     }
     if (profile.average !== "-") {
       clearProfileTimer(sensorId, "average");
       if (profile.measuredAt && Number.isFinite(epoch)) {
-        const previousAverage = lastNormalAverages.get(sensorId);
-        lastNormalAverages.set(sensorId, previousAverage && previousAverage.measuredAt === profile.measuredAt
-          ? { ...previousAverage, average: profile.average }
-          : { average: profile.average, measuredAt: profile.measuredAt, measuredAtEpoch: epoch, startedAt: now });
+        lastNormalAverages.set(sensorId, { average: profile.average, measuredAt: profile.measuredAt, measuredAtEpoch: epoch, startedAt: now });
       }
       return { ...profile, curveHeld: undefined, averageHeld: undefined };
     }
     const previousAverage = lastNormalAverages.get(sensorId);
     const reasonCodes = profile.reasonCodes ?? [];
     const hasMissing = reasonCodes.includes("HEIGHT_TEMPORAL_MISSING");
-    const warming = !hasMissing && reasonCodes.includes("HEIGHT_TEMPORAL_WARMING");
+    const warming = !hasMissing && (
+      reasonCodes.includes("HEIGHT_TEMPORAL_WARMING")
+      || reasonCodes.includes("HEIGHT_TEMPORAL_WARMING_OR_MISSING")
+      || reasonCodes.includes("HEIGHT_PAIR_UNMATCHED")
+    );
     if (warming && previousAverage && now - previousAverage.startedAt < HOLD_MS) {
       scheduleProfileExpiry(sensorId, "average", previousAverage.startedAt, now);
       return { ...profile, average: previousAverage.average, curveHeld: undefined, averageHeld: true };
@@ -912,7 +1127,7 @@ export function createHttpDashboardDataSource({
     return { ...profile, curveHeld: undefined, averageHeld: undefined };
   };
 
-  // 조회 실패(인증 오류 제외)에서만 센서별 마지막 유효 곡선을 시작점부터 3초까지 유지한다.
+  // 조회 실패(인증 오류 제외)에서만 센서별 마지막 유효 곡선을 시작점부터 10초까지 유지한다.
   const holdProfileAfterFailure = (slot: { sensorId: string; label: string; color: "blue" | "teal" }, now: number): LidarProfile => {
     const previousCurve = lastNormalCurves.get(slot.sensorId);
     if (!previousCurve || now - previousCurve.startedAt >= HOLD_MS) {
@@ -965,9 +1180,7 @@ export function createHttpDashboardDataSource({
         publishAuthorizationError(error);
         return;
       }
-      const isTransientFailure = error instanceof TypeError
-        || (error instanceof ApiError && error.status >= 500);
-      applyLidarProfiles(null, isTransientFailure);
+      applyLidarProfiles(null, isTransientFailure(error));
     }
     if (requestSucceeded) {
       let profiles: ReturnType<typeof parseLidarProfilesV2> | null = null;
@@ -1292,7 +1505,28 @@ export function createHttpDashboardDataSource({
         onSessionExpired();
         throw new ApiError(401, "로그인이 필요합니다.");
       }
-      const snapshot = await request<ApiMonitoringSnapshot | ApiMonitoringSnapshotV2>(snapshotPath, { signal: options.signal });
+      let snapshot: ApiMonitoringSnapshot | ApiMonitoringSnapshotV2;
+      try {
+        snapshot = await request<ApiMonitoringSnapshot | ApiMonitoringSnapshotV2>(snapshotPath, { signal: options.signal });
+      } catch (error) {
+        const now = performance.now();
+        if (!options.signal?.aborted && !(error instanceof DOMException && error.name === "AbortError")
+          && isTransientFailure(error)
+          && useV2Monitoring
+          && currentData?.monitoring.v2
+          && currentData.session?.user.id === session?.user.id
+          && lastNormalLoad
+          && now - lastNormalLoad.startedAt < HOLD_MS) {
+          currentData.session = session;
+          currentData.monitoring.summary.loadPercent = lastNormalLoad.loadPercent;
+          currentData.monitoring.summary.loadHold = { observedAt: lastNormalLoad.measuredAt };
+          scheduleLoadHoldExpiry(lastNormalLoad.startedAt, now);
+          applyCollectionInsights(currentData.monitoring, collectionInsights, currentData.monitoring.v2.serverTime, snapshotAlerts, lidarProfilesState);
+          updateLoadOneHourAgo(currentData.monitoring);
+          return cloneDashboardData(currentData);
+        }
+        throw error;
+      }
       lastSnapshotServerTime = snapshot.serverTime;
       const monitoring = mapMonitoring(snapshot, null);
       const reception = receivedSnapshot();
@@ -1748,12 +1982,36 @@ export function createHttpDashboardDataSource({
       };
       checkStreamNotificationId = triggerNotificationsSync;
       const stopStream = () => {
+        clearSseDisconnectHoldTimer();
         if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
         reconnectTimer = undefined;
         if (checkStreamNotificationId === triggerNotificationsSync) {
           checkStreamNotificationId = null;
         }
         eventSource.close();
+      };
+      const applySseDisconnectedState = () => {
+        const pendingAlertsError = pendingSnapshotAlertsError;
+        clearHoldState();
+        if (pendingAlertsError !== null) {
+          snapshotAlerts = null;
+          snapshotAlertsAreaState = areaError(pendingAlertsError, "활성 알림을 불러오지 못했습니다.", false);
+        }
+        if (currentData) currentData.reception = { ...currentData.reception, status: "error" };
+        if (currentData?.monitoring.v2) {
+          currentData.monitoring.status = "disconnected";
+          if (currentData.monitoring.alarmState) currentData.monitoring.alarmState = "UNKNOWN";
+          currentData.monitoring.summary.loadPercent = null;
+          currentData.monitoring.summary.loadHold = undefined;
+          currentData.monitoring.v2.streamState = "reconnecting";
+          currentData.monitoring.activeAlertsAreaState = snapshotAlertsAreaState;
+          currentData.monitoring.devices = currentData.monitoring.devices.map((device) => ({
+            ...device, status: "unknown", statusLabel: "UNKNOWN",
+          }));
+          applyCollectionInsights(currentData.monitoring, collectionInsights, currentData.monitoring.v2.serverTime, snapshotAlerts, lidarProfilesState);
+          updateLoadOneHourAgo(currentData.monitoring);
+        }
+        if (currentData) listener(cloneDashboardData(currentData));
       };
       const scheduleReconnect = () => {
         if (!active || reconnectTimer !== undefined) return;
@@ -1799,6 +2057,7 @@ export function createHttpDashboardDataSource({
             monitoring = mapMonitoring(snapshot, null);
             measuredAt = timeOnly(snapshot.measuredAt, true);
           } catch { return; }
+          clearSseDisconnectHoldTimer();
           reconnectDelay = SSE_RECONNECT_INITIAL_MS;
           monitoringRevision += 1;
           if (monitoring.v2) monitoring.v2.streamState = "connected";
@@ -1837,21 +2096,35 @@ export function createHttpDashboardDataSource({
         });
         source.addEventListener("error", () => {
           if (!active) return;
-          // SSE 재연결 중에는 적재율, LiDAR 곡선과 대표 평균의 유지 상태와 timer를 모두 버린다.
-          clearHoldState();
-          if (currentData) currentData.reception = { ...currentData.reception, status: "error" };
-          if (currentData?.monitoring.v2) {
-            currentData.monitoring.status = "disconnected";
-            if (currentData.monitoring.alarmState) currentData.monitoring.alarmState = "UNKNOWN";
-            currentData.monitoring.summary.loadPercent = null;
-            currentData.monitoring.summary.loadHold = undefined;
-            currentData.monitoring.v2.streamState = "reconnecting";
-            currentData.monitoring.devices = currentData.monitoring.devices.map((device) => ({
-              ...device, status: "unknown", statusLabel: "UNKNOWN",
-            }));
+          const now = performance.now();
+          const canHoldSse = useV2Monitoring
+            && Boolean(currentData?.monitoring.v2)
+            && lastNormalLoad !== null
+            && now - lastNormalLoad.startedAt < HOLD_MS;
+          if (canHoldSse && lastNormalLoad && currentData?.monitoring.v2) {
+            clearLoadHoldTimer();
+            currentData.monitoring.v2.streamState = "connected";
+            if (lastNormalLoad.alarmState && now - lastNormalLoad.alarmStartedAt < HOLD_MS) {
+              currentData.monitoring.alarmState = lastNormalLoad.alarmState;
+              if (currentData.monitoring.v2.operations) {
+                currentData.monitoring.v2.operations.effectiveState = lastNormalLoad.alarmState;
+              }
+            }
+            currentData.monitoring.summary.loadPercent = lastNormalLoad.loadPercent;
+            currentData.monitoring.summary.loadHold = { observedAt: lastNormalLoad.measuredAt };
+            applyCollectionInsights(currentData.monitoring, collectionInsights, currentData.monitoring.v2.serverTime, snapshotAlerts, lidarProfilesState);
             updateLoadOneHourAgo(currentData.monitoring);
+            listener(cloneDashboardData(currentData));
+            if (sseDisconnectHoldTimer === undefined) {
+              sseDisconnectHoldTimer = setTimeout(() => {
+                sseDisconnectHoldTimer = undefined;
+                if (!active) return;
+                applySseDisconnectedState();
+              }, Math.max(0, lastNormalLoad.startedAt + HOLD_MS - now));
+            }
+          } else {
+            applySseDisconnectedState();
           }
-          if (currentData) listener(cloneDashboardData(currentData));
           // EventSource는 200이 아닌 응답을 받으면 CLOSED가 되어 스스로 재연결하지 않는다.
           if (source.readyState === EVENT_SOURCE_CLOSED) scheduleReconnect();
           if (!backendContract || !hasAuthenticatedSession || checkingSession) return;

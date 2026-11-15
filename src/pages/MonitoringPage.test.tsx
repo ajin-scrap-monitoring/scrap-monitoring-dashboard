@@ -430,7 +430,7 @@ test("적재율 유지 중 kpi-label은 '갱신 대기'를 포함하고 title에
   const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
   const label = container.querySelector(".kpi-label");
   expect(label).toHaveTextContent("추정 적재율 (갱신 대기)");
-  expect(label).toHaveAttribute("title", "마지막 정상 관측 2026-11-11 15:26:43 (한국 표준시)을 최대 3초 표시합니다");
+  expect(label).toHaveAttribute("title", "마지막 정상 관측 2026-11-11 15:26:43 (한국 표준시)을 최대 10초 표시합니다");
   const value = container.querySelector(".kpi-value");
   expect(value).toHaveTextContent("78.5%");
   const progress = container.querySelector(".progress");
@@ -452,5 +452,5 @@ test("simulated=false 적재율 유지 중 kpi-label도 '추정 적재율 (갱�
   const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
   const label = container.querySelector(".kpi-label");
   expect(label).toHaveTextContent("추정 적재율 (갱신 대기)");
-  expect(label).toHaveAttribute("title", "마지막 정상 관측 2026-11-11 15:00:00 (한국 표준시)을 최대 3초 표시합니다");
+  expect(label).toHaveAttribute("title", "마지막 정상 관측 2026-11-11 15:00:00 (한국 표준시)을 최대 10초 표시합니다");
 });

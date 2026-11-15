@@ -149,7 +149,7 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
           <section className="card top-card span-4 kpi-card">
             <div className="monitoring-card-title"><SectionTitle>현재 상태</SectionTitle></div>
             <div className="kpi-content">
-              <p className="kpi-label" title={monitoring.summary.loadHold ? `마지막 정상 관측 ${seoulDisplayText(Date.parse(monitoring.summary.loadHold.observedAt))}을 최대 3초 표시합니다` : state?.filterState === "WARMING" ? "시간 필터가 준비되는 동안의 값" : undefined}>{formatKpiLabel(state?.filterState, Boolean(monitoring.summary.loadHold))}</p>
+              <p className="kpi-label" title={monitoring.summary.loadHold ? `마지막 정상 관측 ${seoulDisplayText(Date.parse(monitoring.summary.loadHold.observedAt))}을 최대 10초 표시합니다` : state?.filterState === "WARMING" ? "시간 필터가 준비되는 동안의 값" : undefined}>{formatKpiLabel(state?.filterState, Boolean(monitoring.summary.loadHold))}</p>
               <div className={`kpi-value${monitoring.summary.loadPercent === null ? " unavailable-value" : valueLength > 5 ? " precise-value" : ""}`} style={valueLength > 5 ? { fontSize: Math.min(76, 500 / valueLength) } : undefined}>{monitoring.summary.loadPercent === null ? "판단 불가" : <>{monitoring.summary.loadPercent}<span>%</span></>}</div>
               {monitoring.summary.loadPercent === null
                 ? <div className="progress-unavailable">{state?.streamState === "reconnecting" && <span role="status">실시간 연결 재연결 중</span>}</div>

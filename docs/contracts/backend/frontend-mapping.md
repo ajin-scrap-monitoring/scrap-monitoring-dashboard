@@ -19,7 +19,9 @@ Programming Interface (API)의 revision과 경로는 [manifest](manifest.json)�
 `null`, 0건과 비활성화는 서로 다른 상태다. 제공되지 않은 값을 0, 정상, 대기 또는 알림
 없음으로 변환하지 않는다. 서로 다른 데이터 출처의 적재율, profile과 시계열을 하나의
 관측 결과로 합치지 않는다.
-현황 적재율, LiDAR 곡선과 센서별 대표 평균은 일시 준비 중 또는 조회 실패 시 직전 정상 관측을 최대 3초간 유지하는 예외를 적용한다. 마지막 서로 다른 정상 관측의 측정 시각(`measuredAt`)을 처음 수신한 단조 시계 시각부터 3초 동안 유지하며 새 관측이 오면 즉시 교체하고 만료 시 기존 정보 없음 및 빈 곡선으로 전환한다. 같은 `measuredAt` 반복, 준비 중 응답, 조회 실패로 유지 시간을 연장하지 않는다. 적재율은 `dataState=UNKNOWN`, `filterState=WARMING`, `reasonCodes`에 `FILTER_WARMING`이 있을 때만 유지하며 "갱신 대기"로 표시한다. 명시적 오류, 무효, 만료 응답과 SSE 재연결 중에는 유지하지 않고 직전 정상 관측도 버린다. 대상 변경, 로그아웃, 인증 오류, 화면 이탈과 탭 숨김은 유지 상태를 버린다. 유지 값은 예상 도달, 경보, 이력, 24시간 그래프 등 다른 지표 계산에 사용하지 않는다.
+현황 적재율과 LiDAR 곡선 및 센서별 대표 평균은 최대 10초, Camera MJPEG 실시간 영상은 최대 5초 동안 일시 준비 중, 값 공백 또는 일시 통신 오류 시 직전 정상 관측을 유지하는 예외를 적용한다. 적재율과 LiDAR의 유지 시간은 유효한 정상 관측을 수신한 가장 최근 단조 시계 시각부터 계산하며 MJPEG frame의 유지 시간은 마지막 정상 frame의 decode 성공 시각부터 계산한다. 새 정상 관측이 오면 즉시 교체하고 만료 시 기존 정보 없음, 빈 곡선 또는 영상 연결 중 상태로 전환한다. 준비 중 응답, 값 공백, 조회 실패나 SSE 오류 반복은 유지 시간을 연장하지 않는다. 적재율은 장치 이상 상태(`STALE`, `UNAVAILABLE`, `MEASUREMENT_UNAVAILABLE`, `CONFIG_ERROR`, `FATAL`)가 명시되지 않았을 때 `dataState=UNKNOWN`, `filterState=WARMING`, `reasonCodes`에 `FILTER_WARMING`이 포함된 경우, `dataState=FRESH`이고 `loadPercent`가 null인 경우(사유 코드 무관), 그리고 일시 snapshot 조회 실패 또는 SSE 연결 끊김(인증 오류 제외)에서 유지하며 "갱신 대기"로 표시한다. 유지 가능한 공백 또는 유효한 `FRESH` 적재율과 측정 시각이 있는 응답에서 Backend가 `operations.effectiveState=UNKNOWN`을 반환하면 마지막 정상 경보 판정(`NORMAL`, `WARNING`, `CRITICAL`)도 마지막 정상 판정 수신 시각부터 최대 10초 유지한다. 유효 적재율이 없는 snapshot에 `dataState` `STALE` 또는 `UNAVAILABLE`, 장치 이상 상태가 명시되면 적재율을 유지하지 않고 직전 정상 적재율도 버린다. 인증 오류가 발생하면 유지 상태를 버린다. 최근 10초 이내 유효 적재율 수신 중 발생한 SSE 연결 끊김은 마지막 적재율 수신 시각부터 최대 10초간 직전 화면 상태를 유지하고 만료 시 연결 오류와 재연결 상태로 전환한다. `snapshot-with-alerts`의 일시 실패 또는 유지 가능한 snapshot의 `evaluationState=UNKNOWN` 응답은 마지막 결합 조회 성공 시각부터 최대 10초간 직전 결합 결과를 유지하고 만료 시 오류 또는 현재 평가로 전환한다. 적재율과 LiDAR의 유지 상태는 대상 변경, 로그아웃, 인증 오류, 현황 상세 해제와 탭 숨김에서 버린다. MJPEG frame은 인증 오류, 영상 주소 변경과 컴포넌트 종료에서 버린다. 유지 값은 예상 도달, 경보, 이력, 24시간 그래프 등 다른 지표 계산에 사용하지 않는다.
+
+현재 역순 측정 응답 처리에는 유지 시간 제한이 적용되지 않는 경로가 있다. 갱신 대기 중인 적재율이나 LiDAR 곡선에 더 과거의 정상 응답이 도착하면 이전 정상값의 유지 표기가 제거되고 표시값의 만료 처리가 적용되지 않는다.
 
 ## 항목 찾기
 
@@ -40,14 +42,14 @@ Frontend는 다음 5개 규칙으로 제공된 응답을 연결한다. 외부 �
 | 식별자 | 제공 정보 | Frontend 적용 규칙 |
 | --- | --- | --- |
 | `FE-DATA-01` | `monitoring.camera-status` SSE 이벤트 | 수신한 상태와 프레임 수신 시각 및 사유 코드 연결, [카메라 상태](#카메라-상태)의 유효 기한 적용 |
-| `FE-DATA-02` | 상위 연결 상태와 마지막 sensor snapshot | REPORTING일 때 현재 센서 상태 사용, Server-Sent Events (SSE) 연결 오류에는 장비 행을 확인 불가로 표시하고 원본 보고 보존 |
+| `FE-DATA-02` | 상위 연결 상태와 마지막 sensor snapshot | REPORTING일 때 현재 센서 상태 사용, Server-Sent Events (SSE) 연결 오류의 유지 시간이 만료되면 장비 행을 확인 불가로 표시하고 원본 보고 보존 |
 | `FE-DATA-03` | 날짜 녹화의 `export_state`와 오류 코드 | HTTP Live Streaming (HLS) 재생과 MP4 준비 실패 구분, 기존 다운로드 안내와 상태 상세에 비동기 실패 및 재진입 결과 반영 |
 | `FE-DATA-04` | 날짜 녹화의 오류 코드 | 공개 계약의 `[A-Z0-9_]` 1~100자 표시, 서버 처리 로그는 노출하지 않음 |
 | `FE-DATA-05` | 이벤트의 서버 title 및 detail | v1과 v2 이력의 최초 조회와 재조회에서 제목과 내용을 별도로 보존 |
 
 Backend는 장비 보고가 30초 이상 없으면 연결 상태를 UNKNOWN으로 바꾸고 마지막 snapshot을
 보존한다. Frontend는 과거 snapshot의 FRESH를 현재 정상 상태로 표시하지 않는다. SSE 연결
-오류도 장비의 현재 표시를 무효화하되 원본 보고의 상태와 시각은 유지한다. 같은 snapshot을
+오류의 유지 시간이 만료되면 장비의 현재 표시를 무효화하되 원본 보고의 상태와 시각은 유지한다. 같은 snapshot을
 다시 수신해도 현재 표시를 복원한다. 브라우저 연결 문제로 Backend의 원본 연결 상태를
 다시 작성하지 않는다.
 
@@ -173,8 +175,8 @@ filterState가 WARMING이어도 profile 응답에 유효점이 있으면 곡선�
 재연결 중이면 LiDAR 카드는 곡선 대신 정보 없음을 표시한다.
 높이는 cm를 m로 한 번 변환하고 `positionRatio`는 0 이상 1 이하의 위치로 사용한다.
 평균은 `SCAN_MEAN_TEMPORAL_MEDIAN` 기준이면 `filteredAverage`, 아니면 `average`다.
-새 profile에 유효점이 있고 대표값이 null일 때 `reasonCodes`에 `HEIGHT_TEMPORAL_MISSING`이 있으면 유지하지 않고 직전 정상 대표값을 버린다. 그렇지 않고 `HEIGHT_TEMPORAL_WARMING`이 있으면 마지막 정상 대표값을 최대 3초간 유지해 보조 표기 "평균 갱신 대기"와 title "마지막 정상 대표값을 최대 3초 표시합니다"로 표시한다(혼합 코드 `HEIGHT_TEMPORAL_WARMING_OR_MISSING` 단독은 유지하지 않는다). 그 외의 사유로 null이면 대표값은 "-"로 표시하고 곡선은 유지한다.
-profile 조회가 네트워크 오류, timeout 또는 5xx로 실패한 경우(인증 오류 제외)에만 마지막 유효 곡선과 대표값을 최대 3초간 보조 표기 "곡선 갱신 대기"로 유지한다. 응답이 도착했으나 `samples`가 빈 배열이거나 유효점이 없으면(예: `FILTERED_PROFILE_UNAVAILABLE`) 즉시 비우고 과거 곡선으로 덮지 않는다. 부분 무효점은 새 곡선의 유효점만 그리고 끊긴 구간을 유지하며 이전 스캔 점으로 보충하지 않는다. 유지 시간 3초가 만료되면 곡선은 비우고 평균은 "-"로 전환한다.
+새 profile에 유효점이 있고 대표값이 null일 때 개별 `profile.reasonCodes` 또는 최상위 `meanSectionReasonCodes`에 `HEIGHT_TEMPORAL_MISSING`이 있으면 유지하지 않고 직전 정상 대표값을 버린다. 그렇지 않고 개별 `profile.reasonCodes` 또는 최상위 `meanSectionReasonCodes`에 `HEIGHT_TEMPORAL_WARMING`, `HEIGHT_TEMPORAL_WARMING_OR_MISSING` 또는 `HEIGHT_PAIR_UNMATCHED`가 있으면 마지막 정상 대표값을 최대 10초간 유지해 보조 표기 "평균 갱신 대기"와 title "마지막 정상 대표값을 최대 10초 표시합니다"로 표시한다. 그 외의 사유로 null이면 대표값은 "-"로 표시하고 곡선은 유지한다.
+profile 조회가 네트워크 오류, timeout 또는 5xx로 실패한 경우(인증 오류 제외)에만 마지막 유효 곡선과 대표값을 최대 10초간 보조 표기 "곡선 갱신 대기"로 유지한다. 응답이 도착했으나 `samples`가 빈 배열이거나 유효점이 없으면(예: `FILTERED_PROFILE_UNAVAILABLE`) 즉시 비우고 과거 곡선으로 덮지 않는다. 부분 무효점은 새 곡선의 유효점만 그리고 끊긴 구간을 유지하며 이전 스캔 점으로 보충하지 않는다. 유지 시간 10초가 만료되면 곡선은 비우고 평균은 "-"로 전환한다.
 `sampleSource`, `processingVersion`, `sourceScanId`의 3개 optional 필드는 계약 파서에서
 허용하지만 화면 모델에는 보존하지 않는다.
 `valid=false`, 높이 또는 위치가 null인 표본은 선을 끊는다. 관측 구간은 유효 높이와 `positionRatio`가 모두
@@ -209,7 +211,7 @@ site 및 edge가 현재 monitoring scope와 같고 `snapshot.snapshotId === acti
 `operations.effectiveState`, `deviceStatus` 연결 상태 및 유효 상태, `sensors` 상태, `services` 상태가 마지막 결합 응답과 다르거나
 `monitoring.camera-status` SSE 상태 또는 연결 상태가 전환되면 결합 조회(`snapshot-with-alerts`)만 즉시 요청한다. 동시에 한 요청만 진행하고 강제 조회 시작 간격은
 최소 5초며, 5초 제한이나 이전 요청 진행 중에 발생한 상태 전환은 제한 시각 경과 후 재조회로 반영한다. collection-summary, fill-forecast, profiles와 layout은 이 조건으로 요청하지 않는다. 또한 결합 조회 응답의 `snapshot.operations.notificationId`가 아직 동기화하지 않은 새 ID면 `/api/v1/notifications` 재조회를 시작해 헤더 최근 알림과 동기화한다.
-SSE 재연결 중에는 활성 알림 항목을 숨기고 연결 복구 뒤 다시 표시한다고 안내한다.
+SSE 연결 오류의 유지 시간이 만료되어 재연결 중이면 활성 알림 항목을 숨기고 연결 복구 뒤 다시 표시한다고 안내한다. 결합 조회의 일시 실패와 `UNKNOWN` 평가의 유지 조건은 [기준과 평가 분류](#기준과-평가-분류)를 따른다.
 
 `evaluationState`가 `UNKNOWN` 또는 `ERROR`이면 "적재율 판정 불가"로 표시하고,
 `basis.lastKnownState`가 있으면 "적재율 판정 불가 (마지막 판정 정상)"처럼 상태 문구를
@@ -244,8 +246,9 @@ SSE 재연결 중에는 활성 알림 항목을 숨기고 연결 복구 뒤 다�
 
 프론트엔드는 적재율과 임계율로 등급을 다시 계산하지 않는다. 실제 작업의 대기, 적재 중과
 수거 중은 이 등급에서 추정하지 않는다. `operations=null`을 NORMAL로 바꾸지 않으며
-`UNKNOWN` 또는 `ERROR`에서 과거 CRITICAL을 현재 경보로 표시하지 않는다. Server-Sent Events
-(SSE) 연결 오류 동안에도 현재 경보를 알 수 없는 상태로 표시한다.
+`ERROR`는 판정 불가로 표시한다. `UNKNOWN`의 마지막 정상 경보 판정 유지 조건은
+[기준과 평가 분류](#기준과-평가-분류)를 따르며 유지 시간이 만료되면 `UNKNOWN`으로 전환한다. Server-Sent Events (SSE) 연결 오류에서도 10초 유지 만료 후에는 현재 경보를 알 수 없는
+상태로 표시한다.
 
 v2 SSE는 별도의 `notification.created`를 제공하지 않는다. 프론트엔드는 snapshot의 새로운
 `notificationId`로 `/api/v1/notifications`를 다시 조회한다. 읽음 요청의 성공은 확인한
@@ -383,7 +386,7 @@ Backend 회신서의 요청 목록은 이 절의 표를 정본으로 사용한�
 | 완료 기준 | 요청 문구의 모든 선택지를 완료로 인정. 수신한 계약의 제한값과 Dashboard의 요청 timeout을 넘는 기준을 요구하지 않음 |
 | 종료 | 요청한 결과나 대안을 받으면 항목을 종료. 새 요구는 새 ID로 등록 |
 
-미해결 요청은 다음 8개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
+미해결 요청은 다음 9개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
 
 | ID | 항목 | 화면 위치 | 책임 | 상태 |
 | --- | --- | --- | --- | --- |
@@ -395,6 +398,7 @@ Backend 회신서의 요청 목록은 이 절의 표를 정본으로 사용한�
 | Q-22 | 장치 성능과 복구 이벤트 판정 기준 보수화 | 이력 화면 운영 이력 표, 현황 화면 활성 알림 카드 | Backend | 장치 성능과 복구의 판정 기준이 낮아 이벤트와 복구 판정이 잦음. 전반적인 이벤트 발생과 복구 판정 기준을 보수적으로 상향 조정 요청 |
 | Q-23 | 동일 시간 구간 내 반복 이벤트 단일화 | 이력 화면 운영 이력 표, 녹화 화면 녹화 목록 | Backend | 같은 시간 구간에서 동일한 이벤트가 반복 생성되어 과도하게 조회됨. 동일 시간대의 반복 이벤트를 하나로 통합해 기록 및 제공하도록 처리 요청 |
 | Q-24 | 이벤트 내용의 입력 원천 및 시뮬레이션 구분 기록 제거 | 이력 화면 운영 이력 표와 이벤트 상세, 녹화 화면 녹화 목록 | Backend | 수거 필요 등 이벤트(`/api/v1/events`, `/api/v2/recordings/events`)의 제목과 세부 내용에 '시뮬레이션' 문구를 포함해 입력 데이터 원천(실측 LiDAR, 동영상, 시뮬레이션)을 기록하는 경우가 있음. 입력 원천 선택은 환경 구성 영역이므로 Backend는 측정값 처리 결과만 기록하고 시뮬레이션 등 데이터 원천 구분을 이벤트 내용에 기록하지 않도록 수정 요청 |
+| Q-25 | 날짜 녹화 목록 응답 상한 초과 | 녹화 화면 전체 및 날짜 녹화 목록 | Media Service | 날짜 녹화 목록이 HTTP 503 `DAILY_RESPONSE_TOO_LARGE`를 반환하고 Backend가 Media Service의 503을 전달함. 단일 날짜 조회와 이벤트 목록은 성공하는 범위가 있음. 날짜 녹화 목록의 응답 상한 및 조회 범위 처리 개선 요청 |
 
 ### 이력 및 녹화 영상의 일괄 협의 항목
 

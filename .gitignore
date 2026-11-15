@@ -14,6 +14,7 @@ test-results/
 !.env.example
 /runtime-config.json
 /DEPLOYMENT_RUNTIME_CONFIGURATION_REQUEST.md
+/REALTIME_DATA_TOLERANCE_REQUEST.md
 /.secrets/
 *.key
 *.pem
