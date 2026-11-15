@@ -96,8 +96,7 @@ Backend 기준은 manifest의 revision이다. 현황 보조 조회는 5개(`fill
 `summary.loadPercent`는 이미 percent 단위이므로 다시 100을 곱하지 않는다.
 `measuredAt`, `assessmentReceivedAt`, 센서의 `last_scan_at`, 장비의 `last_received_at`과 영상
 촬영 시각은 각각 다른 시각이다. 브라우저의 로컬 시각은 경과 시간 계산에 사용하지 않는다.
-snapshot, `profiles`, `fill-forecast`와 `load-history`가 `simulated=true`를 제공하면 기존
-카드 안에 시뮬레이션 보조 표기를 더한다. 실측으로 취급하지 않는다.
+snapshot, `profiles`, `fill-forecast`와 `load-history`의 `simulated` 값은 계약 파서가 수용하되, 화면에는 시뮬레이션과 실측을 구분하는 문구를 표시하지 않는다.
 
 별도의 장비 서비스 진단 목록, 마지막 진행 시각, clock 상태와 offset은 화면에 표시하지
 않는다. 서비스 부재 및 오래된 장비 snapshot을 정상 상태로 보충하지 않는다. pit 이름은
@@ -137,9 +136,7 @@ service 상태를 표시한다. 카메라 관측은 LiDAR 측정 시각과 독�
 시각, 구간 경계, 값 범위, `valid`, `dataState`, `reasonCodes`, `inputSource`, `valuePolicy`,
 `simulated`, 표본 수 검사는 두 형식에 동일하게 적용한다. 서버가 compact 모드로 응답하면 유효한
 표본의 `generatedAt`과 `observedAt`이 null일 수 있다. 이 표본은 bucket 위치로 표시하고 시각을
-만들어 채우지 않는다. 응답의 `inputSource`, `valuePolicy`와 `simulated`는 보존한다. 값이 있는
-표본이 모두 `simulated=true`이면 "시뮬레이션", 일부만 true이면 "시뮬레이션 포함"을 그래프 왼쪽 위와
-그래프 접근성 이름에 표시한다.
+만들어 채우지 않는다. 응답의 `inputSource`, `valuePolicy`와 `simulated`는 보존하며 화면에 시뮬레이션 여부를 별도로 표기하지 않는다.
 
 유효한 0%는 보존하고 결측(null)과 `valid=false`는 선을 연결하지 않는다. 이전 값으로 채우지
 않으며 전체 범위 재조회 방식을 유지한다. 90일을 넘는 기간은 요청 전에 안내하고 요청하지 않는다.
@@ -180,17 +177,15 @@ filterState가 WARMING이어도 profile 응답에 유효점이 있으면 곡선�
 profile 조회가 네트워크 오류, timeout 또는 5xx로 실패한 경우(인증 오류 제외)에만 마지막 유효 곡선과 대표값을 최대 3초간 보조 표기 "곡선 갱신 대기"로 유지한다. 응답이 도착했으나 `samples`가 빈 배열이거나 유효점이 없으면(예: `FILTERED_PROFILE_UNAVAILABLE`) 즉시 비우고 과거 곡선으로 덮지 않는다. 부분 무효점은 새 곡선의 유효점만 그리고 끊긴 구간을 유지하며 이전 스캔 점으로 보충하지 않는다. 유지 시간 3초가 만료되면 곡선은 비우고 평균은 "-"로 전환한다.
 `sampleSource`, `processingVersion`, `sourceScanId`의 3개 optional 필드는 계약 파서에서
 허용하지만 화면 모델에는 보존하지 않는다.
-`valid=false`, 높이 또는 위치가 null인 표본은 선을 끊는다. 관측 범위는 `positionRatio`가 null이
-아닌 표본의 최솟값~최댓값이다. 가로축의 [0, 최솟값)과 (최댓값, 1] 구간은 미측정 영역으로 옅은
-회색 음영을 렌더링한다. 양끝 구간이 가로축 길이의 1% 미만이면 해당 음영을 만들지 않는다.
-음영 폭이 SVG viewBox 좌표 단위 24 이상이면 가운데에 "미측정" 글자를 표시한다. 음영 rect의
-title은 미측정 구간 비율(예: "미측정 A 0%~13%")이고 그래프의 SVG aria-label은 그래프 라벨 뒤
-괄호에 같은 구간 비율을 쉼표로 나열한다. 높이와 위치가 모두 null이 아닌 유효점이 없는
+`valid=false`, 높이 또는 위치가 null인 표본은 선을 끊는다. 관측 구간은 유효 높이와 `positionRatio`가 모두
+있는 연속 표본들의 가로축 범위(`0~1` clamp)를 합친 구간이다. 가로축의 바깥 구간([0, 최솟값), (최댓값, 1])은
+가로축 길이의 1% 이상일 때, 유효 구간 사이의 중간 결손 구간은 길이와 무관하게 결손이 발생하면 미측정 영역으로
+회색 빗금 패턴을 렌더링한다. 빗금 영역 rect의 title은 미측정 구간 비율(예: "미측정 A 0%~13%",
+"미측정 13%~60%")이고 그래프의 SVG aria-label은 그래프 라벨 뒤 괄호에 같은 구간 비율을 쉼표로 나열한다. 높이와 위치가 모두 null이 아닌 유효점이 없는
 profile은 `samples`를 빈 배열로 바꿔 곡선을 비우며 `samples=[]`는 표본 없음 상태로 둔다. 원래 높이값,
-cm에서 m 변환, 세로축 0~10m 범위, A와 B 위치는 변경하지 않는다. `simulated`와
-`calibrationState`가 실측을 보증하지 않으면 시뮬레이션 또는 미검증으로 표시한다.
+cm에서 m 변환, 세로축 0~10m 범위, A와 B 위치는 변경하지 않는다. `calibrationState`가 `UNVERIFIED`이면 보정 미검증 보조 안내를 유지하고, 시뮬레이션 여부는 화면에 표시하지 않는다.
 `lidar-a`는 LiDAR 1, `lidar-b`는 LiDAR 2에 대응한다. `positionRatio` 0 -> 1이 측정선
-A -> B이며 그래프 왼쪽 -> 오른쪽이다. 임의로 반전하지 않는다. 이 방향은 Backend가
+A -> B이며 그래프 왼쪽 -> 오른쪽이다. Backend가 전달한 `samples` 배열 순서와 좌표를 그대로 출력하며 임의로 반전하거나 보정하지 않는다. 이 방향은 Backend가
 확인했다. 측정 영역 카드는 기존 그림을 유지하고 layout 응답은 배치 상태 표시에만 쓴다.
 
 ## 활성 알림
@@ -210,13 +205,14 @@ site 및 edge가 현재 monitoring scope와 같고 `snapshot.snapshotId === acti
 표시한다. `basis.measuredAt`은 "적재율 판정 근거 측정 시각"이며 카메라 항목은 자기
 `evaluatedAt`을 사용한다.
 
-결합 조회는 현황 상세 갱신(60초)과 함께 실행한다. 현황 상세가 활성이고 화면이 보일 때 SSE의
-`operations.effectiveState`가 마지막 결합 응답의 판정과 다르면 결합 조회만 즉시 요청한다. 동시에 한 요청만 진행하고 강제 조회 시작 간격은
-최소 5초다. collection-summary, fill-forecast, profiles와 layout은 이 조건으로 요청하지 않는다.
+결합 조회는 현황 상세 갱신(60초)과 함께 실행한다. 현황 상세가 활성이고 화면이 보일 때 SSE `monitoring.snapshot`의
+`operations.effectiveState`, `deviceStatus` 연결 상태 및 유효 상태, `sensors` 상태, `services` 상태가 마지막 결합 응답과 다르거나
+`monitoring.camera-status` SSE 상태 또는 연결 상태가 전환되면 결합 조회(`snapshot-with-alerts`)만 즉시 요청한다. 동시에 한 요청만 진행하고 강제 조회 시작 간격은
+최소 5초며, 5초 제한이나 이전 요청 진행 중에 발생한 상태 전환은 제한 시각 경과 후 재조회로 반영한다. collection-summary, fill-forecast, profiles와 layout은 이 조건으로 요청하지 않는다. 또한 결합 조회 응답의 `snapshot.operations.notificationId`가 아직 동기화하지 않은 새 ID면 `/api/v1/notifications` 재조회를 시작해 헤더 최근 알림과 동기화한다.
 SSE 재연결 중에는 활성 알림 항목을 숨기고 연결 복구 뒤 다시 표시한다고 안내한다.
 
 `evaluationState`가 `UNKNOWN` 또는 `ERROR`이면 "적재율 판정 불가"로 표시하고,
-`basis.lastKnownState`가 있으면 "적재율 판정 불가 (마지막 판정 경고 기준 미만)"처럼 상태 문구를
+`basis.lastKnownState`가 있으면 "적재율 판정 불가 (마지막 판정 정상)"처럼 상태 문구를
 괄호 보조 표기로 붙인다.
 카메라 중단의 `startedAt=null`, `startBasis=UNKNOWN`은 시작 정보 없음으로 둔다.
 `startedAt`은 `startBasis`가 `SERVER_EVALUATION`일 때만 서버 최초 확인 시각으로 표시하고
@@ -228,8 +224,8 @@ SSE 재연결 중에는 활성 알림 항목을 숨기고 연결 복구 뒤 다�
 ## 측정 영역 배치 상태
 
 `/api/v2/monitoring/layout`은 센서별 `calibrationState`와 전체 `state`, `bindingState`를
-제공한다. 측정 영역 카드는 제목 행에 한 줄 상태("시뮬레이션 배치, 실측 설치 미확인", "일부 배치 정보 없음",
-"실측 배치 미검증", "배치 정보 확인 불가")만 표시하고 그림은 변경하지 않는다. 사유와
+제공한다. 측정 영역 카드는 `state="SIMULATION"`이고 `bindingState="MATCHED"`일 때 상태 문구를 표시하지 않으며, 그 외 상태에서는 제목 행에 한 줄 상태("일부 배치 정보 없음",
+"배치 미검증", "배치 정보 확인 불가")만 표시하고 그림은 변경하지 않는다. 사유와
 센서별 상태는 title에 둔다. `bindingState`가 `MISMATCH` 또는 `UNKNOWN`이면 확인 불가이며
 조회 실패는 배치 정보 없음이다.
 
@@ -239,9 +235,9 @@ SSE 재연결 중에는 활성 알림 항목을 숨기고 연결 복구 뒤 다�
 
 | 서버 값 | 화면 문구 |
 | --- | --- |
-| `NORMAL` | 경고 기준 미만 |
+| `NORMAL` | 정상 |
 | `WARNING` | 경고 |
-| `CRITICAL` | 위험 |
+| `CRITICAL` | 경고 |
 | `UNKNOWN` | 확인 불가 |
 | `ERROR` | 판정 불가 |
 | `operations=null` 또는 평가 정보 부재 | 미지원 |
@@ -267,7 +263,7 @@ COLLECTION의 CONFIRMED는 판단 조건 충족이며 실제 수거 완료가 �
 | 적재율 그래프 | `/api/v2/monitoring/load-history` | [적재율 추이](#적재율-추이)의 기준 |
 | 운영 이력 표 | `/api/v1/events` (`collection_scope=all`) | 자동 수거 종료 감지와 이전 감지 기준의 기록까지 조회 |
 | 상태 열 | `status`, `statusBasis`, `collectionSource`, `confirmedCompletion`, `stateAtOccurrence` | 아래 상태 규칙 |
-| 이벤트 상세 | 같은 응답의 부가 필드 | 수거 확인 구분, 감지 기준, 시뮬레이션 출처, 현재 연결 기준의 pit, reason code |
+| 이벤트 상세 | 같은 응답의 부가 필드 | 수거 확인 구분, 감지 기준, 현재 연결 기준의 pit, reason code |
 | 관련 녹화 | `/api/v1/events` 항목의 `recordingEventId`와 `/api/v2/recordings/events/{event_id}`의 `eventId` | `recordingEventId`가 null이 아닐 때만 연결 |
 
 상태 규칙은 다음과 같다.
@@ -387,7 +383,7 @@ Backend 회신서의 요청 목록은 이 절의 표를 정본으로 사용한�
 | 완료 기준 | 요청 문구의 모든 선택지를 완료로 인정. 수신한 계약의 제한값과 Dashboard의 요청 timeout을 넘는 기준을 요구하지 않음 |
 | 종료 | 요청한 결과나 대안을 받으면 항목을 종료. 새 요구는 새 ID로 등록 |
 
-미해결 요청은 다음 4개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
+미해결 요청은 다음 8개이며 ID는 Backend 회신에서 같은 번호로 추적한다. 해결된 요청은 이 문서의 화면별 연결 표에 반영한다.
 
 | ID | 항목 | 화면 위치 | 책임 | 상태 |
 | --- | --- | --- | --- | --- |
@@ -395,6 +391,10 @@ Backend 회신서의 요청 목록은 이 절의 표를 정본으로 사용한�
 | Q-18 | 날짜 녹화 저장 중단 | 녹화 화면 날짜 녹화와 이벤트 녹화 재생 | Media Service | 날짜 녹화 예산(`daily_limit_bytes`)이 30일 보관 기준보다 작아 예산 도달 시 새 녹화 저장 중단. 보관 기준과 예산 정합과 예산 도달 시 처리 요청 |
 | Q-19 | 데이터 정상 중 적재율 경보 평가의 간헐적 `UNKNOWN` | 현재 상태 카드 적재율 경보 | Backend | `dataState=FRESH`에서 `operations.effectiveState=UNKNOWN`(`OPERATIONS_EVALUATION_UNAVAILABLE`) 반복으로 "확인 불가" 깜박임. 원인과 의도된 동작 회신 요청 |
 | Q-20 | 이벤트 구간 파일 준비 요청의 504 응답 | 녹화 화면 녹화 파일 | Backend | `POST /api/v2/recordings/events/{event_id}/exports`가 약 8초 뒤 Backend 504를 반환하지만 구간 파일 준비는 진행되어 완료. Dashboard는 재조회로 준비 상태를 찾음. 요청 접수 응답 반환 요청 |
+| Q-21 | LiDAR 1, 2 단면 곡선 보정과 동일 위치 복수 값 해소 | 현황 화면 LiDAR 1, LiDAR 2 카드 | Backend | Frontend는 `/api/v2/monitoring/profiles` 응답의 `samples` 배열 순서와 좌표(`positionRatio`, `height`)를 보정 없이 그대로 출력함. 현재 같은 `positionRatio`(가로 위치)에 서로 다른 `height`(세로 값)가 2개 이상 포함되는 경우가 있음. Backend에서 단면 곡선 모양을 보정하고 논리적 모순을 해결해 일관된 `profile`을 반환하도록 수정 요청 |
+| Q-22 | 장치 성능과 복구 이벤트 판정 기준 보수화 | 이력 화면 운영 이력 표, 현황 화면 활성 알림 카드 | Backend | 장치 성능과 복구의 판정 기준이 낮아 이벤트와 복구 판정이 잦음. 전반적인 이벤트 발생과 복구 판정 기준을 보수적으로 상향 조정 요청 |
+| Q-23 | 동일 시간 구간 내 반복 이벤트 단일화 | 이력 화면 운영 이력 표, 녹화 화면 녹화 목록 | Backend | 같은 시간 구간에서 동일한 이벤트가 반복 생성되어 과도하게 조회됨. 동일 시간대의 반복 이벤트를 하나로 통합해 기록 및 제공하도록 처리 요청 |
+| Q-24 | 이벤트 내용의 입력 원천 및 시뮬레이션 구분 기록 제거 | 이력 화면 운영 이력 표와 이벤트 상세, 녹화 화면 녹화 목록 | Backend | 수거 필요 등 이벤트(`/api/v1/events`, `/api/v2/recordings/events`)의 제목과 세부 내용에 '시뮬레이션' 문구를 포함해 입력 데이터 원천(실측 LiDAR, 동영상, 시뮬레이션)을 기록하는 경우가 있음. 입력 원천 선택은 환경 구성 영역이므로 Backend는 측정값 처리 결과만 기록하고 시뮬레이션 등 데이터 원천 구분을 이벤트 내용에 기록하지 않도록 수정 요청 |
 
 ### 이력 및 녹화 영상의 일괄 협의 항목
 

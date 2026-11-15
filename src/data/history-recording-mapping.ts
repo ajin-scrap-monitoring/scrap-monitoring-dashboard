@@ -78,7 +78,6 @@ function backendEventFields(event: ApiEvent): [string, string][] {
   if (event.category === "error" && event.statusBasis === "AT_OCCURRENCE" && event.stateAtOccurrence) {
     fields.push(["상태 기준", "기록 당시 상태이며 현재 장치 상태가 아닙니다."]);
   }
-  if (event.simulated === true) fields.push(["출처", "시뮬레이션"]);
   if (event.pitAttribution === "CURRENT_ASSIGNMENT") fields.push(["피트 연결", "과거 연결이 보관되지 않아 현재 연결 기준"]);
   if (event.reasonCodes && event.reasonCodes.length > 0) fields.push(["사유 코드", event.reasonCodes.join(", ")]);
   return fields;

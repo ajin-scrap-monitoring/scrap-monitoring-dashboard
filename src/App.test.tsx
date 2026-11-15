@@ -23,7 +23,7 @@ test.each(["/history", "/recordings"])("%s의 최초 데이터 확인 중에는 
   expect(screen.queryByLabelText("데이터 수신 상태")).not.toBeInTheDocument();
   await act(() => { complete(data); return Promise.resolve(); });
   expect(await screen.findByRole("button", { name: "사용자 메뉴" })).toBeVisible();
-  expect(screen.getByText("조회 사용자")).toBeVisible();
+  expect(screen.getByText("viewer-1")).toBeVisible();
   expect(Array.from(document.querySelectorAll(".global-nav a"), link => link.textContent)).toEqual(["현황", "이력", "녹화 영상"]);
   expect(screen.queryByRole("link", { name: "로그인" })).not.toBeInTheDocument();
   expect(await screen.findByLabelText("데이터 수신 상태")).toHaveTextContent("연결 정상");
@@ -406,4 +406,20 @@ test("첫 화면 전 로딩은 메뉴를 숨기고 앱 내부 이동 로딩은 �
     resolveRecordings();
   });
   expect(await screen.findByRole("main", { name: "스크랩 모니터링 녹화 영상" })).toBeVisible();
+});
+
+test("초기 진입에서는 제목에 focus를 주지 않고 내부 push 이동에서만 새 화면 제목에 focus를 준다", async () => {
+  window.history.replaceState(null, "", "/");
+  render(<App dataSource={createMockDashboardDataSource()} />);
+
+  const monitoringHeading = await screen.findByRole("heading", { name: "스크랩 모니터링", level: 1 });
+  expect(monitoringHeading).not.toHaveFocus();
+
+  const { navigate } = await import("./app-router");
+  act(() => {
+    navigate("/history");
+  });
+
+  const historyHeading = await screen.findByRole("heading", { name: "이력", level: 1 });
+  expect(historyHeading).toHaveFocus();
 });

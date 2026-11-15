@@ -39,11 +39,11 @@ test("최근 알림 20건은 popover 내부에서 스크롤하고 헤더와 이�
   expect(await geometry(page)).toEqual(before);
 });
 
-test("긴 사용자명은 생략하되 원문과 헤더 높이 및 사용자 메뉴 접근을 유지한다", async ({ page }) => {
+test("긴 로그인 ID는 생략하되 원문과 헤더 높이 및 사용자 메뉴 접근을 유지한다", async ({ page }) => {
   await installBackendApi(page);
-  const displayName = "현장모니터링담당자".repeat(10);
+  const longUserId = "field-monitoring-operator-".repeat(10);
   let long = false;
-  await page.route("**/api/v1/session", route => route.fulfill({ json: { ...sessionFixture, user: { ...sessionFixture.user, displayName: long ? displayName : sessionFixture.user.displayName } } }));
+  await page.route("**/api/v1/session", route => route.fulfill({ json: { ...sessionFixture, user: { ...sessionFixture.user, id: long ? longUserId : sessionFixture.user.id } } }));
   await page.goto("/?source=api");
   await expect(page.locator(".monitoring-page")).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
@@ -51,14 +51,14 @@ test("긴 사용자명은 생략하되 원문과 헤더 높이 및 사용자 메
   long = true;
   await page.reload();
   const menu = page.getByRole("button", { name: "사용자 메뉴", exact: true });
-  await expect(menu.locator("span")).toHaveAttribute("title", displayName);
+  await expect(menu.locator("span")).toHaveAttribute("title", longUserId);
   await page.evaluate(() => document.fonts.ready);
   expect(await geometry(page)).toEqual(before);
   expect(await menu.locator("span").evaluate(element => element.scrollWidth > element.clientWidth && getComputedStyle(element).textOverflow === "ellipsis")).toBe(true);
   expect(await menu.locator("svg").evaluateAll(elements => elements.every(element => getComputedStyle(element).flexShrink === "0"))).toBe(true);
   await expect(page.getByRole("button", { name: "알림 1건", exact: true })).toBeInViewport({ ratio: 1 });
   await menu.click();
-  await expect(page.locator(".user-popover-profile strong")).toHaveAttribute("title", displayName);
+  await expect(page.locator(".user-popover-profile strong")).toHaveAttribute("title", longUserId);
   await expect(page.getByRole("link", { name: "관리자 설정", exact: true })).toBeInViewport({ ratio: 1 });
   await expect(page.getByRole("button", { name: "로그아웃", exact: true })).toBeInViewport({ ratio: 1 });
   await page.keyboard.press("Escape");

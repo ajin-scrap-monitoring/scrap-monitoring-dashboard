@@ -1,10 +1,9 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useId, useMemo, useState } from "react";
 
 import type { DashboardData, DataAreaState, LidarProfile } from "../domain/dashboard";
 import { calculateUnmeasuredRanges } from "../data/lidar-profiles-v2";
 import { seoulClock } from "../display-time";
 import { timeAxisTicks } from "../chart-time-axis";
-import { simulationLabel } from "../simulation-label";
 import { SectionTitle } from "./DashboardPrimitives";
 
 export function UnsupportedChart({ label, reason, statusLabel = "미지원" }: { label: string; reason: string; statusLabel?: string }) {
@@ -192,7 +191,6 @@ export function LoadChart({ samples, threshold, state, thresholdKind }: { sample
   const previousResult = state?.status === "error" && state.stale === true && plottedSamples.some((sample) => sample.value !== null);
   const unavailable = (state?.status === "error" && !previousResult) || state?.status === "unsupported" || state?.status === "loading";
   const sampleSegments = contiguousSegments(unavailable ? [] : plottedSamples, (sample) => sample.y !== null);
-  const simulation = unavailable ? null : simulationLabel(plottedSamples);
 
   const activeX = activeIndex === null ? 0 : xValues[activeIndex] ?? 0;
   const activeY = activeIndex === null ? 0 : plottedSamples[activeIndex]?.y ?? 0;
@@ -207,7 +205,7 @@ export function LoadChart({ samples, threshold, state, thresholdKind }: { sample
         : orderedSamples.some((sample) => sample.dataState !== "NO_DATA") ? "유효한 적재율 데이터가 없습니다." : "최근 적재율 데이터가 없습니다.";
 
   return (
-    <svg className="chart-svg" viewBox="0 0 430 175" preserveAspectRatio="none" role="img" aria-label={`최근 24시간 대표 적재율 그래프${simulation ? ` (${simulation})` : ""}`}>
+    <svg className="chart-svg" viewBox="0 0 430 175" preserveAspectRatio="none" role="img" aria-label="최근 24시간 대표 적재율 그래프">
       <g stroke="#e2e8ef" strokeWidth="1">
         {yTickValues.map((value) => (
           <path key={`grid-h-${value}`} d={`M40 ${toY(value).toFixed(1)}H410`} />
@@ -228,12 +226,11 @@ export function LoadChart({ samples, threshold, state, thresholdKind }: { sample
       <path d={`M40 ${toY(threshold)}H410`} stroke="#607086" strokeDasharray="5 5" strokeOpacity="0.58" strokeWidth="1.5" />
       {previousResult && <text x="225" y="12" fill="#61708a" fontSize="9" textAnchor="middle">이전 조회 결과 / 갱신 실패</text>}
       <text x="408" y="12" fill="#526278" fontSize="10" fontWeight="600" textAnchor="end">{thresholdKind === "current" ? "현재 임계율" : "수거 임계율"} {threshold}%</text>
-      {simulation && <text className="load-chart-simulation" x="40" y="12" fill="#61708a" fontSize="10">{simulation}</text>}
       {sampleSegments.length > 0 ? sampleSegments.map((segment, index) => {
         const linePath = segment.map((sample, sampleIndex) => `${sampleIndex === 0 ? "M" : "L"}${sample.x} ${sample.y}`).join(" ");
         return <g key={`load-segment-${index}`}>
-          <path d={`${linePath}V${chartBottom}H${segment[0].x}Z`} fill="#f58a07" fillOpacity="0.1" />
-          <path className="load-chart-line" d={linePath} fill="none" stroke="#f58a07" strokeWidth="4" />
+          <path d={`${linePath}V${chartBottom}H${segment[0].x}Z`} fill="#f58a07" fillOpacity="0.22" />
+          <path className="load-chart-line" d={linePath} fill="none" stroke="#f58a07" strokeWidth="2" />
           {segment.length === 1 && <circle cx={segment[0].x} cy={segment[0].y ?? 0} r="2.5" fill="#f58a07" />}
         </g>;
       }) : <text x="225" y="92" fill="#61708a" fontSize="11" textAnchor="middle">{state?.message && state.message !== emptyMessage && <title>{state.message}</title>}{emptyMessage}</text>}
@@ -272,7 +269,8 @@ export function LoadChart({ samples, threshold, state, thresholdKind }: { sample
   );
 }
 
-export function ProfileChart({ average, color, label, maximum, minimum, samples, simulated, calibrationState, curveHeld, averageHeld }: LidarProfile) {
+export function ProfileChart({ average, color, label, maximum, minimum, samples, calibrationState, curveHeld, averageHeld }: LidarProfile) {
+  const unmeasuredHatchId = `profile-unmeasured-hatch-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const stroke = color === "blue" ? "#1677e8" : "#0ba58f";
   const axisTextColor = color === "blue" ? "#0b3f8d" : "#066f5e";
   const yMin = 0;
@@ -283,8 +281,6 @@ export function ProfileChart({ average, color, label, maximum, minimum, samples,
   const gridXValues = [{ positionRatio: 0, value: "A" }, { positionRatio: 1, value: "B" }];
   const toY = (value: number) => chart.bottom - (value - yMin) * ((chart.bottom - chart.top) / (yMax - yMin));
   const toX = (positionRatio: number) => chart.left + (chart.right - chart.left) * Math.max(0, Math.min(1, positionRatio));
-  // simulated=true 또는 calibrationState=SIMULATION이면 시뮬레이션으로 표시한다.
-  const isSimulation = simulated === true || calibrationState === "SIMULATION";
   const unmeasuredRanges = calculateUnmeasuredRanges(samples);
   const ariaLabel = unmeasuredRanges.length > 0 ? `${label} (${unmeasuredRanges.map((r) => r.label).join(", ")})` : label;
   // 배열 순서를 유지하고 x는 positionRatio로 정한다. 위치나 높이가 없는 표본은 선을 끊는다.
@@ -299,12 +295,20 @@ export function ProfileChart({ average, color, label, maximum, minimum, samples,
     <section className="card chart-card span-4">
       <div className="chart-title-row">
         <SectionTitle>{label}</SectionTitle>
-        <div className={`profile-stat ${color}`} title={[isSimulation ? "시뮬레이션 높이" : "", calibrationState === "UNVERIFIED" ? "보정 미검증" : ""].filter(Boolean).join(", ") || undefined}>
+        <div className={`profile-stat ${color}`} title={calibrationState === "UNVERIFIED" ? "보정 미검증" : undefined}>
           <span className="average" title={averageHeld ? "마지막 정상 대표값을 최대 3초 표시합니다" : undefined}><span className="average-label">평균</span>{average}</span>
           <span className="range">최소 {minimum} / 최대 {maximum}</span>
         </div>
       </div>
       <svg className="chart-svg" viewBox="0 0 430 175" preserveAspectRatio="none" role="img" aria-label={ariaLabel}>
+        {unmeasuredRanges.length > 0 && (
+          <defs>
+            <pattern id={unmeasuredHatchId} width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <rect width="5" height="5" fill="#64748b" fillOpacity="0.1" />
+              <line x1="0" y1="0" x2="0" y2="5" stroke="#64748b" strokeOpacity="0.34" strokeWidth="1.2" />
+            </pattern>
+          </defs>
+        )}
         <g stroke="#e2e8ef" strokeWidth="1">
           {gridYValues.map((value) => (
             <path key={`grid-h-${value}`} d={`M${chart.left} ${toY(value).toFixed(1)}H${chart.right}`} />
@@ -316,16 +320,9 @@ export function ProfileChart({ average, color, label, maximum, minimum, samples,
             const x = toX(range.startRatio);
             const w = toX(range.endRatio) - x;
             return (
-              <g key={`unmeasured-${range.side}`}>
-                <rect x={x} y={chart.top} width={w} height={chart.bottom - chart.top} fill="#64748b" fillOpacity="0.08">
-                  <title>{range.label}</title>
-                </rect>
-                {w >= 24 && (
-                  <text x={x + w / 2} y={(chart.top + chart.bottom) / 2 + 4} fill="#8898aa" fontSize="10" fontWeight="600" textAnchor="middle" pointerEvents="none">
-                    미측정
-                  </text>
-                )}
-              </g>
+              <rect key={`unmeasured-${range.side}-${range.startRatio}-${range.endRatio}`} x={x} y={chart.top} width={w} height={chart.bottom - chart.top} fill={`url(#${unmeasuredHatchId})`}>
+                <title>{range.label}</title>
+              </rect>
             );
           })}
         </g>
@@ -353,7 +350,6 @@ export function ProfileChart({ average, color, label, maximum, minimum, samples,
         </g>
         {(() => {
           const annotations: string[] = [];
-          if (isSimulation) annotations.push("시뮬레이션");
           if (curveHeld) annotations.push("곡선 갱신 대기");
           if (averageHeld) annotations.push("평균 갱신 대기");
           if (annotations.length === 0) return null;
@@ -362,8 +358,8 @@ export function ProfileChart({ average, color, label, maximum, minimum, samples,
         {profileSegments.length > 0 ? profileSegments.map((segment, index) => {
           const linePath = segment.map((sample, sampleIndex) => `${sampleIndex === 0 ? "M" : "L"}${sample.x} ${sample.y}`).join(" ");
           return <g key={`profile-segment-${index}`}>
-            <path d={`${linePath}V${chart.bottom}H${segment[0].x}Z`} fill={stroke} fillOpacity="0.08" />
-            <path className="profile-chart-line" d={linePath} fill="none" stroke={stroke} strokeWidth="4" />
+            <path d={`${linePath}V${chart.bottom}H${segment[0].x}Z`} fill={stroke} fillOpacity="0.18" />
+            <path className="profile-chart-line" d={linePath} fill="none" stroke={stroke} strokeWidth="2" />
           </g>;
         }) : <text x="225" y="92" fill="#61708a" fontSize="11" textAnchor="middle">유효한 높이 데이터가 없습니다.</text>}
       </svg>

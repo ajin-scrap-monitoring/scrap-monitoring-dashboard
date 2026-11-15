@@ -90,7 +90,7 @@ export function parseActiveAlertsV2(value: unknown, pitId: string): ActiveFillAl
       if (fillTypes.includes(item.type)) {
         if (typeof item.loadPercent !== "number" || !Number.isFinite(item.loadPercent) || item.loadPercent < 0 || item.loadPercent > 100
           || typeof item.simulated !== "boolean") return fail();
-        return { ...common, detail: `적재율 ${item.loadPercent}%${item.simulated ? " (시뮬레이션)" : ""}` };
+        return { ...common, detail: `적재율 ${item.loadPercent}%` };
       }
       if (!healthTypes.includes(item.type) || typeof item.componentKind !== "string" || !healthComponents.includes(item.componentKind)
         || typeof item.componentId !== "string" || typeof item.state !== "string"

@@ -188,9 +188,9 @@ test("경보 상태는 실제 작업 상태와 분리하고 과거 CRITICAL을 �
 });
 
 test.each([
-  ["NORMAL", "경고 기준 미만"],
+  ["NORMAL", "정상"],
   ["WARNING", "경고"],
-  ["CRITICAL", "위험"],
+  ["CRITICAL", "경고"],
   ["UNKNOWN", "확인 불가"],
   ["ERROR", "판정 불가"],
 ] as const)("Backend 경보 %s는 %s로 표시하고 작업 상태를 만들지 않는다", async (effectiveState, label) => {
@@ -270,7 +270,7 @@ test("evaluationState가 UNKNOWN이고 lastKnownState가 있으면 마지막 판
   const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
   const card = container.querySelector(".alerts-card") as HTMLElement;
   expect(within(card).getByText("적재율 경보")).toBeVisible();
-  expect(within(card).getByText("적재율 판정 불가 (마지막 판정 경고 기준 미만)")).toBeVisible();
+  expect(within(card).getByText("적재율 판정 불가 (마지막 판정 정상)")).toBeVisible();
 });
 
 test("basis.snapshotId가 현재 snapshot과 같고 판정이 다르면 판정 불일치 안내를 표시한다", async () => {
@@ -300,7 +300,7 @@ test("basis.snapshotId가 현재 snapshot과 같고 판정이 다르면 판정 �
   const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
   const card = container.querySelector(".alerts-card") as HTMLElement;
   expect(within(card).getByText("현재 판정과 활성 알림 판정이 다름")).toBeVisible();
-  expect(within(card).getByText("현재 판정과 활성 알림 판정이 다름")).toHaveAttribute("title", expect.stringContaining("현재 판정 경고 기준 미만, 활성 알림 위험"));
+  expect(within(card).getByText("현재 판정과 활성 알림 판정이 다름")).toHaveAttribute("title", expect.stringContaining("현재 판정 정상, 활성 알림 경고"));
 });
 
 test("startedAt이 null이면 시작 정보 없음으로 표시하고 서버 판정 시각으로 대신 채우지 않는다", async () => {
@@ -340,9 +340,8 @@ test("활성 알림 행은 4개씩 같은 페이지 방식으로 나누고 확�
 });
 
 test.each([
-  ["SIMULATION", "MATCHED", "시뮬레이션 배치, 실측 설치 미확인"],
   ["PARTIAL", "MATCHED", "일부 배치 정보 없음"],
-  ["UNVERIFIED", "MATCHED", "실측 배치 미검증"],
+  ["UNVERIFIED", "MATCHED", "배치 미검증"],
   ["UNAVAILABLE", "UNKNOWN", "배치 정보 확인 불가"],
   ["SIMULATION", "MISMATCH", "배치 정보 확인 불가"],
   ["SIMULATION", "UNKNOWN", "배치 정보 확인 불가"],
@@ -353,6 +352,16 @@ test.each([
   const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
   const card = container.querySelector(".measurement-card") as HTMLElement;
   expect(within(card).getByText(label)).toHaveAttribute("title", "사유 SIMULATION_GEOMETRY / LiDAR 2 SIMULATION / LiDAR 1 SIMULATION");
+  expect(card.querySelector("svg.measurement-svg")).not.toBeNull();
+});
+
+test("측정 영역 카드는 SIMULATION과 MATCHED 조합에서 상태 문구를 표시하지 않는다", async () => {
+  const { data, dataSource } = await alertData({ evaluationState: "NORMAL", reasonCodes: [], coverage: [] });
+  data.monitoring.measurementLayout = { state: "SIMULATION", bindingState: "MATCHED", simulated: true, reasonCodes: ["SIMULATION_GEOMETRY"],
+    sensors: [{ sensorId: "lidar-b", calibrationState: "SIMULATION", reasonCodes: [] }, { sensorId: "lidar-a", calibrationState: "SIMULATION", reasonCodes: [] }] };
+  const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
+  const card = container.querySelector(".measurement-card") as HTMLElement;
+  expect(card.querySelector(".measurement-layout-state")).toBeNull();
   expect(card.querySelector("svg.measurement-svg")).not.toBeNull();
 });
 
@@ -373,11 +382,11 @@ test.each([
   [false, "READY" as const, "추정 적재율", undefined],
   [false, "WARMING" as const, "추정 적재율 (안정화 준비 중)", "시간 필터가 준비되는 동안의 값"],
   [false, "UNAVAILABLE" as const, "추정 적재율 (안정화 불가)", undefined],
-  [true, undefined, "추정 적재율 (시뮬레이션)", undefined],
-  [true, "WARMING" as const, "추정 적재율 (시뮬레이션, 안정화 준비 중)", "시간 필터가 준비되는 동안의 값"],
-  [true, "UNAVAILABLE" as const, "추정 적재율 (시뮬레이션, 안정화 불가)", undefined],
-  [true, "DISABLED" as const, "추정 적재율 (시뮬레이션)", undefined],
-  [true, "READY" as const, "추정 적재율 (시뮬레이션)", undefined],
+  [true, undefined, "추정 적재율", undefined],
+  [true, "WARMING" as const, "추정 적재율 (안정화 준비 중)", "시간 필터가 준비되는 동안의 값"],
+  [true, "UNAVAILABLE" as const, "추정 적재율 (안정화 불가)", undefined],
+  [true, "DISABLED" as const, "추정 적재율", undefined],
+  [true, "READY" as const, "추정 적재율", undefined],
 ])("추정 적재율 label(simulated=%s, filterState=%s)은 '%s'로 표시된다", async (simulated, filterState, expectedLabel, expectedTitle) => {
   const dataSource = createMockDashboardDataSource();
   const data = await dataSource.getDashboardData();
@@ -420,7 +429,7 @@ test("적재율 유지 중 kpi-label은 '갱신 대기'를 포함하고 title에
   };
   const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
   const label = container.querySelector(".kpi-label");
-  expect(label).toHaveTextContent("추정 적재율 (시뮬레이션, 갱신 대기)");
+  expect(label).toHaveTextContent("추정 적재율 (갱신 대기)");
   expect(label).toHaveAttribute("title", "마지막 정상 관측 2026-11-11 15:26:43 (한국 표준시)을 최대 3초 표시합니다");
   const value = container.querySelector(".kpi-value");
   expect(value).toHaveTextContent("78.5%");
@@ -428,7 +437,7 @@ test("적재율 유지 중 kpi-label은 '갱신 대기'를 포함하고 title에
   expect(progress).toHaveAttribute("aria-label", "추정 적재율 78.5%");
 });
 
-test("시뮬레이션이 아닌 적재율 유지 중 kpi-label은 '추정 적재율 (갱신 대기)'이다", async () => {
+test("simulated=false 적재율 유지 중 kpi-label도 '추정 적재율 (갱신 대기)'이다", async () => {
   const dataSource = createMockDashboardDataSource();
   const data = await dataSource.getDashboardData();
   data.monitoring.v2 = {

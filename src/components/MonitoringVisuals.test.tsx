@@ -242,40 +242,38 @@ test("ProfileChart 미측정 음영 표시와 선 끊김 유지", () => {
     />,
   );
 
-  // SVG aria-label에 미측정 구간 비율 포함
+  // SVG aria-label에 앞/중간/뒤 미측정 구간 비율 포함
   const svg = container.querySelector("svg");
   expect(svg?.getAttribute("aria-label")).toContain("미측정 A 0%~13%");
+  expect(svg?.getAttribute("aria-label")).toContain("미측정 13%~60%");
   expect(svg?.getAttribute("aria-label")).toContain("미측정 B 87%~100%");
 
-  // 음영 사각형 및 title 확인
+  // 빗금 사각형 및 title 확인 (글자 미표시)
   const unmeasuredZones = container.querySelectorAll(".profile-unmeasured-zones rect");
-  expect(unmeasuredZones).toHaveLength(2);
+  expect(unmeasuredZones).toHaveLength(3);
   expect(unmeasuredZones[0].querySelector("title")?.textContent).toBe("미측정 A 0%~13%");
-  expect(unmeasuredZones[1].querySelector("title")?.textContent).toBe("미측정 B 87%~100%");
-
-  // 폭 24px 이상이면 미측정 텍스트 표시
-  const texts = container.querySelectorAll(".profile-unmeasured-zones text");
-  expect(texts.length).toBeGreaterThan(0);
-  expect(texts[0].textContent).toBe("미측정");
+  expect(unmeasuredZones[1].querySelector("title")?.textContent).toBe("미측정 13%~60%");
+  expect(unmeasuredZones[2].querySelector("title")?.textContent).toBe("미측정 B 87%~100%");
+  const fill = unmeasuredZones[0].getAttribute("fill") ?? "";
+  expect(fill).toMatch(/^url\(#profile-unmeasured-hatch-/);
+  const patternId = fill.slice(5, -1);
+  expect(container.querySelector(`defs pattern[id="${patternId}"] line`)).not.toBeNull();
+  expect(container.querySelectorAll(".profile-unmeasured-zones text")).toHaveLength(0);
 
   // 선 그래프가 2개로 끊김 (positionRatio 0.4 결측 때문)
   expect(container.querySelectorAll(".profile-chart-line")).toHaveLength(2);
 });
 
-test("최근 적재율 그래프는 서버가 simulated로 표시한 표본에 시뮬레이션 표기를 붙인다", () => {
+test("최근 적재율 그래프는 simulated 표본이 있어도 시뮬레이션 표기를 렌더링하지 않는다", () => {
   const sample = (hour: number, value: number | null, simulated: boolean) => ({ measuredAt: `2026-09-09T${String(hour).padStart(2, "0")}:00:00+09:00`, time: `${hour}:00`, value, simulated });
   const { container, rerender } = render(<LoadChart threshold={80} samples={[sample(9, 44, true), sample(10, null, false), sample(11, 48, true)]} />);
-  expect(container.querySelector(".load-chart-simulation")).toHaveTextContent("시뮬레이션");
-  expect(screen.getByRole("img", { name: "최근 24시간 대표 적재율 그래프 (시뮬레이션)" })).toBeInTheDocument();
-  rerender(<LoadChart threshold={80} samples={[sample(9, 44, true), sample(11, 48, false)]} />);
-  expect(container.querySelector(".load-chart-simulation")).toHaveTextContent("시뮬레이션 포함");
-  rerender(<LoadChart threshold={80} samples={[sample(9, 44, false), sample(11, 48, false)]} />);
   expect(container.querySelector(".load-chart-simulation")).toBeNull();
-  rerender(<LoadChart threshold={80} state={{ status: "loading" }} samples={[sample(9, 44, true)]} />);
+  expect(screen.getByRole("img", { name: "최근 24시간 대표 적재율 그래프" })).toBeInTheDocument();
+  rerender(<LoadChart threshold={80} samples={[sample(9, 44, true), sample(11, 48, false)]} />);
   expect(container.querySelector(".load-chart-simulation")).toBeNull();
 });
 
-test("ProfileChart 곡선 유지 중 보조 표기 '곡선 갱신 대기'를 표시한다", () => {
+test("ProfileChart 곡선 유지 중 보조 표기 '곡선 갱신 대기'만 표시한다", () => {
   const { container } = render(
     <ProfileChart
       average="2.5 m"
@@ -288,7 +286,7 @@ test("ProfileChart 곡선 유지 중 보조 표기 '곡선 갱신 대기'를 표
       curveHeld={true}
     />,
   );
-  expect(container.querySelector('text[y="12"]')).toHaveTextContent("시뮬레이션, 곡선 갱신 대기");
+  expect(container.querySelector('text[y="12"]')).toHaveTextContent("곡선 갱신 대기");
 });
 
 test("ProfileChart 평균 유지 중 보조 표기 '평균 갱신 대기'와 평균 title을 표시한다", () => {
@@ -323,10 +321,10 @@ test("ProfileChart 곡선과 평균이 모두 유지 중일 때 보조 표기를
       averageHeld={true}
     />,
   );
-  expect(container.querySelector('text[y="12"]')).toHaveTextContent("시뮬레이션, 곡선 갱신 대기, 평균 갱신 대기");
+  expect(container.querySelector('text[y="12"]')).toHaveTextContent("곡선 갱신 대기, 평균 갱신 대기");
 });
 
-test("ProfileChart는 calibrationState가 SIMULATION이면 simulated 값이 없어도 시뮬레이션으로 표시한다", () => {
+test("ProfileChart는 calibrationState가 SIMULATION이거나 simulated=true여도 시뮬레이션 표기를 렌더링하지 않는다", () => {
   const { container } = render(
     <ProfileChart
       average="2.5 m"
@@ -335,11 +333,12 @@ test("ProfileChart는 calibrationState가 SIMULATION이면 simulated 값이 없�
       maximum="3.0 m"
       minimum="1.0 m"
       samples={[{ height: 2.5, positionRatio: 0.5 }]}
+      simulated={true}
       calibrationState="SIMULATION"
     />,
   );
-  expect(container.querySelector('text[y="12"]')).toHaveTextContent("시뮬레이션");
-  expect(container.querySelector(".profile-stat")).toHaveAttribute("title", "시뮬레이션 높이");
+  expect(container.querySelector('text[y="12"]')).toBeNull();
+  expect(container.querySelector(".profile-stat")).not.toHaveAttribute("title");
 });
 
 vi.mock("../display-time", async (importOriginal) => {

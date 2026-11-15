@@ -71,22 +71,50 @@ export function parseLidarProfilesV2(value: unknown, pitId: string): LidarProfil
 }
 
 export type UnmeasuredRange = {
-  side: "start" | "end" | "all";
+  side: "start" | "middle" | "end" | "all";
   startRatio: number;
   endRatio: number;
   label: string;
 };
 
+type LidarPositionSample = {
+  positionRatio: number | null;
+  height?: number | null;
+};
+
+function isMeasuredPositionSample(
+  sample: LidarPositionSample,
+): sample is { positionRatio: number; height?: number | null } {
+  if (sample.positionRatio === null || !Number.isFinite(sample.positionRatio)) return false;
+  if (sample.height === undefined) return true;
+  return sample.height !== null && Number.isFinite(sample.height);
+}
+
 export function calculateUnmeasuredRanges(
-  samples: readonly { positionRatio: number | null }[],
+  samples: readonly LidarPositionSample[],
 ): UnmeasuredRange[] {
   if (samples.length === 0) return [];
 
-  const positioned = samples
-    .map((s) => s.positionRatio)
-    .filter((r): r is number => r !== null && Number.isFinite(r));
+  const segmentSpans: [number, number][] = [];
+  let spanMin = Infinity;
+  let spanMax = -Infinity;
 
-  if (positioned.length === 0) {
+  for (const sample of samples) {
+    if (isMeasuredPositionSample(sample)) {
+      const clamped = Math.max(0, Math.min(1, sample.positionRatio));
+      if (clamped < spanMin) spanMin = clamped;
+      if (clamped > spanMax) spanMax = clamped;
+    } else if (spanMin <= spanMax) {
+      segmentSpans.push([spanMin, spanMax]);
+      spanMin = Infinity;
+      spanMax = -Infinity;
+    }
+  }
+  if (spanMin <= spanMax) {
+    segmentSpans.push([spanMin, spanMax]);
+  }
+
+  if (segmentSpans.length === 0) {
     return [
       {
         side: "all",
@@ -97,29 +125,52 @@ export function calculateUnmeasuredRanges(
     ];
   }
 
-  const minRatio = Math.max(0, Math.min(1, Math.min(...positioned)));
-  const maxRatio = Math.max(0, Math.min(1, Math.max(...positioned)));
+  segmentSpans.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const covered: [number, number][] = [segmentSpans[0]];
+  for (let i = 1; i < segmentSpans.length; i += 1) {
+    const prev = covered[covered.length - 1];
+    const [nextStart, nextEnd] = segmentSpans[i];
+    if (nextStart <= prev[1]) {
+      prev[1] = Math.max(prev[1], nextEnd);
+    } else {
+      covered.push([nextStart, nextEnd]);
+    }
+  }
 
+  const minRatio = covered[0][0];
+  const maxRatio = covered[covered.length - 1][1];
   const ranges: UnmeasuredRange[] = [];
 
-  // 가로축 길이의 1% 미만인 앞쪽 또는 뒤쪽 구간은 생성하지 않는다.
+  // 가로축 길이의 1% 미만인 앞쪽 또는 뒤쪽 바깥 구간은 생성하지 않는다.
   if (minRatio >= 0.01) {
-    const endPercent = Math.round(minRatio * 100);
     ranges.push({
       side: "start",
       startRatio: 0,
       endRatio: minRatio,
-      label: `미측정 A 0%~${endPercent}%`,
+      label: `미측정 A 0%~${Math.round(minRatio * 100)}%`,
     });
   }
 
+  // 유효 구간 사이의 중간 결손 구간은 길이와 무관하게 모두 미측정 빗금 구간으로 생성한다.
+  for (let i = 0; i < covered.length - 1; i += 1) {
+    const gapStart = covered[i][1];
+    const gapEnd = covered[i + 1][0];
+    if (gapEnd > gapStart) {
+      ranges.push({
+        side: "middle",
+        startRatio: gapStart,
+        endRatio: gapEnd,
+        label: `미측정 ${Math.round(gapStart * 100)}%~${Math.round(gapEnd * 100)}%`,
+      });
+    }
+  }
+
   if (1 - maxRatio >= 0.01) {
-    const startPercent = Math.round(maxRatio * 100);
     ranges.push({
       side: "end",
       startRatio: maxRatio,
       endRatio: 1,
-      label: `미측정 B ${startPercent}%~100%`,
+      label: `미측정 B ${Math.round(maxRatio * 100)}%~100%`,
     });
   }
 

@@ -10,7 +10,7 @@ test("제안 계약의 현재 상태, SSE와 WHEP를 브라우저에 연결한�
   await expect(page.getByRole("heading", { name: "스크랩 모니터링", exact: true })).toBeVisible();
   await expect(page.locator(".kpi-value")).toHaveText("72%");
   await expect(page.getByText("사전 알림 기준 70%")).toBeVisible();
-  await expect(page.getByText("계약 관리자")).toBeVisible();
+  await expect(page.getByText("user-contract")).toBeVisible();
   await expect(page.getByRole("button", { name: "알림 1건" })).toBeVisible();
   await expect(page.locator(".profile-stat").first()).toContainText("평균1.8 m");
   await expect.poll(() => requests.some(({ method, url }) => method === "GET" && url.pathname === "/api/v1/monitoring/events")).toBe(true);
@@ -98,7 +98,7 @@ test("제안 계약의 로그인, 알림 읽음과 관리자 변경 요청을 �
   await page.getByLabel("비밀번호").fill("contract-password");
   await page.getByRole("button", { name: "로그인", exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByText("계약 관리자")).toBeVisible();
+  await expect(page.getByText("user-contract")).toBeVisible();
 
   await page.getByRole("button", { name: "알림 1건" }).click();
   await page.locator(".header-notification").first().click();
