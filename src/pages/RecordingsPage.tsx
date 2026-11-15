@@ -146,6 +146,10 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
   const [queryState, setQueryState] = useState({ source: dataSource, busy: false });
   const querying = queryState.source === dataSource && queryState.busy;
   const setQuerying = (busy: boolean) => setQueryState({ source: dataSource, busy });
+  const [queryErrorState, setQueryErrorState] = useState({ source: dataSource, message: "" });
+  const queryError = queryErrorState.source === dataSource ? queryErrorState.message : "";
+  const setQueryError = (message: string) => setQueryErrorState({ source: dataSource, message });
+  const queryRetainedErrorMessage = "녹화 영상을 조회하지 못했습니다. 기존 조회 결과를 유지합니다.";
   const startQuery = useLatestRequest(dataSource);
   const startPageRequest = useLatestRequest(dataSource);
   // 서버 페이지 단위로 이어서 가져오는 목록 핸들과 전체 건수이다. 핸들이 없으면 받은 목록이 전부이다.
@@ -572,9 +576,14 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
           if (signal.aborted) return;
           mergeSnapshot(snapshot);
           setPageLoading(false);
+          setQueryError("");
           showRecordingPage(page);
         })
-        .catch(() => { if (!signal.aborted) setPageLoading(false); });
+        .catch(() => {
+          if (signal.aborted) return;
+          setPageLoading(false);
+          setQueryError(queryRetainedErrorMessage);
+        });
       return;
     }
     showRecordingPage(page);
@@ -869,6 +878,9 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
     }
   }
 
+  const displayedQueryError = queryError
+    || (initialError && recordingsState?.stale && pagedRecordings.length > 0 ? `${initialError} 기존 조회 결과를 유지합니다.` : "");
+
   return (
     <DashboardPageShell activePage="recordings" dataSource={dataSource} headerNotifications={headerNotifications} headerUnreadCount={headerUnreadCount} notificationState={headerNotificationState} session={session}>
       <main className="recordings-page" aria-label="스크랩 모니터링 녹화 영상">
@@ -878,8 +890,16 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
         </div>
         <div className="recordings-content">
           <section className="card recordings-query">
-            <SectionTitle>조회 조건</SectionTitle>
-            <form className="query-controls" onSubmit={(event) => {
+            <div className="recordings-query-head">
+              <SectionTitle>조회 조건</SectionTitle>
+              {displayedQueryError && (
+                <p id="recordings-query-error" role="alert" title={displayedQueryError}>{displayedQueryError}</p>
+              )}
+            </div>
+            <form
+              className="query-controls"
+              aria-describedby={displayedQueryError ? "recordings-query-error" : undefined}
+              onSubmit={(event) => {
               event.preventDefault();
               if (!isValidDateTime(range.start) || !isValidDateTime(range.end) || dateTimeValue(range.start) >= dateTimeValue(range.end)) {
                 const input = event.currentTarget.querySelectorAll<HTMLInputElement>("input")[isValidDateTime(range.start) ? 1 : 0];
@@ -917,6 +937,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                 setCoverageRecordingId(null);
                 setDownloadState("idle");
                 setDownloadError("");
+                setQueryError("");
                 setQueryCompleted(true);
               };
               if (!dataSource?.queryRecordings) {
@@ -933,7 +954,13 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
               const nextList = dataSource.openRecordingList?.(query);
               void (nextList ? nextList.ensure(recordingsPerPage, signal).then((snapshot) => { if (!signal.aborted) applyResult(snapshot.items, { list: nextList, total: snapshot.total, complete: snapshot.complete }); })
                 : dataSource.queryRecordings(query, signal).then((value) => { if (!signal.aborted) applyResult(value); }))
-                .catch(() => undefined)
+                .catch(() => {
+                  if (!signal.aborted) {
+                    setQueryError(initialError && !recordingsState?.stale
+                      ? "녹화 영상을 조회하지 못했습니다."
+                      : queryRetainedErrorMessage);
+                  }
+                })
                 .finally(() => { if (!signal.aborted) setQuerying(false); });
             }}>
               <div className="query-type" role="group" aria-label="빠른 기간 선택">
@@ -1003,7 +1030,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                       {recording.duration !== "정보 없음" && <span>{recording.duration}</span>}
                     </span>
                   </button>
-                )) : <p className="collection-empty" role={initialError ? "alert" : undefined}>{initialError ? `${initialError} 조회 버튼으로 다시 시도하세요.` : "조회된 녹화 영상이 없습니다."}</p>}
+                )) : <p className="collection-empty" role={initialError && !queryError ? "alert" : undefined}>{initialError ? `${initialError} 조회 버튼으로 다시 시도하세요.` : "조회된 녹화 영상이 없습니다."}</p>}
               </div>
               <Pagination
                 ariaLabel="녹화 목록 페이지"
