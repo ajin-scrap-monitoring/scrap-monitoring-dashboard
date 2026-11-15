@@ -16,7 +16,7 @@ import { useCameraStatus } from "./use-camera-status";
 
 const alertsPerPage = 4;
 const missingValue = "정보 없음";
-const alarmPresentation: Record<AlarmState, string> = { NORMAL: "경고 기준 미만", WARNING: "경고", CRITICAL: "위험", UNKNOWN: "확인 불가", ERROR: "판정 불가" };
+const alarmPresentation: Record<AlarmState, string> = { NORMAL: "정상", WARNING: "경고", CRITICAL: "경고", UNKNOWN: "확인 불가", ERROR: "판정 불가" };
 
 function alarmStateLabel(state: string | null | undefined): string {
   if (!state) return "정보 없음";
@@ -33,9 +33,8 @@ const deviceStateLabels: Record<string, string> = {
 type AlertRow = { alert: ActiveAlert } | { notice: { id: string; title: string; detail: string; hint: string } };
 const coverageReasonLabels: Record<string, string> = { CAMERA_HEALTH_SOURCE_NOT_CONFIGURED: "상태 입력 계약 없음" };
 
-function formatKpiLabel(simulated?: boolean, filterState?: MonitoringFilterState | null, loadHeld?: boolean) {
+function formatKpiLabel(filterState?: MonitoringFilterState | null, loadHeld?: boolean) {
   const parts: string[] = [];
-  if (simulated) parts.push("시뮬레이션");
   if (loadHeld) parts.push("갱신 대기");
   else if (filterState === "WARMING") parts.push("안정화 준비 중");
   else if (filterState === "UNAVAILABLE") parts.push("안정화 불가");
@@ -53,9 +52,9 @@ const sensorNames: Record<string, string> = { "lidar-a": "LiDAR 1", "lidar-b": "
 function layoutPresentation(layout: MeasurementLayoutStatus | null | undefined) {
   if (layout === undefined) return null;
   if (layout === null) return { label: "배치 정보 없음", hint: undefined };
+  if (layout.bindingState === "MATCHED" && layout.state === "SIMULATION") return null;
   const label = layout.bindingState !== "MATCHED" || layout.state === "UNAVAILABLE" ? "배치 정보 확인 불가"
-    : layout.state === "SIMULATION" ? "시뮬레이션 배치, 실측 설치 미확인"
-      : layout.state === "PARTIAL" ? "일부 배치 정보 없음" : "실측 배치 미검증";
+    : layout.state === "PARTIAL" ? "일부 배치 정보 없음" : "배치 미검증";
   const hint = [
     layout.reasonCodes.length > 0 ? `사유 ${layout.reasonCodes.join(", ")}` : "",
     ...layout.sensors.map((sensor) => `${sensorNames[sensor.sensorId] ?? sensor.sensorId} ${sensor.calibrationState}${sensor.reasonCodes.length > 0 ? ` (${sensor.reasonCodes.join(", ")})` : ""}`),
@@ -65,7 +64,7 @@ function layoutPresentation(layout: MeasurementLayoutStatus | null | undefined) 
 
 function alertDetail(alert: ActiveAlert) {
   const base = alert.health
-    ? `${alert.health.componentName} ${deviceLabel(alert.health.state)}${alert.health.simulated === true ? " (시뮬레이션)" : ""}`
+    ? `${alert.health.componentName} ${deviceLabel(alert.health.state)}`
     : alert.detail;
   if (alert.startedAt === undefined) return base;
   return `${base}, ${alert.startedAt === null ? "시작 정보 없음" : `서버 최초 확인 ${alert.startedAt.slice(5)}`}`;
@@ -150,7 +149,7 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
           <section className="card top-card span-4 kpi-card">
             <div className="monitoring-card-title"><SectionTitle>현재 상태</SectionTitle></div>
             <div className="kpi-content">
-              <p className="kpi-label" title={monitoring.summary.loadHold ? `마지막 정상 관측 ${seoulDisplayText(Date.parse(monitoring.summary.loadHold.observedAt))}을 최대 3초 표시합니다` : state?.filterState === "WARMING" ? "시간 필터가 준비되는 동안의 값" : undefined}>{formatKpiLabel(state?.simulated, state?.filterState, Boolean(monitoring.summary.loadHold))}</p>
+              <p className="kpi-label" title={monitoring.summary.loadHold ? `마지막 정상 관측 ${seoulDisplayText(Date.parse(monitoring.summary.loadHold.observedAt))}을 최대 3초 표시합니다` : state?.filterState === "WARMING" ? "시간 필터가 준비되는 동안의 값" : undefined}>{formatKpiLabel(state?.filterState, Boolean(monitoring.summary.loadHold))}</p>
               <div className={`kpi-value${monitoring.summary.loadPercent === null ? " unavailable-value" : valueLength > 5 ? " precise-value" : ""}`} style={valueLength > 5 ? { fontSize: Math.min(76, 500 / valueLength) } : undefined}>{monitoring.summary.loadPercent === null ? "판단 불가" : <>{monitoring.summary.loadPercent}<span>%</span></>}</div>
               {monitoring.summary.loadPercent === null
                 ? <div className="progress-unavailable">{state?.streamState === "reconnecting" && <span role="status">실시간 연결 재연결 중</span>}</div>

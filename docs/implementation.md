@@ -122,7 +122,7 @@ pathname 및 search가 같으면 새 history entry를 만들지 않는다. `AppL
 `src/page-loaders.ts`로 분리해 화면 모듈 load와 선로딩에 공유하며, `AppLink`는 pointerenter와 focus
 이벤트에서 대상 화면 모듈을 미리 로드한다.
 
-화면 전환 시 push 이동은 새 화면이 렌더링된 뒤 맨 위로 scroll하고 새 화면의 h1(`tabIndex={-1}`)로
+초기 로드와 새로고침에서는 제목에 focus를 이동하지 않고, 화면 전환 시 push 이동에서만 새 화면이 렌더링된 뒤 맨 위로 scroll하고 새 화면의 h1(`tabIndex={-1}`)로
 focus를 이동한다. 프로그램 focus 시 외곽선은 숨기되 키보드 focus 표시(`:focus-visible`)는 유지한다.
 뒤로/앞으로 이동(popstate)은 이동한 entry를 떠나기 직전에 기억한 scroll 위치를 화면 렌더링 뒤
 복원하며 기억한 위치가 없으면 맨 위로 둔다. 새로고침 뒤에는 기억한 위치를 복원하지 않는다. 브라우저의
@@ -149,7 +149,7 @@ Suspense를 유지한다.
 경로와 synthetic 인증 키는 `src/app-routing.ts`가 정의한다.
 
 네 화면의 페이지 제목은 장식 없이 같은 크기, 굵기와 정렬을 사용한다. 제목 영역의 최소 높이는
-76px이며 현황, 이력과 녹화 화면에서는 오른쪽에 데이터 수신 상태를 함께 배치한다. 카드 위치, 크기와 간격은 변경하지 않는다.
+76px이며 현황, 이력과 녹화 화면에서는 오른쪽에 데이터 수신 상태를 함께 배치한다. 로딩과 오류 화면의 데이터 수신 상태도 제목 영역과 같은 높이와 여백 위치에 배치한다. 카드 위치, 크기와 간격은 변경하지 않는다.
 
 ### 데이터 소스와 요청 수명
 
@@ -174,7 +174,7 @@ collection summary, fill forecast와 layout은 서로 독립적으로 반영하�
 이 대기에 포함하지 않고 활성 알림 카드만 확인 중으로 둔다. load-history 기준 시각은 서버 시각만
 사용하며 서버 시각이 없으면 조회하지 않고 해당 영역을 오류 상태로 둔다. 브라우저 탭이 숨겨지면(`document.visibilityState === "hidden"`) 현황 상세 갱신 timer를
 중지하고 `monitoring.snapshot` SSE 수신이 유발하는 60초 경과 상세 갱신, 판정 변경의 결합 재조회와
-source 변경의 load-history 조회도 보내지 않는다.
+source 변경의 load-history 조회도 보내지 않는다. 현황 상세 해제(`monitoringDetailsRefCount === 0`), 탭 숨김, SSE 재연결 오류와 대상 변경 시에는 결합 재조회 지연 timer(`forcedAlertsTimer`)와 카메라 상태 변경 보류 표지도 함께 정리한다.
 최근 24시간 load-history 조회가 422 `HISTORY_*` 또는 503 `HISTORY_QUERY_TIMEOUT`으로 실패하면 현황 상세 갱신 timer와
 탭 복귀는 최근 이력을 다시 요청하지 않으며 현황 상세 재활성화 또는 대상 변경 때 조회를 재개한다.
 SSE 재연결과 대상(siteId 또는 edgeId) 변경은 적재율, LiDAR 곡선과 대표 평균의 유지 상태와 timer를 버린다.
@@ -211,7 +211,7 @@ AbortSignal을 전달하고 화면 종료는 요청을 취소한다. 이미 수�
 `src/use-latest-request.ts`는 후속 목록 조회, source 변경과 화면 종료 시 이전 요청을
 취소하며 화면은 취소한 요청의 늦은 성공 및 오류를 적용하지 않는다. 현황 전용 최근
 24시간 추이와 최근 완료 이력은 현황에서만 조회하고 약 1분 간격으로 갱신한다.
-같은 snapshot의 재수신은 완료 조회 간격을 줄이지 않으며 같은 경보 ID의 알림 조회를
+같은 snapshot의 재수신은 완료 조회 간격을 줄이지 않으며 `seenNotificationIds` 집합으로 이미 동기화한 경보 ID의 알림 조회를
 중복 실행하지 않는다.
 
 화면 시각의 표시와 기간 입력의 해석은 `src/display-time.ts`의 `Asia/Seoul`(+09:00)로
@@ -255,8 +255,9 @@ Synthetic 영상과 썸네일은 `src/assets/camera-frame.png`를 사용하며 �
 유지하고 본문 영역만 로딩 화면으로 표시한다. 활성 메뉴는 이동 대상 화면으로 즉시 반영된다.
 알림 조회 중에는 헤더 알림 버튼의 badge를 숨기고 버튼 `aria-label`을 "알림 확인 중"으로 두며 popover에 로딩 상태를 표시한다.
 준비 뒤 확인한 session과 역할에 맞는 메뉴를 한 번에 표시한다. 조회 오류 화면은 확인된 사용자 정보를
-사용한다. 긴 사용자명은 title에 원문을 유지하고 생략 표시한다. `viewer`의 기본 이름인 현장 운영자는
-조회 사용자로 표시하며 다른 이름은 Backend 응답을 유지한다.
+사용한다. 헤더와 사용자 메뉴 첫 줄에는 로그인 계정 ID(`session.user.id`)를 표시하고, 긴 계정 ID는
+`title`에 원문을 유지하고 생략 표시한다. 사용자 메뉴의 역할 표기는 `viewer`를 Viewer,
+`administrator`를 Administrator로 표시한다.
 
 로그인 화면은 계정 로그인만 제공한다. 실제 v2 및 녹화 조회는 Backend session이 필요하고
 관리자 화면은 administrator 역할을 확인한다. API 401 또는 SSE `session.expired`는
@@ -299,8 +300,7 @@ bucket 및 결측을 검사한다. `load-history-v2.ts`는 `view=chart` 응답 �
 변환한다. `lidar-profiles-v2.ts`는 필수 `samples` 배열을 검증하며 누락이나 null이면 계약
 오류로 처리하고 `samples=[]`는 표본 없음 상태로 보존한다. `ProfileChart`는 0~10m 높이축과
 A~B 가로축 배치를 유지하고, `positionRatio`가 있는 표본의 최솟값~최댓값을 관측 범위로 계산한다.
-가로축의 [0, 최솟값)과 (최댓값, 1] 구간은 길이가 가로축의 1% 이상(`minRatio >= 0.01`, `1 - maxRatio >= 0.01`)일 때만 미측정 영역으로 옅은 회색 음영을 렌더링하고,
-SVG viewBox 좌표계에서 폭이 24단위 이상이면 "미측정" 글자를 표시한다. SVG aria-label과 음영 title에 미측정 구간 비율을 명시하고,
+가로축의 [0, 최솟값)과 (최댓값, 1] 바깥 구간은 길이가 가로축의 1% 이상(`minRatio >= 0.01`, `1 - maxRatio >= 0.01`)일 때, 유효 곡선 구간 사이의 중간 결손 구간은 길이와 무관하게(`gapEnd > gapStart`) 미측정 영역으로 회색 빗금 패턴을 렌더링한다. SVG aria-label과 빗금 영역 title에 미측정 구간 비율을 명시하고,
 유효점이 없는 profile은 `samples`를 빈 배열로 바꿔 곡선을 비운다. `active-alerts-v2.ts`는 필수
 `basis` 객체와 필수 `coverage` 배열을 검증하고, 장비 항목의 `CAMERA` 및 `MEDIA_CAMERA_STATUS`를
 허용하며 카메라 항목 이름은 "카메라"로 지정한다. 선택 필드인 `validUntilAt`, `evaluatedAt`,
@@ -308,15 +308,13 @@ SVG viewBox 좌표계에서 폭이 24단위 이상이면 "미측정" 글자를 �
 snapshot 검사로, activeAlerts를 `parseActiveAlertsV2`로 검사한다. 결합 요청은 진행 중인 요청이 있으면
 새로 시작하지 않고, 요청마다 순번을 부여해 가장 최근 시작한 요청만 적용하며 현황 상세 release 뒤의
 응답은 적용하지 않는다. 같은
-snapshotId의 응답도 적용한다. 결합 조회와 판정 비교의 근거 및 강제 재조회 조건은
+snapshotId의 응답도 적용한다. 결합 조회의 트리거, 5초 지연 재조회, 경보 ID 동기화와 판정 비교의 근거는
 [활성 알림 매핑](contracts/backend/frontend-mapping.md#활성-알림)을 따른다.
 예상 도달은 `validUntil` 경과와 재연결 중에 숨긴다.
 적재율 활성 알림 평가 상태가 `UNKNOWN` 또는 `ERROR`이면 "적재율 판정 불가"로 표시하고
 `lastKnownState`가 있으면 보조 표기한다. 장비 활성 알림은 평가 상태와 무관하게 표시한다.
 `error-body.ts`는 Backend의 3가지 오류 본문을 하나의 코드, 메시지와 검증 항목으로 정규화한다.
-`simulated`가 true인 값은 기존 카드 안에 시뮬레이션 보조 표기를 더한다.
-`summary.filterState`는 WARMING이면 안정화 준비 중, UNAVAILABLE이면 안정화 불가 보조 표기를 추정 적재율 라벨에 덧붙인다.
-시뮬레이션과 함께면 추정 적재율 (시뮬레이션, 안정화 준비 중) 형태로 조합하며 WARMING 안내는 title 속성으로 제공한다.
+`summary.filterState`는 WARMING이면 안정화 준비 중, UNAVAILABLE이면 안정화 불가 보조 표기를 추정 적재율 라벨에 덧붙이며 `WARMING` 안내는 title 속성으로 제공한다. `simulated` 값으로 시뮬레이션과 실측 구분 문구를 화면에 표시하지 않는다.
 `src/data/http-dashboard-data-source.ts`는 적재율 일시 준비 중 상태에서 마지막 정상값을 최대 3초간 유지하며, 유지 중에는 "안정화 준비 중" 대신 "갱신 대기" 라벨과 마지막 정상 관측 시각 안내 title을 제공한다. 유지 조건과 만료 규칙의 정본은 [기준과 평가 분류](contracts/backend/frontend-mapping.md#기준과-평가-분류)를 따른다.
 1280 CSS 픽셀 너비에서도 줄바꿈이나 카드 높이 변경 없이 카드의 크기를 유지한다.
 
@@ -378,7 +376,7 @@ v2 적재율 조회는 최대 90일이며 90일 초과는 요청 전에 안내�
 
 `DetailDialog`는 화면 위에서 내부 스크롤, 키보드 종료와 focus 복원을 제공한다.
 내용 셀을 선택하면 이미 조회한 사건의 시각, 유형, 상태, 서버 제목 및 설명, 서버가 제공한
-부가 필드(수거 확인 구분, 감지 기준, 시뮬레이션 출처, reason code)와 관련 영상 링크를
+부가 필드(수거 확인 구분, 감지 기준, reason code)와 관련 영상 링크를
 모달에 표시한다. 이벤트 조회는 `collection_scope=all`을 적용하고 관련 영상 링크는
 Backend 응답의 유효한 `recordingEventId`로 이벤트 녹화에 연결한다. 서버 원문을 번역하거나 자유 형식 설명으로 재분류하지 않는다.
 이벤트 유형 열과 상태 표시 조건은 계약 매핑을 따르며 값이 없는 상태 칸과 색상 원 및

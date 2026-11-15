@@ -25,6 +25,7 @@ function harness() {
   const stream = new Stream();
   const urls: URL[] = [];
   let response = () => Promise.resolve(json(pair()));
+  let notifications = () => Promise.resolve(json(notificationPageFixture));
   const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2",
     eventSourceFactory: () => stream as unknown as EventSource,
     fetchImplementation: vi.fn((input: RequestInfo | URL) => {
@@ -32,7 +33,7 @@ function harness() {
       urls.push(url);
       if (url.pathname === "/api/v1/session") return Promise.resolve(json(sessionFixture));
       if (url.pathname === "/api/v2/monitoring/snapshot") return Promise.resolve(json(snapshot));
-      if (url.pathname === "/api/v1/notifications") return Promise.resolve(json(notificationPageFixture));
+      if (url.pathname === "/api/v1/notifications") return notifications();
       if (url.pathname === "/api/v2/monitoring/snapshot-with-alerts") return response();
       if (url.pathname === "/api/v2/monitoring/collection-summary") return Promise.resolve(json(collectionSummaryFixture()));
       return Promise.resolve(new Response(null, { status: 503 }));
@@ -43,6 +44,7 @@ function harness() {
   return { source, stream, urls, updates,
     async start() { await source.getDashboardData(); unsubscribe = source.subscribe!(data => updates.push(data)); },
     response(next: () => Promise<Response>) { response = next; },
+    notifications(next: () => Promise<Response>) { notifications = next; },
     latest() { return updates.at(-1)!.monitoring; },
     stop() { unsubscribe?.(); },
   };
@@ -187,6 +189,190 @@ describe("결합 snapshot과 활성 알림", () => {
     expect(count("/collection-summary")).toBe(2);
     expect(count("/snapshot-with-alerts")).toBe(2);
     activation.release(); h.stop();
+  });
+
+  test("5초 제한 안의 상태 복귀와 진행 중 전환은 5초 뒤 결합 재조회를 실행하고 release 시 timer를 정리한다", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = harness();
+      await h.start();
+      const activation = h.source.activateMonitoringDetails!();
+      await activation.ready;
+      const alertRequests = () => h.urls.filter((url) => url.pathname.endsWith("/snapshot-with-alerts")).length;
+      expect(alertRequests()).toBe(1);
+
+      const criticalSnapshot = {
+        ...snapshot,
+        snapshotId: "snap-critical",
+        operations: { ...snapshot.operations, effectiveState: "CRITICAL" as const },
+      };
+      const alertsWith = (target: { snapshotId: string } & Record<string, unknown>, overrides: Record<string, unknown>) => ({
+        snapshot: target,
+        activeAlerts: activeAlertsFixture({
+          basis: { ...activeAlertsFixture().basis, snapshotId: target.snapshotId },
+          ...overrides,
+        }),
+      });
+      h.response(() => Promise.resolve(json(alertsWith(criticalSnapshot, { evaluationState: "CRITICAL", items: [] }))));
+      h.stream.emit("monitoring.snapshot", criticalSnapshot);
+      await settle();
+      expect(alertRequests()).toBe(2);
+      expect(h.latest().activeAlertsState?.evaluationState).toBe("CRITICAL");
+
+      await vi.advanceTimersByTimeAsync(1000);
+      h.response(() => Promise.resolve(json(pair())));
+      h.stream.emit("monitoring.snapshot", { ...snapshot, snapshotId: "snap-normal-1" });
+      await settle();
+      expect(alertRequests()).toBe(2);
+
+      await vi.advanceTimersByTimeAsync(4000);
+      await settle();
+      expect(alertRequests()).toBe(3);
+      expect(h.latest().activeAlertsState?.evaluationState).toBe("NORMAL");
+
+      await vi.advanceTimersByTimeAsync(5000);
+      const pendingCritical = deferred<Response>();
+      h.response(() => pendingCritical.promise);
+      const secondCritical = { ...criticalSnapshot, snapshotId: "snap-critical-2" };
+      h.stream.emit("monitoring.snapshot", secondCritical);
+      expect(alertRequests()).toBe(4);
+      h.stream.emit("monitoring.snapshot", { ...snapshot, snapshotId: "snap-normal-2" });
+      pendingCritical.resolve(json(alertsWith(secondCritical, { evaluationState: "CRITICAL", items: [] })));
+      await settle();
+      expect(alertRequests()).toBe(4);
+      expect(h.latest().activeAlertsState?.evaluationState).toBe("CRITICAL");
+
+      h.response(() => Promise.resolve(json(pair())));
+      await vi.advanceTimersByTimeAsync(5000);
+      await settle();
+      expect(alertRequests()).toBe(5);
+      expect(h.latest().activeAlertsState?.evaluationState).toBe("NORMAL");
+
+      await vi.advanceTimersByTimeAsync(5000);
+      h.response(() => Promise.resolve(json(alertsWith(criticalSnapshot, { evaluationState: "CRITICAL", items: [] }))));
+      h.stream.emit("monitoring.snapshot", criticalSnapshot);
+      await settle();
+      expect(alertRequests()).toBe(6);
+      await vi.advanceTimersByTimeAsync(1000);
+      h.stream.emit("monitoring.snapshot", snapshot);
+      activation.release();
+      h.stop();
+      await vi.advanceTimersByTimeAsync(5000);
+      await settle();
+      expect(alertRequests()).toBe(6);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("effectiveState가 NORMAL로 유지돼도 장치, 센서, 카메라 상태 전환 시 결합 재조회를 요청한다", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = harness();
+      await h.start();
+      const activation = h.source.activateMonitoringDetails!();
+      await activation.ready;
+      const alertRequests = () => h.urls.filter((url) => url.pathname.endsWith("/snapshot-with-alerts")).length;
+      expect(alertRequests()).toBe(1);
+
+      const sensorDegraded = {
+        ...snapshot,
+        snapshotId: "snap-sensor-degraded",
+        deviceStatus: {
+          ...snapshot.deviceStatus,
+          connection_state: "REPORTING",
+          effective_state: "DEGRADED",
+          last_received_at: snapshot.serverTime,
+          reason_codes: ["LIDAR_STALE"],
+          snapshot: {
+            sensors: [{ sensor_id: "lidar-1", data_state: "STALE", last_scan_at: snapshot.serverTime, reason_codes: [] }],
+            services: [{ service: "bridge", state: "HEALTHY", last_progress_at: snapshot.serverTime, reason_codes: [] }],
+          },
+        },
+      };
+      h.response(() => Promise.resolve(json({
+        snapshot: sensorDegraded,
+        activeAlerts: activeAlertsFixture({
+          basis: { ...activeAlertsFixture().basis, snapshotId: sensorDegraded.snapshotId },
+          evaluationState: "WARNING",
+          items: [],
+        }),
+      })));
+      h.stream.emit("monitoring.snapshot", sensorDegraded);
+      await settle();
+      expect(alertRequests()).toBe(2);
+      expect(h.latest().activeAlertsState?.evaluationState).toBe("WARNING");
+
+      await vi.advanceTimersByTimeAsync(5000);
+      h.response(() => Promise.resolve(json({
+        snapshot: sensorDegraded,
+        activeAlerts: activeAlertsFixture({
+          basis: { ...activeAlertsFixture().basis, snapshotId: sensorDegraded.snapshotId },
+          evaluationState: "CRITICAL",
+          items: [],
+        }),
+      })));
+      h.stream.emit("monitoring.camera-status", cameraStatusFixture({ state: "INTERRUPTED", connectionState: "DISCONNECTED" }));
+      await settle();
+      expect(alertRequests()).toBe(3);
+      expect(h.latest().activeAlertsState?.evaluationState).toBe("CRITICAL");
+
+      activation.release();
+      h.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("snapshot-with-alerts 응답의 새 notificationId가 최근 알림 재조회를 트리거하고 같은 ID의 뒤늦은 SSE는 중복 조회하지 않는다", async () => {
+    const h = harness();
+    await h.start();
+    const activation = h.source.activateMonitoringDetails!();
+    await activation.ready;
+    const notificationRequests = () => h.urls.filter((url) => url.pathname === "/api/v1/notifications").length;
+    await vi.waitFor(() => expect(notificationRequests()).toBe(1));
+
+    h.notifications(() => Promise.resolve(json({
+      ...notificationPageFixture,
+      unreadCount: 2,
+      items: [
+        { ...notificationPageFixture.items[0], id: "notif-from-alerts", readAt: null },
+        ...notificationPageFixture.items,
+      ],
+    })));
+    const criticalWithNotification = {
+      ...snapshot,
+      snapshotId: "snap-notif",
+      operations: {
+        ...snapshot.operations,
+        effectiveState: "CRITICAL" as const,
+        notificationId: "notif-from-alerts",
+      },
+    };
+    h.response(() => Promise.resolve(json({
+      snapshot: criticalWithNotification,
+      activeAlerts: activeAlertsFixture({
+        basis: { ...activeAlertsFixture().basis, snapshotId: criticalWithNotification.snapshotId },
+        evaluationState: "CRITICAL",
+        items: [],
+      }),
+    })));
+    h.stream.emit("monitoring.snapshot", {
+      ...snapshot,
+      snapshotId: "snap-notif-sse",
+      operations: { ...snapshot.operations, effectiveState: "CRITICAL" as const, notificationId: null },
+    });
+
+    await vi.waitFor(() => expect(notificationRequests()).toBe(2));
+    await vi.waitFor(() => expect(h.latest().unreadNotificationCount).toBe(2));
+    expect(h.latest().headerNotifications[0]?.id).toBe("notif-from-alerts");
+
+    h.stream.emit("monitoring.snapshot", criticalWithNotification);
+    await settle();
+    expect(notificationRequests()).toBe(2);
+
+    activation.release();
+    h.stop();
   });
 });
 

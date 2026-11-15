@@ -96,8 +96,7 @@ export function DashboardHeader({ activePage, dataSource, initialNotifications, 
   const mountedRef = useRef(true);
   const isAuthenticated = session === undefined ? hasAuthenticationSession() : session !== null;
   const canManage = !sessionPending && (session === undefined ? hasAuthenticationSession() : session?.user.role === "administrator");
-  const serverDisplayName = session?.user.displayName;
-  const displayName = session?.user.role === "viewer" && serverDisplayName === "현장 운영자" ? "조회 사용자" : serverDisplayName ?? "관리자";
+  const displayName = session?.user.id || session?.user.displayName || "관리자";
 
   useEffect(() => {
     mountedRef.current = true;

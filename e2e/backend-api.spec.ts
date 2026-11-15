@@ -99,9 +99,9 @@ test("적재율 경보는 Backend의 평가 결과를 표시하고 연결 중단
   const valueColor = await page.locator(".mini-stat strong").first().evaluate(element => getComputedStyle(element).color);
   await expect(alarm).toHaveCSS("color", valueColor);
   for (const [effectiveState, text, percent] of [
-    ["NORMAL", "경고 기준 미만", 72.5],
+    ["NORMAL", "정상", 72.5],
     ["WARNING", "경고", 82.5],
-    ["CRITICAL", "위험", 82.5],
+    ["CRITICAL", "경고", 82.5],
     ["UNKNOWN", "확인 불가", 82.5],
     ["ERROR", "판정 불가", 82.5],
   ] as const) {
@@ -118,11 +118,11 @@ test("적재율 경보는 Backend의 평가 결과를 표시하고 연결 중단
     effectiveState: "CRITICAL" as const, lastKnownState: "CRITICAL" as const, lastEvaluatedAt: null, lastAlertAt: null, notificationId: null,
   } };
   await api.snapshot(critical);
-  await expect(alarm).toHaveText("위험");
+  await expect(alarm).toHaveText("경고");
   await page.evaluate(() => window.backendFixture.emit("error", ""));
   await expect(alarm).toHaveText("확인 불가");
   await api.snapshot(critical);
-  await expect(alarm).toHaveText("위험");
+  await expect(alarm).toHaveText("경고");
   await api.snapshot({ ...monitoringV2StateFixture("FRESH", 72.5), operations: null });
   await expect(alarm).toHaveText("미지원");
   await expect(alarm).toHaveCSS("color", valueColor);
@@ -145,7 +145,7 @@ test("제공된 경보 평가와 실제 완료 시각을 변환하고 새 경보
   await page.getByRole("button", { name: "알림 2건", exact: true }).click();
   await expect(page.getByLabel("최근 알림").getByText("수거 필요", { exact: true })).toBeVisible();
   await page.getByRole("heading", { name: "스크랩 모니터링", exact: true }).click();
-  await expect(page.locator(".alarm-status")).toHaveText("위험");
+  await expect(page.locator(".alarm-status")).toHaveText("경고");
   await expect(page.getByRole("button", { name: "상태 상세", exact: true })).toHaveCount(0);
   await expect(page.locator(".kpi-card")).not.toContainText("수거 중");
   await expect(page.locator(".alerts-card")).not.toContainText("0건");

@@ -47,17 +47,18 @@ test("비로그인이 확인된 헤더에는 로그인 링크를 표시한다", 
 });
 
 test.each([
-  ["viewer", "현장 운영자", "조회 사용자"],
-  ["viewer", "품질 담당자", "품질 담당자"],
-  ["administrator", "관리자", "관리자"],
-  ["administrator", "현장 운영자", "현장 운영자"],
-] as const)("%s 계정 이름 %s를 %s로 표시한다", async (role, displayName, expected) => {
+  ["viewer", "operator", "현장 운영자", "operator", "Viewer"],
+  ["viewer", "qa-user", "품질 담당자", "qa-user", "Viewer"],
+  ["administrator", "admin", "관리자", "admin", "Administrator"],
+  ["administrator", "ops-admin", "현장 운영자", "ops-admin", "Administrator"],
+] as const)("%s 계정 로그인 ID %s를 %s로, 권한을 %s로 표시한다", async (role, id, displayName, expectedId, expectedRole) => {
   const view = render(<DashboardHeader activePage="history" initialNotifications={[]}
-    session={{ expiresAt: "2026-10-16T00:00:00Z", user: { id: "synthetic-user", displayName, role } }} />);
-  expect(view.container.querySelector(".user-menu")).toHaveTextContent(expected);
+    session={{ expiresAt: "2026-10-16T00:00:00Z", user: { id, displayName, role } }} />);
+  expect(view.container.querySelector(".user-menu")).toHaveTextContent(expectedId);
   fireEvent.click(screen.getByRole("button", { name: "사용자 메뉴" }));
   await screen.findByLabelText("사용자 메뉴", { selector: "section" });
-  expect(view.container.querySelector(".user-popover-profile strong")).toHaveTextContent(expected);
+  expect(view.container.querySelector(".user-popover-profile strong")).toHaveTextContent(expectedId);
+  expect(view.container.querySelector(".user-popover-profile span")).toHaveTextContent(expectedRole);
   expect(Boolean(screen.queryByRole("link", { name: "관리자 설정" }))).toBe(role === "administrator");
 });
 
@@ -150,17 +151,17 @@ test("이전 알림을 유지한 조회 실패는 마지막 응답이라는 설�
   expect(screen.queryByRole("button", { name: "알림 다시 조회" })).not.toBeInTheDocument();
 });
 
-test("긴 사용자명과 알림의 원문은 title과 접근 가능한 텍스트에 유지한다", async () => {
-  const displayName = "현장모니터링담당자".repeat(10);
+test("긴 로그인 ID와 알림의 원문은 title과 접근 가능한 텍스트에 유지한다", async () => {
+  const userId = "monitoring-user-id-".repeat(10);
   const title = "서버 알림 제목 ".repeat(20);
   const detail = "서버 알림 내용 ".repeat(20);
   const view = render(<DashboardHeader activePage="monitoring" initialNotifications={[{ id: "long-notice", title, detail, read: false, level: "warning", time: "10:00" }]}
-    session={{ expiresAt: "2026-10-16T00:00:00Z", user: { id: "synthetic-user", role: "administrator", displayName } }} />);
-  expect(view.container.querySelector(".user-menu > span")).toHaveAttribute("title", displayName);
-  expect(view.container.querySelector(".user-menu > span")).toHaveTextContent(displayName);
+    session={{ expiresAt: "2026-10-16T00:00:00Z", user: { id: userId, role: "administrator", displayName: "관리자" } }} />);
+  expect(view.container.querySelector(".user-menu > span")).toHaveAttribute("title", userId);
+  expect(view.container.querySelector(".user-menu > span")).toHaveTextContent(userId);
   fireEvent.click(screen.getByRole("button", { name: "사용자 메뉴" }));
   await screen.findByLabelText("사용자 메뉴", { selector: "section" });
-  expect(view.container.querySelector(".user-popover-profile strong")).toHaveAttribute("title", displayName);
+  expect(view.container.querySelector(".user-popover-profile strong")).toHaveAttribute("title", userId);
   fireEvent.click(screen.getByRole("button", { name: "알림 1건" }));
   await screen.findByLabelText("최근 알림");
   expect(view.container.querySelector(".header-notification strong")).toHaveAttribute("title", title);

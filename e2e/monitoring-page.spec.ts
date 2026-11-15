@@ -252,7 +252,8 @@ for (const threshold of [85, 90, 100]) {
     const lineBounds = await chart.locator('path[stroke-dasharray="5 5"]').boundingBox();
     if (!labelBounds || !lineBounds) throw new Error("The threshold label and line must be measurable.");
     expect(lineBounds.y - labelBounds.y - labelBounds.height).toBeGreaterThan(4);
-    await expect(page.locator(".measurement-card .monitoring-card-title")).toHaveText("측정 영역시뮬레이션 배치, 실측 설치 미확인");
+    await expect(page.locator(".measurement-card .monitoring-card-title")).toHaveText("측정 영역");
+    await expect(page.locator(".measurement-card .measurement-layout-state")).toHaveCount(0);
     await expect(page.locator(".measurement-card svg")).toBeVisible();
     await expect(page.locator(".monitoring-grid > .card")).toHaveCount(8);
   });
@@ -337,7 +338,7 @@ test("적재율 판정 불가에서도 장비 항목을 표시하고 적재율 �
   const card = page.locator(".alerts-card");
   await expect(card.getByText("Edge 장치 상태 이상")).toBeVisible();
   await expect(card.getByText("적재율 경보", { exact: true })).toBeVisible();
-  await expect(card.getByText("적재율 판정 불가 (마지막 판정 경고 기준 미만)")).toBeVisible();
+  await expect(card.getByText("적재율 판정 불가 (마지막 판정 정상)")).toBeVisible();
   await expect(card.locator(".alert-count")).toHaveText("1건");
 });
 
@@ -354,13 +355,13 @@ test("같은 basis.snapshotId에서 현재 snapshot과 활성 알림 판정이 �
   const card = page.locator(".alerts-card");
   const subInfo = card.locator(".measurement-layout-state");
   await expect(subInfo).toHaveText("현재 판정과 활성 알림 판정이 다름");
-  await expect(subInfo).toHaveAttribute("title", /현재 판정 경고 기준 미만, 활성 알림 위험/);
+  await expect(subInfo).toHaveAttribute("title", /현재 판정 정상, 활성 알림 경고/);
 });
 
 for (const [state, bindingState, label] of [
-  ["SIMULATION", "MATCHED", "시뮬레이션 배치, 실측 설치 미확인"],
+  ["SIMULATION", "MATCHED", null],
   ["PARTIAL", "MATCHED", "일부 배치 정보 없음"],
-  ["UNVERIFIED", "MATCHED", "실측 배치 미검증"],
+  ["UNVERIFIED", "MATCHED", "배치 미검증"],
   ["UNAVAILABLE", "UNKNOWN", "배치 정보 확인 불가"],
   ["SIMULATION", "MISMATCH", "배치 정보 확인 불가"],
 ] as const) {
@@ -369,8 +370,12 @@ for (const [state, bindingState, label] of [
     api.setLayout(measurementLayoutFixture({ state, bindingState }));
     await page.goto("/?source=api");
     const card = page.locator(".measurement-card");
-    await expect(card.locator(".measurement-layout-state")).toHaveText(label);
-    await expect(card.locator(".measurement-layout-state")).toHaveAttribute("title", /사유 SIMULATION_GEOMETRY, PHYSICAL_INSTALLATION_UNVERIFIED \/ LiDAR 1 SIMULATION \/ LiDAR 2 SIMULATION/);
+    if (label === null) {
+      await expect(card.locator(".measurement-layout-state")).toHaveCount(0);
+    } else {
+      await expect(card.locator(".measurement-layout-state")).toHaveText(label);
+      await expect(card.locator(".measurement-layout-state")).toHaveAttribute("title", /사유 SIMULATION_GEOMETRY, PHYSICAL_INSTALLATION_UNVERIFIED \/ LiDAR 1 SIMULATION \/ LiDAR 2 SIMULATION/);
+    }
     await expect(card.locator("svg.measurement-svg")).toBeVisible();
     const svgBox = await card.locator("svg.measurement-svg").boundingBox();
     const titleBox = await card.locator(".monitoring-card-title").boundingBox();
@@ -420,16 +425,16 @@ test("snapshot의 filterState=WARMING 상태를 추정 적재율 label과 title�
   await expect(label).toHaveAttribute("title", "시간 필터가 준비되는 동안의 값");
 });
 
-test("simulated와 filterState=WARMING이 함께인 snapshot은 라벨을 조합하여 표시한다", async ({ page }) => {
+test("simulated와 filterState=WARMING이 함께인 snapshot은 시뮬레이션 표기 없이 filterState 라벨만 표시한다", async ({ page }) => {
   const initial = monitoringV2StateFixture("FRESH", 72.5, { filterState: "WARMING", simulated: true });
   await installBackendApi(page, { initial });
   await page.goto("/?source=api");
   const label = page.locator(".kpi-label");
-  await expect(label).toHaveText("추정 적재율 (시뮬레이션, 안정화 준비 중)");
+  await expect(label).toHaveText("추정 적재율 (안정화 준비 중)");
   await expect(label).toHaveAttribute("title", "시간 필터가 준비되는 동안의 값");
 });
 
-test("LiDAR 프로필의 관측 범위 밖을 미측정 음영과 글자로 표시하고 카드를 유지한다", async ({ page }) => {
+test("LiDAR 프로필의 관측 범위 밖을 미측정 빗금 영역으로 표시하고 카드를 유지한다", async ({ page }) => {
   const api = await installBackendApi(page, { initial: monitoringV2StateFixture("FRESH", 72.5) });
   const base = lidarProfilesFixture();
   api.setProfiles({
@@ -462,11 +467,8 @@ test("LiDAR 프로필의 관측 범위 밖을 미측정 음영과 글자로 표�
   await expect(zones).toHaveCount(2);
   await expect(zones.first().locator("title")).toHaveText("미측정 A 0%~13%");
   await expect(zones.last().locator("title")).toHaveText("미측정 B 87%~100%");
-
-  const unmeasuredTexts = first.locator(".profile-unmeasured-zones text");
-  await expect(unmeasuredTexts).toHaveCount(2);
-  await expect(unmeasuredTexts.first()).toHaveText("미측정");
-  await expect(unmeasuredTexts.last()).toHaveText("미측정");
+  await expect(zones.first()).toHaveAttribute("fill", /^url\(#profile-unmeasured-hatch-/);
+  await expect(first.locator(".profile-unmeasured-zones text")).toHaveCount(0);
 
   // 샘플이 없는 LiDAR 2는 미측정 음영 없이 표본 없음 문구 표시
   const second = page.locator(".chart-card").filter({ hasText: "LiDAR 2" });

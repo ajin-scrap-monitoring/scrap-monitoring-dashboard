@@ -137,4 +137,44 @@ describe("calculateUnmeasuredRanges", () => {
     ]);
     expect(calculateUnmeasuredRanges([{ positionRatio: 0.0 }, { positionRatio: 0.991 }])).toEqual([]);
   });
+
+  test("중간 결손(positionRatio null 또는 height null) 구간은 1% 미만 짧은 결손까지 모두 빗금 구간으로 생성한다", () => {
+    expect(calculateUnmeasuredRanges([
+      { positionRatio: 0.0, height: 1.0 },
+      { positionRatio: 0.2, height: 1.5 },
+      { positionRatio: 0.35, height: null },
+      { positionRatio: null, height: null },
+      { positionRatio: 0.5, height: 1.8 },
+      { positionRatio: 0.7, height: null },
+      { positionRatio: 0.85, height: 2.0 },
+      { positionRatio: 1.0, height: 2.2 },
+    ])).toEqual([
+      { side: "middle", startRatio: 0.2, endRatio: 0.5, label: "미측정 20%~50%" },
+      { side: "middle", startRatio: 0.5, endRatio: 0.85, label: "미측정 50%~85%" },
+    ]);
+
+    expect(calculateUnmeasuredRanges([
+      { positionRatio: 0.0, height: 1.0 },
+      { positionRatio: 0.495, height: 1.5 },
+      { positionRatio: 0.5, height: null },
+      { positionRatio: 0.504, height: 1.6 },
+      { positionRatio: 1.0, height: 2.0 },
+    ])).toEqual([
+      { side: "middle", startRatio: 0.495, endRatio: 0.504, label: "미측정 50%~50%" },
+    ]);
+
+    // 역순 표본과 양끝 무효 표본 처리
+    expect(calculateUnmeasuredRanges([
+      { positionRatio: 0.95, height: null },
+      { positionRatio: 0.85, height: 2.0 },
+      { positionRatio: 0.6, height: 1.8 },
+      { positionRatio: 0.4, height: null },
+      { positionRatio: 0.2, height: 1.2 },
+      { positionRatio: 0.05, height: null },
+    ])).toEqual([
+      { side: "start", startRatio: 0, endRatio: 0.2, label: "미측정 A 0%~20%" },
+      { side: "middle", startRatio: 0.2, endRatio: 0.6, label: "미측정 20%~60%" },
+      { side: "end", startRatio: 0.85, endRatio: 1, label: "미측정 B 85%~100%" },
+    ]);
+  });
 });

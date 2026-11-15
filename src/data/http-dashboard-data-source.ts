@@ -134,6 +134,26 @@ function applyForecast(summary: MonitoringSummary, forecast: FillForecast | null
 
 type SnapshotAlerts = { snapshot: NonNullable<DashboardData["monitoring"]["v2"]>; alerts: ActiveFillAlerts };
 
+function hasAlertTriggerChanged(
+  current: NonNullable<DashboardData["monitoring"]["v2"]>,
+  baseline: NonNullable<DashboardData["monitoring"]["v2"]>,
+): boolean {
+  if (current.operations?.effectiveState !== baseline.operations?.effectiveState) return true;
+  if (current.connectionState !== baseline.connectionState) return true;
+  if (current.effectiveState !== baseline.effectiveState) return true;
+  if (
+    current.sensors.length !== baseline.sensors.length
+    || current.sensors.some((sensor, index) => sensor.id !== baseline.sensors[index]?.id || sensor.state !== baseline.sensors[index]?.state)
+  ) return true;
+  const currentServices = current.services ?? [];
+  const baselineServices = baseline.services ?? [];
+  if (
+    currentServices.length !== baselineServices.length
+    || currentServices.some((service, index) => service.name !== baselineServices[index]?.name || service.state !== baselineServices[index]?.state)
+  ) return true;
+  return false;
+}
+
 function applyCollectionInsights(
   monitoring: DashboardData["monitoring"],
   insights: CollectionInsights | null,
@@ -388,6 +408,10 @@ export function createHttpDashboardDataSource({
   let snapshotAlertsSequence = 0;
   let snapshotAlertsInFlight: number | null = null;
   let lastForcedAlertsAt = -Infinity;
+  let forcedAlertsTimer: ReturnType<typeof setTimeout> | undefined;
+  let cameraAlertRefreshPending = false;
+  let alertStateVersion = 0;
+  let checkStreamNotificationId: ((notificationId: string | null | undefined) => void) | null = null;
   let lastCameraStatus: { status: CameraStatusV2; receivedAt: number } | null = null;
   const cameraListeners = new Set<(status: CameraStatusV2, receivedAt: number) => void>();
   let collectionRequestedAt = -Infinity;
@@ -450,7 +474,16 @@ export function createHttpDashboardDataSource({
   const lastNormalAverages = new Map<string, LastNormalAverage>();
   const profileHoldTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+  const clearForcedAlertsTimer = () => {
+    if (forcedAlertsTimer !== undefined) {
+      clearTimeout(forcedAlertsTimer);
+      forcedAlertsTimer = undefined;
+    }
+  };
+
   const clearHoldState = () => {
+    clearForcedAlertsTimer();
+    cameraAlertRefreshPending = false;
     if (loadHoldTimer !== undefined) {
       clearTimeout(loadHoldTimer);
       loadHoldTimer = undefined;
@@ -485,6 +518,9 @@ export function createHttpDashboardDataSource({
   // 진행 중인 조회의 결과를 적용하지 않는다. 현황 상세가 활성이면 새 대상 기준 조회를 기존 경로로 다시 시작한다.
   const resetForTargetChange = () => {
     clearHoldState();
+    clearForcedAlertsTimer();
+    cameraAlertRefreshPending = false;
+    alertStateVersion += 1;
     loadHistoryAutoRetryBlocked = false;
     collectionInsights = null;
     collectionRequestedAt = -Infinity;
@@ -696,9 +732,12 @@ export function createHttpDashboardDataSource({
   };
 
   const refreshSnapshotAlerts = async (signal?: AbortSignal) => {
+    const startedAlertVersion = alertStateVersion;
+    cameraAlertRefreshPending = false;
     const sequence = ++snapshotAlertsSequence;
     snapshotAlertsInFlight = sequence;
     const scope = monitoringScope && { ...monitoringScope };
+    let refreshedSnapshot = false;
     try {
       const value = await request<unknown>(pitPath("/api/v2/monitoring/snapshot-with-alerts?scope=ALL"), { signal });
       if (!record(value)) throw new Error("Unexpected snapshot-with-alerts contract.");
@@ -713,6 +752,7 @@ export function createHttpDashboardDataSource({
       if (signal?.aborted || sequence !== snapshotAlertsSequence || monitoringDetailsRefCount === 0) return;
       snapshotAlerts = { snapshot, alerts };
       snapshotAlertsAreaState = readyState;
+      refreshedSnapshot = true;
     } catch (error) {
       if (signal?.aborted || sequence !== snapshotAlertsSequence || monitoringDetailsRefCount === 0) return;
       snapshotAlerts = null;
@@ -725,11 +765,47 @@ export function createHttpDashboardDataSource({
     currentData.monitoring.activeAlertsAreaState = snapshotAlertsAreaState;
     applyCollectionInsights(currentData.monitoring, collectionInsights, currentData.monitoring.v2.serverTime, snapshotAlerts, lidarProfilesState);
     publishNotifications();
+    if (refreshedSnapshot && snapshotAlerts) {
+      checkStreamNotificationId?.(snapshotAlerts.snapshot.operations?.notificationId);
+    }
+    if (snapshotAlerts !== null && monitoringDetailsRefCount > 0 && monitoringDetailsController) {
+      const detailsVisible = typeof document === "undefined" || document.visibilityState !== "hidden";
+      if (cameraAlertRefreshPending || hasAlertTriggerChanged(currentData.monitoring.v2, snapshotAlerts.snapshot)) {
+        if (detailsVisible && (cameraAlertRefreshPending || alertStateVersion > startedAlertVersion)) {
+          refreshChangedSnapshotAlerts(monitoringDetailsController.signal);
+        }
+      } else {
+        clearForcedAlertsTimer();
+      }
+    }
   };
 
   const refreshChangedSnapshotAlerts = (signal?: AbortSignal) => {
-    if (!snapshotAlerts || snapshotAlertsInFlight !== null || performance.now() - lastForcedAlertsAt < 5000
-      || currentData?.monitoring.v2?.operations?.effectiveState === snapshotAlerts.snapshot.operations?.effectiveState) return;
+    const currentV2 = currentData?.monitoring.v2;
+    if (!snapshotAlerts || !currentV2 || monitoringDetailsRefCount === 0) {
+      clearForcedAlertsTimer();
+      return;
+    }
+    const triggered = cameraAlertRefreshPending || hasAlertTriggerChanged(currentV2, snapshotAlerts.snapshot);
+    if (!triggered) {
+      clearForcedAlertsTimer();
+      return;
+    }
+    if (signal?.aborted || snapshotAlertsInFlight !== null) return;
+    const elapsed = performance.now() - lastForcedAlertsAt;
+    if (elapsed < 5000) {
+      if (forcedAlertsTimer === undefined) {
+        const activeSignal = signal ?? monitoringDetailsController?.signal;
+        forcedAlertsTimer = setTimeout(() => {
+          forcedAlertsTimer = undefined;
+          const detailsVisible = typeof document === "undefined" || document.visibilityState !== "hidden";
+          if (!detailsVisible || monitoringDetailsRefCount === 0 || !monitoringDetailsController || activeSignal?.aborted) return;
+          refreshChangedSnapshotAlerts(monitoringDetailsController.signal);
+        }, Math.max(1, 5000 - elapsed));
+      }
+      return;
+    }
+    clearForcedAlertsTimer();
     lastForcedAlertsAt = performance.now();
     void refreshSnapshotAlerts(signal);
   };
@@ -1564,11 +1640,6 @@ export function createHttpDashboardDataSource({
       let eventSource = eventSourceFactory(eventsPath);
       let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
       let reconnectDelay = SSE_RECONNECT_INITIAL_MS;
-      const stopStream = () => {
-        if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
-        reconnectTimer = undefined;
-        eventSource.close();
-      };
       listeners.add(listener);
       if (dataVersion > getDashboardDataVersion && currentData) {
         listener(cloneDashboardData(currentData));
@@ -1579,6 +1650,15 @@ export function createHttpDashboardDataSource({
       let refreshingNotifications = false;
       let notificationsRefreshQueued = false;
       let synchronizedNotificationId = currentData?.monitoring.v2?.operations?.notificationId ?? null;
+      let latestSeenNotificationId = synchronizedNotificationId;
+      const seenNotificationIds = new Set<string>(synchronizedNotificationId ? [synchronizedNotificationId] : []);
+      const rememberNotificationId = (id: string) => {
+        seenNotificationIds.add(id);
+        if (seenNotificationIds.size > APPLIED_EVENT_ID_LIMIT) {
+          const oldestNotificationId = seenNotificationIds.values().next().value;
+          if (oldestNotificationId !== undefined) seenNotificationIds.delete(oldestNotificationId);
+        }
+      };
       const sessionController = new AbortController();
       const notificationActionScope = notificationActionsController;
       closeMonitoringStream = () => {
@@ -1629,7 +1709,7 @@ export function createHttpDashboardDataSource({
           while (active && currentData && notificationsRefreshQueued) {
             notificationsRefreshQueued = false;
             const expectedRevision = notificationRevision;
-            const expectedNotificationId = currentData.monitoring.v2?.operations?.notificationId ?? null;
+            const expectedNotificationId = latestSeenNotificationId ?? currentData.monitoring.v2?.operations?.notificationId ?? null;
             try {
               const notifications = await getNotifications(currentData.session, sessionController.signal);
               if (!active || !currentData || !notifications) return;
@@ -1641,7 +1721,8 @@ export function createHttpDashboardDataSource({
               notificationRevision += 1;
               notificationRefreshRequired = false;
               synchronizedNotificationId = expectedNotificationId;
-              if ((currentData.monitoring.v2?.operations?.notificationId ?? null) === synchronizedNotificationId) notificationsRefreshQueued = false;
+              if (expectedNotificationId) rememberNotificationId(expectedNotificationId);
+              if ((latestSeenNotificationId ?? null) === synchronizedNotificationId) notificationsRefreshQueued = false;
               listener(cloneDashboardData(currentData));
             } catch (error) {
               if (isAuthorizationError(error)) {
@@ -1656,6 +1737,23 @@ export function createHttpDashboardDataSource({
             }
           }
         })().finally(() => { refreshingNotifications = false; });
+      };
+      const triggerNotificationsSync = (notificationId: string | null | undefined) => {
+        if (notificationId && !seenNotificationIds.has(notificationId)) {
+          latestSeenNotificationId = notificationId;
+          refreshV2Notifications();
+        } else if (notificationRefreshRequired) {
+          refreshV2Notifications();
+        }
+      };
+      checkStreamNotificationId = triggerNotificationsSync;
+      const stopStream = () => {
+        if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
+        reconnectTimer = undefined;
+        if (checkStreamNotificationId === triggerNotificationsSync) {
+          checkStreamNotificationId = null;
+        }
+        eventSource.close();
       };
       const scheduleReconnect = () => {
         if (!active || reconnectTimer !== undefined) return;
@@ -1676,8 +1774,19 @@ export function createHttpDashboardDataSource({
           let status: CameraStatusV2;
           try { status = parseCameraStatusV2(JSON.parse(event.data), pitId); }
           catch { return; }
+          const previousStatus = lastCameraStatus?.status;
           lastCameraStatus = { status, receivedAt: performance.now() };
           cameraListeners.forEach((subscriber) => subscriber(status, lastCameraStatus!.receivedAt));
+          const cameraStateChanged = previousStatus
+            ? previousStatus.state !== status.state || previousStatus.connectionState !== status.connectionState
+            : status.state !== "HEALTHY" || status.connectionState !== "CONNECTED";
+          if (cameraStateChanged) {
+            cameraAlertRefreshPending = true;
+            const detailsVisible = typeof document === "undefined" || document.visibilityState !== "hidden";
+            if (detailsVisible && currentData?.monitoring.v2 && backendContract && monitoringDetailsRefCount > 0 && monitoringDetailsController) {
+              refreshChangedSnapshotAlerts(monitoringDetailsController.signal);
+            }
+          }
         });
         source.addEventListener("monitoring.snapshot", (event) => {
           if (!active || !currentData || !(event instanceof MessageEvent) || isDuplicate(event)) return;
@@ -1695,9 +1804,13 @@ export function createHttpDashboardDataSource({
           if (monitoring.v2) monitoring.v2.streamState = "connected";
           const headerNotifications = currentData.monitoring.headerNotifications;
           const unreadNotificationCount = currentData.monitoring.unreadNotificationCount;
-          const sourceChanged = monitoring.v2 && currentData.monitoring.v2
-            && (monitoring.v2.siteId !== currentData.monitoring.v2.siteId || monitoring.v2.edgeId !== currentData.monitoring.v2.edgeId);
+          const previousV2 = currentData.monitoring.v2;
+          const sourceChanged = monitoring.v2 && previousV2
+            && (monitoring.v2.siteId !== previousV2.siteId || monitoring.v2.edgeId !== previousV2.edgeId);
           if (sourceChanged) lastLoadHistorySuccessAt = -Infinity;
+          if (monitoring.v2 && (!previousV2 || hasAlertTriggerChanged(monitoring.v2, previousV2))) {
+            alertStateVersion += 1;
+          }
           currentData = {
             ...currentData,
             reception: receivedSnapshot(),
@@ -1711,8 +1824,7 @@ export function createHttpDashboardDataSource({
           };
           updateLoadOneHourAgo(currentData.monitoring);
           listener(cloneDashboardData(currentData));
-          const notificationId = monitoring.v2?.operations?.notificationId;
-          if (notificationRefreshRequired || (notificationId && notificationId !== synchronizedNotificationId)) refreshV2Notifications();
+          triggerNotificationsSync(monitoring.v2?.operations?.notificationId);
           const detailsVisible = typeof document === "undefined" || document.visibilityState !== "hidden";
           if (detailsVisible && useV2Monitoring && monitoring.v2 && backendContract && monitoringDetailsRefCount > 0 && monitoringDetailsController) {
             // 60초가 지난 상세를 먼저 갱신한다. 이 갱신이 결합 조회를 시작하면 판정 변경 재조회는 생략된다.

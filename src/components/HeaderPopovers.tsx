@@ -167,7 +167,7 @@ export function UserPopover({
     <section className="header-popover user-popover" aria-label="사용자 메뉴" ref={popoverRef}>
       <div className="user-popover-profile">
         <strong title={displayName}>{displayName}</strong>
-        <span>{role === "viewer" ? "조회 사용자" : "시스템 관리자"}</span>
+        <span>{role === "viewer" ? "Viewer" : "Administrator"}</span>
       </div>
       {role !== "viewer" && <AppLink to={ROUTES.admin} onNavigate={onClose}>관리자 설정</AppLink>}
       <button type="button" onClick={() => void logout()}>로그아웃</button>

@@ -212,7 +212,7 @@ test("실제 v2 수신 API, SSE와 적재율 추이에서 0%, STALE, session 종
     await expect(page.locator(".kpi-value")).toHaveText("0%");
     const pastLoad = page.locator(".status-details > div").filter({ hasText: "1시간 전 적재율" }).locator("strong");
     await expect(pastLoad).toHaveText("60%");
-    await expect(page.locator(".alarm-status")).toHaveText("경고 기준 미만");
+    await expect(page.locator(".alarm-status")).toHaveText("정상");
     const snapshotResponse = await page.request.get("/api/v2/monitoring/snapshot?pit_id=pit-01");
     expect(snapshotResponse.status(), "Authenticated v2 snapshot response").toBe(200);
     const confirmedSnapshot = await snapshotResponse.json() as components["schemas"]["MonitoringSnapshotV2"];
@@ -237,7 +237,7 @@ test("실제 v2 수신 API, SSE와 적재율 추이에서 0%, STALE, session 종
     await send("assessments", { ...assessment, ...envelope("edge_assessment"), assessment_id: randomUUID(), observed_from: criticalAt, observed_to: criticalAt, fill_estimate: { ratio: 0.95, method_version: "synthetic-browser-method" } });
     await expect(page.locator(".kpi-value")).toHaveText("95%");
     await expect(pastLoad).toHaveText("60%");
-    await expect(page.locator(".alarm-status")).toHaveText("위험");
+    await expect(page.locator(".alarm-status")).toHaveText("경고");
     const alertResponse = await page.request.get("/api/v2/monitoring/alerts?pit_id=pit-01&limit=1");
     expect(alertResponse.ok()).toBe(true);
     const alerts = await alertResponse.json() as components["schemas"]["V2AlertPage"];

@@ -1490,11 +1490,11 @@ describe("HTTP 대시보드 데이터 소스", () => {
         expect(event.status).toBe(label);
         expect(event.extraFields).toEqual(expect.arrayContaining([["상태 기준", expect.stringContaining("현재 장치 상태가 아닙니다")]]));
       });
-    test("상태 근거가 없는 오류와 출처 정보는 상태를 만들지 않고 보존한다", async () => {
+    test("상태 근거가 없는 오류는 상태를 만들지 않고 피트 연결과 사유 코드를 보존한다", async () => {
       const { event } = await historyOf({ category: "error", type: "measurement_error", status: "resolved", simulated: true,
         pitAttribution: "CURRENT_ASSIGNMENT", reasonCodes: ["FILTER_WARMING"] });
       expect(event.status).toBeNull();
-      expect(event.extraFields).toEqual([["출처", "시뮬레이션"], ["피트 연결", expect.any(String)], ["사유 코드", "FILTER_WARMING"]]);
+      expect(event.extraFields).toEqual([["피트 연결", expect.any(String)], ["사유 코드", "FILTER_WARMING"]]);
     });
   });
 
@@ -3470,7 +3470,7 @@ describe("HTTP 대시보드 데이터 소스", () => {
       test.each([
         ["503", failure],
         ["네트워크 오류", () => Promise.reject(new TypeError("network error"))],
-      ])("%s 실패로 유지한 곡선은 최소, 최대와 시뮬레이션 표기를 함께 유지하고 3초 뒤 비운다", async (_name, transientFailure) => {
+      ])("%s 실패로 유지한 곡선은 최소, 최대와 속성을 함께 유지하고 3초 뒤 비운다", async (_name, transientFailure) => {
         vi.useFakeTimers();
         try {
           const run = await start(profileResponse(validProfiles("2026-11-11T06:00:00Z")));

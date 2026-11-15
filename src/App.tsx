@@ -16,7 +16,7 @@ import "./App.css";
 const LoginPage = lazy(() => import("./pages/LoginPage").then(module => ({ default: module.LoginPage })));
 const loginPage = (dataSource: DashboardDataSource) => <Suspense fallback={<main className="login-page" aria-label="로그인 화면 준비 중" aria-busy="true" />}><LoginPage dataSource={dataSource} /></Suspense>;
 
-function RouteView({ children, routeKey }: { children: React.ReactNode; routeKey: string }) {
+function RouteView({ children, routeKey, focusHeading }: { children: React.ReactNode; routeKey: string; focusHeading: boolean }) {
   useEffect(() => {
     const navType = getNavigationType();
     if (navType === "popstate") {
@@ -24,10 +24,12 @@ function RouteView({ children, routeKey }: { children: React.ReactNode; routeKey
       window.scrollTo(x, y);
     } else {
       window.scrollTo(0, 0);
-      const heading = document.querySelector<HTMLElement>("main .page-heading h1");
-      heading?.focus({ preventScroll: true });
+      if (focusHeading) {
+        const heading = document.querySelector<HTMLElement>("main .page-heading h1");
+        heading?.focus({ preventScroll: true });
+      }
     }
-  }, [routeKey]);
+  }, [focusHeading, routeKey]);
 
   return <>{children}</>;
 }
@@ -129,10 +131,10 @@ function DashboardApplication({ dataSource, location }: { dataSource: DashboardD
     return <DashboardStatePage title="접근 권한이 없습니다." description="관리자 권한이 있는 계정으로 로그인하세요." header={statePageHeader} footer={statePageFooter} />;
   }
 
-  if (location.pathname === ROUTES.recordings) { const { RecordingsPage } = getLoadedPageModule("recordings")!; return <RouteView routeKey={routeKey}><RecordingsPage key={routeKey} dataSource={dataSource} recordings={routeData?.recordings ?? []} recordingsState={routeData?.recordingsState ?? dashboardData.recordingsState} recordingsSource={routeData?.recordingsSource ?? dashboardData.recordingsSource} recordingsList={routeData?.recordingsList ?? dashboardData.recordingsList} recordingsTotal={routeData?.recordingsTotal ?? dashboardData.recordingsTotal} serverTime={monitoring.v2?.serverTime} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} headerNotificationState={monitoring.notificationState} reception={reception} queryEndsAt={routeData?.history?.endsAt ?? dashboardData.history.endsAt} session={dashboardData.session} /></RouteView>; }
-  if (location.pathname === ROUTES.history) { const { HistoryPage } = getLoadedPageModule("history")!; return <RouteView routeKey={routeKey}><HistoryPage key={routeKey} dataSource={dataSource} history={routeData?.history ?? dashboardData.history} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} headerNotificationState={monitoring.notificationState} reception={reception} session={dashboardData.session} /></RouteView>; }
-  if (location.pathname === ROUTES.admin) { const { AdminPage } = getLoadedPageModule("admin")!; return <RouteView routeKey={routeKey}><AdminPage key={routeKey} admin={routeData?.admin ?? dashboardData.admin} dataSource={dataSource} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} headerNotificationState={monitoring.notificationState} session={dashboardData.session} /></RouteView>; }
+  if (location.pathname === ROUTES.recordings) { const { RecordingsPage } = getLoadedPageModule("recordings")!; return <RouteView routeKey={routeKey} focusHeading={isInternalNavigation}><RecordingsPage key={routeKey} dataSource={dataSource} recordings={routeData?.recordings ?? []} recordingsState={routeData?.recordingsState ?? dashboardData.recordingsState} recordingsSource={routeData?.recordingsSource ?? dashboardData.recordingsSource} recordingsList={routeData?.recordingsList ?? dashboardData.recordingsList} recordingsTotal={routeData?.recordingsTotal ?? dashboardData.recordingsTotal} serverTime={monitoring.v2?.serverTime} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} headerNotificationState={monitoring.notificationState} reception={reception} queryEndsAt={routeData?.history?.endsAt ?? dashboardData.history.endsAt} session={dashboardData.session} /></RouteView>; }
+  if (location.pathname === ROUTES.history) { const { HistoryPage } = getLoadedPageModule("history")!; return <RouteView routeKey={routeKey} focusHeading={isInternalNavigation}><HistoryPage key={routeKey} dataSource={dataSource} history={routeData?.history ?? dashboardData.history} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} headerNotificationState={monitoring.notificationState} reception={reception} session={dashboardData.session} /></RouteView>; }
+  if (location.pathname === ROUTES.admin) { const { AdminPage } = getLoadedPageModule("admin")!; return <RouteView routeKey={routeKey} focusHeading={isInternalNavigation}><AdminPage key={routeKey} admin={routeData?.admin ?? dashboardData.admin} dataSource={dataSource} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} headerNotificationState={monitoring.notificationState} session={dashboardData.session} /></RouteView>; }
   if (!monitoring.v2 && monitoring.status === "no-data") return <DashboardStatePage title="표시할 모니터링 데이터가 없습니다." description="조회 조건 또는 장비 데이터 수신 상태를 확인하세요." header={statePageHeader} footer={statePageFooter} />;
 
-  return <RouteView routeKey={routeKey}><MonitoringPage key={routeKey} data={dashboardData} dataSource={dataSource} /></RouteView>;
+  return <RouteView routeKey={routeKey} focusHeading={isInternalNavigation}><MonitoringPage key={routeKey} data={dashboardData} dataSource={dataSource} /></RouteView>;
 }
