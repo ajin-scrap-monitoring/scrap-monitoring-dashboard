@@ -120,6 +120,10 @@ test("적재율 경보는 Backend의 평가 결과를 표시하고 연결 중단
   await api.snapshot(critical);
   await expect(alarm).toHaveText("경고");
   await page.evaluate(() => window.backendFixture.emit("error", ""));
+  await expect(alarm).toHaveText("경고");
+  await expect(page.locator(".kpi-label")).toHaveText("추정 적재율 (갱신 대기)");
+  await api.snapshot({ ...monitoringV2StateFixture("UNAVAILABLE", 82.5), operations: critical.operations });
+  await page.evaluate(() => window.backendFixture.emit("error", ""));
   await expect(alarm).toHaveText("확인 불가");
   await api.snapshot(critical);
   await expect(alarm).toHaveText("경고");
@@ -221,6 +225,10 @@ test("v2 전체 상태, 0%와 소수 적재율을 표시하고 동일 snapshot�
     await expect(page.locator(".kpi-value")).toHaveText(state === "FRESH" ? "72.5%" : "판단 불가");
   }
   await page.evaluate(() => window.backendFixture.emit("error", ""));
+  await expect(page.locator(".kpi-value")).toHaveText("72.5%");
+  await expect(page.locator(".kpi-label")).toHaveText("추정 적재율 (갱신 대기)");
+  await api.snapshot(monitoringV2StateFixture("UNAVAILABLE", 72.5));
+  await page.evaluate(() => window.backendFixture.emit("error", ""));
   await expect(page.locator(".kpi-value")).toHaveText("판단 불가");
   await expect(page.getByRole("status").filter({ hasText: "재연결" })).toBeVisible();
   await api.snapshot(monitoringV2StateFixture("FRESH", 72.5));
@@ -303,10 +311,18 @@ for (const [mode, timeout] of [["slow-start", 3000], ["interrupted", 2000]] as c
     expect(await page.evaluate(() => window.backendFixture.metrics().attempts)).toBe(1);
     if (mode === "interrupted") await expect(video.getByText("LIVE", { exact: true })).toBeVisible();
     await page.clock.runFor(1);
-    await expect(video.getByText("영상 연결 중", { exact: true })).toBeVisible();
-    await expect(video.getByText("LIVE", { exact: true })).toHaveCount(0);
-    await expect.poll(() => page.evaluate(() => window.backendFixture.metrics().videos)).toBe(0);
-    await expect.poll(() => page.evaluate(() => window.backendFixture.metrics().objectUrls)).toBe(0);
+    if (mode === "interrupted") {
+      await expect(video.getByText("갱신 대기", { exact: true })).toBeVisible();
+      await expect(video.getByText("영상 연결 중", { exact: true })).toHaveCount(0);
+      await expect(video.getByText("LIVE", { exact: true })).toHaveCount(0);
+      await expect.poll(() => page.evaluate(() => window.backendFixture.metrics().videos)).toBe(0);
+      await expect.poll(() => page.evaluate(() => window.backendFixture.metrics().objectUrls)).toBe(1);
+    } else {
+      await expect(video.getByText("영상 연결 중", { exact: true })).toBeVisible();
+      await expect(video.getByText("LIVE", { exact: true })).toHaveCount(0);
+      await expect.poll(() => page.evaluate(() => window.backendFixture.metrics().videos)).toBe(0);
+      await expect.poll(() => page.evaluate(() => window.backendFixture.metrics().objectUrls)).toBe(0);
+    }
     await page.clock.runFor(249);
     expect(await page.evaluate(() => window.backendFixture.metrics().attempts)).toBe(1);
     await page.clock.runFor(1);

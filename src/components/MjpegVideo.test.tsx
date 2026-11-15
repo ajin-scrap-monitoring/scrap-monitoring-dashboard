@@ -114,18 +114,60 @@ test("250ms, 500ms와 1000ms 간격으로 자동 재연결하며 이후에도 1�
   expect(screen.getByText("LIVE")).toBeVisible();
 });
 
-test("연결 오류는 마지막 frame을 숨기고 예약한 재연결은 종료 시 취소한다", async () => {
+test("일시 연결 오류는 마지막 frame을 최대 5초간 유지한 뒤 숨기며 3초 내 복구 시 오류 없이 LIVE로 복원한다", async () => {
   const view = render(<MjpegVideo alt="live" url="/live" />);
   frame();
   fireEvent.load(screen.getByAltText("live"));
   await act(() => { reads[0].reject(new Error("timeout")); return Promise.resolve(); });
+  expect(screen.getByAltText("live")).toHaveAttribute("src", "blob:frame-1");
+  expect(screen.getByText("갱신 대기")).toHaveAttribute("title", "마지막 정상 영상을 최대 5초 표시합니다");
+  expect(screen.queryByText("영상 연결 중")).not.toBeInTheDocument();
+  expect(screen.getByText(/^영상 수신 /)).toBeVisible();
+  expect(revokeObjectURL).not.toHaveBeenCalled();
+
+  await act(() => vi.advanceTimersByTimeAsync(250));
+  expect(reads).toHaveLength(2);
+  await act(() => vi.advanceTimersByTimeAsync(2750));
+  expect(screen.getByAltText("live")).toHaveAttribute("src", "blob:frame-1");
+  expect(screen.getByText("갱신 대기")).toBeVisible();
+
+  frame(1);
+  fireEvent.load(screen.getByAltText("live"));
+  expect(screen.getByText("LIVE")).toBeVisible();
+  expect(screen.queryByText("갱신 대기")).not.toBeInTheDocument();
+
+  // 다시 오류가 발생한 뒤 5초가 만료되면 마지막 frame을 숨기고 연결 중 상태로 전환한다.
+  await act(() => { reads[1].reject(new Error("timeout")); return Promise.resolve(); });
+  expect(screen.getByText("갱신 대기")).toBeVisible();
+  await act(() => vi.advanceTimersByTimeAsync(4999));
+  expect(screen.getByText("갱신 대기")).toBeVisible();
+  expect(screen.getByAltText("live")).toHaveAttribute("src", "blob:frame-2");
+  await act(() => vi.advanceTimersByTimeAsync(1));
   expect(screen.getByAltText("live")).not.toHaveAttribute("src");
   expect(screen.queryByText("LIVE")).not.toBeInTheDocument();
+  expect(screen.queryByText("갱신 대기")).not.toBeInTheDocument();
   expect(screen.queryByText(/^영상 수신 /)).not.toBeInTheDocument();
-  expect(revokeObjectURL).toHaveBeenCalledOnce();
+  expect(screen.getByText("영상 연결 중")).toBeVisible();
+  expect(revokeObjectURL).toHaveBeenCalledTimes(2);
   view.unmount();
   await act(() => vi.advanceTimersByTimeAsync(10_000));
-  expect(reads).toHaveLength(1);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test("응답 형식 오류와 유지 중 종료는 마지막 frame을 즉시 지우고 timer를 남기지 않는다", async () => {
+  const view = render(<MjpegVideo alt="live" url="/live" />);
+  frame();
+  fireEvent.load(screen.getByAltText("live"));
+  await act(() => { reads[0].reject(new Error("stream ended")); return Promise.resolve(); });
+  expect(screen.getByText("갱신 대기")).toBeVisible();
+  await act(() => vi.advanceTimersByTimeAsync(250));
+  expect(reads).toHaveLength(2);
+  await act(() => { reads[1].reject(new Error("Invalid MJPEG response.")); return Promise.resolve(); });
+  expect(screen.getByAltText("live")).not.toHaveAttribute("src");
+  expect(screen.getByText("영상 연결 중")).toBeVisible();
+  expect(revokeObjectURL).toHaveBeenCalledOnce();
+  view.unmount();
+  expect(vi.getTimerCount()).toBe(0);
 });
 
 test.each([401, 403])("HTTP %s는 로그인으로 이동하고 재연결을 하지 않는다", async (status) => {
@@ -182,7 +224,9 @@ test("정상 frame 복구는 연결을 유지하며 다음 수신 중단의 재�
   expect(screen.getByText("LIVE")).toBeVisible();
   expect(reads).toHaveLength(4);
   await act(() => { reads[3].reject(new Error("final failure")); return Promise.resolve(); });
-  expect(screen.getByText("영상 연결 중")).toBeVisible();
+  expect(screen.getByAltText("live")).toHaveAttribute("src", "blob:frame-1");
+  expect(screen.getByText("갱신 대기")).toBeVisible();
+  expect(screen.queryByText("영상 연결 중")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "영상 다시 연결" })).not.toBeInTheDocument();
   await act(() => vi.advanceTimersByTimeAsync(249));
   expect(reads).toHaveLength(4);

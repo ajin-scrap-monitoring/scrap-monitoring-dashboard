@@ -304,7 +304,7 @@ test("ProfileChart 평균 유지 중 보조 표기 '평균 갱신 대기'와 평
   );
   expect(container.querySelector('text[y="12"]')).toHaveTextContent("평균 갱신 대기");
   const avg = container.querySelector(".average");
-  expect(avg).toHaveAttribute("title", "마지막 정상 대표값을 최대 3초 표시합니다");
+  expect(avg).toHaveAttribute("title", "마지막 정상 대표값을 최대 10초 표시합니다");
 });
 
 test("ProfileChart 곡선과 평균이 모두 유지 중일 때 보조 표기를 조합한다", () => {
