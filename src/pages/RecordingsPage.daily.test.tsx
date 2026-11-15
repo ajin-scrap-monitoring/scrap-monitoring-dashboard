@@ -1,14 +1,19 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
-import { dailyRecording } from "../data/daily-recordings";
+import { dailyRecording, dailyRecordingMetadata } from "../data/daily-recordings";
 import { createMockDashboardDataSource } from "../data/mock-dashboard-data-source";
-import type { DailyRecordingFull, DailyRecordingSummary } from "../domain/daily-recording";
+import type { DashboardDataSource } from "../data/dashboard-data-source";
+import type { DailyRecordingMetadata } from "../domain/daily-recording";
 import type { Recording } from "../domain/dashboard";
-import { dailyRecordingFixture } from "../test/daily-recording-fixtures";
+import { dailyRecordingFixture, dailyRecordingMetadataFixture } from "../test/daily-recording-fixtures";
 import { RecordingsPage } from "./RecordingsPage";
 
-vi.mock("../components/DailyRecordingVideo", () => ({ default: ({ onError }: { onError: () => void }) => <video aria-label="날짜 녹화 영상" onError={onError} /> }));
+vi.mock("../components/DailyRecordingVideo", () => ({
+  default: ({ onError, onTimeUpdate }: { onError: () => void; onTimeUpdate?: (seconds: number) => void }) => (
+    <video aria-label="날짜 녹화 영상" onError={onError} onTimeUpdate={(event) => onTimeUpdate?.(event.currentTarget.currentTime)} />
+  ),
+}));
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 async function fixture() {
@@ -220,46 +225,12 @@ test("삭제 409는 확인창에 안내하고 목록을 유지하며 일반 사�
   expect(screen.queryByRole("button", { name: "날짜 녹화 삭제" })).not.toBeInTheDocument();
 });
 
-test("요약 항목 선택 시 상세 GET 뒤에만 timeline과 누락 구간이 표시되고 상세 전에는 '누락 없음'이나 '영상 없음'이 표시되지 않는다", async () => {
+test("메타데이터 항목 선택 시 상세 /summary 뒤에만 구간 페이지를 조회해 timeline과 누락 구간을 표시한다", async () => {
   const { data, recording: fullRecording, props } = await fixture();
-  const fullDaily = fullRecording.daily as DailyRecordingFull;
-  const summaryDaily: DailyRecordingSummary = {
-    source: fullDaily.source,
-    id: fullDaily.id,
-    cameraId: fullDaily.cameraId,
-    recordingDate: fullDaily.recordingDate,
-    timezone: fullDaily.timezone,
-    windowStartsAt: fullDaily.windowStartsAt,
-    windowEndsAt: fullDaily.windowEndsAt,
-    status: fullDaily.status,
-    coverage: fullDaily.coverage,
-    hasGaps: true,
-    coverageAsOfAt: fullDaily.coverageAsOfAt,
-    playableUntilAt: fullDaily.playableUntilAt,
-    recordedSeconds: fullDaily.recordedSeconds,
-    playbackState: fullDaily.playbackState,
-    playbackProtocol: fullDaily.playbackProtocol,
-    playbackPath: fullDaily.playbackPath,
-    exportAllowed: fullDaily.exportAllowed,
-    exportState: fullDaily.exportState,
-    downloadPath: fullDaily.downloadPath,
-    sizeBytes: fullDaily.sizeBytes,
-    expiresAt: fullDaily.expiresAt,
-    exportExpiresAt: fullDaily.exportExpiresAt,
-    error: fullDaily.error,
-    deletedAt: fullDaily.deletedAt,
-    cleanupState: fullDaily.cleanupState,
-    cleanupCompletedAt: fullDaily.cleanupCompletedAt,
-    cleanupError: fullDaily.cleanupError,
-    spaceReclaimed: fullDaily.spaceReclaimed,
-    view: "summary",
-    gapCount: 1,
-    availableIntervalCount: 2,
-  };
-
-  const summaryRecording: Recording = {
+  const metadataDaily: DailyRecordingMetadata = dailyRecordingMetadata(dailyRecordingMetadataFixture, "camera-main");
+  const metadataRecording: Recording = {
     ...fullRecording,
-    daily: summaryDaily,
+    daily: metadataDaily,
     gaps: undefined,
   };
 
@@ -268,24 +239,47 @@ test("요약 항목 선택 시 상세 GET 뒤에만 timeline과 누락 구간이
     resolveDetail = resolve;
   });
   const getRecording = vi.fn().mockImplementation(() => detailPromise);
-  const dataSource = {
+  const getDailyRecordingAvailableIntervals = vi.fn().mockResolvedValue({
+    recordingId: metadataDaily.id,
+    revision: metadataDaily.revision,
+    snapshot: "snap-1",
+    items: [
+      { startsAt: "2026-10-11T15:00:00Z", endsAt: "2026-10-11T15:00:20Z", playbackStartsAtSeconds: 0, playbackEndsAtSeconds: 20 },
+    ],
+    total: 2,
+    nextCursor: "avail-c2",
+  });
+  const getDailyRecordingGaps = vi.fn().mockResolvedValue({
+    recordingId: metadataDaily.id,
+    revision: metadataDaily.revision,
+    snapshot: "snap-1",
+    items: [
+      { startsAt: "2026-10-11T15:00:20Z", endsAt: "2026-10-11T15:00:30Z", reasonCode: "CAMERA_DISCONNECTED" },
+    ],
+    total: 1,
+    nextCursor: null,
+  });
+  const dataSource: DashboardDataSource = {
     supportsDailyRecordings: true,
     getDashboardData: () => Promise.resolve(data),
     getRecording,
+    getDailyRecordingAvailableIntervals,
+    getDailyRecordingGaps,
   };
 
   render(
     <RecordingsPage
       {...props}
-      recordings={[summaryRecording]}
+      recordings={[metadataRecording]}
       dataSource={dataSource}
     />,
   );
 
-  expect(getRecording).toHaveBeenCalledWith(summaryRecording.id, expect.any(AbortSignal), "daily");
+  expect(getRecording).toHaveBeenCalledWith(metadataRecording.id, expect.any(AbortSignal), "daily");
+  expect(getDailyRecordingAvailableIntervals).not.toHaveBeenCalled();
+  expect(getDailyRecordingGaps).not.toHaveBeenCalled();
 
   expect(screen.queryByRole("region", { name: "날짜 녹화 범위" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "누락 구간" })).not.toBeInTheDocument();
   expect(screen.queryByText("누락 없음")).not.toBeInTheDocument();
   expect(screen.queryByText("영상 없음")).not.toBeInTheDocument();
   expect(screen.queryByText("전체 구간 확보")).not.toBeInTheDocument();
@@ -293,10 +287,352 @@ test("요약 항목 선택 시 상세 GET 뒤에만 timeline과 누락 구간이
   expect(screen.getByText("영상을 준비 중입니다.")).toBeInTheDocument();
 
   await act(async () => {
-    resolveDetail(fullRecording);
+    resolveDetail(metadataRecording);
     await Promise.resolve();
   });
 
-  expect(await screen.findByRole("region", { name: "날짜 녹화 범위" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "누락 구간" })).toBeInTheDocument();
+  const timeline = await screen.findByRole("region", { name: "날짜 녹화 범위" });
+  expect(timeline).toBeVisible();
+  expect(getDailyRecordingAvailableIntervals).toHaveBeenCalledWith(metadataDaily.id, { limit: 100 }, expect.any(AbortSignal));
+  expect(getDailyRecordingGaps).toHaveBeenCalledWith(metadataDaily.id, { limit: 100 }, expect.any(AbortSignal));
+  expect(await within(timeline).findByRole("button", { name: /확보 구간 00:00:00 ~ 00:00:20, 재생/ })).toBeVisible();
+  expect(within(timeline).getByText("구간 1페이지")).toBeVisible();
+  expect(screen.getByRole("button", { name: "누락 구간" })).toBeVisible();
+});
+
+test("구간 페이지 cursor 이전/다음 이동, 실제 시각 미확인 표시, 누락 구간 dialog 페이징을 처리한다", async () => {
+  const { data, recording: fullRecording, props } = await fixture();
+  const metadataDaily = dailyRecordingMetadata(dailyRecordingMetadataFixture, "camera-main");
+  const metadataRecording: Recording = { ...fullRecording, daily: metadataDaily, gaps: undefined };
+
+  const availPage1 = {
+    recordingId: metadataDaily.id,
+    revision: 1,
+    snapshot: "snap-1",
+    items: [{ startsAt: "2026-10-11T15:00:00Z", endsAt: "2026-10-11T15:00:20Z", playbackStartsAtSeconds: 0, playbackEndsAtSeconds: 20 }],
+    total: 2,
+    nextCursor: "avail-2",
+  };
+  const availPage2 = {
+    recordingId: metadataDaily.id,
+    revision: 1,
+    snapshot: "snap-1",
+    items: [{ startsAt: "2026-10-11T15:00:30Z", endsAt: "2026-10-11T15:01:00Z", playbackStartsAtSeconds: 20, playbackEndsAtSeconds: 50 }],
+    total: 2,
+    nextCursor: null,
+  };
+  const gapsPage1 = {
+    recordingId: metadataDaily.id,
+    revision: 1,
+    snapshot: "snap-1",
+    items: [{ startsAt: "2026-10-11T15:00:20Z", endsAt: "2026-10-11T15:00:30Z", reasonCode: "CAMERA_DISCONNECTED" }],
+    total: 2,
+    nextCursor: "gap-2",
+  };
+  const gapsPage2 = {
+    recordingId: metadataDaily.id,
+    revision: 1,
+    snapshot: "snap-1",
+    items: [{ startsAt: "2026-10-11T15:01:00Z", endsAt: "2026-10-11T15:01:20Z", reasonCode: "NETWORK_TIMEOUT" }],
+    total: 2,
+    nextCursor: null,
+  };
+
+  const getDailyRecordingAvailableIntervals = vi.fn((_id: string, opts?: { cursor?: string }) =>
+    Promise.resolve(opts?.cursor === "avail-2" ? availPage2 : availPage1));
+  const getDailyRecordingGaps = vi.fn((_id: string, opts?: { cursor?: string }) =>
+    Promise.resolve(opts?.cursor === "gap-2" ? gapsPage2 : gapsPage1));
+
+  render(
+    <RecordingsPage
+      {...props}
+      recordings={[metadataRecording]}
+      dataSource={{
+        supportsDailyRecordings: true,
+        getDashboardData: () => Promise.resolve(data),
+        getRecording: () => Promise.resolve(metadataRecording),
+        getDailyRecordingAvailableIntervals,
+        getDailyRecordingGaps,
+      }}
+    />,
+  );
+
+  const timeline = await screen.findByRole("region", { name: "날짜 녹화 범위" });
+  expect(await within(timeline).findByRole("button", { name: /확보 구간 00:00:00 ~ 00:00:20, 재생/ })).toBeVisible();
+
+  const video = screen.getByLabelText("날짜 녹화 영상");
+  Object.defineProperty(video, "currentTime", { value: 30, writable: true, configurable: true });
+  fireEvent.timeUpdate(video);
+  expect(screen.getByText("실제 시각 미확인")).toBeVisible();
+
+  fireEvent.click(within(timeline).getByRole("button", { name: "다음" }));
+  expect(await within(timeline).findByRole("button", { name: /확보 구간 00:00:30 ~ 00:01:00, 재생/ })).toBeVisible();
+  expect(within(timeline).getByText("구간 2페이지")).toBeVisible();
+  expect(screen.getByText("2026-10-12 00:00:40")).toBeVisible();
+
+  fireEvent.click(within(timeline).getByRole("button", { name: "이전" }));
+  expect(await within(timeline).findByRole("button", { name: /확보 구간 00:00:00 ~ 00:00:20, 재생/ })).toBeVisible();
+
+  fireEvent.click(screen.getByRole("button", { name: "누락 구간" }));
+  const dialog = screen.getByRole("dialog", { name: "녹화 범위 상세" });
+  expect(await within(dialog).findByText("2개")).toBeVisible();
+  expect(within(dialog).getByText(/CAMERA_DISCONNECTED/)).toBeVisible();
+  fireEvent.click(within(dialog).getByRole("button", { name: "다음" }));
+  expect(await within(dialog).findByText(/NETWORK_TIMEOUT/)).toBeVisible();
+  fireEvent.click(within(dialog).getByRole("button", { name: "이전" }));
+  expect(await within(dialog).findByText(/CAMERA_DISCONNECTED/)).toBeVisible();
+});
+
+test("has_gaps=false 또는 originalUnavailable일 때 불필요한 구간 조회를 생략하고 400/409/503 오류를 복구한다", async () => {
+  const { data, recording: fullRecording, props } = await fixture();
+  const baseMeta = dailyRecordingMetadata(dailyRecordingMetadataFixture, "camera-main");
+  const noGapMeta: DailyRecordingMetadata = { ...baseMeta, hasGaps: false, coverage: "complete" };
+  const noGapRecording: Recording = { ...fullRecording, daily: noGapMeta, gaps: undefined };
+
+  const getDailyRecordingAvailableIntervals = vi.fn().mockResolvedValue({
+    recordingId: baseMeta.id,
+    revision: 1,
+    snapshot: "snap-1",
+    items: [{ startsAt: "2026-10-11T15:00:00Z", endsAt: "2026-10-11T15:00:50Z", playbackStartsAtSeconds: 0, playbackEndsAtSeconds: 50 }],
+    total: 2,
+    nextCursor: "bad-next",
+  });
+  const getDailyRecordingGaps = vi.fn();
+
+  const view = render(
+    <RecordingsPage
+      {...props}
+      recordings={[noGapRecording]}
+      dataSource={{
+        supportsDailyRecordings: true,
+        getDashboardData: () => Promise.resolve(data),
+        getRecording: () => Promise.resolve(noGapRecording),
+        getDailyRecordingAvailableIntervals,
+        getDailyRecordingGaps,
+      }}
+    />,
+  );
+  const timeline = await screen.findByRole("region", { name: "날짜 녹화 범위" });
+  expect(await within(timeline).findByRole("button", { name: /확보 구간 00:00:00 ~ 00:00:50, 재생/ })).toBeVisible();
+  expect(getDailyRecordingGaps).not.toHaveBeenCalled();
+
+  class HttpError extends Error {
+    status: number;
+    code?: string;
+    constructor(status: number, message: string, code?: string) {
+      super(message);
+      this.status = status;
+      this.code = code;
+    }
+  }
+
+  getDailyRecordingAvailableIntervals.mockRejectedValueOnce(new HttpError(400, "bad cursor", "INVALID_CURSOR"));
+  fireEvent.click(within(timeline).getByRole("button", { name: "다음" }));
+  expect(await within(timeline).findByText("구간 1페이지")).toBeVisible();
+  expect(getDailyRecordingAvailableIntervals).toHaveBeenCalledTimes(3);
+  view.unmount();
+
+  let rev = 1;
+  const gappedRecording = (revision: number): Recording => ({ ...fullRecording, daily: { ...baseMeta, revision }, gaps: undefined });
+  const snapshotIntervals = vi.fn((_id: string, opts?: { cursor?: string }) => {
+    if (opts?.cursor === "stale-c") return Promise.reject(new HttpError(409, "changed", "DAILY_SNAPSHOT_CHANGED"));
+    return Promise.resolve({
+      recordingId: baseMeta.id,
+      revision: rev,
+      snapshot: `snap-${rev}`,
+      items: [{ startsAt: "2026-10-11T15:00:00Z", endsAt: "2026-10-11T15:00:20Z", playbackStartsAtSeconds: 0, playbackEndsAtSeconds: 20 }],
+      total: 2,
+      nextCursor: rev === 1 ? "stale-c" : null,
+    });
+  });
+  const snapshotGaps = vi.fn(() => Promise.resolve({
+    recordingId: baseMeta.id,
+    revision: rev,
+    snapshot: `snap-${rev}`,
+    items: [{ startsAt: "2026-10-11T15:00:20Z", endsAt: "2026-10-11T15:00:30Z", reasonCode: "CAMERA_DISCONNECTED" }],
+    total: 1,
+    nextCursor: null,
+  }));
+  const getSummary = vi.fn(() => {
+    const res = gappedRecording(rev);
+    return Promise.resolve(res);
+  });
+
+  const view2 = render(
+    <RecordingsPage
+      {...props}
+      recordings={[gappedRecording(1)]}
+      dataSource={{
+        supportsDailyRecordings: true,
+        getDashboardData: () => Promise.resolve(data),
+        getRecording: getSummary,
+        getDailyRecordingAvailableIntervals: snapshotIntervals,
+        getDailyRecordingGaps: snapshotGaps,
+      }}
+    />,
+  );
+  const timeline2 = await screen.findByRole("region", { name: "날짜 녹화 범위" });
+  await within(timeline2).findByRole("button", { name: /확보 구간 00:00:00 ~ 00:00:20, 재생/ });
+  rev = 2;
+  fireEvent.click(within(timeline2).getByRole("button", { name: "다음" }));
+  await vi.waitFor(() => expect(getSummary).toHaveBeenCalledTimes(2));
+  await vi.waitFor(() => expect(snapshotIntervals).toHaveBeenLastCalledWith(baseMeta.id, { limit: 100 }, expect.any(AbortSignal)));
+  expect(within(timeline2).queryByRole("button", { name: "다음" })).not.toBeInTheDocument();
+  view2.unmount();
+
+  const failingGaps = vi.fn()
+    .mockRejectedValueOnce(new HttpError(503, "busy", "SERVICE_BUSY"))
+    .mockResolvedValue({
+      recordingId: baseMeta.id,
+      revision: 1,
+      snapshot: "snap-1",
+      items: [{ startsAt: "2026-10-11T15:00:20Z", endsAt: "2026-10-11T15:00:30Z", reasonCode: "CAMERA_DISCONNECTED" }],
+      total: 3,
+      nextCursor: null,
+    });
+  render(
+    <RecordingsPage
+      {...props}
+      recordings={[gappedRecording(1)]}
+      dataSource={{
+        supportsDailyRecordings: true,
+        getDashboardData: () => Promise.resolve(data),
+        getRecording: () => Promise.resolve(gappedRecording(1)),
+        getDailyRecordingAvailableIntervals: () => Promise.resolve({
+          recordingId: baseMeta.id,
+          revision: 1,
+          snapshot: "snap-1",
+          items: [{ startsAt: "2026-10-11T15:00:00Z", endsAt: "2026-10-11T15:00:20Z", playbackStartsAtSeconds: 0, playbackEndsAtSeconds: 20 }],
+          total: 1,
+          nextCursor: null,
+        }),
+        getDailyRecordingGaps: failingGaps,
+      }}
+    />,
+  );
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("일시적으로 녹화 구간을 조회할 수 없습니다.");
+  fireEvent.click(screen.getByRole("button", { name: "재생 가능 상세" }));
+  expect(screen.getByText("확인 불가")).toBeVisible();
+  expect(screen.queryByText("0개")).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "다시 조회" }));
+  await vi.waitFor(() => expect(screen.getByText("3개")).toBeVisible());
+});
+
+test("녹화 항목 전환 시 이전 진행 중인 구간 요청을 중단하고 상태를 초기화한다", async () => {
+  const { data, recording: fullRecording, props } = await fixture();
+  const baseMeta = dailyRecordingMetadata(dailyRecordingMetadataFixture, "camera-main");
+  const secondId = "550e8400-e29b-41d4-a716-446655440099";
+  const secondMeta: DailyRecordingMetadata = {
+    ...baseMeta,
+    id: secondId,
+    recordingDate: "2026-10-13",
+    windowStartsAt: "2026-10-12T15:00:00Z",
+    windowEndsAt: "2026-10-13T15:00:00Z",
+    coverageAsOfAt: "2026-10-12T15:01:00Z",
+    playableUntilAt: "2026-10-12T15:01:00Z",
+    playbackPath: `/media/daily-recordings/${secondId}/hls/index.m3u8`,
+    hasGaps: false,
+    coverage: "complete",
+  };
+  const r1: Recording = { ...fullRecording, daily: baseMeta, gaps: undefined };
+  const r2: Recording = { ...fullRecording, id: secondId, date: "2026-10-13", start: "2026-10-13 00:00:00", end: "2026-10-14 00:00:00", daily: secondMeta, gaps: undefined };
+
+  const signals: AbortSignal[] = [];
+  const getDailyRecordingAvailableIntervals = vi.fn((recordingId: string, _opts?: { cursor?: string }, signal?: AbortSignal) => {
+    if (signal) signals.push(signal);
+    if (recordingId === baseMeta.id) {
+      return new Promise<never>(() => undefined);
+    }
+    return Promise.resolve({
+      recordingId: secondId,
+      revision: 1,
+      snapshot: "snap-2",
+      items: [{ startsAt: "2026-10-12T15:00:00Z", endsAt: "2026-10-12T15:00:30Z", playbackStartsAtSeconds: 0, playbackEndsAtSeconds: 30 }],
+      total: 1,
+      nextCursor: null,
+    });
+  });
+
+  render(
+    <RecordingsPage
+      {...props}
+      recordings={[r1, r2]}
+      dataSource={{
+        supportsDailyRecordings: true,
+        getDashboardData: () => Promise.resolve(data),
+        getRecording: (id) => Promise.resolve(id === secondId ? r2 : r1),
+        getDailyRecordingAvailableIntervals,
+        getDailyRecordingGaps: () => Promise.resolve({ recordingId: baseMeta.id, revision: 1, snapshot: "snap-1", items: [], total: 0, nextCursor: null }),
+      }}
+    />,
+  );
+
+  await vi.waitFor(() => expect(signals).toHaveLength(1));
+  expect(signals[0].aborted).toBe(false);
+
+  const secondButton = screen.getByRole("button", { name: /2026-10-13/ });
+  fireEvent.click(secondButton);
+  expect(signals[0].aborted).toBe(true);
+  const timeline = await screen.findByRole("region", { name: "날짜 녹화 범위" });
+  expect(await within(timeline).findByRole("button", { name: /확보 구간 00:00:00 ~ 00:00:30, 재생/ })).toBeVisible();
+});
+
+test("타임라인 2페이지 전환 중 gaps만 400 INVALID_CURSOR가 발생하면 available도 1페이지로 되돌린다", async () => {
+  const { data, recording: fullRecording, props } = await fixture();
+  const baseMeta = dailyRecordingMetadata(dailyRecordingMetadataFixture, "camera-main");
+  const recording: Recording = { ...fullRecording, daily: baseMeta, gaps: undefined };
+
+  const getDailyRecordingAvailableIntervals = vi.fn((_id: string, opts?: { cursor?: string }) => Promise.resolve({
+    recordingId: baseMeta.id,
+    revision: 1,
+    snapshot: "snap-1",
+    items: opts?.cursor === "avail-2"
+      ? [{ startsAt: "2026-10-11T15:01:00Z", endsAt: "2026-10-11T15:01:20Z", playbackStartsAtSeconds: 60, playbackEndsAtSeconds: 80 }]
+      : [{ startsAt: "2026-10-11T15:00:00Z", endsAt: "2026-10-11T15:00:50Z", playbackStartsAtSeconds: 0, playbackEndsAtSeconds: 50 }],
+    total: 2,
+    nextCursor: opts?.cursor === "avail-2" ? null : "avail-2",
+  }));
+  const getDailyRecordingGaps = vi.fn((_id: string, opts?: { cursor?: string }) => {
+    if (opts?.cursor === "gap-2") {
+      return Promise.reject(Object.assign(new Error("bad cursor"), { status: 400, code: "INVALID_CURSOR" }));
+    }
+    return Promise.resolve({
+      recordingId: baseMeta.id,
+      revision: 1,
+      snapshot: "snap-1",
+      items: [{ startsAt: "2026-10-11T15:00:50Z", endsAt: "2026-10-11T15:01:00Z", reasonCode: "CAMERA_DISCONNECTED" }],
+      total: 2,
+      nextCursor: "gap-2",
+    });
+  });
+
+  render(
+    <RecordingsPage
+      {...props}
+      recordings={[recording]}
+      dataSource={{
+        supportsDailyRecordings: true,
+        getDashboardData: () => Promise.resolve(data),
+        getRecording: () => Promise.resolve(recording),
+        getDailyRecordingAvailableIntervals,
+        getDailyRecordingGaps,
+      }}
+    />,
+  );
+
+  const timeline = await screen.findByRole("region", { name: "날짜 녹화 범위" });
+  expect(await within(timeline).findByRole("button", { name: /확보 구간 00:00:00 ~ 00:00:50, 재생/ })).toBeVisible();
+
+  fireEvent.click(within(timeline).getByRole("button", { name: "다음" }));
+
+  await vi.waitFor(() => {
+    expect(within(timeline).getByText("구간 1페이지")).toBeVisible();
+    expect(within(timeline).getByRole("button", { name: "이전" })).toBeDisabled();
+    expect(within(timeline).getByRole("button", { name: "다음" })).toBeEnabled();
+  });
+  expect(within(timeline).getByRole("button", { name: /확보 구간 00:00:00 ~ 00:00:50, 재생/ })).toBeVisible();
+  expect(getDailyRecordingAvailableIntervals).toHaveBeenLastCalledWith(baseMeta.id, { limit: 100 }, expect.any(AbortSignal));
+  expect(getDailyRecordingGaps).toHaveBeenLastCalledWith(baseMeta.id, { limit: 100 }, expect.any(AbortSignal));
 });

@@ -10,6 +10,7 @@ import type {
   RecordingList,
   UserSession,
 } from "../domain/dashboard";
+import type { DailyAvailableInterval, DailyGap, DailyIntervalPage } from "../domain/daily-recording";
 import type { EventExportStatus } from "./event-recordings";
 import type { ClipMediaInfoResult, DailyMediaInfoResult } from "./media-info-cache";
 import type { CameraStatusV2 } from "./camera-status-v2";
@@ -73,6 +74,8 @@ export interface DashboardDataSource {
   deleteSession?(): Promise<void>;
   getDashboardData(options?: DashboardDataRequestOptions): Promise<DashboardData>;
   getRecording?(recordingId: string, signal?: AbortSignal, source?: "daily" | "event"): Promise<DashboardData["recordings"][number] | null>;
+  getDailyRecordingGaps?(recordingId: string, options?: { cursor?: string; limit?: number }, signal?: AbortSignal): Promise<DailyIntervalPage<DailyGap>>;
+  getDailyRecordingAvailableIntervals?(recordingId: string, options?: { cursor?: string; limit?: number }, signal?: AbortSignal): Promise<DailyIntervalPage<DailyAvailableInterval>>;
   deleteDailyRecording?(recordingId: string, signal?: AbortSignal): Promise<DailyRecordingDeletion>;
   prepareDailyRecordingExport?(recordingId: string, signal?: AbortSignal): Promise<DashboardData["recordings"][number]>;
   findEventRecordingExport?(

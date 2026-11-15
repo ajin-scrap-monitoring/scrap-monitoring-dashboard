@@ -29,16 +29,37 @@ type DailyRecordingBase = {
   spaceReclaimed?: null;
 };
 
+export type DailyGap = {
+  startsAt: string;
+  endsAt: string;
+  reasonCode: string;
+};
+
+export type DailyAvailableInterval = {
+  startsAt: string;
+  endsAt: string;
+  playbackStartsAtSeconds: number;
+  playbackEndsAtSeconds: number;
+};
+
+export type DailyIntervalPage<Interval> = {
+  recordingId: string;
+  revision: number;
+  snapshot: string;
+  items: Interval[];
+  total: number;
+  nextCursor: string | null;
+};
+
 export type DailyRecordingFull = DailyRecordingBase & {
   view: "full";
-  gaps: { startsAt: string; endsAt: string; reasonCode: string }[];
-  availableIntervals: { startsAt: string; endsAt: string; playbackStartsAtSeconds: number; playbackEndsAtSeconds: number }[];
+  gaps: DailyGap[];
+  availableIntervals: DailyAvailableInterval[];
 };
 
-export type DailyRecordingSummary = DailyRecordingBase & {
-  view: "summary";
-  gapCount: number;
-  availableIntervalCount: number;
+export type DailyRecordingMetadata = DailyRecordingBase & {
+  view: "metadata";
+  revision: number;
 };
 
-export type DailyRecording = DailyRecordingFull | DailyRecordingSummary;
+export type DailyRecording = DailyRecordingFull | DailyRecordingMetadata;

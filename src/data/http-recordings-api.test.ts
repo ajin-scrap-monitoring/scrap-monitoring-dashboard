@@ -174,19 +174,19 @@ describe("이벤트 export 서버 복구", () => {
 });
 
 describe("이벤트 녹화 보관 만료일 조회", () => {
-  test("구간 배열이 큰 날짜 상세 대신 같은 날짜의 요약 목록에서 보관 만료일을 읽는다", async () => {
+  test("구간 배열이 큰 날짜 상세 대신 같은 날짜의 /daily/summary 목록에서 보관 만료일을 읽는다", async () => {
     const { eventReplayFixture, eventReplayPartFixture } = await import("../test/backend-contract-fixtures");
     const { dailyRecordingFixture, dailyRecordingId } = await import("../test/daily-recording-fixtures");
     const { gaps: _gaps, available_intervals: _intervals, ...summaryBase } = dailyRecordingFixture;
     void _gaps; void _intervals;
-    const summary = { ...summaryBase, gap_count: 1, available_interval_count: 2 };
+    const metadata = { ...summaryBase, revision: 1 };
     const paths: string[] = [];
     const request = vi.fn((path: string) => {
       paths.push(path);
       if (path.startsWith("/api/v2/recordings/events/")) return Promise.resolve(eventReplayFixture({
         parts: [eventReplayPartFixture({ recordingId: dailyRecordingId, playbackPath: `/media/daily-recordings/${dailyRecordingId}/hls/index.m3u8` })],
       }));
-      if (path.startsWith("/api/v2/recordings/daily?")) return Promise.resolve({ view: "summary", items: [summary], next_cursor: null });
+      if (path.startsWith("/api/v2/recordings/daily/summary?")) return Promise.resolve({ items: [metadata], next_cursor: null });
       return Promise.reject(new ApiError(404, "unexpected"));
     });
     const api = createRecordingsApi({ ApiError, backendContract: true, cameraId: "camera-main", pitId: "pit-01",
@@ -198,7 +198,7 @@ describe("이벤트 녹화 보관 만료일 조회", () => {
     const recording = await api.getRecording("evt-alert-contract-1");
     expect(recording?.retentionEndsAt).toBe("2026-11-13 00:00:00");
     expect(paths.some((path) => path.startsWith(`/api/v2/recordings/daily/${dailyRecordingId}`))).toBe(false);
-    const list = new URL(paths.find((path) => path.startsWith("/api/v2/recordings/daily?"))!, "https://dashboard.example");
-    expect(Object.fromEntries(list.searchParams)).toMatchObject({ from_date: "2026-10-12", to_date: "2026-10-13", view: "summary" });
+    const list = new URL(paths.find((path) => path.startsWith("/api/v2/recordings/daily/summary?"))!, "https://dashboard.example");
+    expect(Object.fromEntries(list.searchParams)).toEqual({ from_date: "2026-10-12", to_date: "2026-10-13", limit: "100" });
   });
 });

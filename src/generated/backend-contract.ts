@@ -690,23 +690,6 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/recordings/daily": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** List Daily Recordings */
-        readonly get: operations["list_daily_recordings_api_v2_recordings_daily_get"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v2/recordings/daily/by-date/{recording_date}/thumbnail-info": {
         readonly parameters: {
             readonly query?: never;
@@ -719,6 +702,26 @@ export interface paths {
          * @description Share an existing date image across event categories without media mutations.
          */
         readonly get: operations["get_daily_thumbnail_by_date_api_v2_recordings_daily_by_date__recording_date__thumbnail_info_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v2/recordings/daily/summary": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Daily Metadata
+         * @description Large-recording list: no full arrays or fabricated array counts.
+         */
+        readonly get: operations["list_daily_metadata_api_v2_recordings_daily_summary_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -779,6 +782,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v2/recordings/daily/{recording_id}/available-intervals": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Daily Available Intervals */
+        readonly get: operations["get_daily_available_intervals_api_v2_recordings_daily__recording_id__available_intervals_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v2/recordings/daily/{recording_id}/exports": {
         readonly parameters: {
             readonly query?: never;
@@ -790,6 +810,23 @@ export interface paths {
         readonly put?: never;
         /** Prepare Daily Download */
         readonly post: operations["prepare_daily_download_api_v2_recordings_daily__recording_id__exports_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v2/recordings/daily/{recording_id}/gaps": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Daily Gaps */
+        readonly get: operations["get_daily_gaps_api_v2_recordings_daily__recording_id__gaps_get"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -808,6 +845,23 @@ export interface paths {
          * @description Inspect only selected recordings; ordinary list/detail reads stay inexpensive.
          */
         readonly get: operations["get_daily_media_info_api_v2_recordings_daily__recording_id__media_info_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v2/recordings/daily/{recording_id}/summary": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Daily Metadata */
+        readonly get: operations["get_daily_metadata_api_v2_recordings_daily__recording_id__summary_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -1847,6 +1901,42 @@ export interface components {
              */
             readonly start_at: string;
         };
+        /** DailyIntervalPage[DailyAvailableInterval] */
+        readonly DailyIntervalPage_DailyAvailableInterval_: {
+            /** Items */
+            readonly items: readonly components["schemas"]["DailyAvailableInterval"][];
+            /** Next Cursor */
+            readonly next_cursor: string | null;
+            /**
+             * Recording Id
+             * Format: uuid
+             */
+            readonly recording_id: string;
+            /** Revision */
+            readonly revision: number;
+            /** Snapshot */
+            readonly snapshot: string;
+            /** Total */
+            readonly total: number;
+        };
+        /** DailyIntervalPage[DailyGap] */
+        readonly DailyIntervalPage_DailyGap_: {
+            /** Items */
+            readonly items: readonly components["schemas"]["DailyGap"][];
+            /** Next Cursor */
+            readonly next_cursor: string | null;
+            /**
+             * Recording Id
+             * Format: uuid
+             */
+            readonly recording_id: string;
+            /** Revision */
+            readonly revision: number;
+            /** Snapshot */
+            readonly snapshot: string;
+            /** Total */
+            readonly total: number;
+        };
         /** DailyMediaInfo */
         readonly DailyMediaInfo: {
             readonly file: components["schemas"]["FileMediaInfo"] | null;
@@ -1859,17 +1949,14 @@ export interface components {
             readonly thumbnail: components["schemas"]["RecordingThumbnailInfo"];
             readonly timestamp_info: components["schemas"]["RecordingTimestampInfo"];
         };
-        /** DailyPage */
-        readonly DailyPage: {
+        /** DailyMetadataPage */
+        readonly DailyMetadataPage: {
             /** Items */
-            readonly items: readonly components["schemas"]["DailyRecording"][];
+            readonly items: readonly components["schemas"]["DailyRecordingMetadata"][];
             /** Next Cursor */
             readonly next_cursor: string | null;
         };
-        /**
-         * DailyRecording
-         * @description Do not equate a calendar window, recorded duration and export readiness.
-         */
+        /** DailyRecording */
         readonly DailyRecording: {
             /** Available Intervals */
             readonly available_intervals: readonly components["schemas"]["DailyAvailableInterval"][];
@@ -1956,12 +2043,10 @@ export interface components {
             readonly window_start_at: string;
         };
         /**
-         * DailyRecordingSummary
-         * @description Retain validated evidence internally; omit interval arrays from list output.
+         * DailyRecordingMetadata
+         * @description Upstream summary evidence; omitted arrays and counts remain unknown.
          */
-        readonly DailyRecordingSummary: {
-            /** Available Interval Count */
-            readonly available_interval_count: number;
+        readonly DailyRecordingMetadata: {
             /** Camera Id */
             readonly camera_id: string;
             /** Cleanup Completed At */
@@ -1992,8 +2077,6 @@ export interface components {
              * @enum {string}
              */
             readonly export_state: "not_requested" | "processing" | "ready" | "failed";
-            /** Gap Count */
-            readonly gap_count: number;
             /** Has Gaps */
             readonly has_gaps: boolean;
             /** Playable Until At */
@@ -2019,6 +2102,8 @@ export interface components {
              * Format: uuid
              */
             readonly recording_id: string;
+            /** Revision */
+            readonly revision: number;
             /** Size Bytes */
             readonly size_bytes: number | null;
             /** Space Reclaimed */
@@ -2043,19 +2128,6 @@ export interface components {
              * Format: date-time
              */
             readonly window_start_at: string;
-        };
-        /** DailySummaryPage */
-        readonly DailySummaryPage: {
-            /** Items */
-            readonly items: readonly components["schemas"]["DailyRecordingSummary"][];
-            /** Next Cursor */
-            readonly next_cursor: string | null;
-            /**
-             * View
-             * @default summary
-             * @constant
-             */
-            readonly view?: "summary";
         };
         /** DailyThumbnailInfo */
         readonly DailyThumbnailInfo: {
@@ -3414,6 +3486,11 @@ export interface components {
             readonly id: string;
             /** Name */
             readonly name: string;
+            /**
+             * Operationsemailenabled
+             * @default false
+             */
+            readonly operationsEmailEnabled?: boolean;
             /** Phone */
             readonly phone?: string | null;
             /**
@@ -3445,6 +3522,11 @@ export interface components {
             readonly eventTypes: readonly ("collection_required" | "measurement_error" | "device_error")[];
             /** Name */
             readonly name: string;
+            /**
+             * Operationsemailenabled
+             * @default false
+             */
+            readonly operationsEmailEnabled?: boolean;
             /** Phone */
             readonly phone?: string | null;
             /**
@@ -3480,6 +3562,8 @@ export interface components {
             readonly eventTypes?: readonly ("collection_required" | "measurement_error" | "device_error")[] | null;
             /** Name */
             readonly name?: string | null;
+            /** Operationsemailenabled */
+            readonly operationsEmailEnabled?: boolean | null;
             /** Phone */
             readonly phone?: string | null;
             /** Subscriptionmode */
@@ -7472,18 +7556,13 @@ export interface operations {
             };
         };
     };
-    readonly list_daily_recordings_api_v2_recordings_daily_get: {
+    readonly get_daily_thumbnail_by_date_api_v2_recordings_daily_by_date__recording_date__thumbnail_info_get: {
         readonly parameters: {
-            readonly query?: {
-                readonly from_date?: string | null;
-                readonly to_date?: string | null;
-                readonly status?: ("recording" | "finalizing" | "closed" | "failed" | "deleted" | "expired") | null;
-                readonly limit?: number;
-                readonly cursor?: string | null;
-                readonly view?: "full" | "summary";
-            };
+            readonly query?: never;
             readonly header?: never;
-            readonly path?: never;
+            readonly path: {
+                readonly recording_date: string;
+            };
             readonly cookie?: {
                 readonly scrap_session?: string | null;
             };
@@ -7496,7 +7575,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["DailyPage"] | components["schemas"]["DailySummaryPage"];
+                    readonly "application/json": components["schemas"]["DailyThumbnailInfo"] | null;
                 };
             };
             /** @description Bad Request */
@@ -7609,13 +7688,17 @@ export interface operations {
             };
         };
     };
-    readonly get_daily_thumbnail_by_date_api_v2_recordings_daily_by_date__recording_date__thumbnail_info_get: {
+    readonly list_daily_metadata_api_v2_recordings_daily_summary_get: {
         readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly recording_date: string;
+            readonly query?: {
+                readonly from_date?: string | null;
+                readonly to_date?: string | null;
+                readonly status?: ("recording" | "finalizing" | "closed" | "failed" | "deleted" | "expired") | null;
+                readonly limit?: number;
+                readonly cursor?: string | null;
             };
+            readonly header?: never;
+            readonly path?: never;
             readonly cookie?: {
                 readonly scrap_session?: string | null;
             };
@@ -7628,7 +7711,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["DailyThumbnailInfo"] | null;
+                    readonly "application/json": components["schemas"]["DailyMetadataPage"];
                 };
             };
             /** @description Bad Request */
@@ -8302,6 +8385,141 @@ export interface operations {
             };
         };
     };
+    readonly get_daily_available_intervals_api_v2_recordings_daily__recording_id__available_intervals_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+                readonly cursor?: string | null;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly recording_id: string;
+            };
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DailyIntervalPage_DailyAvailableInterval_"];
+                };
+            };
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+        };
+    };
     readonly prepare_daily_download_api_v2_recordings_daily__recording_id__exports_post: {
         readonly parameters: {
             readonly query?: never;
@@ -8454,6 +8672,141 @@ export interface operations {
             };
         };
     };
+    readonly get_daily_gaps_api_v2_recordings_daily__recording_id__gaps_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+                readonly cursor?: string | null;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly recording_id: string;
+            };
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DailyIntervalPage_DailyGap_"];
+                };
+            };
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+        };
+    };
     readonly get_daily_media_info_api_v2_recordings_daily__recording_id__media_info_get: {
         readonly parameters: {
             readonly query?: never;
@@ -8474,6 +8827,138 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["DailyMediaInfo"];
+                };
+            };
+            /** @description Bad Request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gone */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            readonly 416: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["RequestValidationErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            readonly 502: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPErrorResponse"] | components["schemas"]["MediaErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            readonly 504: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly get_daily_metadata_api_v2_recordings_daily__recording_id__summary_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly recording_id: string;
+            };
+            readonly cookie?: {
+                readonly scrap_session?: string | null;
+            };
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DailyRecordingMetadata"];
                 };
             };
             /** @description Bad Request */

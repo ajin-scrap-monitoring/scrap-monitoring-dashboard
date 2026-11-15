@@ -2,7 +2,7 @@ import type { paths } from "../generated/api-contract";
 import type { components as BackendComponents, paths as BackendPaths } from "../generated/backend-contract";
 import type { DashboardData, DataAreaState, HistoryEventPage, Recording, RecordingList } from "../domain/dashboard";
 import { displayTimeOffset } from "../display-time";
-import type { DailyRecordingApi } from "./daily-recording-api";
+import type { DailyIntervalQuery, DailyRecordingApi } from "./daily-recording-api";
 import type { DailyRecordingDeletion, DateRangeQuery, HistoryEventQuery } from "./dashboard-data-source";
 import { pathWithId, rfc3339AtOffset, wallClock } from "./contract-values";
 import type { ValidationIssue } from "./error-body";
@@ -334,6 +334,14 @@ export function createRecordingsApi({
     return (await getDailyApi()).prepareExport(recordingId, signal);
   };
 
+  const getDailyRecordingGaps = async (recordingId: string, options?: DailyIntervalQuery, signal?: AbortSignal) => {
+    return (await getDailyApi()).getGaps(recordingId, options, signal);
+  };
+
+  const getDailyRecordingAvailableIntervals = async (recordingId: string, options?: DailyIntervalQuery, signal?: AbortSignal) => {
+    return (await getDailyApi()).getAvailableIntervals(recordingId, options, signal);
+  };
+
   const findEventRecordingExport = async (
     eventId: string,
     options: { beforeSeconds: number; afterSeconds: number },
@@ -496,6 +504,8 @@ export function createRecordingsApi({
 
   return {
     deleteDailyRecording,
+    getDailyRecordingAvailableIntervals,
+    getDailyRecordingGaps,
     getRecording,
     getRecordingCoverage,
     getDailyRecordingMediaInfo,

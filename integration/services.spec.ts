@@ -326,16 +326,16 @@ test("실제 v2 수신 API, SSE와 적재율 추이에서 0%, STALE, session 종
 });
 
 test("실제 날짜 녹화의 session 보호, 공개 HLS 경로와 오늘 녹화의 다운로드 제한", async ({ page, playwright }) => {
-  expect((await page.request.get("/api/v2/recordings/daily")).status()).toBe(401);
+  expect((await page.request.get("/api/v2/recordings/daily/summary")).status()).toBe(401);
   const mediaPaths: string[] = [];
   page.on("request", request => {
     const path = new URL(request.url()).pathname;
     if (path.startsWith("/media/daily-recordings/")) mediaPaths.push(path);
   });
   await login(page);
-  const response = await page.request.get("/api/v2/recordings/daily");
+  const response = await page.request.get("/api/v2/recordings/daily/summary");
   expect(response.status()).toBe(200);
-  const daily = await response.json() as components["schemas"]["DailyPage"];
+  const daily = await response.json() as components["schemas"]["DailyMetadataPage"];
   const recording = daily.items.find(item => item.status === "recording" && item.playback_state === "ready");
   if (!recording?.playback_path) throw new Error("Today's synthetic daily HLS is missing.");
   expect(recording.export_allowed).toBe(false);
@@ -343,6 +343,21 @@ test("실제 날짜 녹화의 session 보호, 공개 HLS 경로와 오늘 녹화
   expect(recording.recorded_seconds).toBeGreaterThan(0);
   expect(recording.recorded_seconds).toBeLessThan(86_400);
   expect(recording.playback_path).toBe(`/media/daily-recordings/${recording.recording_id}/hls/index.m3u8`);
+
+  expect((await page.request.get(`/api/v2/recordings/daily/${recording.recording_id}/summary`)).status()).toBe(200);
+  const gapsResponse = await page.request.get(`/api/v2/recordings/daily/${recording.recording_id}/gaps?limit=100`);
+  expect(gapsResponse.status()).toBe(200);
+  const gapsPage = await gapsResponse.json() as components["schemas"]["DailyIntervalPage_DailyGap_"];
+  expect(gapsPage.recording_id).toBe(recording.recording_id);
+  expect(gapsPage.snapshot.length).toBeGreaterThan(0);
+
+  const intervalsResponse = await page.request.get(`/api/v2/recordings/daily/${recording.recording_id}/available-intervals?limit=100`);
+  expect(intervalsResponse.status()).toBe(200);
+  const intervalsPage = await intervalsResponse.json() as components["schemas"]["DailyIntervalPage_DailyAvailableInterval_"];
+  expect(intervalsPage.recording_id).toBe(recording.recording_id);
+  expect(intervalsPage.snapshot).toBe(gapsPage.snapshot);
+  expect(intervalsPage.revision).toBe(gapsPage.revision);
+  expect(intervalsPage.items.length).toBeGreaterThan(0);
   const playlistResponse = await page.request.get(recording.playback_path);
   expect(playlistResponse.status()).toBe(200);
   expect(playlistResponse.headers()["cache-control"]).toContain("no-store");
@@ -539,7 +554,7 @@ test("실제 이벤트 녹화의 v2 목록과 상세, 날짜 녹화 part 재생,
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   expect(await page.evaluate(() => Math.max(0, ...[...document.querySelectorAll(".recording-info, .recording-download")].map((element) => element.scrollHeight - element.clientHeight)))).toBeLessThanOrEqual(2);
   await page.screenshot({ path: `${screenshots}/recordings-minimum.png`, fullPage: true });
-  const daily = await (await page.request.get("/api/v2/recordings/daily")).json() as components["schemas"]["DailyPage"];
+  const daily = await (await page.request.get("/api/v2/recordings/daily/summary")).json() as components["schemas"]["DailyMetadataPage"];
   const today = daily.items.find(entry => entry.status === "recording");
   if (!today) throw new Error("Today's synthetic daily recording is missing.");
   const admin = await playwright.request.newContext({ baseURL: "http://backend:8000" });
@@ -549,6 +564,6 @@ test("실제 이벤트 녹화의 v2 목록과 상세, 날짜 녹화 part 재생,
     expect((await admin.delete(`/api/v2/recordings/daily/${today.recording_id}`)).status()).toBe(403);
     expect((await admin.delete(`/api/v2/recordings/daily/${today.recording_id}`, { headers: { "X-CSRF-Token": session.csrfToken } })).status()).toBe(409);
   } finally { await admin.dispose(); }
-  const stillThere = await page.request.get(`/api/v2/recordings/daily/${today.recording_id}`);
+  const stillThere = await page.request.get(`/api/v2/recordings/daily/${today.recording_id}/summary`);
   expect(stillThere.status()).toBe(200);
 });

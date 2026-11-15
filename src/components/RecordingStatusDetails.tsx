@@ -33,6 +33,8 @@ export function RecordingStatusDetails({
   onPrepareThumbnail,
   isAdmin = false,
   targetKind,
+  dailyGapTotal,
+  dailyGapStatus,
 }: {
   recording: Recording;
   error?: string;
@@ -44,6 +46,8 @@ export function RecordingStatusDetails({
   onPrepareThumbnail?: (retryFailed?: boolean) => void;
   isAdmin?: boolean;
   targetKind?: ThumbnailTarget["kind"];
+  dailyGapTotal?: number | null;
+  dailyGapStatus?: "idle" | "loading" | "ready" | "error";
 }) {
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
@@ -59,6 +63,11 @@ export function RecordingStatusDetails({
   const close = () => { setMode("closed"); trigger.current?.focus(); };
   const thumbnailStatus = formatThumbnailStatusText(thumbnailInfo, thumbnailError, targetKind);
   const adminAction = getThumbnailAdminAction(isAdmin, thumbnailInfo, thumbnailError, targetKind);
+  const gapCountLabel = recording.gaps?.length
+    ? `${recording.gaps.length}개`
+    : recording.daily?.view === "metadata" && recording.daily.hasGaps
+      ? (typeof dailyGapTotal === "number" ? `${dailyGapTotal}개` : dailyGapStatus === "error" ? "확인 불가" : "확인 중")
+      : null;
 
   useEffect(() => {
     if (!open) return;
@@ -93,7 +102,7 @@ export function RecordingStatusDetails({
         <div><dt>{failed ? "실패 사유" : "안내"}</dt><dd role={failed ? "alert" : undefined}>{reason}</dd></div>
         {failed && <div><dt>오류 코드</dt><dd>{code ?? (errorCode ? "확인 불가" : "제공되지 않음")}</dd></div>}
         {recording.coverage && <div><dt>녹화 범위</dt><dd>{recording.coverage === "partial" ? "부분 저장" : recording.coverage === "complete" ? "전체 구간" : recording.coverage === "none" ? "영상 없음" : "확인 불가"}</dd></div>}
-        {Boolean(recording.gaps?.length) && <div><dt>누락 구간</dt><dd>{recording.gaps?.length}개</dd></div>}
+        {gapCountLabel !== null && <div><dt>누락 구간</dt><dd>{gapCountLabel}</dd></div>}
         {recording.daily && <div><dt>파일 정리 상태</dt><dd>{cleanupText(recording.daily)}</dd></div>}
         {(hasThumbnailTarget || thumbnailInfo !== undefined || thumbnailError !== undefined) && (
           <div>

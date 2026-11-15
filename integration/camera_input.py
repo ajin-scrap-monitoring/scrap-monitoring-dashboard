@@ -48,7 +48,7 @@ async def main():
                 if items and items[0]["mediaStatus"] == "ready":
                     if items[0]["coverage"] != "partial":
                         raise RuntimeError("Expected partial synthetic recording")
-                    response = await api.get("http://backend:8000/api/v2/recordings/daily")
+                    response = await api.get("http://backend:8000/api/v2/recordings/daily/summary")
                     response.raise_for_status()
                     daily = (await response.json())["items"]
                     if not any(item["playback_state"] == "ready" and item["recorded_seconds"] > 0 for item in daily):

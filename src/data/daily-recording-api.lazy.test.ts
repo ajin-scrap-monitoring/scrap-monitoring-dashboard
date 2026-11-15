@@ -8,11 +8,13 @@ import { eventRecordingId, eventRecordingPageFixture, eventReplayFixture, monito
 const daily = vi.hoisted(() => {
   const queryRecordings = vi.fn(() => Promise.resolve([]));
   const getRecording = vi.fn(() => Promise.resolve(null));
+  const getGaps = vi.fn(() => Promise.resolve({ recordingId: "daily-id", revision: 0, snapshot: "s", items: [], total: 0, nextCursor: null }));
+  const getAvailableIntervals = vi.fn(() => Promise.resolve({ recordingId: "daily-id", revision: 0, snapshot: "s", items: [], total: 0, nextCursor: null }));
   const prepareExport = vi.fn(() => Promise.resolve(null));
-  return { queryRecordings, getRecording, prepareExport,
+  return { queryRecordings, getRecording, getGaps, getAvailableIntervals, prepareExport,
     create: vi.fn((options: Parameters<typeof createDailyRecordingApi>[0]) => {
       void options;
-      return { queryRecordings, getRecording, prepareExport };
+      return { queryRecordings, getRecording, getGaps, getAvailableIntervals, prepareExport };
     }) };
 });
 
@@ -81,6 +83,8 @@ describe("날짜 녹화 API의 지연 로딩 경계", () => {
     await Promise.all([
       source.queryRecordings?.({ ...range, recordingSource: "daily" }, signal),
       source.getRecording?.("daily-id", signal, "daily"),
+      source.getDailyRecordingGaps?.("daily-id", { limit: 100 }, signal),
+      source.getDailyRecordingAvailableIntervals?.("daily-id", { limit: 100 }, signal),
     ]);
     await source.prepareDailyRecordingExport?.("daily-id", signal);
     expect(daily.create).toHaveBeenCalledOnce();
@@ -91,6 +95,8 @@ describe("날짜 녹화 API의 지연 로딩 경계", () => {
     expect(typeof options?.isAuthenticated).toBe("function");
     expect(daily.queryRecordings).toHaveBeenCalledWith({ ...range, recordingSource: "daily" }, signal);
     expect(daily.getRecording).toHaveBeenCalledWith("daily-id", signal);
+    expect(daily.getGaps).toHaveBeenCalledWith("daily-id", { limit: 100 }, signal);
+    expect(daily.getAvailableIntervals).toHaveBeenCalledWith("daily-id", { limit: 100 }, signal);
     expect(daily.prepareExport).toHaveBeenCalledWith("daily-id", signal);
   });
 });

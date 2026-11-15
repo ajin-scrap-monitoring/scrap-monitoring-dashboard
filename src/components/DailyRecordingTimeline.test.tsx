@@ -157,3 +157,54 @@ test("많은 관측점도 확보된 시간으로 늘리지 않고 pointer와 키
   fireEvent.click(seek, { detail: 1, clientX: 100 / 86400 * 1000 + 1 });
   expect(onSeek).toHaveBeenLastCalledWith(1);
 });
+
+test("메타데이터 녹화의 미확인 구간과 페이지네이션 및 오류 복구 UI를 표시한다", () => {
+  const { gaps: _gaps, availableIntervals: _available, ...rest } = item;
+  void _gaps; void _available;
+  const metadata = { ...rest, view: "metadata" as const, revision: 2 };
+  const onSeek = vi.fn();
+  const onNext = vi.fn();
+  const onPrevious = vi.fn();
+  const onRetry = vi.fn();
+  const view = render(
+    <DailyRecordingTimeline
+      recording={metadata}
+      now={now}
+      onSeek={onSeek}
+      availableIntervals={[item.availableIntervals[0]]}
+      gaps={[]}
+      availableStatus="ready"
+      gapsStatus="ready"
+      pagination={{ hasPrevious: false, hasNext: true, pageLabel: "구간 1페이지", onPrevious, onNext, onRetry }}
+    />,
+  );
+  expect(screen.getByRole("button", { name: /^확보 구간 00:00:00 ~ 00:30:00, 재생$/ })).toBeVisible();
+  expect(screen.getByRole("img", { name: "확보 여부 미확인 구간 00:30:00 ~ 02:00:00" })).toBeInTheDocument();
+  expect(screen.getByText(/확보 여부 미확인 구간/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "이전" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "다음" }));
+  expect(onNext).toHaveBeenCalledOnce();
+
+  view.rerender(
+    <DailyRecordingTimeline
+      recording={metadata}
+      now={now}
+      onSeek={onSeek}
+      availableIntervals={[]}
+      gaps={[]}
+      availableStatus="error"
+      gapsStatus="error"
+      pagination={{
+        hasPrevious: false,
+        hasNext: false,
+        error: "일시적으로 녹화 구간을 조회할 수 없습니다. 잠시 후 다시 조회해 주세요.",
+        onPrevious,
+        onNext,
+        onRetry,
+      }}
+    />,
+  );
+  expect(screen.getByRole("alert")).toHaveTextContent("일시적으로 녹화 구간을 조회할 수 없습니다.");
+  fireEvent.click(screen.getByRole("button", { name: "다시 조회" }));
+  expect(onRetry).toHaveBeenCalledOnce();
+});

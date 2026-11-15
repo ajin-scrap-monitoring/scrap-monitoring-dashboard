@@ -1,9 +1,24 @@
 import type { components, paths } from "../generated/backend-contract";
 import type { Recording } from "../domain/dashboard";
 import type { DateRangeQuery } from "./dashboard-data-source";
-import { dailyRecording, dailyRecordingAvailability, dailyRecordingIdentifier, dailyRecordingPage, type DailyRecording } from "./daily-recordings";
-import { missingValue, pathWithId, timestamp, wallClock } from "./contract-values";
+import { record, missingValue, pathWithId, timestamp, wallClock } from "./contract-values";
+import {
+  dailyAvailableIntervalPage,
+  dailyGapPage,
+  dailyMetadataPage,
+  dailyRecording,
+  dailyRecordingAvailability,
+  dailyRecordingIdentifier,
+  dailyRecordingMetadata,
+  type DailyIntervalPage,
+  type DailyRecording,
+} from "./daily-recordings";
 import { byteSize, clockDuration } from "./recording-values";
+
+export type DailyIntervalQuery = {
+  cursor?: string;
+  limit?: number;
+};
 
 type DailyApiError = Error & { status: number; code?: string };
 export type DailyRecordingApiOptions = {
@@ -15,12 +30,15 @@ export type DailyRecordingApiOptions = {
 };
 
 const dailyPaths = {
-  list: "/api/v2/recordings/daily",
-  detail: "/api/v2/recordings/daily/{recording_id}",
+  summaryList: "/api/v2/recordings/daily/summary",
+  detailSummary: "/api/v2/recordings/daily/{recording_id}/summary",
+  gaps: "/api/v2/recordings/daily/{recording_id}/gaps",
+  availableIntervals: "/api/v2/recordings/daily/{recording_id}/available-intervals",
+  delete: "/api/v2/recordings/daily/{recording_id}",
   exports: "/api/v2/recordings/daily/{recording_id}/exports",
 } as const satisfies Record<string, keyof paths>;
 
-function mapDailyRecording(daily: DailyRecording, now: number): Recording {
+export function mapDailyRecording(daily: DailyRecording, now: number): Recording {
   const availability = dailyRecordingAvailability(daily, now);
   return {
     source: "daily", daily, id: daily.id, date: daily.recordingDate, type: "날짜 녹화",
@@ -62,7 +80,7 @@ function dailyDateParameters(query: DateRangeQuery) {
   if (from > inclusiveTo) throw new Error("Recording dates are reversed.");
   const to = new Date(Date.parse(`${inclusiveTo}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(to)) throw new Error("A valid Korean recording date is required.");
-  return new URLSearchParams({ from_date: from, to_date: to, limit: "100", view: "summary" });
+  return new URLSearchParams({ from_date: from, to_date: to, limit: "100" });
 }
 
 export function createDailyRecordingApi({ ApiError, cameraId, isAuthenticated, request, serverNow }: DailyRecordingApiOptions) {
@@ -73,11 +91,36 @@ export function createDailyRecordingApi({ ApiError, cameraId, isAuthenticated, r
       throw error;
     }
   };
-  const getDailyRecording = async (recordingId: string, signal?: AbortSignal) => {
+  const getDailyMetadata = async (recordingId: string, signal?: AbortSignal) => {
     if (!dailyRecordingIdentifier.test(recordingId)) throw new Error("Daily recording requires a UUID identifier.");
-    const daily = dailyRecording(await dailyRequest<components["schemas"]["DailyRecording"]>(pathWithId(dailyPaths.detail, recordingId), { signal }), cameraId);
+    const daily = dailyRecordingMetadata(
+      await dailyRequest<components["schemas"]["DailyRecordingMetadata"]>(pathWithId(dailyPaths.detailSummary, recordingId), { signal }),
+      cameraId,
+    );
     if (daily.id.toLowerCase() !== recordingId.toLowerCase()) throw new Error("Unexpected daily recording identity.");
     return daily;
+  };
+  const requestIntervalPage = async <Interval>(
+    template: typeof dailyPaths.gaps | typeof dailyPaths.availableIntervals,
+    parse: (value: unknown, recordingId: string) => DailyIntervalPage<Interval>,
+    recordingId: string,
+    options: DailyIntervalQuery = {},
+    signal?: AbortSignal,
+  ): Promise<DailyIntervalPage<Interval>> => {
+    if (!dailyRecordingIdentifier.test(recordingId)) throw new Error("Daily recording requires a UUID identifier.");
+    const limit = options.limit ?? 100;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) throw new Error("Unexpected daily interval page size.");
+    const parameters = new URLSearchParams({ limit: String(limit) });
+    if (options.cursor !== undefined) {
+      if (options.cursor.length === 0 || options.cursor.length > 4096) throw new Error("Unexpected daily interval cursor.");
+      parameters.set("cursor", options.cursor);
+    }
+    const page = parse(
+      await dailyRequest<unknown>(`${pathWithId(template, recordingId)}?${parameters}`, { signal }),
+      recordingId,
+    );
+    if (page.items.length > limit) throw new Error("Unexpected daily interval page size.");
+    return page;
   };
   return {
     queryRecordings: async (query: DateRangeQuery, signal?: AbortSignal) => {
@@ -86,7 +129,10 @@ export function createDailyRecordingApi({ ApiError, cameraId, isAuthenticated, r
       const ids = new Set<string>();
       const cursors = new Set<string>();
       while (true) {
-        const page = dailyRecordingPage(await dailyRequest<components["schemas"]["DailyPage"]>(`${dailyPaths.list}?${parameters}`, { signal }), cameraId);
+        const page = dailyMetadataPage(
+          await dailyRequest<components["schemas"]["DailyMetadataPage"]>(`${dailyPaths.summaryList}?${parameters}`, { signal }),
+          cameraId,
+        );
         if (page.items.length > 100) throw new Error("Unexpected daily recording page size.");
         for (const daily of page.items) {
           if (ids.has(daily.id.toLowerCase()) || daily.recordingDate < parameters.get("from_date")! || daily.recordingDate >= parameters.get("to_date")!) {
@@ -102,19 +148,33 @@ export function createDailyRecordingApi({ ApiError, cameraId, isAuthenticated, r
       }
       return recordings;
     },
-    getRecording: async (recordingId: string, signal?: AbortSignal) => mapDailyRecording(await getDailyRecording(recordingId, signal), serverNow()),
+    getRecording: async (recordingId: string, signal?: AbortSignal) => mapDailyRecording(await getDailyMetadata(recordingId, signal), serverNow()),
+    getGaps: (recordingId: string, options?: DailyIntervalQuery, signal?: AbortSignal) => requestIntervalPage(dailyPaths.gaps, dailyGapPage, recordingId, options, signal),
+    getAvailableIntervals: (recordingId: string, options?: DailyIntervalQuery, signal?: AbortSignal) => requestIntervalPage(
+      dailyPaths.availableIntervals,
+      dailyAvailableIntervalPage,
+      recordingId,
+      options,
+      signal,
+    ),
     deleteRecording: async (recordingId: string, signal?: AbortSignal) => {
       if (!isAuthenticated()) throw new ApiError(401, "날짜 녹화 삭제에는 로그인이 필요합니다.");
       if (!dailyRecordingIdentifier.test(recordingId)) throw new Error("Daily recording requires a UUID identifier.");
-      await dailyRequest<undefined>(pathWithId(dailyPaths.detail, recordingId), { method: "DELETE", signal });
+      await dailyRequest<undefined>(pathWithId(dailyPaths.delete, recordingId), { method: "DELETE", signal });
     },
     prepareExport: async (recordingId: string, signal?: AbortSignal) => {
       if (!isAuthenticated()) throw new ApiError(401, "다운로드 준비에는 로그인이 필요합니다.");
-      const latest = await getDailyRecording(recordingId, signal);
+      const latest = await getDailyMetadata(recordingId, signal);
       const availability = dailyRecordingAvailability(latest, serverNow());
       if (availability.downloadReady || availability.exportProcessing) return mapDailyRecording(latest, serverNow());
       if (!availability.canPrepareExport) throw new ApiError(409, "마감된 지난 날짜의 녹화만 다운로드를 준비할 수 있습니다.", "DAILY_EXPORT_UNAVAILABLE");
-      const daily = dailyRecording(await dailyRequest<components["schemas"]["DailyRecording"]>(pathWithId(dailyPaths.exports, recordingId), { method: "POST", signal }), cameraId);
+      const response = await dailyRequest<components["schemas"]["DailyRecording"] | components["schemas"]["DailyRecordingMetadata"]>(
+        pathWithId(dailyPaths.exports, recordingId),
+        { method: "POST", signal },
+      );
+      const daily = record(response) && "revision" in response
+        ? dailyRecordingMetadata(response, cameraId)
+        : dailyRecording(response, cameraId);
       if (daily.id.toLowerCase() !== recordingId.toLowerCase()) throw new Error("Unexpected daily recording export identity.");
       return mapDailyRecording(daily, serverNow());
     },
