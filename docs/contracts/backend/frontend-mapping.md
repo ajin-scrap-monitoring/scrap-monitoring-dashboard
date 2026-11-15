@@ -291,28 +291,23 @@ v2 경보와 수거 판단 목록(`/api/v2/monitoring/alerts`, `collection-event
 
 | 기존 항목 | 제공 정보 | 평가 | 연결 또는 남은 계약 |
 | --- | --- | --- | --- |
-| 날짜 녹화 | `/api/v2/recordings/daily` 목록(`view=summary`), 단건 상세(`view` query 없음), `exports` | 변환 사용 | 목록은 `view=summary` 요약(`gap_count`, `available_interval_count`)과 `has_gaps` 기반 tone 계산, 선택 시 단건 상세로 구간 배열(`gaps`, `available_intervals`) 수신 후 timeline 및 재생 확정, HLS 재생, 지난 날짜의 MP4 준비 |
+| 날짜 녹화 | `/api/v2/recordings/daily/summary` 목록, `/{recording_id}/summary` 단건 메타데이터, `/{recording_id}/gaps`, `/{recording_id}/available-intervals`, `exports` | 변환 사용 | 목록과 단건 `summary`의 `view="metadata"`, `has_gaps`, `revision` 수신, 선택 시 단건 `summary` 확인 후 `/gaps`와 `/available-intervals` cursor 페이지 조회(`limit=100`)로 timeline 및 실제 재생 시각과 누락 구간 dialog 표시, 페이지 밖 미확인 구간 구분, HLS 재생, 지난 날짜의 MP4 준비 |
 | 날짜 녹화 삭제 | `DELETE /api/v2/recordings/daily/{recording_id}` | 직접 사용 | 관리자 전용, 확인창, CSRF |
 | 이벤트 녹화 목록 | `/api/v2/recordings/events` | 변환 사용 | `stable=true`, `pageSize=50` 고정, `snapshot_token` 기반 페이징, `snapshotExpiresAt`과 `asOf` 차이 기반 로컬 만료 계산 및 ensure당 합산 1회 재시작 제한, `occurredAt` 내림차순 정렬, `include_playback=true`의 `playback` 요약(`UNKNOWN` 포함, 길이 null은 정보 없음) |
 | 이벤트 구간 재생 | `/api/v2/recordings/events/{event_id}`의 `parts` | 변환 사용 | 날짜 녹화 HLS를 구간별로 이어서 재생 |
 | 시작, 종료, 길이, 형식 | 이벤트 상세 | 변환 사용 | 길이는 `playbackSeconds`, 형식은 HLS |
-| 보관 만료 | 날짜 녹화의 `expires_at`, `status` | 변환 사용 | `status`가 deleted 또는 expired면 "삭제됨" 또는 "만료됨" 표시, 이벤트는 `parts`의 날짜별 요약 목록(`view=summary`)에서 찾은 모든 날짜 녹화 중 가장 빠른 만료를 사용하며 하나라도 확인하지 못하면 정보 없음 |
+| 보관 만료 | 날짜 녹화의 `expires_at`, `status` | 변환 사용 | `status`가 deleted 또는 expired면 "삭제됨" 또는 "만료됨" 표시, 이벤트는 `parts`의 날짜별 summary 목록(`/api/v2/recordings/daily/summary`)에서 찾은 모든 날짜 녹화 중 가장 빠른 만료를 사용하며 하나라도 확인하지 못하면 정보 없음 |
 | codec, 해상도, frame rate | `/api/v2/recordings/daily/{recording_id}/media-info`, `/api/v1/media/clips/{clip_id}/media-info` | 직접 사용 | 날짜 녹화는 file 정보(측정 시각, 출처)와 segments(미디어 항목의 `title`), 이벤트는 export 완료 후 clip media-info(측정 시각, 출처) 연동 |
 | 이벤트 구간 용량과 MP4 | `GET/POST /api/v2/recordings/events/{event_id}/exports`, `GET statusPath` | 직접 사용 | 서버 조회 복구와 명시 준비 및 재시도, 응답 requestId 및 statusPath 사용 |
 | 미리보기 썸네일 | `/api/v2/recordings/daily/{identifier}/thumbnail-info`, `/api/v2/recordings/daily/{identifier}/thumbnail`, `/api/v2/recordings/daily/by-date/{recording_date}/thumbnail-info`, `/api/v2/recordings/events/{event_id}/thumbnail-info`, `/api/v1/media/clips/{identifier}/thumbnail-info`, `/api/v1/media/clips/{identifier}/thumbnail` | 직접 사용 | 날짜 녹화(recording, finalizing, closed, failed이며 expired와 deleted 제외) 및 이벤트 녹화 썸네일 조회, 이벤트 녹화의 `dailyThumbnailInfoPath` 우선 조회 및 클립 미대체, ready 시 content_path 이미지를 기존 썸네일 자리와 재생 poster에 연결, `NOT_PREPARED`/`failed` 관리자 준비 및 `retry_failed` 재시도 제공, `dailyDate`/`RECORDING_BUSY` 준비 버튼 미제공 및 `RECORDING_BUSY` 보류 폴링 재조회 |
 
-날짜 녹화 목록은 `GET /api/v2/recordings/daily`에 `view=summary`를 전달해 요청하며
-`next_cursor` 페이징 시에도 같은 파라미터를 유지한다. 목록 응답의 `view`가 `"summary"`이면
-요약 parser를 사용하고, `gap_count`와 `available_interval_count`는 0 이상 정수여야 하며
-`has_gaps`는 `gap_count > 0`과 같아야 한다. 요약 항목에 `gaps`나 `available_intervals`가
-포함되면 계약 오류로 처리한다. `view`가 없거나 `"full"`이면 기존 parser로 구간 배열을 검증한다.
-목록 단계의 `Recording.gaps`는 빈 배열 대신 undefined로 두고 tone은 `has_gaps`로 계산한다.
-녹화 항목 선택 시 `GET /api/v2/recordings/daily/{recording_id}` 상세를 호출해 full 녹화로
-교체하기 전에는 timeline, 누락 구간 버튼, 재생 버튼을 확정하지 않고 로딩 표시를 유지한다.
-목록 행은 서버 요약 상태(`playback_state`)로 "영상 없음" 등을 상세 수신 전부터 표시한다. timeline의
-"전체 구간 확보"는 full 상세를 받은 뒤에만 표시한다. 다운로드 준비는 단건 상세 결과를 사용하고
-보관 만료와 cleanup 표시는 목록 요약 값을 상세 수신 전부터 표시한 뒤 상세 수신 후 상세 값으로
-교체한다.
+날짜 녹화 목록은 `GET /api/v2/recordings/daily/summary`를 요청하며 `next_cursor` 페이징으로 이어진다. 목록과 단건 `summary`(`GET /api/v2/recordings/daily/{recording_id}/summary`)의 `view`는 `"metadata"`여야 하고 `revision`은 1 이상 정수, `has_gaps`는 boolean이어야 한다. 메타데이터 응답에 `gaps`나 `available_intervals`가 포함되면 계약 오류로 처리한다.
+목록과 단건 메타데이터의 `Recording.gaps`는 undefined로 두고 tone은 `has_gaps`로 계산한다.
+녹화 항목 선택 시 단건 `/summary`로 최신 메타데이터를 확인하기 전에는 timeline, 누락 구간 버튼, 재생 버튼을 확정하지 않고 로딩 표시를 유지한다.
+단건 `/summary` 확인 후 `/gaps`와 `/available-intervals`를 `limit=100`으로 1페이지만 요청하며 전체 페이지를 미리 순회하지 않는다. 이전과 다음 이동은 방문한 cursor stack으로 한 페이지씩 수행한다.
+`/available-intervals` 또는 `/gaps`가 아직 확인하지 않았거나 현재 페이지 범위를 벗어난 시간 구간은 timeline에서 `unknown`("확보 여부 미확인 구간")으로 표시한다. timeline의 "전체 구간 확보"는 단건 `has_gaps=false` 및 확보 구간 존재를 확인한 뒤에만 표시한다. 현재 재생 위치가 로드된 `/available-intervals` 페이지에 없으면 영상 우상단 실제 시각을 "실제 시각 미확인"으로, 구간 로딩 중은 "실제 시각 확인 중", 구간 조회 오류는 "실제 시각 확인 불가"로 표시한다.
+두 구간 응답의 `revision`이 단건 `summary`와 일치하고 두 응답 간 `snapshot`이 같을 때만 화면에 반영한다. `400 INVALID_CURSOR`는 1페이지 단발 재시도로 복구하며 `409 DAILY_SNAPSHOT_CHANGED`나 revision 또는 snapshot 불일치는 최대 2회까지 단건 `/summary`를 다시 조회해 구간 페이지를 초기화한다. 502, 503, 504와 네트워크 오류는 자동 재시도 없이 `role="alert"`와 "다시 조회" 버튼을 표시한다. 날짜, 필터 또는 녹화 선택을 바꾸면 진행 중인 구간 요청을 취소하고 cursor 상태를 초기화한다.
+목록 행은 서버 요약 상태(`playback_state`)로 "영상 없음" 등을 단건 확인 전부터 표시한다. 다운로드 준비 사전 확인과 준비 완료 폴링은 단건 `/summary`를 사용하고, `POST /exports` 본문 parser는 `DailyRecordingMetadata`와 legacy `DailyRecording` 응답을 모두 수용한다. 보관 만료와 cleanup 표시는 목록 메타데이터 값을 단건 확인 전부터 표시한 뒤 단건 `/summary` 값으로 교체한다.
 
 날짜 녹화는 `deleted_at`, `cleanup_state`(pending, failed, complete, null), `cleanup_completed_at`,
 `cleanup_error`를 수신 및 보존하고 `space_reclaimed`는 null만 허용하며 그 외 값은 계약 오류로 처리한다. `status`가 deleted 또는 expired면
@@ -390,15 +385,15 @@ Backend 회신서의 요청 목록은 이 절의 표를 정본으로 사용한�
 
 | ID | 항목 | 화면 위치 | 책임 | 상태 |
 | --- | --- | --- | --- | --- |
-| Q-17 | 녹화 중인 날짜 녹화 조회의 Backend 메모리 한도 도달 | 녹화 화면 녹화 목록과 녹화 정보 | Backend | 녹화 중인 오늘 날짜 녹화의 단건 조회 또는 이를 포함한 목록 조회 1회 뒤 Backend 메모리 1GiB 한도 도달, 30초 뒤 504와 다른 API 정지. 마감된 날짜 녹화 조회는 정상. 원인 수정 요청 |
+| Q-17 | 녹화 중인 날짜 녹화 조회의 Backend 메모리 한도 도달 | 녹화 화면 녹화 목록과 녹화 정보 | Backend | Backend 79ba4a7(#268, #272)와 Media b9d3308(#14)의 `/summary` 및 구간 cursor API 추가와 Dashboard 경량 경로 전환 완료, 실서버 오늘 날짜 포함 7일 통합 브라우저 검증과 `POST /api/v2/recordings/daily/{recording_id}/exports`의 Backend 내부 전체 조회 의존 후속 확인 대기 |
 | Q-18 | 날짜 녹화 저장 중단 | 녹화 화면 날짜 녹화와 이벤트 녹화 재생 | Media Service | 날짜 녹화 예산(`daily_limit_bytes`)이 30일 보관 기준보다 작아 예산 도달 시 새 녹화 저장 중단. 보관 기준과 예산 정합과 예산 도달 시 처리 요청 |
 | Q-19 | 데이터 정상 중 적재율 경보 평가의 간헐적 `UNKNOWN` | 현재 상태 카드 적재율 경보 | Backend | `dataState=FRESH`에서 `operations.effectiveState=UNKNOWN`(`OPERATIONS_EVALUATION_UNAVAILABLE`) 반복으로 "확인 불가" 깜박임. 원인과 의도된 동작 회신 요청 |
-| Q-20 | 이벤트 구간 파일 준비 요청의 504 응답 | 녹화 화면 녹화 파일 | Backend | `POST /api/v2/recordings/events/{event_id}/exports`가 약 8초 뒤 Backend 504를 반환하지만 구간 파일 준비는 진행되어 완료. Dashboard는 재조회로 준비 상태를 찾음. 요청 접수 응답 반환 요청 |
+| Q-20 | 이벤트 구간 파일 준비 요청의 504 응답 | 녹화 화면 녹화 파일 | Backend | Backend f8cadc8(#258)의 DB 저장 후 일시 미디어 오류 202 `pending` 및 `statusPath` 반환 추가, 실서버 지연 재현과 동기 대기 timeout 경계 확인 대기 |
 | Q-21 | LiDAR 1, 2 단면 곡선 보정과 동일 위치 복수 값 해소 | 현황 화면 LiDAR 1, LiDAR 2 카드 | Backend | Frontend는 `/api/v2/monitoring/profiles` 응답의 `samples` 배열 순서와 좌표(`positionRatio`, `height`)를 보정 없이 그대로 출력함. 현재 같은 `positionRatio`(가로 위치)에 서로 다른 `height`(세로 값)가 2개 이상 포함되는 경우가 있음. Backend에서 단면 곡선 모양을 보정하고 논리적 모순을 해결해 일관된 `profile`을 반환하도록 수정 요청 |
 | Q-22 | 장치 성능과 복구 이벤트 판정 기준 보수화 | 이력 화면 운영 이력 표, 현황 화면 활성 알림 카드 | Backend | 장치 성능과 복구의 판정 기준이 낮아 이벤트와 복구 판정이 잦음. 전반적인 이벤트 발생과 복구 판정 기준을 보수적으로 상향 조정 요청 |
 | Q-23 | 동일 시간 구간 내 반복 이벤트 단일화 | 이력 화면 운영 이력 표, 녹화 화면 녹화 목록 | Backend | 같은 시간 구간에서 동일한 이벤트가 반복 생성되어 과도하게 조회됨. 동일 시간대의 반복 이벤트를 하나로 통합해 기록 및 제공하도록 처리 요청 |
 | Q-24 | 이벤트 내용의 입력 원천 및 시뮬레이션 구분 기록 제거 | 이력 화면 운영 이력 표와 이벤트 상세, 녹화 화면 녹화 목록 | Backend | 수거 필요 등 이벤트(`/api/v1/events`, `/api/v2/recordings/events`)의 제목과 세부 내용에 '시뮬레이션' 문구를 포함해 입력 데이터 원천(실측 LiDAR, 동영상, 시뮬레이션)을 기록하는 경우가 있음. 입력 원천 선택은 환경 구성 영역이므로 Backend는 측정값 처리 결과만 기록하고 시뮬레이션 등 데이터 원천 구분을 이벤트 내용에 기록하지 않도록 수정 요청 |
-| Q-25 | 날짜 녹화 목록 응답 상한 초과 | 녹화 화면 전체 및 날짜 녹화 목록 | Media Service | 날짜 녹화 목록이 HTTP 503 `DAILY_RESPONSE_TOO_LARGE`를 반환하고 Backend가 Media Service의 503을 전달함. 단일 날짜 조회와 이벤트 목록은 성공하는 범위가 있음. 날짜 녹화 목록의 응답 상한 및 조회 범위 처리 개선 요청 |
+| Q-25 | 날짜 녹화 목록 응답 상한 초과 | 녹화 화면 전체 및 날짜 녹화 목록 | Media Service | Media c783248(#14)과 Backend #268의 `/api/v2/recordings/daily/summary` 및 cursor API 추가와 Dashboard 기본 조회 경로 전환 완료, 실서버 기본 7일 및 다중 날짜 목록 통합 검증 대기 |
 
 ### 이력 및 녹화 영상의 일괄 협의 항목
 

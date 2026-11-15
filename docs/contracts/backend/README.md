@@ -129,24 +129,27 @@ Frontend는 `eventId` 형식, `parts`의 날짜 녹화 UUID와 `playbackPath`, �
 `playbackSeconds`와 같은지를 검사하고 위반하면 오류로 처리한다. 구간 사이의 빈 시간은 허용하며 구간 길이의 합계는 검사하지 않는다. 이력과 녹화의 연결은 `/api/v1/events`
 항목의 `recordingEventId`만 사용한다.
 
-날짜 녹화는 Backend의 다음 4개 endpoint를 사용하며 이벤트 녹화와 별도로 조회한다.
+날짜 녹화는 Backend의 다음 6개 endpoint를 사용하며 이벤트 녹화와 별도로 조회한다.
 
 | Method | 경로 | 용도 |
 | --- | --- | --- |
-| `GET` | `/api/v2/recordings/daily` | 날짜 녹화 목록 |
-| `GET` | `/api/v2/recordings/daily/{recording_id}` | 상태, 확보 및 누락 구간과 재생 및 다운로드 경로 |
+| `GET` | `/api/v2/recordings/daily/summary` | 날짜 녹화 메타데이터 목록 |
+| `GET` | `/api/v2/recordings/daily/{recording_id}/summary` | 단건 메타데이터, 재생 및 다운로드 상태와 snapshot revision |
+| `GET` | `/api/v2/recordings/daily/{recording_id}/gaps` | cursor 기반 누락 구간 페이지 |
+| `GET` | `/api/v2/recordings/daily/{recording_id}/available-intervals` | cursor 기반 확보 구간 페이지 |
 | `POST` | `/api/v2/recordings/daily/{recording_id}/exports` | MP4 다운로드 준비 |
 | `DELETE` | `/api/v2/recordings/daily/{recording_id}` | 지난 날짜 영상 삭제(administrator와 CSRF) |
 
 목록은 Backend에 설정한 camera를 대상으로 `from_date` 이상, `to_date` 미만의 한국 날짜를
-조회한다. `limit`은 1부터 100까지이며 응답의 `next_cursor`는 해석하지 않고 다음 요청의 `cursor` query parameter로 전달한다.
+조회한다. 목록과 구간(`/gaps`, `/available-intervals`)의 `limit`은 1부터 100까지이며 응답의 `next_cursor`는 해석하지 않고 다음 요청의 `cursor` query parameter로 전달한다.
+구간 응답의 `total`, `revision`, `snapshot`과 `next_cursor`를 검증하고 단건 `summary`와 구간 페이지 사이의 `revision` 또는 페이지 간 `snapshot`이 일치해야 한다. `400 INVALID_CURSOR`는 1페이지 단발 재조회로 복구하며 `409 DAILY_SNAPSHOT_CHANGED`나 snapshot 불일치는 단건 `summary`를 다시 조회해 구간 페이지를 초기화한다. 일시 오류는 자동 재시도하지 않고 수동 다시 조회를 제공한다.
 Frontend는 화면의 종료 날짜 다음 날을 `to_date`로 전달하고 UUID 및 camera 식별자,
 `Asia/Seoul` 날짜 경계와 반환 범위를 검사한다. 날짜 녹화를 경보 또는 수거 사건으로 변환하지
 않으며 날짜 조회 실패를 이벤트 목록으로 대체하지 않는다.
 
 `status`, `playback_state`와 `export_state`는 각각 녹화, 재생과 다운로드 준비 상태다.
 `recorded_seconds`는 실제 확보한 재생 길이이며 하루 전체 길이로 보충하지 않는다.
-`available_intervals`의 실제 시각과 압축 재생 위치를 대응시키고 `gaps`를 별도 표시한다.
+`/available-intervals` 현재 페이지의 실제 시각과 압축 재생 위치를 대응시키고 `/gaps` 현재 페이지의 누락 구간을 별도 표시하며, 현재 페이지 밖 구간은 확보 여부 미확인 구간으로 구분한다.
 실제 시각의 시작과 종료가 같은 확보 구간도 해당 시각의 기록으로 유지한다.
 
 재생 경로와 다운로드 경로는 Backend가 반환한 위 `/media/` 경로만 허용한다. Nginx는
@@ -157,8 +160,8 @@ Authorization 및 임의의 query를 전달하지 않으며 MP4의 `download=tru
 [배포 경계](../../deployment.md#nginx-reverse-proxy-배포-경계)를 따른다.
 
 MP4 export는 viewer 또는 administrator session과 `X-CSRF-Token`이 필요하다. 준비 요청
-직전에 단건 상태를 재조회하며 `closed` 상태인 지난 날짜, 확보 영상 존재와
-`export_allowed`를 확인한다. HTTP 200 또는 202 응답 뒤 단건 상태를 조회하고 유효한
+직전에 단건 `summary` 상태를 재조회하며 `closed` 상태인 지난 날짜, 확보 영상 존재와
+`export_allowed`를 확인한다. HTTP 200 또는 202 응답 뒤 단건 `summary` 상태를 조회하고 유효한
 `download_path`가 제공될 때 다운로드를 허용한다. 오늘의 녹화는 다운로드 대상이 아니며
 다운로드 불가를 녹화 실패로 표시하지 않는다. 원본 만료와 export cache 만료는 구분한다.
 

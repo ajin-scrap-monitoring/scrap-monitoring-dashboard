@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 
 import { largeDailyPage, largeDailyRecording } from "../test/large-daily-recordings";
-import { createDailyRecordingApi } from "./daily-recording-api";
-import { dailyRecordingPage } from "./daily-recordings";
+import { createDailyRecordingApi, mapDailyRecording } from "./daily-recording-api";
+import { dailyAvailableIntervalPage, dailyGapPage, dailyRecording } from "./daily-recordings";
 import { rfc3339AtOffset, timestamp, timestampValue, wallClock } from "./contract-values";
 
 const shift = (value: string, seconds: number) => new Date(Date.parse(value) + seconds * 1000).toISOString().replace(".000Z", "Z");
@@ -63,11 +63,12 @@ const samples = [
 ];
 
 describe("대용량 날짜 녹화 응답", () => {
-  test("항목 5개, gaps 10,000개와 available_intervals 4,500개의 변환 결과가 최적화 이전과 같다", async () => {
+  test("항목 5개, gaps 10,000개와 available_intervals 4,500개의 변환 결과가 최적화 이전과 같고 메타데이터 목록과 구간 페이지도 동일하게 검증된다", async () => {
     const page = largeDailyPage();
     expect(page.items.reduce((sum, item) => sum + item.gaps.length, 0)).toBe(10_000);
     expect(page.items.reduce((sum, item) => sum + item.available_intervals.length, 0)).toBe(4500);
-    const recordings = await api(JSON.parse(JSON.stringify(page))).queryRecordings({ from: "2026-10-12", to: "2026-10-16" });
+    const serverNow = Date.parse("2026-10-17T00:00:00Z");
+    const recordings = page.items.map((item) => mapDailyRecording(dailyRecording(item, "camera-main"), serverNow));
     const output = JSON.stringify(recordings);
     expect(recordings).toHaveLength(5);
     expect(recordings[0].gaps?.slice(0, 2)).toEqual([
@@ -75,7 +76,39 @@ describe("대용량 날짜 녹화 응답", () => {
       { start: "2026-10-12 00:00:40", end: "2026-10-12 00:00:50" },
     ]);
     expect(output.length).toBe(2_210_996);
-    expect(digest(output)).toBe(6481720745419997);
+    expect(digest(output)).toBe(4393783575106394);
+
+    const metadataPage = {
+      items: page.items.map((item) => ({
+        ...Object.fromEntries(
+          Object.entries(item).filter(([key]) => key !== "gaps" && key !== "available_intervals"),
+        ),
+        revision: 1,
+      })),
+      next_cursor: null,
+    };
+    const listed = await api(metadataPage).queryRecordings({ from: "2026-10-12", to: "2026-10-16" });
+    expect(listed).toHaveLength(5);
+    expect(listed[0].gaps).toBeUndefined();
+    expect(listed[0].daily?.view).toBe("metadata");
+
+    const first = page.items[0];
+    expect(dailyGapPage({
+      recording_id: first.recording_id,
+      revision: 1,
+      snapshot: "snap-large",
+      items: first.gaps,
+      total: first.gaps.length,
+      next_cursor: null,
+    }, first.recording_id).items).toHaveLength(2000);
+    expect(dailyAvailableIntervalPage({
+      recording_id: first.recording_id,
+      revision: 1,
+      snapshot: "snap-large",
+      items: first.available_intervals,
+      total: first.available_intervals.length,
+      next_cursor: null,
+    }, first.recording_id).items).toHaveLength(900);
   });
 
   test("timestamp, timestampValue와 wallClock은 최적화 이전 구현과 같은 값을 돌려준다", () => {
@@ -105,9 +138,9 @@ describe("대용량 날짜 녹화 응답", () => {
     ["has_gaps 불일치", (item: ReturnType<typeof largeDailyRecording>) => { (item as { has_gaps: boolean }).has_gaps = false; }],
   ])("잘못된 응답(%s)은 계속 거부한다", (_name, tamper) => {
     const valid = largeDailyPage(1, 40, 20);
-    expect(() => dailyRecordingPage(valid, "camera-main")).not.toThrow();
+    expect(() => dailyRecording(valid.items[0], "camera-main")).not.toThrow();
     const broken = largeDailyPage(1, 40, 20);
     tamper(broken.items[0]);
-    expect(() => dailyRecordingPage(broken, "camera-main")).toThrow(failure);
+    expect(() => dailyRecording(broken.items[0], "camera-main")).toThrow(failure);
   });
 });

@@ -1839,6 +1839,8 @@ export function createHttpDashboardDataSource({
     },
     getRecording,
     ...(supportsDailyRecordings ? {
+      getDailyRecordingGaps: async (recordingId: string, options?: { cursor?: string; limit?: number }, signal?: AbortSignal) => (await recordingsApi()).getDailyRecordingGaps(recordingId, options, signal),
+      getDailyRecordingAvailableIntervals: async (recordingId: string, options?: { cursor?: string; limit?: number }, signal?: AbortSignal) => (await recordingsApi()).getDailyRecordingAvailableIntervals(recordingId, options, signal),
       deleteDailyRecording: async (recordingId: string, signal?: AbortSignal): Promise<DailyRecordingDeletion> => (await recordingsApi()).deleteDailyRecording(recordingId, signal),
       prepareDailyRecordingExport: async (recordingId: string, signal?: AbortSignal) => (await recordingsApi()).prepareDailyRecordingExport(recordingId, signal),
     } : {}),

@@ -15,7 +15,7 @@ import {
 import { ApiError, createHttpDashboardDataSource } from "./http-dashboard-data-source";
 import type { DashboardData } from "../domain/dashboard";
 import { activeAlertsBasisFixture, activeAlertsFixture, collectionSummaryFixture, eventRecordingFixture, fillForecastFixture, measurementLayoutFixture, eventRecordingId, eventRecordingPageFixture, eventReplayFixture, monitoringV2StateFixture } from "../test/backend-contract-fixtures";
-import { dailyRecordingFixture, dailyRecordingId } from "../test/daily-recording-fixtures";
+import { dailyRecordingFixture, dailyRecordingId, dailyRecordingMetadataFixture } from "../test/daily-recording-fixtures";
 
 type RecordedRequest = { init?: RequestInit; url: URL };
 
@@ -346,8 +346,8 @@ function dailySource({
       requests.push({ url, init });
       const response = override?.(url, init);
       if (response) return response;
-      if (url.pathname === "/api/v2/recordings/daily") return jsonResponse({ items: [dailyRecordingFixture], next_cursor: null });
-      if (url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}`) return jsonResponse(dailyRecordingFixture);
+      if (url.pathname === "/api/v2/recordings/daily/summary") return jsonResponse({ items: [dailyRecordingMetadataFixture], next_cursor: null });
+      if (url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}/summary`) return jsonResponse(dailyRecordingMetadataFixture);
       return base(input, init);
     },
   });
@@ -377,7 +377,7 @@ describe("화면별 조회 범위와 요청 대기 제한", () => {
     const base = createV2ContractFetch();
     const fetchImplementation = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = inputUrl(input);
-      if (url.pathname === "/api/v2/recordings/daily") return jsonResponse({ items: [], next_cursor: null });
+      if (url.pathname === "/api/v2/recordings/daily/summary") return jsonResponse({ items: [], next_cursor: null });
       return base(input, init);
     });
     const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2",
@@ -566,9 +566,9 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
       daily: { recordedSeconds: 50, hasGaps: true, exportState: "not_requested" } });
     expect(routeData.recordings![0].downloadUrl).toBeUndefined();
     expect(requests.some(({ url }) => url.pathname === "/api/v1/recordings")).toBe(false);
-    const parameters = requests.find(({ url }) => url.pathname === "/api/v2/recordings/daily")!.url.searchParams;
-    expect([...parameters.keys()].sort()).toEqual(["from_date", "limit", "to_date", "view"]);
-    expect(parameters.get("view")).toBe("summary");
+    const parameters = requests.find(({ url }) => url.pathname === "/api/v2/recordings/daily/summary")!.url.searchParams;
+    expect([...parameters.keys()].sort()).toEqual(["from_date", "limit", "to_date"]);
+    expect(parameters.get("view")).toBeNull();
     expect(parameters.get("to_date")).toBe("2026-10-14");
     expect(parameters.get("limit")).toBe("100");
   });
@@ -582,13 +582,13 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
     expect(items?.map(item => ({ id: item.id, source: item.source }))).toEqual([
       { id: dailyRecordingId, source: "event" }, { id: dailyRecordingId, source: "daily" },
     ]);
-    const queries = requests.filter(({ url }) => ["/api/v2/recordings/events", "/api/v2/recordings/daily"].includes(url.pathname));
+    const queries = requests.filter(({ url }) => ["/api/v2/recordings/events", "/api/v2/recordings/daily/summary"].includes(url.pathname));
     expect(queries).toHaveLength(2);
     expect(queries.every(({ init }) => init?.signal && !init.signal.aborted)).toBe(true);
     expect(queries.every(({ url }) => !url.searchParams.has("category"))).toBe(true);
   });
 
-  test.each(["/api/v2/recordings/events", "/api/v2/recordings/daily"])("전체 조회의 %s 실패는 부분 결과를 반환하지 않는다", async path => {
+  test.each(["/api/v2/recordings/events", "/api/v2/recordings/daily/summary"])("전체 조회의 %s 실패는 부분 결과를 반환하지 않는다", async path => {
     const { source } = dailySource({ override: url => url.pathname === path
       ? jsonResponse({ detail: "Synthetic query failure" }, 503) : undefined });
     await source.getDashboardData();
@@ -609,16 +609,16 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
   test("한국 날짜 inclusive 조회 종료를 exclusive 날짜로 변환하고 opaque cursor를 그대로 전달한다", async () => {
     const cursor = "opaque+/cursor==";
     const nextId = "650e8400-e29b-41d4-a716-446655440000";
-    const { source, requests } = dailySource({ override: url => url.pathname === "/api/v2/recordings/daily"
+    const { source, requests } = dailySource({ override: url => url.pathname === "/api/v2/recordings/daily/summary"
       ? url.searchParams.get("cursor") === null
-        ? jsonResponse({ items: [dailyRecordingFixture], next_cursor: cursor })
-        : jsonResponse({ items: [{ ...dailyRecordingFixture, recording_id: nextId,
+        ? jsonResponse({ items: [dailyRecordingMetadataFixture], next_cursor: cursor })
+        : jsonResponse({ items: [{ ...dailyRecordingMetadataFixture, recording_id: nextId,
           playback_path: `/media/daily-recordings/${nextId}/hls/index.m3u8` }], next_cursor: null }) : undefined });
     await source.getDashboardData();
     const signal = new AbortController().signal;
     const items = await source.queryRecordings?.({ from: "2026-10-11T15:00:00Z", to: "2026-10-12T14:59:00Z", recordingSource: "daily" }, signal);
     expect(items?.map(item => item.id)).toEqual([dailyRecordingId, nextId]);
-    const pages = requests.filter(({ url }) => url.pathname === "/api/v2/recordings/daily");
+    const pages = requests.filter(({ url }) => url.pathname === "/api/v2/recordings/daily/summary");
     expect(pages).toHaveLength(2);
     expect(pages[0].url.searchParams.get("from_date")).toBe("2026-10-12");
     expect(pages[0].url.searchParams.get("to_date")).toBe("2026-10-13");
@@ -631,7 +631,7 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
       ? jsonResponse({ ...monitoringV2StateFixture("FRESH", 0), serverTime: "2026-10-12T23:59:50+09:00" }) : undefined });
     await source.getDashboardData();
     await source.loadRouteData!("recordings", { search: "" });
-    expect(requests.find(({ url }) => url.pathname === "/api/v2/recordings/daily")?.url.searchParams.get("to_date")).toBe("2026-10-13");
+    expect(requests.find(({ url }) => url.pathname === "/api/v2/recordings/daily/summary")?.url.searchParams.get("to_date")).toBe("2026-10-13");
   });
 
   test.each([
@@ -648,8 +648,8 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
   });
 
   test.each(["cursor", "identity"])("반복된 %s는 무한 조회 또는 중복 목록이 되지 않는다", async (duplicate) => {
-    const { source } = dailySource({ override: url => url.pathname === "/api/v2/recordings/daily"
-      ? jsonResponse({ items: duplicate === "identity" ? [dailyRecordingFixture] : [], next_cursor: "same-cursor" }) : undefined });
+    const { source } = dailySource({ override: url => url.pathname === "/api/v2/recordings/daily/summary"
+      ? jsonResponse({ items: duplicate === "identity" ? [dailyRecordingMetadataFixture] : [], next_cursor: "same-cursor" }) : undefined });
     await source.getDashboardData();
     await expect(source.queryRecordings?.({ from: "2026-10-12", to: "2026-10-12", recordingSource: "daily" })).rejects.toThrow("Unexpected");
   });
@@ -658,7 +658,7 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
     const controller = new AbortController();
     let page = 0;
     const { source } = dailySource({ override: url => {
-      if (url.pathname !== "/api/v2/recordings/daily") return undefined;
+      if (url.pathname !== "/api/v2/recordings/daily/summary") return undefined;
       page += 1;
       if (page === 2) controller.abort();
       return jsonResponse({ items: [], next_cursor: page === 1 ? "next" : null });
@@ -670,7 +670,7 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
   });
 
   test.each([404, 503])("날짜 API %i는 이벤트 목록으로 대체하거나 서버 오류 원문을 표시하지 않는다", async status => {
-    const { source, requests } = dailySource({ override: url => url.pathname === "/api/v2/recordings/daily"
+    const { source, requests } = dailySource({ override: url => url.pathname === "/api/v2/recordings/daily/summary"
       ? jsonResponse({ detail: "/private/media/path SECRET Traceback" }, status) : undefined });
     await source.getDashboardData();
     const data = await source.loadRouteData!("recordings", { search: "" });
@@ -681,15 +681,15 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
   });
 
   test.each([401, 403])("날짜 목록 권한 오류 %i는 부분 오류로 숨기지 않는다", async status => {
-    const { source } = dailySource({ override: url => url.pathname === "/api/v2/recordings/daily" ? jsonResponse({ detail: "Denied" }, status) : undefined });
+    const { source } = dailySource({ override: url => url.pathname === "/api/v2/recordings/daily/summary" ? jsonResponse({ detail: "Denied" }, status) : undefined });
     await source.getDashboardData();
     await expect(source.loadRouteData!("recordings", { search: "" })).rejects.toMatchObject({ status });
   });
 
   test("runtime camera 불일치와 범위 밖 날짜를 거부한다", async () => {
     for (const changes of [{ camera_id: "other-camera" }, { recording_date: "2020-01-01" }]) {
-      const { source } = dailySource({ override: url => url.pathname === "/api/v2/recordings/daily"
-        ? jsonResponse({ items: [{ ...dailyRecordingFixture, ...changes }], next_cursor: null }) : undefined });
+      const { source } = dailySource({ override: url => url.pathname === "/api/v2/recordings/daily/summary"
+        ? jsonResponse({ items: [{ ...dailyRecordingMetadataFixture, ...changes }], next_cursor: null }) : undefined });
       await source.getDashboardData();
       const routeData = await source.loadRouteData!("recordings", { search: "" });
       expect(routeData.recordingsState?.status).toBe("error");
@@ -712,8 +712,8 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
       { recording_id: "650e8400-e29b-41d4-a716-446655440000", playback_path: "/media/daily-recordings/650e8400-e29b-41d4-a716-446655440000/hls/index.m3u8" },
       { camera_id: "other-camera" }, { playback_path: "https://private.example/index.m3u8" },
     ]) {
-      const { source } = dailySource({ override: url => url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}`
-        ? jsonResponse({ ...dailyRecordingFixture, ...changes }) : undefined });
+      const { source } = dailySource({ override: url => url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}/summary`
+        ? jsonResponse({ ...dailyRecordingMetadataFixture, ...changes }) : undefined });
       await source.getDashboardData();
       await expect(source.getRecording?.(dailyRecordingId, undefined, "daily")).rejects.toThrow("Unexpected");
     }
@@ -731,15 +731,15 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
     expect(preparation.init?.credentials).toBe("include");
     expect(new Headers(preparation.init?.headers).get("X-CSRF-Token")).toBe(sessionFixture.csrfToken);
     const at = requests.indexOf(preparation);
-    expect(requests[at - 1].url.pathname).toBe(`/api/v2/recordings/daily/${dailyRecordingId}`);
+    expect(requests[at - 1].url.pathname).toBe(`/api/v2/recordings/daily/${dailyRecordingId}/summary`);
   });
 
   test.each([
     { status: "recording" }, { status: "finalizing" }, { status: "failed" }, { status: "expired" }, { status: "deleted" },
     { export_allowed: false }, { expires_at: "2026-10-12T16:00:00Z" },
   ])("미완료 또는 허용되지 않은 날짜 %j는 export POST를 보내지 않는다", async changes => {
-    const { source, requests } = dailySource({ override: url => url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}`
-      ? jsonResponse({ ...dailyRecordingFixture, ...changes }) : undefined });
+    const { source, requests } = dailySource({ override: url => url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}/summary`
+      ? jsonResponse({ ...dailyRecordingMetadataFixture, ...changes }) : undefined });
     await source.getDashboardData();
     await expect(source.prepareDailyRecordingExport?.(dailyRecordingId)).rejects.toMatchObject({ status: 409, code: "DAILY_EXPORT_UNAVAILABLE" });
     expect(requests.some(({ init }) => init?.method === "POST")).toBe(false);
@@ -748,7 +748,7 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
   test("서버 시각 기준 오늘 녹화는 closed여도 전체 다운로드를 준비하지 않는다", async () => {
     const { source, requests } = dailySource({ override: url => url.pathname === "/api/v2/monitoring/snapshot"
       ? jsonResponse({ ...monitoringV2StateFixture("FRESH", 0), serverTime: "2026-10-12T12:00:00+09:00" })
-      : url.pathname === "/api/v2/recordings/daily" ? jsonResponse({ items: [], next_cursor: null }) : undefined });
+      : url.pathname === "/api/v2/recordings/daily/summary" ? jsonResponse({ items: [], next_cursor: null }) : undefined });
     await source.getDashboardData();
     await expect(source.prepareDailyRecordingExport?.(dailyRecordingId)).rejects.toMatchObject({ status: 409 });
     expect(requests.some(({ init }) => init?.method === "POST")).toBe(false);
@@ -756,8 +756,8 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
 
   test("준비 상태 조회에 download_path가 제공된 경우에만 다운로드를 활성화한다", async () => {
     let ready = false;
-    const { source, requests } = dailySource({ override: url => url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}`
-      ? jsonResponse({ ...dailyRecordingFixture, export_state: ready ? "ready" : "processing",
+    const { source, requests } = dailySource({ override: url => url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}/summary`
+      ? jsonResponse({ ...dailyRecordingMetadataFixture, export_state: ready ? "ready" : "processing",
         download_path: ready ? `/media/daily-recordings/${dailyRecordingId}/content?download=true` : null,
         size_bytes: ready ? 1024 : null, export_expires_at: "2026-10-14T00:00:00Z" }) : undefined });
     await source.getDashboardData();
@@ -784,9 +784,13 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
   test("삭제가 503이어도 재조회에서 이미 없으면 삭제 반영으로 구분하고 남아 있으면 오류를 유지한다", async () => {
     let remaining = false;
     const { source } = dailySource({ override: (url, init) => {
-      if (url.pathname !== `/api/v2/recordings/daily/${dailyRecordingId}`) return undefined;
-      if (init?.method === "DELETE") return jsonResponse({ detail: "cleanup failed" }, 503);
-      return remaining ? jsonResponse(dailyRecordingFixture) : jsonResponse({ detail: "not found" }, 404);
+      if (url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}` && init?.method === "DELETE") {
+        return jsonResponse({ detail: "cleanup failed" }, 503);
+      }
+      if (url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}/summary`) {
+        return remaining ? jsonResponse(dailyRecordingMetadataFixture) : jsonResponse({ detail: "not found" }, 404);
+      }
+      return undefined;
     } });
     await source.getDashboardData();
     expect(await source.deleteDailyRecording?.(dailyRecordingId)).toEqual({ outcome: "reflected" });
@@ -800,6 +804,44 @@ describe("날짜 녹화와 이벤트 녹화의 독립적인 Backend adapter", ()
     await source.getDashboardData();
     await expect(source.deleteDailyRecording?.(dailyRecordingId)).rejects.toMatchObject({ status: 409 });
     expect(requests.filter(({ init }) => init?.method === "DELETE")).toHaveLength(1);
+  });
+
+  test("날짜 구간 페이지 API는 gaps와 available-intervals를 cursor와 limit로 조회하고 지원하지 않는 계약에서는 제공하지 않는다", async () => {
+    const { source, requests } = dailySource({ override: (url) => {
+      if (url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}/gaps`) {
+        return jsonResponse({
+          recording_id: dailyRecordingId,
+          revision: 1,
+          snapshot: "snap-1",
+          items: dailyRecordingFixture.gaps,
+          total: 1,
+          next_cursor: null,
+        });
+      }
+      if (url.pathname === `/api/v2/recordings/daily/${dailyRecordingId}/available-intervals`) {
+        return jsonResponse({
+          recording_id: dailyRecordingId,
+          revision: 1,
+          snapshot: "snap-1",
+          items: dailyRecordingFixture.available_intervals,
+          total: 2,
+          next_cursor: "next-interval",
+        });
+      }
+      return undefined;
+    } });
+    await source.getDashboardData();
+    const gaps = await source.getDailyRecordingGaps?.(dailyRecordingId, { limit: 100 });
+    const intervals = await source.getDailyRecordingAvailableIntervals?.(dailyRecordingId, { limit: 50, cursor: "cur-1" });
+    expect(gaps?.total).toBe(1);
+    expect(intervals?.nextCursor).toBe("next-interval");
+    expect(requests.find(({ url }) => url.pathname.endsWith("/available-intervals"))?.url.searchParams.get("cursor")).toBe("cur-1");
+
+    for (const options of [{ apiContract: "backend", monitoringVersion: "v1" }, { apiContract: "proposal", monitoringVersion: "v2" }] as const) {
+      const unsupported = createHttpDashboardDataSource(options);
+      expect(unsupported).not.toHaveProperty("getDailyRecordingGaps");
+      expect(unsupported).not.toHaveProperty("getDailyRecordingAvailableIntervals");
+    }
   });
 
   test("v1과 proposal은 날짜 녹화 지원 또는 export 준비 기능을 제공하지 않는다", () => {
@@ -1094,7 +1136,7 @@ describe("보조 조회의 오류 경계", () => {
   });
 
   test("녹화 목록 오류는 snapshot과 별도 상태로 남기며 최근 완료는 조회하지 않는다", async () => {
-    const fetchImplementation = createV2ContractFetch((url) => ["/api/v2/monitoring/collection-summary", "/api/v2/recordings/daily"].includes(url.pathname) ? jsonResponse({}, 500) : undefined);
+    const fetchImplementation = createV2ContractFetch((url) => ["/api/v2/monitoring/collection-summary", "/api/v2/recordings/daily/summary"].includes(url.pathname) ? jsonResponse({}, 500) : undefined);
     const source = createHttpDashboardDataSource({ apiContract: "backend", monitoringVersion: "v2", fetchImplementation });
     const data = await source.getDashboardData();
     const routeData = await source.loadRouteData!("recordings", { search: "" });
@@ -1966,7 +2008,7 @@ describe("HTTP 대시보드 데이터 소스", () => {
       expect(historyData.history).toBeDefined();
 
       const recordingsData = await source.loadRouteData!("recordings", { search: "" });
-      expect(requests.some(({ url }) => url.pathname === "/api/v2/recordings/daily")).toBe(true);
+      expect(requests.some(({ url }) => url.pathname === "/api/v2/recordings/daily/summary")).toBe(true);
       expect(recordingsData.recordings).toHaveLength(1);
 
       const adminData = await source.loadRouteData!("admin", { search: "" });
@@ -1996,7 +2038,7 @@ describe("HTTP 대시보드 데이터 소스", () => {
       let failRecordings = false;
       const { source: fallbackSource } = dailySource({
         override: (url) => {
-          if (url.pathname === "/api/v2/recordings/daily" && failRecordings) {
+          if (url.pathname === "/api/v2/recordings/daily/summary" && failRecordings) {
             return jsonResponse({ detail: "Server error" }, 500);
           }
           return undefined;

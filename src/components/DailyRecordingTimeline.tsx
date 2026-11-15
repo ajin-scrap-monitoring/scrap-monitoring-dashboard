@@ -1,6 +1,25 @@
 import { memo, useMemo, useState, type MouseEvent } from "react";
 
-import { dailyPlaybackPosition, dailyRecordingAvailability, type dailyTimeState, type DailyRecordingFull } from "../data/daily-recordings";
+import {
+  dailyPlaybackPosition,
+  dailyRecordingAvailability,
+  type DailyAvailableInterval,
+  type DailyGap,
+  type DailyRecording,
+  type dailyTimeState,
+} from "../data/daily-recordings";
+import type { DailyIntervalLoadStatus } from "../pages/use-daily-recording-intervals";
+
+export type DailyRecordingTimelinePagination = {
+  hasPrevious: boolean;
+  hasNext: boolean;
+  busy?: boolean;
+  error?: string;
+  pageLabel?: string;
+  onPrevious: () => void;
+  onNext: () => void;
+  onRetry?: () => void;
+};
 
 type TimeState = ReturnType<typeof dailyTimeState>;
 type TimeRange = { start: number; end: number; state: TimeState };
@@ -18,12 +37,18 @@ function clock(at: number, end: number): string {
   return at === end ? "24:00:00" : new Date(at + 9 * 60 * 60 * 1000).toISOString().slice(11, 19);
 }
 
-function ranges(recording: DailyRecordingFull, now: number, unavailable: boolean): TimeRange[] {
+function ranges(
+  recording: DailyRecording,
+  now: number,
+  unavailable: boolean,
+  availableIntervals: readonly DailyAvailableInterval[],
+  gapsList: readonly DailyGap[],
+): TimeRange[] {
   const start = Date.parse(recording.windowStartsAt);
   const end = Date.parse(recording.windowEndsAt);
   const coverage = Date.parse(recording.coverageAsOfAt);
-  const available = recording.availableIntervals.map(interval => ({ start: Date.parse(interval.startsAt), end: Date.parse(interval.endsAt) }));
-  const gaps = recording.gaps.map(gap => ({ start: Date.parse(gap.startsAt), end: Date.parse(gap.endsAt) }));
+  const available = availableIntervals.map(interval => ({ start: Date.parse(interval.startsAt), end: Date.parse(interval.endsAt) }));
+  const gaps = gapsList.map(gap => ({ start: Date.parse(gap.startsAt), end: Date.parse(gap.endsAt) }));
   const boundaries = [...new Set([
     start, end, Math.max(start, Math.min(end, now)), coverage,
     ...available.flatMap(interval => [interval.start, interval.end]),
@@ -131,20 +156,50 @@ function DenseTimeline({ timeRanges, points, start, end, playable, onSeekAt }: {
   </>;
 }
 
-export const DailyRecordingTimeline = memo(function DailyRecordingTimeline({ recording, now, onSeek }: { recording: DailyRecordingFull; now: number; onSeek: (seconds: number) => void }) {
+export const DailyRecordingTimeline = memo(function DailyRecordingTimeline({
+  recording,
+  now,
+  onSeek,
+  availableIntervals,
+  gaps,
+  availableStatus = "ready",
+  gapsStatus = "ready",
+  pagination,
+}: {
+  recording: DailyRecording;
+  now: number;
+  onSeek: (seconds: number) => void;
+  availableIntervals?: readonly DailyAvailableInterval[];
+  gaps?: readonly DailyGap[];
+  availableStatus?: DailyIntervalLoadStatus;
+  gapsStatus?: DailyIntervalLoadStatus;
+  pagination?: DailyRecordingTimelinePagination;
+}) {
   const start = Date.parse(recording.windowStartsAt);
   const end = Date.parse(recording.windowEndsAt);
   const duration = end - start;
   const availability = dailyRecordingAvailability(recording, now);
   const timelineNow = Math.min(end, now);
   const unavailable = availability.originalUnavailable;
+  const resolvedAvailable = useMemo(
+    () => availableIntervals ?? (recording.view === "full" ? recording.availableIntervals : []),
+    [availableIntervals, recording],
+  );
+  const resolvedGaps = useMemo(
+    () => gaps ?? (recording.view === "full" ? recording.gaps : []),
+    [gaps, recording],
+  );
   const { timeRanges, observedPoints, points } = useMemo(() => {
-    const observedPoints = recording.availableIntervals.filter(interval => !unavailable && interval.startsAt === interval.endsAt && Date.parse(interval.startsAt) <= timelineNow);
-    return { timeRanges: ranges(recording, timelineNow, unavailable), observedPoints, points: observedPoints.map(interval => ({ at: Date.parse(interval.startsAt) })) };
-  }, [recording, timelineNow, unavailable]);
+    const observedPoints = resolvedAvailable.filter(interval => !unavailable && interval.startsAt === interval.endsAt && Date.parse(interval.startsAt) <= timelineNow);
+    return {
+      timeRanges: ranges(recording, timelineNow, unavailable, resolvedAvailable, resolvedGaps),
+      observedPoints,
+      points: observedPoints.map(interval => ({ at: Date.parse(interval.startsAt) })),
+    };
+  }, [recording, resolvedAvailable, resolvedGaps, timelineNow, unavailable]);
   const dense = timeRanges.length + observedPoints.length > 256;
   const seekAt = (at: number) => {
-    const seconds = dailyPlaybackPosition(recording, new Date(at).toISOString());
+    const seconds = dailyPlaybackPosition(recording, new Date(at).toISOString(), resolvedAvailable);
     if (seconds !== null) onSeek(seconds);
   };
   const seek = (event: MouseEvent<HTMLButtonElement>, range: TimeRange) => {
@@ -154,6 +209,9 @@ export const DailyRecordingTimeline = memo(function DailyRecordingTimeline({ rec
     seekAt(at);
   };
   const presentStates = [...new Set([...timeRanges.map(range => range.state), ...(observedPoints.length ? ["available" as const] : [])])];
+  const loading = availableStatus === "loading" || gapsStatus === "loading";
+  const hasError = Boolean(pagination?.error || availableStatus === "error" || gapsStatus === "error");
+  const showControls = Boolean(hasError || loading || (pagination && (pagination.hasPrevious || pagination.hasNext)));
 
   return <section className="daily-recording-timeline" aria-label="날짜 녹화 범위">
     <div className="daily-recording-timeline-heading">
@@ -161,7 +219,7 @@ export const DailyRecordingTimeline = memo(function DailyRecordingTimeline({ rec
       <span>{recording.hasGaps || recording.coverage === "partial" ? "부분 저장" : recording.coverage === "complete" ? "전체 구간 확보" : recording.coverage === "none" ? "확보된 영상 없음" : "확보 구간 확인 중"}</span>
     </div>
     <div className="daily-recording-timeline-track" role="group" aria-label="00:00부터 24:00까지 녹화 범위">
-      {dense ? <DenseTimeline key={recording.id} timeRanges={timeRanges} points={points} start={start} end={end} playable={availability.playbackReady} onSeekAt={seekAt} /> : timeRanges.map(range => {
+      {dense ? <DenseTimeline key={`${recording.id}:${resolvedAvailable[0]?.startsAt ?? ""}:${resolvedGaps[0]?.startsAt ?? ""}`} timeRanges={timeRanges} points={points} start={start} end={end} playable={availability.playbackReady} onSeekAt={seekAt} /> : timeRanges.map(range => {
         const label = rangeLabel(range, end);
         const style = { left: `${(range.start - start) / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` };
         return range.state === "available" && availability.playbackReady
@@ -178,7 +236,20 @@ export const DailyRecordingTimeline = memo(function DailyRecordingTimeline({ rec
       })}
     </div>
     <div className="daily-recording-timeline-ticks" aria-hidden="true"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
-    <div className="daily-recording-timeline-legend">{presentStates.map(state => <span key={state}><i className={`daily-recording-range-${state}`} aria-hidden="true" />{labels[state]}</span>)}</div>
+    <div className="daily-recording-timeline-footer">
+      <div className="daily-recording-timeline-legend">{presentStates.map(state => <span key={state}><i className={`daily-recording-range-${state}`} aria-hidden="true" />{labels[state]}</span>)}</div>
+      {showControls && <div className="daily-recording-timeline-controls">
+        {hasError ? <>
+          <span className="daily-recording-timeline-error" role="alert">{pagination?.error ?? "구간 확인 불가"}</span>
+          {pagination?.onRetry && <button type="button" className="daily-recording-timeline-btn" onClick={pagination.onRetry}>다시 조회</button>}
+        </> : loading ? <span role="status">구간 확인 중</span> : null}
+        {pagination && (pagination.hasPrevious || pagination.hasNext) && <div className="daily-recording-timeline-pager">
+          {pagination.pageLabel && <span>{pagination.pageLabel}</span>}
+          <button type="button" className="daily-recording-timeline-btn" disabled={!pagination.hasPrevious || pagination.busy} onClick={pagination.onPrevious}>이전</button>
+          <button type="button" className="daily-recording-timeline-btn" disabled={!pagination.hasNext || pagination.busy} onClick={pagination.onNext}>다음</button>
+        </div>}
+      </div>}
+    </div>
   </section>;
 });
 

@@ -2,10 +2,28 @@ import { useEffect, useState } from "react";
 
 import { wallClock } from "../data/contract-values";
 import type { DashboardDataSource } from "../data/dashboard-data-source";
+import type { DailyGap } from "../data/daily-recordings";
 import type { Recording, RecordingCoverageDetail } from "../domain/dashboard";
 import { replayClock } from "../data/event-recordings";
+import type { DailyIntervalLoadStatus } from "../pages/use-daily-recording-intervals";
 import { DetailFields } from "./DetailFields";
 import { recordingErrorCode } from "../recording-status";
+
+export type DailyGapsDialogState = {
+  gaps: readonly DailyGap[];
+  total: number | null;
+  status: DailyIntervalLoadStatus;
+  error?: string;
+  pagination?: {
+    hasPrevious: boolean;
+    hasNext: boolean;
+    busy: boolean;
+    pageNumber: number;
+    onPrevious: () => void;
+    onNext: () => void;
+    onRetry: () => void;
+  };
+};
 
 const intervalKindLabels: Record<string, string> = {
   GAP: "확인된 누락",
@@ -19,13 +37,15 @@ export default function RecordingCoverageDetails({
   dataSource,
   recordingId,
   recording,
+  dailyGapsState,
 }: {
   dataSource?: DashboardDataSource;
   recordingId?: string;
   recording?: Recording;
+  dailyGapsState?: DailyGapsDialogState;
 }) {
   const isEvent = Boolean(recording?.replay && recording.replay.unavailableIntervals.length > 0);
-  const isDaily = Boolean(recording?.daily && recording.daily.view === "full" && recording.daily.gaps.length > 0);
+  const isDaily = Boolean(recording?.daily && (recording.daily.view === "full" ? recording.daily.gaps.length > 0 : recording.daily.hasGaps));
 
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<{ attempt: number; source?: DashboardDataSource; recordingId?: string; detail?: RecordingCoverageDetail; error?: string }>();
@@ -67,21 +87,54 @@ export default function RecordingCoverageDetails({
     </>;
   }
 
-  if (isDaily && recording?.daily && recording.daily.view === "full") {
+  if (isDaily && recording?.daily) {
     const daily = recording.daily;
+    if (daily.view === "full") {
+      return <>
+        <DetailFields fields={[
+          ["녹화 날짜", daily.recordingDate],
+        ]} />
+        <h3>누락 구간</h3>
+        <ul>
+          {daily.gaps.map((gap, index) => {
+            const start = wallClock(gap.startsAt, true);
+            const end = wallClock(gap.endsAt, true);
+            const reason = gap.reasonCode || "정보 없음";
+            return <li key={`${index}-${gap.startsAt}`}>{start} ~ {end}, {reason}</li>;
+          })}
+        </ul>
+      </>;
+    }
+    const gaps = dailyGapsState?.gaps ?? [];
+    const total = dailyGapsState?.total ?? null;
+    const status = dailyGapsState?.status ?? "idle";
+    const error = dailyGapsState?.error;
+    const pagination = dailyGapsState?.pagination;
+    const totalLabel = typeof total === "number" ? `${total}개` : status === "error" ? "확인 불가" : "확인 중";
     return <>
       <DetailFields fields={[
         ["녹화 날짜", daily.recordingDate],
+        ["누락 구간 수", totalLabel],
       ]} />
       <h3>누락 구간</h3>
-      <ul>
-        {daily.gaps.map((gap, index) => {
-          const start = wallClock(gap.startsAt, true);
-          const end = wallClock(gap.endsAt, true);
-          const reason = gap.reasonCode || "정보 없음";
-          return <li key={`${index}-${gap.startsAt}`}>{start} ~ {end}, {reason}</li>;
-        })}
-      </ul>
+      {error ? <>
+        <p role="alert">{error}</p>
+        {pagination && <button type="button" onClick={pagination.onRetry}>다시 조회</button>}
+      </> : status === "loading" || status === "idle" ? <p role="status">누락 구간 확인 중</p> : <>
+        <ul>
+          {gaps.map((gap, index) => {
+            const start = wallClock(gap.startsAt, true);
+            const end = wallClock(gap.endsAt, true);
+            const reason = gap.reasonCode || "정보 없음";
+            return <li key={`${index}-${gap.startsAt}`}>{start} ~ {end}, {reason}</li>;
+          })}
+        </ul>
+        {pagination && (pagination.hasPrevious || pagination.hasNext) && <div className="pagination">
+          <span>{pagination.pageNumber}페이지</span>
+          <button type="button" disabled={!pagination.hasPrevious || pagination.busy} onClick={pagination.onPrevious}>이전</button>
+          <button type="button" disabled={!pagination.hasNext || pagination.busy} onClick={pagination.onNext}>다음</button>
+        </div>}
+      </>}
     </>;
   }
 

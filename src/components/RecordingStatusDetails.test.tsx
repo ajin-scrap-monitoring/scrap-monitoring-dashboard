@@ -2,9 +2,9 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 
 import { createMockDashboardDataSource } from "../data/mock-dashboard-data-source";
-import { dailyRecording } from "../data/daily-recordings";
+import { dailyRecording, dailyRecordingMetadata } from "../data/daily-recordings";
 import { recordingErrorCode } from "../recording-status";
-import { dailyRecordingFixture } from "../test/daily-recording-fixtures";
+import { dailyRecordingFixture, dailyRecordingMetadataFixture } from "../test/daily-recording-fixtures";
 
 import { RecordingStatusDetails } from "./RecordingStatusDetails";
 
@@ -107,4 +107,22 @@ test("녹화 상태 상세 창에 파일 정리 상태(pending, failed, complete
   const nullDaily = { ...baseDaily, cleanupState: null };
   rerender(<RecordingStatusDetails recording={{ ...await failedRecording(), daily: nullDaily }} />);
   expect(screen.getByText("정보 없음")).toBeVisible();
+});
+
+test("메타데이터 날짜 녹화의 누락 구간 수는 상태에 따라 전체 개수, 확인 중 또는 확인 불가로 표시하고 0개로 대체하지 않는다", async () => {
+  const metadata = dailyRecordingMetadata(dailyRecordingMetadataFixture, "camera-main");
+  const base = { ...(await failedRecording()), status: "available" as const, mediaStatus: "closed", coverage: "partial", gaps: undefined, daily: metadata };
+
+  const { rerender } = render(<RecordingStatusDetails recording={base} dailyGapStatus="loading" dailyGapTotal={null} />);
+  fireEvent.click(screen.getByRole("button", { name: "재생 가능 상세" }));
+  expect(screen.getByText("누락 구간")).toBeVisible();
+  expect(screen.getByText("확인 중")).toBeVisible();
+  expect(screen.queryByText("0개")).not.toBeInTheDocument();
+
+  rerender(<RecordingStatusDetails recording={base} dailyGapStatus="error" dailyGapTotal={null} />);
+  expect(screen.getByText("확인 불가")).toBeVisible();
+  expect(screen.queryByText("0개")).not.toBeInTheDocument();
+
+  rerender(<RecordingStatusDetails recording={base} dailyGapStatus="ready" dailyGapTotal={125} />);
+  expect(screen.getByText("125개")).toBeVisible();
 });

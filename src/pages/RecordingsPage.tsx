@@ -15,7 +15,8 @@ import type { DashboardDataSource } from "../data/dashboard-data-source";
 import type { DashboardData, DataAreaState, DataReception, EventCategory, HeaderNotification, Recording, RecordingList, RecordingListSnapshot, UserSession } from "../domain/dashboard";
 import { recordingsPerPage } from "../data/recording-list";
 import { clipIdentifier } from "../data/recording-coverage";
-import { dailyPlaybackTimestamp, dailyRecordingAvailability } from "../data/daily-recordings";
+import { dailyPlaybackTimestamp, dailyRecordingAvailability, type DailyAvailableInterval } from "../data/daily-recordings";
+import { useDailyRecordingIntervals, type DailyIntervalLoadStatus } from "./use-daily-recording-intervals";
 import { byteSize } from "../data/recording-values";
 import { wallClock } from "../data/contract-values";
 import type { EventExportStatus } from "../data/event-recordings";
@@ -74,9 +75,21 @@ function detailStillChanging(recording: Recording | null | undefined) {
     || recording?.daily?.status === "recording" || recording?.daily?.status === "finalizing" || recording?.daily?.exportState === "processing";
 }
 
-function dailyTimestamp(recording: Recording, seconds: number) {
-  const at = recording.daily && recording.daily.view === "full" ? dailyPlaybackTimestamp(recording.daily, seconds) : null;
-  return at ? recordingTimeFormat.format(new Date(at)) : null;
+function dailyTimestamp(
+  recording: Recording,
+  seconds: number,
+  intervals: readonly DailyAvailableInterval[],
+  availableStatus: DailyIntervalLoadStatus,
+) {
+  if (!recording.daily) return null;
+  const at = dailyPlaybackTimestamp(recording.daily, seconds, intervals);
+  if (at) return recordingTimeFormat.format(new Date(at));
+  if (recording.daily.view === "metadata") {
+    if (availableStatus === "loading" || availableStatus === "idle") return "실제 시각 확인 중";
+    if (availableStatus === "error") return "실제 시각 확인 불가";
+    return "실제 시각 미확인";
+  }
+  return null;
 }
 
 function replayPlayable(recording: Recording | undefined) {
@@ -173,6 +186,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
   const [playbackError, setPlaybackError] = useState<{ key?: string; message: string } | null>(null);
   const [downloadError, setDownloadError] = useState("");
   const [detailRevision, setDetailRevision] = useState(0);
+  const [detailEpoch, setDetailEpoch] = useState(0);
 
   // B-2 이벤트 구간 다운로드 상태
   const [storedEventExport, setEventExport] = useState<EventExportStatus | null>(null);
@@ -267,7 +281,21 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
   const detailRequired = Boolean(dataSource?.getRecording && !selectedSample);
   const detailReady = !detailRequired || (detailState.source === dataSource && detailState.key === selectedKey && detailState.ready);
   const detailFresh = !detailRequired || (detailReady && detailState.fresh);
+  const currentDetailError = detailState.source === dataSource && detailState.key === selectedKey ? detailState.error : undefined;
   const dailyNow = Date.parse(serverTime ?? "");
+  const onSnapshotChanged = useCallback(() => {
+    setDetailRevision(value => value + 1);
+  }, []);
+  const dailyIntervals = useDailyRecordingIntervals({
+    dataSource,
+    recording: selectedRecording,
+    detailReady,
+    detailEpoch,
+    detailError: currentDetailError,
+    now: dailyNow,
+    resetKey: `${applied.type}|${applied.start}|${applied.end}|${selectedKey ?? ""}`,
+    onSnapshotChanged,
+  });
   const dailyAvailability = selectedRecording?.daily && Number.isFinite(dailyNow) ? dailyRecordingAvailability(selectedRecording.daily, dailyNow) : undefined;
   const selectedPlaybackAvailable = Boolean(detailReady && selectedRecording && playbackError?.key !== selectedKey && (selectedRecording.daily ? dailyAvailability?.playbackReady : selectedRecording.contentUrl || selectedRecording.sample || replayPlayable(selectedRecording)));
   const selectedDownloadAvailable = Boolean(detailFresh && selectedRecording && (selectedRecording.daily ? dailyAvailability?.downloadReady : selectedRecording.downloadUrl || selectedRecording.sample));
@@ -276,7 +304,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
   const exportFailed = selectedRecording?.daily?.exportState === "failed" && !dailyAvailability?.originalUnavailable;
   const exportErrorCode = exportFailed ? recordingErrorCode(selectedRecording?.errorCode ?? selectedRecording?.daily?.error?.code) : null;
   const recordedTime = selectedRecording?.replay ? replayTimestamp(selectedRecording, playbackSeconds)
-    : selectedRecording?.daily ? dailyTimestamp(selectedRecording, playbackSeconds)
+    : selectedRecording?.daily ? dailyTimestamp(selectedRecording, playbackSeconds, dailyIntervals.availableIntervals, dailyIntervals.availableStatus)
     : selectedRecording ? playbackTimestamp(selectedRecording.start, selectedRecording.contentUrl ? playbackSeconds : 756) : null;
   const seekDailyRecording = useCallback((seconds: number) => {
     const player = playerRef.current;
@@ -296,6 +324,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
         setAvailableRecordings((items) => items.map((item) => recordingKey(item) !== selectedKey ? item : recording ?? { ...item, status: "unavailable", contentUrl: undefined, downloadUrl: undefined, daily: undefined }));
         failures = 0;
         setDetailState({ source: dataSource, key: selectedKey, ready: Boolean(recording), fresh: Boolean(recording), error: recording ? undefined : "녹화 정보가 없습니다." });
+        setDetailEpoch(value => value + 1);
         if (detailStillChanging(recording)) {
           timer = setTimeout(() => { void refresh(); }, 2000);
         }
@@ -1065,7 +1094,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                         </button>}
                       </div>
                     </div>
-                    {selectedRecording?.daily && selectedRecording.daily.view === "full" && Number.isFinite(dailyNow) && <Suspense fallback={null}><DailyRecordingTimeline recording={selectedRecording.daily} now={dailyNow} onSeek={seekDailyRecording} /></Suspense>}
+                    {selectedRecording?.daily && detailReady && Number.isFinite(dailyNow) && <Suspense fallback={null}><DailyRecordingTimeline recording={selectedRecording.daily} now={dailyNow} onSeek={seekDailyRecording} availableIntervals={dailyIntervals.availableIntervals} gaps={dailyIntervals.gaps} availableStatus={dailyIntervals.availableStatus} gapsStatus={dailyIntervals.gapsStatus} pagination={dailyIntervals.timelinePagination} /></Suspense>}
                     {selectedRecording?.sample && !selectedRecording.contentUrl && <div className="recording-controls">
                       <button
                         type="button"
@@ -1086,7 +1115,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                       <div className="recording-info-actions">
                         {(Boolean(selectedRecording?.source !== "daily" && selectedRecording?.coverage === "partial" && dataSource?.getRecordingCoverage && clipIdentifier.test(selectedRecording.id))
                           || Boolean(selectedRecording?.replay && selectedRecording.replay.unavailableIntervals.length > 0)
-                          || Boolean(selectedRecording?.daily && selectedRecording.daily.view === "full" && selectedRecording.daily.gaps.length > 0)) && <button className="detail-trigger recording-coverage-trigger" type="button" aria-haspopup="dialog" onClick={() => setCoverageRecordingId(selectedRecording.id)}>{selectedRecording?.source !== "daily" && selectedRecording?.coverage === "partial" && dataSource?.getRecordingCoverage && clipIdentifier.test(selectedRecording.id) ? "부분 저장" : "누락 구간"}</button>}
+                          || Boolean(selectedRecording?.daily && (selectedRecording.daily.view === "full" ? selectedRecording.daily.gaps.length > 0 : selectedRecording.daily.hasGaps))) && <button className="detail-trigger recording-coverage-trigger" type="button" aria-haspopup="dialog" onClick={() => setCoverageRecordingId(selectedRecording.id)}>{selectedRecording?.source !== "daily" && selectedRecording?.coverage === "partial" && dataSource?.getRecordingCoverage && clipIdentifier.test(selectedRecording.id) ? "부분 저장" : "누락 구간"}</button>}
                         {selectedRecording && (!selectedRecording.sample || selectedRecording.mediaStatus || selectedRecording.errorCode || selectedTarget || selectedThumbnailInfo !== undefined || selectedThumbnailError != null) && <RecordingStatusDetails
                           key={selectedKey}
                           recording={selectedRecording}
@@ -1099,6 +1128,8 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                           onPrepareThumbnail={(retry) => { void prepareSelectedThumbnail(retry); }}
                           isAdmin={session?.user.role === "administrator"}
                           targetKind={selectedTarget?.kind}
+                          dailyGapTotal={dailyIntervals.gapTotal}
+                          dailyGapStatus={dailyIntervals.gapsStatus}
                         />}
                       </div>
                     </div>
@@ -1157,7 +1188,19 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
         </div>
       </main>
       {coverageRecordingId && <DetailDialog id="recording-coverage-title" title="녹화 범위 상세" onClose={closeCoverage}>
-        <Suspense fallback={<p role="status">녹화 범위 확인 중</p>}><RecordingCoverageDetails key={coverageRecordingId} dataSource={dataSource} recordingId={coverageRecordingId} recording={selectedRecording?.id === coverageRecordingId ? selectedRecording : undefined} /></Suspense>
+        <Suspense fallback={<p role="status">녹화 범위 확인 중</p>}><RecordingCoverageDetails
+          key={coverageRecordingId}
+          dataSource={dataSource}
+          recordingId={coverageRecordingId}
+          recording={selectedRecording?.id === coverageRecordingId ? selectedRecording : undefined}
+          dailyGapsState={selectedRecording?.id === coverageRecordingId && selectedRecording?.daily?.view === "metadata" ? {
+            gaps: dailyIntervals.gaps,
+            total: dailyIntervals.gapTotal,
+            status: dailyIntervals.gapsStatus,
+            error: dailyIntervals.gapsError,
+            pagination: dailyIntervals.gapsPagination,
+          } : undefined}
+        /></Suspense>
       </DetailDialog>}
       {deletion && <DetailDialog id="recording-delete-title" title="날짜 녹화 삭제" onClose={deletion.busy ? () => undefined : closeDeletion}>
         <p>{deletion.date} 날짜 녹화 영상 전체가 영구 삭제됩니다. 이 영상을 사용하는 모든 알림, 오류 및 수거 이벤트 구간도 재생할 수 없게 됩니다.</p>

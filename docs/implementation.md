@@ -417,15 +417,17 @@ ID의 조합이다. 날짜 필터는 날짜만, 나머지 유형은 해당 이�
 페이지를 그대로 쓴다. v1 녹화 목록은 서버 페이지 정렬 계약이 없어 한 번에 가져온다.
 `queryRecordings`는 전체 목록이 필요한 다른 기능을 위해 모든 페이지를 조회하는 별도 경로로 유지한다.
 
-`domain/daily-recording.ts`의 `DailyRecording`은 구간 배열을 포함하는 `DailyRecordingFull`과
-구간 수만 포함하는 `DailyRecordingSummary`의 판별 가능한 union(`view: "full" | "summary"`)으로
+`domain/daily-recording.ts`의 `DailyRecording`은 구간 배열을 직접 포함하는 `DailyRecordingFull`(`view: "full"`)과
+메타데이터, `hasGaps` 및 `revision`을 포함하는 `DailyRecordingMetadata`(`view: "metadata"`)의 판별 가능한 union으로
 정의한다. `event-recordings.ts`는 이벤트 녹화 목록과 상세의 검증 및 화면 모델 변환,
-`daily-recordings.ts`는 날짜 녹화의 full 및 summary parser 분기와 확보 및 누락 및 압축 재생
-시각의 검증, `daily-recording-api.ts`는 날짜 목록과 단건, export 및 삭제를 처리한다.
-`daily-recording-api.ts`의 목록 조회는 `view=summary`를 전달하고 요약 응답의 `gap_count`,
-`available_interval_count` 및 `has_gaps` 일치를 검증하며 목록 단계의 `Recording.gaps`는 undefined로
-둔다. 녹화 화면(`RecordingsPage.tsx`)은 요약 녹화 선택 시 단건 상세 GET으로 full 녹화를 받아
-목록 항목을 교체하기 전까지 재생 로딩 상태를 표시하고 timeline 및 누락 구간 버튼 표시를 유보한다.
+`daily-recordings.ts`는 날짜 녹화 metadata, 구간 cursor 페이지(`/gaps`, `/available-intervals`)와 압축 재생
+시각의 검증, `daily-recording-api.ts`는 `/api/v2/recordings/daily/summary` 목록, 단건 `summary`, 구간 cursor 페이지, export 및 삭제를 처리한다.
+`daily-recording-api.ts`의 목록과 단건 metadata 조회는 구간 배열이 포함되면 계약 오류로 처리하며
+목록과 단건 메타데이터 단계의 `Recording.gaps`는 undefined로 둔다. 녹화 화면(`RecordingsPage.tsx`와 `use-daily-recording-intervals.ts`)은
+날짜 녹화 선택 시 단건 `/summary`로 최신 메타데이터를 확인하기 전까지 재생 로딩 상태를 표시하고
+timeline 및 누락 구간 버튼 표시를 유보한다. 단건 `/summary` 확인 뒤 `/gaps`와 `/available-intervals`를 한 번에 1페이지(`limit=100`)씩 조회해
+timeline, `.recorded-time` 실제 시각과 누락 구간 dialog를 표시하며 페이지 밖 영역은 미확인 상태로 구분한다.
+이전과 다음 이동은 방문한 cursor stack을 사용하고 `400 INVALID_CURSOR`는 1페이지 단발 재시도, `409 DAILY_SNAPSHOT_CHANGED`와 page 간 `revision` 또는 `snapshot` 불일치는 최대 2회 단건 `/summary` 재조회로 복구하며 일시 오류는 수동 재조회만 제공한다.
 `recording-coverage.ts`는 제안 모드의 clip 범위를 처리한다. 날짜 모듈은 필요할 때 로드하고 Media
 내부 경로를 직접 요청하지 않는다. 날짜 녹화 응답의 검증은 `gaps`와 `available_intervals`의 구간 경계를
 숫자 값으로 저장해 범위 검증에 재사용하고, 날짜 형식 검증 결과는 날짜별로 재사용한다.

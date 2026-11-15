@@ -36,3 +36,12 @@ export const dailyRecordingFixture = {
   cleanup_error: null,
   space_reclaimed: null,
 } as const satisfies components["schemas"]["DailyRecording"];
+
+const { gaps: _gaps, available_intervals: _availableIntervals, ...dailyRecordingState } = dailyRecordingFixture;
+void _gaps;
+void _availableIntervals;
+
+export const dailyRecordingMetadataFixture = {
+  ...dailyRecordingState,
+  revision: 1,
+} as const satisfies components["schemas"]["DailyRecordingMetadata"];

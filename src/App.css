@@ -320,6 +320,12 @@ button { cursor: pointer; word-break: keep-all; overflow-wrap: break-word; }
 .daily-recording-timeline-legend { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 2px; }
 .daily-recording-timeline-legend > span { display: inline-flex; align-items: center; gap: 4px; }
 .daily-recording-timeline-legend i { display: inline-block; width: 10px; height: 6px; border-radius: 1px; }
+.daily-recording-timeline-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 12px; margin-top: 2px; }
+.daily-recording-timeline-footer .daily-recording-timeline-legend { margin-top: 0; }
+.daily-recording-timeline-controls, .daily-recording-timeline-pager { display: inline-flex; align-items: center; gap: 6px; }
+.daily-recording-timeline-error { color: #b91c1c; font-weight: 600; }
+.daily-recording-timeline-btn { padding: 1px 6px; border: 1px solid #d8e0e9; border-radius: 3px; background: #ffffff; color: #172238; font-size: 10px; font-weight: 600; line-height: 1.2; cursor: pointer; }
+.daily-recording-timeline-btn:disabled { color: #94a3b8; cursor: not-allowed; }
 .recording-media-unavailable { display: grid; width: 100%; height: 100%; place-items: center; color: #cbd3dc; font-size: 14px; font-weight: 700; }
 .recording-controls { display: flex; width: 100%; height: 44px; align-items: center; gap: 12px; padding: 0 12px; background: #282c30; color: #ffffff; }
 .recording-controls button { width: 20px; padding: 0; border: 0; background: transparent; color: inherit; font-size: 16px; font-weight: 800; }

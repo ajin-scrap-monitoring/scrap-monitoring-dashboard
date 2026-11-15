@@ -1,6 +1,16 @@
 import { describe, expect, test } from "vitest";
 
-import { dailyPlaybackPosition, dailyPlaybackTimestamp, dailyRecording, dailyRecordingAvailability, dailyRecordingPage, dailyRecordingSummary, dailyTimeState } from "./daily-recordings";
+import {
+  dailyAvailableIntervalPage,
+  dailyGapPage,
+  dailyMetadataPage,
+  dailyPlaybackPosition,
+  dailyPlaybackTimestamp,
+  dailyRecording,
+  dailyRecordingAvailability,
+  dailyRecordingMetadata,
+  dailyTimeState,
+} from "./daily-recordings";
 
 const id = "550e8400-e29b-41d4-a716-446655440000";
 const fixture = {
@@ -122,9 +132,12 @@ describe("날짜 녹화의 Backend 공개 계약 모델", () => {
 
   test("cursor는 해석하거나 전체 페이지 수로 변환하지 않는다", () => {
     const cursor = "opaque+/cursor==";
-    expect(dailyRecordingPage({ items: [fixture], next_cursor: cursor }, "camera-main").nextCursor).toBe(cursor);
-    expect(dailyRecordingPage({ items: [], next_cursor: null }, "camera-main")).toEqual({ items: [], nextCursor: null });
-    expect(() => dailyRecordingPage({ items: [], next_cursor: 1 }, "camera-main")).toThrow();
+    const { gaps: _gaps, available_intervals: _intervals, ...rest } = fixture;
+    void _gaps; void _intervals;
+    const metadataItem = { ...rest, revision: 0 };
+    expect(dailyMetadataPage({ items: [metadataItem], next_cursor: cursor }, "camera-main").nextCursor).toBe(cursor);
+    expect(dailyMetadataPage({ items: [], next_cursor: null }, "camera-main")).toEqual({ items: [], nextCursor: null });
+    expect(() => dailyMetadataPage({ items: [], next_cursor: 1 }, "camera-main")).toThrow();
   });
 
   test("원인 없는 미분류 구간을 누락이나 인코딩 중으로 추정하지 않는다", () => {
@@ -255,46 +268,99 @@ describe("날짜 녹화 요약(summary) 계약 파서", () => {
     const copy = { ...fixture } as Record<string, unknown>;
     delete copy.gaps;
     delete copy.available_intervals;
-    copy.gap_count = 2;
-    copy.available_interval_count = 3;
+    copy.revision = 3;
     copy.has_gaps = true;
     return copy;
   };
 
-  test("정상 요약 항목을 DailyRecordingSummary로 올바르게 파싱한다", () => {
-    const parsed = dailyRecordingSummary(summaryFixture(), "camera-main");
-    expect(parsed.view).toBe("summary");
-    expect(parsed.gapCount).toBe(2);
-    expect(parsed.availableIntervalCount).toBe(3);
+  test("정상 요약 항목을 DailyRecordingMetadata로 올바르게 파싱한다", () => {
+    const parsed = dailyRecordingMetadata(summaryFixture(), "camera-main");
+    expect(parsed.view).toBe("metadata");
+    expect(parsed.revision).toBe(3);
     expect(parsed.hasGaps).toBe(true);
     expect("gaps" in parsed).toBe(false);
     expect("availableIntervals" in parsed).toBe(false);
+    expect("gapCount" in parsed).toBe(false);
+    expect("availableIntervalCount" in parsed).toBe(false);
   });
 
-  test("음수 개수는 계약 오류로 거부한다", () => {
-    expect(() => dailyRecordingSummary({ ...summaryFixture(), gap_count: -1 }, "camera-main")).toThrow("Unexpected daily recording contract.");
-    expect(() => dailyRecordingSummary({ ...summaryFixture(), available_interval_count: -1 }, "camera-main")).toThrow("Unexpected daily recording contract.");
+  test("음수 revision 또는 누락된 revision은 계약 오류로 거부한다", () => {
+    expect(() => dailyRecordingMetadata({ ...summaryFixture(), revision: -1 }, "camera-main")).toThrow("Unexpected daily recording contract.");
+    const noRevision = summaryFixture();
+    delete noRevision.revision;
+    expect(() => dailyRecordingMetadata(noRevision, "camera-main")).toThrow("Unexpected daily recording contract.");
   });
 
-  test("has_gaps와 gap_count > 0 불일치는 계약 오류로 거부한다", () => {
-    expect(() => dailyRecordingSummary({ ...summaryFixture(), gap_count: 0, has_gaps: true }, "camera-main")).toThrow("Unexpected daily recording contract.");
-    expect(() => dailyRecordingSummary({ ...summaryFixture(), gap_count: 2, has_gaps: false }, "camera-main")).toThrow("Unexpected daily recording contract.");
+  test("메타데이터의 playbackReady는 playableUntilAt과 recordedSeconds를 함께 확인하며 구간 수 필드에 의존하지 않는다", () => {
+    const afterClosure = Date.parse("2026-10-14T15:01:00.000Z");
+    expect(dailyRecordingAvailability(dailyRecordingMetadata(summaryFixture(), "camera-main"), afterClosure).playbackReady).toBe(true);
+    expect(dailyRecordingAvailability(dailyRecordingMetadata({ ...summaryFixture(), playable_until_at: null }, "camera-main"), afterClosure).playbackReady).toBe(false);
+    expect(dailyRecordingAvailability(dailyRecordingMetadata({ ...summaryFixture(), recorded_seconds: 0 }, "camera-main"), afterClosure).playbackReady).toBe(false);
   });
 
-  test("요약 항목에 gaps나 available_intervals 배열이 포함되어 있으면 계약 오류로 거부한다", () => {
-    expect(() => dailyRecordingSummary({ ...summaryFixture(), gaps: [] }, "camera-main")).toThrow("Unexpected daily recording contract.");
-    expect(() => dailyRecordingSummary({ ...summaryFixture(), available_intervals: [] }, "camera-main")).toThrow("Unexpected daily recording contract.");
+  test("메타데이터 항목에 legacy 배열이나 count 필드가 포함되어 있으면 계약 오류로 거부한다", () => {
+    expect(() => dailyRecordingMetadata({ ...summaryFixture(), gaps: [] }, "camera-main")).toThrow("Unexpected daily recording contract.");
+    expect(() => dailyRecordingMetadata({ ...summaryFixture(), available_intervals: [] }, "camera-main")).toThrow("Unexpected daily recording contract.");
+    expect(() => dailyRecordingMetadata({ ...summaryFixture(), gap_count: 1 }, "camera-main")).toThrow("Unexpected daily recording contract.");
+    expect(() => dailyRecordingMetadata({ ...summaryFixture(), available_interval_count: 2 }, "camera-main")).toThrow("Unexpected daily recording contract.");
   });
 
-  test("dailyRecordingPage는 view=summary에서 요약 항목을 파싱하고 잘못된 view는 거부한다", () => {
-    const page = { items: [summaryFixture()], next_cursor: null, view: "summary" };
-    const result = dailyRecordingPage(page, "camera-main");
-    expect(result.items[0].view).toBe("summary");
+  test("dailyMetadataPage는 view 필드를 거부하고 메타데이터 목록만 파싱한다", () => {
+    const page = { items: [summaryFixture()], next_cursor: null };
+    const result = dailyMetadataPage(page, "camera-main");
+    expect(result.items[0].view).toBe("metadata");
 
-    const fullPage = { items: [fixture], next_cursor: null, view: "full" };
-    expect(dailyRecordingPage(fullPage, "camera-main").items[0].view).toBe("full");
+    expect(() => dailyMetadataPage({ ...page, view: "summary" }, "camera-main")).toThrow("Unexpected daily recording contract.");
+    expect(() => dailyMetadataPage({ items: [fixture], next_cursor: null }, "camera-main")).toThrow("Unexpected daily recording contract.");
+  });
 
-    const invalidPage = { items: [summaryFixture()], next_cursor: null, view: "other" };
-    expect(() => dailyRecordingPage(invalidPage, "camera-main")).toThrow("Unexpected daily recording contract.");
+  test("dailyGapPage와 dailyAvailableIntervalPage는 구간 페이지 계약을 검증한다", () => {
+    const gapsPage = dailyGapPage({
+      recording_id: id,
+      revision: 3,
+      snapshot: "snap-3",
+      items: fixture.gaps,
+      total: 4,
+      next_cursor: "gap-c2",
+    }, id);
+    expect(gapsPage).toEqual({
+      recordingId: id,
+      revision: 3,
+      snapshot: "snap-3",
+      items: [{ startsAt: "2026-10-13T15:00:20.000Z", endsAt: "2026-10-13T15:00:30.000Z", reasonCode: "CAMERA_DISCONNECTED" }],
+      total: 4,
+      nextCursor: "gap-c2",
+    });
+
+    const intervalsPage2 = dailyAvailableIntervalPage({
+      recording_id: id,
+      revision: 3,
+      snapshot: "snap-3",
+      items: [{ start_at: "2026-10-13T15:00:30.000Z", end_at: "2026-10-13T15:01:00.000Z", playback_start_seconds: 20, playback_end_seconds: 50 }],
+      total: 2,
+      next_cursor: null,
+    }, id);
+    expect(intervalsPage2.items[0].playbackStartsAtSeconds).toBe(20);
+
+    const metadata = dailyRecordingMetadata(summaryFixture(), "camera-main");
+    expect(dailyPlaybackTimestamp(metadata, 10, intervalsPage2.items)).toBeNull();
+    expect(dailyPlaybackTimestamp(metadata, 25, intervalsPage2.items)).toBe("2026-10-13T15:00:35.000Z");
+    expect(dailyPlaybackPosition(metadata, "2026-10-13T15:00:10.000Z", intervalsPage2.items)).toBeNull();
+    expect(dailyPlaybackPosition(metadata, "2026-10-13T15:00:35.000Z", intervalsPage2.items)).toBe(25);
+    expect(dailyTimeState(metadata, "2026-10-13T15:00:10.000Z", Date.parse("2026-10-13T15:01:10.000Z"), {
+      availableIntervals: intervalsPage2.items,
+      gaps: gapsPage.items,
+    })).toBe("unknown");
+
+    expect(() => dailyGapPage({ recording_id: id, revision: 3, snapshot: "", items: [], total: 0, next_cursor: null }, id)).toThrow();
+    expect(() => dailyGapPage({ recording_id: "550e8400-e29b-41d4-a716-446655440001", revision: 3, snapshot: "s", items: [], total: 0, next_cursor: null }, id)).toThrow();
+    expect(() => dailyAvailableIntervalPage({
+      recording_id: id,
+      revision: 3,
+      snapshot: "snap-3",
+      items: fixture.available_intervals,
+      total: 1,
+      next_cursor: null,
+    }, id)).toThrow();
   });
 });
