@@ -268,11 +268,13 @@ test("목록 조회 실패와 빈 결과는 기존 카드와 영상 프레임의
   await failed;
   await expect(page.getByRole("button", { name: "조회", exact: true })).toBeEnabled();
   await expect(page.locator(".recording-item")).toHaveCount(1);
-  await expect(page.getByText("녹화 영상을 조회하지 못했습니다.", { exact: false })).toHaveCount(0);
+  const queryAlert = page.locator(".recordings-query-head").getByRole("alert");
+  await expect(queryAlert).toHaveText("녹화 영상을 조회하지 못했습니다. 기존 조회 결과를 유지합니다.");
   expect(await geometry(page)).toEqual(before);
   api.daily.failList(false);
   api.daily.setRecordings([]);
   await page.getByRole("button", { name: "조회", exact: true }).click();
+  await expect(queryAlert).toHaveCount(0);
   await expect(page.locator(".recording-item")).toHaveCount(0);
   await expect(cards(page)).toHaveCount(5);
   await expect(page.locator(".recording-info dl")).toContainText("정보 없음");

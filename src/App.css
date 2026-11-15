@@ -73,7 +73,7 @@ button { cursor: pointer; word-break: keep-all; overflow-wrap: break-word; }
 .icon-button { justify-content: center; width: 32px; height: 32px; }
 .user-menu { min-width: 0; max-width: 100%; gap: 9px; font-size: 16px; }
 .user-menu > span, .test-alert-card .dropdown-value, .test-alert-card .dropdown-option-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.user-menu > svg, .user-tools > .header-popover-anchor:first-child, .notifications-popover > .header-popover-head, .notifications-popover > .header-popover-link, .notifications-popover > .notification-unavailable, .history-query-head .section-title, .test-alert-card .dropdown-trigger > svg, .test-alert-card .dropdown-option > [aria-hidden] { flex-shrink: 0; }
+.user-menu > svg, .user-tools > .header-popover-anchor:first-child, .notifications-popover > .header-popover-head, .notifications-popover > .header-popover-link, .notifications-popover > .notification-unavailable, .history-query-head .section-title, .recordings-query-head .section-title, .test-alert-card .dropdown-trigger > svg, .test-alert-card .dropdown-option > [aria-hidden] { flex-shrink: 0; }
 .user-tools > .header-popover-anchor:last-child, .recording-info-actions, .recipient-panel-head > div, .monitoring-page .device-grid > .device { min-width: 0; }
 .header-login-link { display: inline-flex; height: 32px; align-items: center; padding: 0 13px; border: 1px solid #f58a07; border-radius: 4px; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none; }
 .header-login-link:hover { background: #f58a07; }
@@ -213,7 +213,7 @@ button { cursor: pointer; word-break: keep-all; overflow-wrap: break-word; }
 .active-alert span { color: #61708a; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .active-alert time { flex: none; color: #61708a; font-size: 12px; }
 .alert-error, .recording-type.error { color: #e83232; }
-.alert-unconfirmed, .history-query-head > p[role="status"], .recording-status-trigger.muted, .monitoring-detail-list dt { color: #61708a; }
+.alert-unconfirmed, .history-query-head > p[role="status"], .recordings-query-head > p[role="status"], .recording-status-trigger.muted, .monitoring-detail-list dt { color: #61708a; }
 .measurement-layout-state { min-width: 0; overflow: hidden; color: #61708a; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .pagination { display: flex; height: 30px; align-items: center; justify-content: center; gap: 14px; color: #61708a; font-size: 12px; font-weight: 700; }
 .pagination button { width: 22px; height: 22px; padding: 0; border: 0; background: transparent; color: #41526d; font-size: 16px; line-height: 1; }
@@ -227,8 +227,8 @@ button { cursor: pointer; word-break: keep-all; overflow-wrap: break-word; }
 .app-footer { display: flex; width: 100%; height: 20px; flex: 0 0 20px; align-items: center; justify-content: space-between; margin-top: auto; padding: 0 var(--monitor-page-gutter); color: #8392a9; font-size: 11px; line-height: 14px; pointer-events: none; box-sizing: border-box; }
 .history-content, .recordings-content { display: grid; gap: 12px; padding: 0 var(--monitor-page-gutter) var(--monitor-page-bottom-gap); }
 .history-query, .recordings-query { padding: 14px 16px 16px; }
-.history-query-head { display: flex; align-items: center; gap: 16px; }
-.history-query-head > p { min-width: 0; margin: 0; overflow: hidden; color: #b52d26; font-size: 12px; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }
+.history-query-head, .recordings-query-head { display: flex; align-items: center; gap: 16px; }
+.history-query-head > p, .recordings-query-head > p { min-width: 0; margin: 0; overflow: hidden; color: #b52d26; font-size: 12px; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }
 .query-controls { display: grid; grid-template-columns: minmax(360px, 1.35fr) clamp(220px, 14vw, 265px) clamp(220px, 14vw, 265px) minmax(220px, 0.8fr) minmax(100px, 0.4fr); gap: 14px; align-items: end; margin-top: 14px; }
 .query-controls label, .query-type, .repeat-limit-field, .recipient-add-fields label { display: grid; gap: 6px; color: #41526d; font-size: 13px; font-weight: 700; }
 .query-controls input { width: 100%; height: 38px; padding: 0 10px; border: 1px solid #ccd6e1; border-radius: 4px; color: #172238; background: #f8fafc; font: inherit; font-weight: 600; }

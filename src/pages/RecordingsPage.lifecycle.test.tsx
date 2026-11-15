@@ -165,9 +165,11 @@ test.each([undefined, { status: "error" as const, message: "목록 조회 실패
   expect(view.container.querySelector("video")).toBeNull();
 });
 
-test("녹화 조회 실패는 안내를 추가하지 않고 기존 결과와 카드 구조를 유지한다", async () => {
+test("녹화 조회 실패는 실패와 기존 결과 유지 안내를 표시하고 카드 구조를 유지하며 다음 성공 시 안내를 지운다", async () => {
   const { data, ready } = await fixture();
-  const queryRecordings = vi.fn().mockRejectedValue(new Error("Synthetic query failure"));
+  const queryRecordings = vi.fn()
+    .mockRejectedValueOnce(new Error("Synthetic query failure"))
+    .mockResolvedValueOnce([ready]);
   const source = { getDashboardData: () => Promise.resolve(data), queryRecordings };
   const view = render(<RecordingsPage dataSource={source} recordings={[ready]} headerNotifications={[]} reception={data.reception} />);
   const cards = Array.from(view.container.querySelectorAll(".recordings-content .card"));
@@ -177,9 +179,84 @@ test("녹화 조회 실패는 안내를 추가하지 않고 기존 결과와 카
   expect(Array.from(view.container.querySelectorAll(".recordings-content .card"))).toEqual(cards);
   expect(view.container.querySelectorAll(".recording-item")).toHaveLength(1);
   expect(view.container.querySelector("video")).toHaveAttribute("src", ready.contentUrl);
-  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  expect(screen.queryByText("녹화 영상을 조회하지 못했습니다. 기존 조회 결과를 유지합니다.")).not.toBeInTheDocument();
+  const alert = screen.getByRole("alert");
+  expect(alert).toHaveTextContent("녹화 영상을 조회하지 못했습니다. 기존 조회 결과를 유지합니다.");
+  expect(alert.parentElement).toHaveClass("recordings-query-head");
+  expect(view.container.querySelector("form.query-controls")).toHaveAttribute("aria-describedby", alert.id);
   expect(screen.getByRole("button", { name: /^조회$/ })).toBeEnabled();
+
+  fireEvent.click(screen.getByRole("button", { name: /^조회$/ }));
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+test("목록 페이지 추가 조회 실패는 현재 페이지와 결과를 유지하며 실패 안내를 표시하고 재시도 성공 시 지운다", async () => {
+  const { data, ready } = await fixture();
+  const pageOne = Array.from({ length: 6 }, (_, index) => ({ ...ready, id: `${ready.id}-p1-${index}`, title: `rec-${index}` }));
+  const pageTwoItem = { ...ready, id: `${ready.id}-p2-0`, title: "rec-page-2" };
+  let rejectPageTwo = true;
+  const currentSnapshot = { items: pageOne, total: 7, complete: false };
+  const list = {
+    snapshot: () => currentSnapshot,
+    ensure: vi.fn((target: number) => {
+      if (target > 6 && rejectPageTwo) return Promise.reject(new Error("Page fetch failure"));
+      return Promise.resolve(target > 6 ? { items: [...pageOne, pageTwoItem], total: 7, complete: true } : currentSnapshot);
+    }),
+  };
+  const source = {
+    getDashboardData: () => Promise.resolve(data),
+    queryRecordings: vi.fn().mockResolvedValue(pageOne),
+    openRecordingList: () => list,
+  };
+  render(<RecordingsPage dataSource={source} recordings={pageOne} recordingsList={list} recordingsTotal={7} headerNotifications={[]} reception={data.reception} />);
+
+  fireEvent.click(screen.getByRole("button", { name: "다음 녹화 목록 페이지" }));
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.getByRole("alert")).toHaveTextContent("녹화 영상을 조회하지 못했습니다. 기존 조회 결과를 유지합니다.");
+  expect(screen.getByText("1 / 2")).toBeInTheDocument();
+
+  rejectPageTwo = false;
+  fireEvent.click(screen.getByRole("button", { name: "다음 녹화 목록 페이지" }));
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.getByText("2 / 2")).toBeInTheDocument();
+});
+
+test("진행 중 조회가 dataSource 변경으로 취소되거나 실패 후 dataSource가 바뀌면 이전 실패 안내를 남기지 않는다", async () => {
+  const { data, ready } = await fixture();
+  let rejectFirst!: (reason?: unknown) => void;
+  let capturedSignal: AbortSignal | undefined;
+  const firstList = {
+    snapshot: () => ({ items: [ready], total: 1, complete: true }),
+    ensure: vi.fn((_target: number, signal?: AbortSignal) => {
+      capturedSignal = signal;
+      return new Promise<{ items: typeof ready[]; total: number; complete: boolean }>((_resolve, reject) => {
+        rejectFirst = reject;
+      });
+    }),
+  };
+  const firstSource = {
+    getDashboardData: () => Promise.resolve(data),
+    queryRecordings: vi.fn(),
+    openRecordingList: () => firstList,
+  };
+  const secondSource = {
+    getDashboardData: () => Promise.resolve(data),
+    queryRecordings: vi.fn().mockResolvedValue([ready]),
+  };
+  const view = render(<RecordingsPage dataSource={firstSource} recordings={[ready]} headerNotifications={[]} reception={data.reception} />);
+
+  fireEvent.click(screen.getByRole("button", { name: /^조회$/ }));
+  expect(screen.getByRole("button", { name: "조회 중" })).toBeDisabled();
+
+  // 진행 중 dataSource 전환 시 기존 signal이 취소되며 늦은 실패가 새 소스에 오류를 남기지 않는다.
+  view.rerender(<RecordingsPage dataSource={secondSource} recordings={[ready]} headerNotifications={[]} reception={data.reception} />);
+  expect(capturedSignal?.aborted).toBe(true);
+  await act(async () => {
+    rejectFirst(new Error("Stale failure after source switch"));
+    await Promise.resolve();
+  });
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
 test("파일 형식이 없으면 다운로드 파일명에 확장자를 임의로 추가하지 않는다", async () => {
