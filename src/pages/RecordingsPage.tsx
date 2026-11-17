@@ -57,10 +57,7 @@ const metadataOriginLabels: Record<FileMediaInfo["metadataOrigin"], string> = {
   unknown: "확인 안 됨",
 };
 
-function formatFileInfoLine(file: FileMediaInfo | null): string {
-  if (file === null) {
-    return "파일 정보 없음";
-  }
+function formatFileInfoLine(file: FileMediaInfo): string {
   const measuredTimeText = file.measuredAt && Number.isFinite(Date.parse(file.measuredAt))
     ? seoulDisplayText(Date.parse(file.measuredAt))
     : "정보 없음";
@@ -108,6 +105,39 @@ function replayTimestamp(recording: Recording, seconds: number) {
 function aspectRatio(width: number | null | undefined, height: number | null | undefined) {
   if (width == null || height == null) return "정보 없음";
   return width * 3 === height * 4 ? "4:3" : width * 9 === height * 16 ? "16:9" : `${width}:${height}`;
+}
+
+type MediaInfoStatus = "idle" | "loading" | "ready" | "not_ready" | "deleted_or_expired" | "error";
+
+type FileMetaDisplay = {
+  codec: string;
+  resolution: string;
+  aspectRatio: string;
+  fps: string;
+  fileSize: string;
+};
+
+const mediaInfoPlaceholders: Partial<Record<MediaInfoStatus, string>> = {
+  loading: "확인 중",
+  error: "조회 안 됨",
+  not_ready: "준비 전",
+};
+
+function uniformFileMeta(label: string): FileMetaDisplay {
+  return { codec: label, resolution: label, aspectRatio: label, fps: label, fileSize: label };
+}
+
+function readyFileMeta(file: FileMediaInfo, sizeBytesOverride?: number | null): FileMetaDisplay {
+  const fps = file.fps != null
+    ? `${file.fps} fps`
+    : (file.fpsNum && file.fpsDen ? `${Number((file.fpsNum / file.fpsDen).toFixed(2))} fps` : "정보 없음");
+  return {
+    codec: file.codec ?? "정보 없음",
+    resolution: file.width != null && file.height != null ? `${file.width} x ${file.height}` : "정보 없음",
+    aspectRatio: aspectRatio(file.width, file.height),
+    fps,
+    fileSize: byteSize(sizeBytesOverride ?? file.sizeBytes),
+  };
 }
 
 function playbackTimestamp(start: string, elapsedSeconds: number) {
@@ -476,7 +506,8 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
       const sizeBytes = selectedRecording.daily?.sizeBytes;
 
       const cached = getCachedDailyMediaInfo(recordingId, status, sizeBytes);
-      if (cached) {
+      // 파일이 준비되기 전(file=null) 캐시가 남았더라도 MP4 준비 완료로 바뀌면 다시 조회해 파일 속성을 표시한다.
+      if (cached && !(cached.file === null && selectedRecording.daily?.exportState === "ready")) {
         queueMicrotask(() => {
           if (active) setMediaInfoState({ key: selectedKey, status: "ready", dailyData: cached });
         });
@@ -690,12 +721,8 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
 
   const isEvent = Boolean(selectedRecording?.eventWindow);
 
-  // B-3 영상 파일 정보 계산
-  let displayCodec = "정보 없음";
-  let displayResolution = "정보 없음";
-  let displayAspectRatio = "정보 없음";
-  let displayFps = "정보 없음";
-  let displayFileSize = "정보 없음";
+  // B-3 영상 파일 정보 계산 (실제 MP4 파일이 없거나 삭제 또는 만료된 재생 전용 상태에서는 5개 파일 속성 행을 숨긴다.)
+  let fileMeta: FileMetaDisplay | null = null;
   let segmentsTitle: string | undefined;
   let fileInfoLine: string | undefined;
 
@@ -707,62 +734,34 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
       segmentsTitle = `녹화 조각 형식: ${seg.status}, 측정 ${seg.measured}/${seg.total}, 혼합 여부: ${mixedText}`;
     }
 
-    if (dailyInfo?.status === "loading") {
-      displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "확인 중";
-    } else if (dailyInfo?.status === "error") {
-      displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "조회 안 됨";
-    } else if (dailyInfo?.status === "not_ready") {
-      displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "준비 전";
-    } else if (dailyInfo?.status === "deleted_or_expired") {
-      displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "파일 삭제 또는 만료";
-    } else if (dailyInfo?.dailyData) {
+    if (dailyInfo?.dailyData?.file?.status === "ready") {
       const file = dailyInfo.dailyData.file;
+      fileMeta = readyFileMeta(file);
       fileInfoLine = formatFileInfoLine(file);
-      if (file === null) {
-        displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "날짜 MP4 준비 전";
-      } else if (file.status === "ready") {
-        displayCodec = file.codec ?? "정보 없음";
-        displayResolution = file.width != null && file.height != null ? `${file.width} x ${file.height}` : "정보 없음";
-        displayAspectRatio = aspectRatio(file.width, file.height);
-        displayFps = file.fps != null ? `${file.fps} fps` : (file.fpsNum && file.fpsDen ? `${Number((file.fpsNum / file.fpsDen).toFixed(2))} fps` : "정보 없음");
-        displayFileSize = byteSize(file.sizeBytes);
-      } else {
-        displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "정보 없음";
-      }
+    } else if (dailyAvailability?.downloadReady && dailyInfo) {
+      const placeholder = mediaInfoPlaceholders[dailyInfo.status];
+      if (placeholder) fileMeta = uniformFileMeta(placeholder);
     }
   } else if (selectedRecording?.eventWindow) {
-    if (!eventExport || eventExport.status !== "ready" || !eventExport.clipId) {
-      displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "구간 파일 준비 후 확인";
-    } else {
+    if (eventExport?.status === "ready" && eventExport.clipId) {
       const clipInfo = mediaInfoState.key === selectedKey ? mediaInfoState : null;
-      if (clipInfo?.status === "loading") {
-        displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "확인 중";
-      } else if (clipInfo?.status === "not_ready") {
-        displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "준비 전";
-      } else if (clipInfo?.status === "deleted_or_expired") {
-        displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "파일 삭제 또는 만료";
-      } else if (clipInfo?.status === "error") {
-        displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "조회 안 됨";
-      } else if (clipInfo?.clipData) {
+      if (clipInfo?.clipData?.mediaInfo.status === "ready") {
         const media = clipInfo.clipData.mediaInfo;
+        fileMeta = readyFileMeta(media, clipInfo.clipData.sizeBytes);
         fileInfoLine = formatFileInfoLine(media);
-        if (media.status === "ready") {
-          displayCodec = media.codec ?? "정보 없음";
-          displayResolution = media.width != null && media.height != null ? `${media.width} x ${media.height}` : "정보 없음";
-          displayAspectRatio = aspectRatio(media.width, media.height);
-          displayFps = media.fps != null ? `${media.fps} fps` : (media.fpsNum && media.fpsDen ? `${Number((media.fpsNum / media.fpsDen).toFixed(2))} fps` : "정보 없음");
-          displayFileSize = byteSize(clipInfo.clipData.sizeBytes ?? media.sizeBytes);
-        } else {
-          displayCodec = displayResolution = displayAspectRatio = displayFps = displayFileSize = "정보 없음";
-        }
+      } else if (clipInfo) {
+        const placeholder = mediaInfoPlaceholders[clipInfo.status];
+        if (placeholder) fileMeta = uniformFileMeta(placeholder);
       }
     }
-  } else if (selectedRecording) {
-    displayCodec = selectedRecording.codec ?? "정보 없음";
-    displayResolution = selectedRecording.width != null && selectedRecording.height != null ? `${selectedRecording.width} x ${selectedRecording.height}` : "정보 없음";
-    displayAspectRatio = aspectRatio(selectedRecording.width, selectedRecording.height);
-    displayFps = selectedRecording.frameRate != null ? `${selectedRecording.frameRate} fps` : "정보 없음";
-    displayFileSize = selectedRecording.size ?? "정보 없음";
+  } else {
+    fileMeta = selectedRecording ? {
+      codec: selectedRecording.codec ?? "정보 없음",
+      resolution: selectedRecording.width != null && selectedRecording.height != null ? `${selectedRecording.width} x ${selectedRecording.height}` : "정보 없음",
+      aspectRatio: aspectRatio(selectedRecording.width, selectedRecording.height),
+      fps: selectedRecording.frameRate != null ? `${selectedRecording.frameRate} fps` : "정보 없음",
+      fileSize: selectedRecording.size ?? "정보 없음",
+    } : uniformFileMeta("정보 없음");
   }
 
   const mediaInfoTitle = [segmentsTitle, fileInfoLine].filter(Boolean).join("\n") || undefined;
@@ -1138,12 +1137,14 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                       <div><dt>{selectedRecording?.daily ? "관리 구간 종료" : "종료 시각"}</dt><dd>{selectedRecording?.end ?? "정보 없음"}</dd></div>
                       <div><dt>{selectedRecording?.daily ? "확보된 길이" : selectedRecording?.replay ? "재생 길이" : "기간"}</dt><dd>{selectedRecording?.duration ?? "정보 없음"}</dd></div>
                       <div><dt>{selectedRecording?.daily ? "녹화 유형" : "발생 유형"}</dt><dd>{selectedRecording ? <span className={`recording-type ${selectedRecording.tone}`}>{selectedRecording.type}</span> : "정보 없음"}</dd></div>
-                      <div><dt>{selectedRecording?.daily ? "재생 형식" : "파일 형식"}</dt><dd>{selectedRecording?.daily ? selectedRecording.daily.playbackProtocol?.toUpperCase() ?? "정보 없음" : selectedRecording?.format ?? "정보 없음"}</dd></div>
-                      <div><dt>비디오 코덱</dt><dd title={mediaInfoTitle}>{displayCodec}</dd></div>
-                      <div><dt>해상도</dt><dd title={mediaInfoTitle}>{displayResolution}</dd></div>
-                      <div><dt>화면 비율</dt><dd title={mediaInfoTitle}>{displayAspectRatio}</dd></div>
-                      <div><dt>프레임 속도</dt><dd title={mediaInfoTitle}>{displayFps}</dd></div>
-                      <div><dt>파일 용량</dt><dd title={mediaInfoTitle}>{displayFileSize}</dd></div>
+                      <div><dt>{selectedRecording?.daily ? "재생 형식" : "파일 형식"}</dt><dd title={selectedRecording?.daily ? segmentsTitle : undefined}>{selectedRecording?.daily ? selectedRecording.daily.playbackProtocol?.toUpperCase() ?? "정보 없음" : selectedRecording?.format ?? "정보 없음"}</dd></div>
+                      {fileMeta && <>
+                        <div><dt>비디오 코덱</dt><dd title={mediaInfoTitle}>{fileMeta.codec}</dd></div>
+                        <div><dt>해상도</dt><dd title={mediaInfoTitle}>{fileMeta.resolution}</dd></div>
+                        <div><dt>화면 비율</dt><dd title={mediaInfoTitle}>{fileMeta.aspectRatio}</dd></div>
+                        <div><dt>프레임 속도</dt><dd title={mediaInfoTitle}>{fileMeta.fps}</dd></div>
+                        <div><dt>파일 용량</dt><dd title={mediaInfoTitle}>{fileMeta.fileSize}</dd></div>
+                      </>}
                       <div className="recording-retention"><dt>{selectedRecording?.daily || selectedRecording?.eventWindow ? "보관 만료" : "보관 기간"}</dt><dd>{!selectedRecording ? "정보 없음" : selectedRecording.daily || selectedRecording.eventWindow ? <span>{selectedRecording.retentionEndsAt}</span> : <><span>{selectedRecording.retentionStartsAt}</span><span>~ {selectedRecording.retentionEndsAt}</span></>}</dd></div>
                     </dl>
                   </section>

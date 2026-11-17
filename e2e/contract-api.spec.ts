@@ -8,7 +8,7 @@ test("제안 계약의 현재 상태, SSE와 WHEP를 브라우저에 연결한�
   await page.goto("/?source=api");
 
   await expect(page.getByRole("heading", { name: "스크랩 모니터링", exact: true })).toBeVisible();
-  await expect(page.locator(".kpi-value")).toHaveText("72%");
+  await expect(page.locator(".kpi-value")).toHaveText("72.00%");
   await expect(page.getByText("사전 알림 기준 70%")).toBeVisible();
   await expect(page.getByText("user-contract")).toBeVisible();
   await expect(page.getByRole("button", { name: "알림 1건" })).toBeVisible();

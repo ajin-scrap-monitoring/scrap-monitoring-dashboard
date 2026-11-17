@@ -24,7 +24,7 @@ test("합성 시나리오 데이터를 화면에서 확인할 수 있다", async
 test("합성 실시간 갱신 시나리오는 새 스냅샷을 표시한다", async ({ page }) => {
   await page.goto("/?scenario=live-update");
 
-  await expect(page.locator(".kpi-value")).toHaveText("75%");
+  await expect(page.locator(".kpi-value")).toHaveText("75.00%");
   await expect(page.getByLabel("데이터 수신 상태")).toContainText("연결 정상");
   await expect(page.getByLabel("데이터 수신 상태").locator("time")).toHaveAttribute("datetime", /T/);
 });

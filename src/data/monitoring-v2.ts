@@ -32,6 +32,10 @@ function validate(snapshot: unknown, pitId: string): asserts snapshot is ApiMoni
     const threshold = snapshot.summary[key];
     if (typeof threshold !== "number" || !Number.isFinite(threshold) || threshold < 0 || threshold > 100) return fail();
   }
+  if (snapshot.summary.rawLoadPercent !== undefined && snapshot.summary.rawLoadPercent !== null) {
+    const rawLoad = snapshot.summary.rawLoadPercent;
+    if (typeof rawLoad !== "number" || !Number.isFinite(rawLoad) || rawLoad < 0 || rawLoad > 100) return fail();
+  }
   const filterStates = ["DISABLED", "WARMING", "READY", "UNAVAILABLE"] as const;
   if (snapshot.summary.filterState !== undefined && snapshot.summary.filterState !== null) {
     if (typeof snapshot.summary.filterState !== "string" || !filterStates.includes(snapshot.summary.filterState as (typeof filterStates)[number])) return fail();
@@ -87,12 +91,14 @@ export function monitoringV2Data(snapshot: unknown, pitId: string): DashboardDat
     ? load : null;
   const sensors = device.snapshot?.sensors ?? [];
   const reporting = device.connection_state === "REPORTING";
-  const cameraState = reporting ? device.snapshot?.services?.find(service => service.service === "camera-edge")?.state : "UNKNOWN";
+  const cameraService = reporting ? device.snapshot?.services?.find(service => service.service === "camera-edge") : undefined;
+  const cameraState = reporting ? cameraService?.state : "UNKNOWN";
   const sensorDevices: DeviceStatus[] = sensors.length ? sensors.map((sensor) => ({
     label: sensor.sensor_id === "lidar-a" ? "LiDAR 1" : sensor.sensor_id === "lidar-b" ? "LiDAR 2" : sensor.sensor_id,
     received: sensor.last_scan_at ?? missingValue,
     status: deviceStatus(reporting ? sensor.data_state : undefined),
     statusLabel: reporting ? sensor.data_state : "UNKNOWN",
+    ...(reporting && sensor.reason_codes.length > 0 && { reasonCodes: [...sensor.reason_codes] }),
   })) : ["LiDAR 1", "LiDAR 2"].map((label) => ({ label, received: missingValue, status: "unknown" }));
 
   return {
@@ -100,8 +106,20 @@ export function monitoringV2Data(snapshot: unknown, pitId: string): DashboardDat
     alerts: [],
     devices: [
       ...sensorDevices,
-      { label: "카메라", received: missingValue, status: deviceStatus(cameraState), statusLabel: cameraState },
-      { label: "엣지 장비", received: device.last_received_at ?? missingValue, status: deviceStatus(device.effective_state), statusLabel: device.effective_state },
+      {
+        label: "카메라",
+        received: missingValue,
+        status: deviceStatus(cameraState),
+        statusLabel: cameraState,
+        ...(cameraService && cameraService.reason_codes.length > 0 && { reasonCodes: [...cameraService.reason_codes] }),
+      },
+      {
+        label: "엣지 장비",
+        received: device.last_received_at ?? missingValue,
+        status: deviceStatus(device.effective_state),
+        statusLabel: device.effective_state,
+        ...(device.reason_codes.length > 0 && { reasonCodes: [...device.reason_codes] }),
+      },
     ],
     headerNotifications: [],
     unreadNotificationCount: 0,

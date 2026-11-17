@@ -67,14 +67,20 @@ function createEventRecording(overrides: {
   return mapEventRecording(item, replay, null, undefined, "+09:00");
 }
 
-function createDailyRecording(overrides: { id?: string; sizeBytes?: number | null; status?: string } = {}): Recording {
+function createDailyRecording(overrides: { id?: string; sizeBytes?: number | null; status?: string; exportState?: string; downloadPath?: string | null } = {}): Recording {
   const id = overrides.id ?? dailyRecordingFixture.recording_id;
+  const exportState = overrides.exportState ?? dailyRecordingFixture.export_state;
   const daily = dailyRecording({
     ...dailyRecordingFixture,
     recording_id: id,
     playback_path: `/media/daily-recordings/${id}/hls/index.m3u8`,
     size_bytes: overrides.sizeBytes ?? null,
     status: overrides.status ?? "closed",
+    export_state: exportState,
+    download_path: overrides.downloadPath !== undefined
+      ? overrides.downloadPath
+      : exportState === "ready" ? `/media/daily-recordings/${id}/content?download=true` : dailyRecordingFixture.download_path,
+    export_expires_at: exportState === "ready" ? "2026-11-12T15:00:00Z" : dailyRecordingFixture.export_expires_at,
   }, "camera-main");
   return {
     id: daily.id,
@@ -556,7 +562,7 @@ describe("녹화 정보 영상 파일 정보 연결", () => {
     expect(screen.getByText("2.0 MB")).toBeInTheDocument();
   });
 
-  test("날짜 녹화에서 file이 null이면 5개 줄 모두 '날짜 MP4 준비 전'을 표시한다", async () => {
+  test("날짜 녹화에서 file이 null이면 파일 속성 5개 행을 숨긴다", async () => {
     const dailyRec = createDailyRecording({ id: "550e8400-e29b-41d4-a716-446655440002" });
     const getMediaInfoMock = vi.fn().mockResolvedValue({
       kind: "daily",
@@ -589,10 +595,90 @@ describe("녹화 정보 영상 파일 정보 연결", () => {
 
     await act(async () => { await Promise.resolve(); });
 
-    expect(screen.getAllByText("날짜 MP4 준비 전")).toHaveLength(5);
+    expect(screen.queryByText("날짜 MP4 준비 전")).not.toBeInTheDocument();
+    for (const label of ["비디오 코덱", "해상도", "화면 비율", "프레임 속도", "파일 용량"]) {
+      expect(screen.queryByText(label)).not.toBeInTheDocument();
+    }
+    expect(screen.getByText("HLS")).toHaveAttribute("title", "녹화 조각 형식: partial, 측정 5/10, 혼합 여부: 확인 불가");
   });
 
-  test("이벤트 녹화는 구간 파일이 ready이고 clipId가 있을 때만 clip media-info를 조회한다", async () => {
+  test("날짜 녹화에서 MP4가 준비되어 있으면 media-info 조회 실패 시 조회 안 됨을 표시하고 준비 완료 전 file=null 캐시는 무효화한다", async () => {
+    const initialDaily = createDailyRecording({ id: "550e8400-e29b-41d4-a716-446655440021" });
+    const readyDaily = createDailyRecording({ id: "550e8400-e29b-41d4-a716-446655440021", exportState: "ready", sizeBytes: 2097152 });
+    const getMediaInfoMock = vi.fn()
+      .mockResolvedValueOnce({
+        kind: "daily",
+        recordingId: initialDaily.id,
+        file: null,
+        segments: { status: "ready", total: 10, measured: 10, formats: [], mixed: false },
+        storedSizeBytes: null,
+      })
+      .mockResolvedValueOnce({
+        kind: "daily",
+        recordingId: initialDaily.id,
+        file: {
+          status: "ready", codec: "h264", width: 1920, height: 1080, fps: 30, fpsNum: 30, fpsDen: 1, sizeBytes: 2097152, reasonCode: null,
+        },
+        segments: { status: "ready", total: 10, measured: 10, formats: [], mixed: false },
+        storedSizeBytes: 2097152,
+      });
+
+    const prepareExportMock = vi.fn().mockResolvedValue(readyDaily);
+    const dataSource: DashboardDataSource = {
+      ...baseSource,
+      getRecording: vi.fn().mockResolvedValue(initialDaily),
+      getDailyRecordingMediaInfo: getMediaInfoMock,
+      prepareDailyRecordingExport: prepareExportMock,
+    };
+
+    const view = render(
+      <RecordingsPage
+        dataSource={dataSource}
+        recordings={[initialDaily]}
+        headerNotifications={[]}
+        reception={reception}
+        serverTime="2026-10-12T15:00:00Z"
+      />,
+    );
+
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByText("비디오 코덱")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "MP4 다운로드 준비" }));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(getMediaInfoMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("비디오 코덱")).toBeInTheDocument();
+    expect(screen.getByText("h264")).toBeInTheDocument();
+    expect(screen.getByText("1920 x 1080")).toBeInTheDocument();
+    view.unmount();
+
+    const readyFailingDaily = createDailyRecording({
+      id: "550e8400-e29b-41d4-a716-446655440022",
+      exportState: "ready",
+      sizeBytes: 2097152,
+    });
+    const failingMediaInfo = vi.fn().mockRejectedValue({ status: 503 });
+    render(
+      <RecordingsPage
+        dataSource={{
+          ...dataSource,
+          getRecording: vi.fn().mockResolvedValue(readyFailingDaily),
+          getDailyRecordingMediaInfo: failingMediaInfo,
+        }}
+        recordings={[readyFailingDaily]}
+        headerNotifications={[]}
+        reception={reception}
+        serverTime="2026-10-12T15:00:00Z"
+      />,
+    );
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getAllByText("조회 안 됨")).toHaveLength(5);
+  });
+
+  test("이벤트 녹화는 구간 파일이 ready이고 clipId가 있을 때만 clip media-info를 조회하고 준비 전에는 5개 행을 숨긴다", async () => {
     const eventRec = createEventRecording({
       exportPath: "/api/v2/recordings/events/20261012-005930-alert/exports",
     });
@@ -644,8 +730,9 @@ describe("녹화 정보 영상 파일 정보 연결", () => {
       />,
     );
 
-    // 준비 전에는 "구간 파일 준비 후 확인" 5개
-    expect(screen.getAllByText("구간 파일 준비 후 확인")).toHaveLength(5);
+    // 준비 전에는 5개 파일 속성 행과 플레이스홀더를 숨긴다.
+    expect(screen.queryByText("구간 파일 준비 후 확인")).not.toBeInTheDocument();
+    expect(screen.queryByText("비디오 코덱")).not.toBeInTheDocument();
     expect(clipMock).not.toHaveBeenCalled();
 
     // 준비 요청 실행
@@ -710,7 +797,7 @@ describe("녹화 정보 영상 파일 정보 연결", () => {
       expect(dd).toHaveAttribute("title", "녹화 조각 형식: ready, 측정 10/10, 혼합 여부: 전체 확인 결과 동일\n파일 검사 시각: 2026-11-10 13:00:00 (한국 표준시), 측정값 출처: 메모리 측정값 재사용");
     });
 
-    test("날짜 녹화: file이 null이면 segments 줄 유지하고 파일 정보 없음 줄을 표시한다", async () => {
+    test("날짜 녹화: file이 null이면 5개 파일 행을 숨기고 재생 형식 title에 segments 줄을 표시한다", async () => {
       const dailyRec = createDailyRecording({ id: "550e8400-e29b-41d4-a716-446655440012" });
       const getMediaInfoMock = vi.fn().mockResolvedValue({
         kind: "daily",
@@ -743,8 +830,9 @@ describe("녹화 정보 영상 파일 정보 연결", () => {
 
       await act(async () => { await Promise.resolve(); });
 
-      const dds = screen.getAllByText("날짜 MP4 준비 전");
-      expect(dds[0]).toHaveAttribute("title", "녹화 조각 형식: partial, 측정 5/10, 혼합 여부: 확인 불가\n파일 정보 없음");
+      expect(screen.queryByText("날짜 MP4 준비 전")).not.toBeInTheDocument();
+      expect(screen.queryByText("비디오 코덱")).not.toBeInTheDocument();
+      expect(screen.getByText("HLS")).toHaveAttribute("title", "녹화 조각 형식: partial, 측정 5/10, 혼합 여부: 확인 불가");
     });
 
     test("날짜 녹화: 시각이 null이면 '파일 검사 시각: 정보 없음'을 표시한다", async () => {

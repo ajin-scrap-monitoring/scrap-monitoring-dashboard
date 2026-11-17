@@ -209,7 +209,7 @@ test("실제 v2 수신 API, SSE와 적재율 추이에서 0%, STALE, session 종
     expect(eventUrls).toHaveLength(1);
     expect(eventUrls[0].searchParams.get("include_camera_status")).toBe("true");
     await send("assessments", assessment);
-    await expect(page.locator(".kpi-value")).toHaveText("0%");
+    await expect(page.locator(".kpi-value")).toHaveText("0.00%");
     const pastLoad = page.locator(".status-details > div").filter({ hasText: "1시간 전 적재율" }).locator("strong");
     await expect(pastLoad).toHaveText("60%");
     await expect(page.locator(".alarm-status")).toHaveText("정상");
@@ -235,7 +235,7 @@ test("실제 v2 수신 API, SSE와 적재율 추이에서 0%, STALE, session 종
     expect(confirmedSnapshot.operations?.effectiveState).toBe("NORMAL");
     const criticalAt = new Date().toISOString();
     await send("assessments", { ...assessment, ...envelope("edge_assessment"), assessment_id: randomUUID(), observed_from: criticalAt, observed_to: criticalAt, fill_estimate: { ratio: 0.95, method_version: "synthetic-browser-method" } });
-    await expect(page.locator(".kpi-value")).toHaveText("95%");
+    await expect(page.locator(".kpi-value")).toHaveText("95.00%");
     await expect(pastLoad).toHaveText("60%");
     await expect(page.locator(".alarm-status")).toHaveText("경고");
     const alertResponse = await page.request.get("/api/v2/monitoring/alerts?pit_id=pit-01&limit=1");

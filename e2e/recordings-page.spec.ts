@@ -244,7 +244,7 @@ test("이벤트 구간 다운로드: 준비 -> 준비 중 -> 다운로드 및 fa
   expect(postBody.retryFailed).toBe(true);
 });
 
-test("영상 파일 정보: 날짜 file ready, file=null (준비 전), 조회 실패 (조회 안 됨)", async ({ page }) => {
+test("영상 파일 정보: 날짜 file ready (5개 행 표시), file=null (행 숨김), ready 대상 조회 실패 (조회 안 됨)", async ({ page }) => {
   const recordingId = syntheticDailyRecording.recording_id;
   const api = await installBackendApi(page, { initial });
 
@@ -265,7 +265,7 @@ test("영상 파일 정보: 날짜 file ready, file=null (준비 전), 조회 �
   await expect(infoSection).toContainText("30 fps");
   await expect(infoSection).toContainText("1.0 MB");
 
-  // 2. file=null 인 경우: 날짜 MP4 준비 전
+  // 2. file=null 인 경우: 5개 파일 속성 행을 숨기고 HLS 줄에 segments title을 유지한다.
   api.setDailyMediaInfo(recordingId, {
     recording_id: recordingId,
     file: null,
@@ -275,9 +275,20 @@ test("영상 파일 정보: 날짜 file ready, file=null (준비 전), 조회 �
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.locator(".recording-item").first().click();
-  await expect(infoSection).toContainText("날짜 MP4 준비 전");
+  await expect(infoSection).not.toContainText("날짜 MP4 준비 전");
+  for (const label of ["비디오 코덱", "해상도", "화면 비율", "프레임 속도", "파일 용량"]) {
+    await expect(infoSection.getByText(label, { exact: true })).toHaveCount(0);
+  }
+  await expect(infoSection.getByText("HLS", { exact: true })).toHaveAttribute("title", "녹화 조각 형식: partial, 측정 5/10, 혼합 여부: 확인 불가");
 
-  // 3. 조회 실패(404 or 503)인 경우: 조회 안 됨
+  // 3. 이미 준비된 MP4의 media-info 조회 실패(404 or 503)인 경우: 조회 안 됨
+  api.daily.setRecordings([{
+    ...syntheticDailyRecording,
+    export_state: "ready",
+    download_path: `/media/daily-recordings/${recordingId}/content?download=true`,
+    size_bytes: 1048576,
+    export_expires_at: "2026-11-12T15:00:00Z",
+  }]);
   api.setDailyMediaInfo(recordingId, null);
   await page.evaluate(() => localStorage.clear());
   await page.reload();

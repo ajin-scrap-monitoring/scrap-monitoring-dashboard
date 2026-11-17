@@ -312,9 +312,9 @@ snapshotId의 응답도 적용한다. 결합 조회의 트리거, 5초 지연 �
 [활성 알림 매핑](contracts/backend/frontend-mapping.md#활성-알림)을 따른다.
 예상 도달은 `validUntil` 경과와 재연결 중에 숨긴다.
 적재율 활성 알림 평가 상태가 `UNKNOWN` 또는 `ERROR`이면 "적재율 판정 불가"로 표시하고
-`lastKnownState`가 있으면 보조 표기한다. 장비 활성 알림은 평가 상태와 무관하게 표시한다.
+`lastKnownState`가 있으면 보조 표기한다. 장비 활성 알림은 평가 상태와 무관하게 표시하며, `reasonCodes`가 있으면 알려진 코드를 한국어 사유로 변환해 카드 본문에 한 줄 요약을, hover title과 행 클릭 상세 dialog에 전체 사유, 판정 근거와 시각을 표시한다.
 `error-body.ts`는 Backend의 3가지 오류 본문을 하나의 코드, 메시지와 검증 항목으로 정규화한다.
-`summary.filterState`는 WARMING이면 안정화 준비 중, UNAVAILABLE이면 안정화 불가 보조 표기를 추정 적재율 라벨에 덧붙이며 `WARMING` 안내는 title 속성으로 제공한다. `simulated` 값으로 시뮬레이션과 실측 구분 문구를 화면에 표시하지 않는다.
+`summary.loadPercent`는 반올림 없이 최소 소수 둘째 자리까지 0으로 채워(`88 -> 88.00%`, `72.5 -> 72.50%`) 표시하고 3자리 이상 소수 정밀도는 유지한다. `summary.filterState`는 WARMING이면 안정화 준비 중, UNAVAILABLE이면 안정화 불가 보조 표기를 추정 적재율 라벨에 덧붙이며 `WARMING` 안내는 title 속성으로 제공한다. `simulated` 값으로 시뮬레이션과 실측 구분 문구를 화면에 표시하지 않는다.
 `src/data/http-dashboard-data-source.ts`는 적재율 일시 준비 중 또는 공백 상태에서 마지막 정상값을 최대 10초간 유지하며, 유지 중에는 "안정화 준비 중" 대신 "갱신 대기" 라벨과 마지막 정상 관측 시각 안내 title을 제공한다. 유지 조건과 만료 규칙의 정본은 [기준과 평가 분류](contracts/backend/frontend-mapping.md#기준과-평가-분류)를 따른다.
 1280 CSS 픽셀 너비에서도 줄바꿈이나 카드 높이 변경 없이 카드의 크기를 유지한다.
 
@@ -324,7 +324,7 @@ snapshotId의 응답도 적용한다. 결합 조회의 트리거, 5초 지연 �
 원본 판단 사유와 capability는 모델에 보존하되 별도 진단 버튼은 제공하지 않는다.
 
 장비 카드는 장비명과 보고된 상태만 표시하고 scan 및 진행 시각과 latency는 표시하지
-않는다. 카메라 행의 `useCameraStatus`는 data source의 `subscribeCameraStatus`를 구독한다.
+않는다. 보고된 `reason_codes`가 있으면 해당 장치 상태 hover title에 한국어 사유와 원시 코드를 함께 둔다. 카메라 행의 `useCameraStatus`는 data source의 `subscribeCameraStatus`를 구독한다.
 HTTP data source는 앱 공용 SSE에서 검사한 마지막 카메라 상태와 단조 시계의 수신 시각을
 보관하고 새 구독자에게 즉시 전달한다. 화면 종료는 카메라 구독만 해제하며 화면 이동은 SSE를
 다시 연결하지 않는다. 숨김 탭은 기한 검사 timer를 멈추고 다시 보이면 즉시 기한을 판정한다.
@@ -494,12 +494,9 @@ v1 clip 상세의 요청과 확보 시각 및 누락 구간 시각도 한국 표
 
 녹화 정보 카드의 비디오 코덱, 해상도, 화면 비율, 프레임 속도와 파일 용량은 날짜 녹화의 경우
 `GET /api/v2/recordings/daily/{recording_id}/media-info`, 이벤트 녹화는 구간 파일이 ready이고
-`clipId`가 있을 때 `GET /api/v1/media/clips/{clip_id}/media-info`로 조회해 표시한다. 날짜 녹화의
-file이 null이면 "날짜 MP4 준비 전", 이벤트 준비 전이면 "구간 파일 준비 후 확인", HTTP 409는
-"준비 전", 410은 "파일 삭제 또는 만료", 그 외 실패는 "조회 안 됨", 정보 없으면 "정보 없음"으로 표시한다. 날짜 녹화의 조각(segments) 정보는 미디어 정보 다섯 항목의
-`title`에 표시한다. 다섯 항목의 title에는 파일의 `measured_at`과 `metadata_origin`을
-"파일 검사 시각: {시각} (한국 표준시), 측정값 출처: {출처}"로 덧붙이고 시각이 null이면 "정보 없음",
-날짜 녹화의 file이 null이면 "파일 정보 없음"으로 둔다. 파일 검사 시각은 segments 줄에 쓰지 않는다.
+`clipId`가 있을 때 `GET /api/v1/media/clips/{clip_id}/media-info`로 조회해 실제 MP4 파일이 준비된 경우에만 5개 행을 표시한다. 날짜 녹화의
+`file`이 null이거나 이벤트 구간 MP4 파일이 준비 전이거나 파일이 삭제 또는 만료된 경우(`410`)에는 해당 5개 파일 속성 행을 숨긴다. 준비된 파일이 있는 대상의 media-info 조회에서만 HTTP 409는 "준비 전", 조회 중은 "확인 중", 그 외 실패는 "조회 안 됨"을 표시한다. 날짜 녹화의 조각(segments) 정보는 5개 파일 행이 있을 때 해당 항목들의 `title`에 파일 검사와 함께 표시하며, 5개 행이 숨겨진 상태에서는 `"재생 형식"` 값(`HLS`)의 `title`에도 유지한다. 다섯 항목의 title에는 파일의 `measured_at`과 `metadata_origin`을
+"파일 검사 시각: {시각} (한국 표준시), 측정값 출처: {출처}"로 덧붙이고 시각이 null이면 "정보 없음"으로 둔다. 날짜 녹화에서 `file`이 null인 캐시가 남아 있더라도 `exportState`가 ready로 바뀌면 다시 조회해 파일 속성을 갱신한다.
 서버가 성공으로 응답한 파일 정보는 완성 전이라도 화면 열람 중 메모리 캐시에 보관하여 재선택 시
 재조회하지 않으며(deleted 및 expired 제외), `localStorage`에는 완성된 파일(ready)만 v2 key로 저장하고
 검사 시각이 없는 v1 key는 읽지 않고 지운다. 미디어 정보 조회의 동시 요청은 2개로 제한하고 대기 큐와

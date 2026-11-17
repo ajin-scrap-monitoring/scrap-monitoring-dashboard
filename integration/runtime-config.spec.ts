@@ -31,7 +31,7 @@ test("같은 production 이미지에 주입한 두 runtime 설정으로 실제 B
         };
       });
       await page.goto(config.origin);
-      await expect(page.locator(".kpi-value")).toHaveText("0%");
+      await expect(page.locator(".kpi-value")).toHaveText("0.00%");
       const snapshots = api.requests.filter((url) => url.pathname === "/api/v2/monitoring/snapshot");
       expect(snapshots.length).toBeGreaterThan(0);
       expect(snapshots.every((url) => url.searchParams.get("pit_id") === config.pitId)).toBe(true);
@@ -68,7 +68,7 @@ test("runtime 대상 변경은 열린 화면을 유지하고 같은 Browser의 �
     };
   });
   await page.goto("/");
-  await expect(page.locator(".kpi-value")).toHaveText("0%");
+  await expect(page.locator(".kpi-value")).toHaveText("0.00%");
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("runtime-test-camera"))).toBe("/media/cameras/camera-main/live");
   let runtimeLoads = 0;
   await page.route("**/runtime-config.json", async (route) => {
@@ -77,13 +77,13 @@ test("runtime 대상 변경은 열린 화면을 유지하고 같은 Browser의 �
   });
   const next = monitoringV2StateFixture("FRESH", 25);
   await api.snapshot({ ...next, pitId: "pit-example", source: { ...next.source, pit_id: "pit-example" } });
-  await expect(page.locator(".kpi-value")).toHaveText("0%");
+  await expect(page.locator(".kpi-value")).toHaveText("0.00%");
   expect(runtimeLoads).toBe(0);
   expect(api.requests.filter((url) => url.pathname === "/api/v2/monitoring/snapshot")
     .every((url) => url.searchParams.get("pit_id") === "pit-01")).toBe(true);
   const requestsBeforeReload = api.requests.length;
   await page.reload();
-  await expect(page.locator(".kpi-value")).toHaveText("25%");
+  await expect(page.locator(".kpi-value")).toHaveText("25.00%");
   expect(runtimeLoads).toBeGreaterThan(0);
   const requestsAfterReload = api.requests.slice(requestsBeforeReload)
     .filter((url) => url.pathname === "/api/v2/monitoring/snapshot");

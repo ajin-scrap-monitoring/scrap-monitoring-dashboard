@@ -161,9 +161,12 @@ Authorization 및 임의의 query를 전달하지 않으며 MP4의 `download=tru
 
 MP4 export는 viewer 또는 administrator session과 `X-CSRF-Token`이 필요하다. 준비 요청
 직전에 단건 `summary` 상태를 재조회하며 `closed` 상태인 지난 날짜, 확보 영상 존재와
-`export_allowed`를 확인한다. HTTP 200 또는 202 응답 뒤 단건 `summary` 상태를 조회하고 유효한
-`download_path`가 제공될 때 다운로드를 허용한다. 오늘의 녹화는 다운로드 대상이 아니며
-다운로드 불가를 녹화 실패로 표시하지 않는다. 원본 만료와 export cache 만료는 구분한다.
+`export_allowed`를 확인한다. `POST /api/v2/recordings/daily/{recording_id}/exports`는
+`DailyRecordingMetadata` 본문과 `Location: /api/v2/recordings/daily/{recording_id}/summary` header를
+반환하며, `202`에서도 `export_state`(`not_requested`, `processing`, `failed`)와 `error`를 구분하고
+`503 CATALOG_SUMMARY_UNAVAILABLE`을 포함한 오류를 전체 상세 조회로 대체하지 않는다. HTTP 200 또는
+202 응답 뒤 단건 `summary` 상태를 조회하고 유효한 `download_path`가 제공될 때 다운로드를 허용한다.
+오늘의 녹화는 다운로드 대상이 아니며 다운로드 불가를 녹화 실패로 표시하지 않는다. 원본 만료와 export cache 만료는 구분한다.
 
 MP4 재생은 HTTP Range 요청을 사용한다. 삭제된 파일은 gateway에서 `410`으로 거절한다.
 날짜 녹화 삭제는 administrator에게만 표시하고 확인창에서 같은 날짜 영상을 쓰는 이벤트

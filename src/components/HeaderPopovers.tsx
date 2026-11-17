@@ -115,7 +115,7 @@ export function NotificationsPopover({
           ))}
         </div>
       )}
-      <AppLink className="header-popover-link" to={ROUTES.history} onNavigate={onClose}>알림 이력에서 보기</AppLink>
+      <AppLink className="header-popover-link" to={ROUTES.history} onNavigate={onClose}>이벤트 이력에서 보기</AppLink>
     </section>
   );
 }

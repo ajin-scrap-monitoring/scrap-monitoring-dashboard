@@ -12,7 +12,7 @@ test("알림 500은 현황과 과거 그래프를 유지하고 수동 재조회 
   let attempts = 0;
   await page.route("**/api/v1/notifications?*", route => { attempts += 1; return failing ? route.fulfill({ status: 500, json: { detail: "Synthetic failure" } }) : route.fallback(); });
   await page.goto("/?source=api");
-  await expect(page.locator(".kpi-value")).toHaveText("0%");
+  await expect(page.locator(".kpi-value")).toHaveText("0.00%");
   await expect(page.locator(".load-chart-line").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "알림 조회 실패", exact: true })).toBeVisible();
   const geometry = () => page.locator(".monitoring-grid > .card").evaluateAll(cards => cards.map(card => {

@@ -535,7 +535,11 @@ button { cursor: pointer; word-break: keep-all; overflow-wrap: break-word; }
 .monitoring-detail-list { display: grid; gap: 10px; }
 .monitoring-detail-list > div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; }
 .monitoring-detail-list dd { margin: 0; }
+.monitoring-detail-reasons { margin: 0; padding-left: 18px; }
 .detail-trigger { all: unset; font: inherit; color: inherit; cursor: pointer; }
+.detail-trigger.active-alert-trigger { display: flex; flex: 1; min-width: 0; align-items: baseline; gap: 10px; overflow: hidden; text-align: left; }
+.detail-trigger.active-alert-trigger:hover { text-decoration: none; }
+.detail-trigger.active-alert-trigger:hover strong { text-decoration: underline; }
 .history-table-wrap .detail-trigger { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; white-space: nowrap; }
 .history-event-summary { margin: 16px 0; padding: 16px; border-radius: 4px; background: #f7f9fc; }
 .history-event-summary h3 { margin: 0 0 8px; font-size: 16px; }
