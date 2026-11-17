@@ -10,11 +10,11 @@ describe("http-recordings-api: v2 queryHistory 메모리 캐시", () => {
   ];
 
   function createTestApi(options: {
-    onRequest?: (from: string, to: string) => Promise<{ historySamples: HistoryLoadSample[] }>;
+    onRequest?: (from: string, to: string) => Promise<{ historySamples: HistoryLoadSample[]; bucketSeconds?: number }>;
     monitoringScope?: () => { pitId?: string; siteId?: string; edgeId?: string } | null;
   } = {}) {
     const requestV2LoadHistory = vi.fn().mockImplementation(
-      options.onRequest ?? (() => Promise.resolve({ historySamples: dummySamples })),
+      options.onRequest ?? (() => Promise.resolve({ historySamples: dummySamples, bucketSeconds: 900 })),
     );
     const optionalArea = async <T>(
       operation: Promise<T>,
@@ -55,10 +55,12 @@ describe("http-recordings-api: v2 queryHistory 메모리 캐시", () => {
     const first = await api.queryHistory(query);
     expect(requestV2LoadHistory).toHaveBeenCalledTimes(1);
     expect(first.loadSamples).toEqual(dummySamples);
+    expect(first.bucketSeconds).toBe(900);
 
     const second = await api.queryHistory(query);
     expect(requestV2LoadHistory).toHaveBeenCalledTimes(1); // 재요청 없음
     expect(second.loadSamples).toEqual(dummySamples);
+    expect(second.bucketSeconds).toBe(900);
   });
 
   test("이벤트 유형만 변경한 조회는 같은 기간이면 load-history 요청 없이 즉시 끝난다", async () => {

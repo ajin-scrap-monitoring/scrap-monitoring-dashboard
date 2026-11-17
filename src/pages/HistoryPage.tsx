@@ -15,6 +15,7 @@ import type { DashboardDataSource } from "../data/dashboard-data-source";
 import type { DashboardData, DataAreaState, DataReception, EventCategory, HeaderNotification, HistoryEvent, HistoryEventPage, HistoryLoadSample, UserSession } from "../domain/dashboard";
 import { useLatestRequest } from "../use-latest-request";
 import { timeAxisTicks } from "../chart-time-axis";
+import { seoulClock, seoulDateTime } from "../display-time";
 
 const historyEventsPerPage = 8;
 
@@ -35,9 +36,60 @@ function eventTitle(event: HistoryEvent) {
   return event.title || event.content;
 }
 
-function HistoryLoadChart({ chartEvents, loadSamples: samples, startsAt, endsAt, thresholds: thresholdPoints, loadState }: DashboardData["history"]) {
+function hasRangeStats(sample: HistoryLoadSample): sample is HistoryLoadSample & { minimumPercent: number; maximumPercent: number } {
+  return typeof sample.minimumPercent === "number" && typeof sample.maximumPercent === "number";
+}
+
+function plottedSampleValue(sample: HistoryLoadSample, useMaximum: boolean) {
+  if (useMaximum && typeof sample.maximumPercent === "number") {
+    return sample.value !== null ? Math.max(sample.maximumPercent, sample.value) : sample.maximumPercent;
+  }
+  return sample.value;
+}
+
+function formatHistoryPercent(value: number) {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(2)));
+}
+
+function formatBucketWindowKst(startIso: string, endIso: string) {
+  const startMs = Date.parse(startIso);
+  const endMs = Date.parse(endIso);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return `${startIso} ~ ${endIso}`;
+  const startDate = seoulDateTime(startMs).slice(5, 10).replace("-", ".");
+  const endDate = seoulDateTime(endMs).slice(5, 10).replace("-", ".");
+  const startClock = seoulClock(startMs, false);
+  const endClock = seoulClock(endMs, false);
+  return startDate === endDate ? `${startDate} ${startClock}~${endClock}` : `${startDate} ${startClock}~${endDate} ${endClock}`;
+}
+
+function sampleCenterHour(sample: HistoryLoadSample) {
+  return sample.bucketStartHour !== undefined && sample.bucketEndHour !== undefined
+    ? (sample.bucketStartHour + sample.bucketEndHour) / 2
+    : sample.hour;
+}
+
+function findInspectedSampleIndex(samples: readonly HistoryLoadSample[], targetHour: number, useMaximum: boolean) {
+  const isInspectable = (sample: HistoryLoadSample) => plottedSampleValue(sample, useMaximum) !== null || hasRangeStats(sample);
+  const direct = samples.findIndex((sample) => sample.bucketStartHour !== undefined && sample.bucketEndHour !== undefined
+    && targetHour >= sample.bucketStartHour && targetHour <= sample.bucketEndHour);
+  if (direct >= 0) return isInspectable(samples[direct]) ? direct : null;
+  let nearest: number | null = null;
+  let bestDistance = Infinity;
+  for (const [index, sample] of samples.entries()) {
+    if (!isInspectable(sample)) continue;
+    const distance = Math.abs(sampleCenterHour(sample) - targetHour);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      nearest = index;
+    }
+  }
+  return nearest;
+}
+
+function HistoryLoadChart({ chartEvents, loadSamples: samples, startsAt, endsAt, bucketSeconds, thresholds: thresholdPoints, loadState }: DashboardData["history"]) {
   const [activeEvent, setActiveEvent] = useState<number | null>(null);
   const [activeLoadIndex, setActiveLoadIndex] = useState<number | null>(null);
+  const [hoveredLoadIndex, setHoveredLoadIndex] = useState<number | null>(null);
   const left = 58;
   const right = 1900;
   const top = 62;
@@ -56,13 +108,15 @@ function HistoryLoadChart({ chartEvents, loadSamples: samples, startsAt, endsAt,
     return { hour, label };
   });
   const toY = (value: number) => bottom - value * ((bottom - top) / 100);
+  const useMaximum = (bucketSeconds ?? 0) > 60;
   const segments: Array<Array<HistoryLoadSample & { value: number }>> = [];
   let segment: Array<HistoryLoadSample & { value: number }> = [];
   for (const sample of samples) {
-    if (sample.value === null) {
+    const plottedValue = plottedSampleValue(sample, useMaximum);
+    if (plottedValue === null) {
       if (segment.length) segments.push(segment);
       segment = [];
-    } else segment.push({ ...sample, value: sample.value });
+    } else segment.push({ ...sample, value: plottedValue });
   }
   if (segment.length) segments.push(segment);
   const previousResult = loadState?.status === "error" && loadState.stale === true && segments.length > 0;
@@ -91,10 +145,65 @@ function HistoryLoadChart({ chartEvents, loadSamples: samples, startsAt, endsAt,
   const selectedSample = selectedEvent?.sample ?? null;
   const tooltipX = selectedSample === null ? 0 : Math.max(left + 8, Math.min(toX(selectedSample.hour) - 96, right - 200));
   const tooltipY = selectedSample === null ? 0 : 132;
-  const selectedLoad = activeLoadIndex === null ? null : samples[activeLoadIndex] ?? null;
-  const loadTooltipX = selectedLoad ? Math.max(left + 8, Math.min(toX(selectedLoad.hour) - 130, right - 340)) : 0;
+  const inspectedIndex = selectedEvent !== null ? null : (activeLoadIndex ?? hoveredLoadIndex);
+  const selectedLoad = inspectedIndex === null ? null : samples[inspectedIndex] ?? null;
+  const selectedGuideX = selectedLoad ? toX(selectedLoad.hour) : 0;
+  const loadTooltipLines = (() => {
+    if (!selectedLoad) return null;
+    if (selectedLoad.dataState === "LIMITED" && !hasRangeStats(selectedLoad) && selectedLoad.value !== null) {
+      return [
+        `판단 생성 ${selectedLoad.generatedAt ?? "정보 없음"}`,
+        `대표 적재율 ${formatHistoryPercent(selectedLoad.value)}% / 입력 제한`,
+        `관측 ${selectedLoad.observedAt ?? "정보 없음"}`,
+      ];
+    }
+    const lines: string[] = [];
+    if (selectedLoad.bucketStartAt && selectedLoad.bucketEndAt) {
+      lines.push(`구간 ${formatBucketWindowKst(selectedLoad.bucketStartAt, selectedLoad.bucketEndAt)} (KST)`);
+    } else if (selectedLoad.generatedAt) {
+      lines.push(`판단 생성 ${selectedLoad.generatedAt}`);
+    }
+    if (hasRangeStats(selectedLoad)) {
+      lines.push(`최대 ${formatHistoryPercent(selectedLoad.maximumPercent)}% / 최소 ${formatHistoryPercent(selectedLoad.minimumPercent)}%`);
+      const avgText = typeof selectedLoad.averagePercent === "number" ? `${formatHistoryPercent(selectedLoad.averagePercent)}%` : "-";
+      const lastText = selectedLoad.value !== null ? `${formatHistoryPercent(selectedLoad.value)}%` : "무효";
+      lines.push(`평균 ${avgText} / 마지막 ${lastText}`);
+    } else if (selectedLoad.value !== null) {
+      lines.push(`대표 적재율 ${formatHistoryPercent(selectedLoad.value)}%`);
+    }
+    if (selectedLoad.dataState === "LIMITED") {
+      lines.push(`대표 적재율 ${selectedLoad.value !== null ? `${formatHistoryPercent(selectedLoad.value)}%` : "무효"} / 입력 제한`);
+    }
+    return lines.length > 0 ? lines : null;
+  })();
+  const loadTooltipWidth = loadTooltipLines
+    ? Math.max(240, Math.min(400, Math.max(...loadTooltipLines.map((line) => line.length)) * 8 + 28))
+    : 340;
+  const loadTooltipHeight = loadTooltipLines ? 12 + loadTooltipLines.length * 18 : 64;
+  const loadTooltipX = selectedLoad ? Math.max(left + 8, Math.min(selectedGuideX - loadTooltipWidth / 2, right - loadTooltipWidth)) : 0;
+  const loadTooltipY = Math.min(132, 230 - loadTooltipHeight - 6);
+  const handleChartPointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (unavailable || samples.length === 0 || !(duration > 0)) {
+      setHoveredLoadIndex(null);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      setHoveredLoadIndex(null);
+      return;
+    }
+    const contentWidth = Math.min(rect.width, rect.height * (1960 / 230));
+    const contentOffsetX = (rect.width - contentWidth) / 2;
+    const svgX = ((event.clientX - rect.left - contentOffsetX) / contentWidth) * 1960;
+    if (svgX < left || svgX > right) {
+      setHoveredLoadIndex(null);
+      return;
+    }
+    const targetHour = ((svgX - left) / (right - left)) * duration;
+    setHoveredLoadIndex(findInspectedSampleIndex(samples, targetHour, useMaximum));
+  };
   return (
-    <svg className="history-chart" viewBox="0 0 1960 230" role="img" aria-label="조회 기간 대표 적재율 변화 그래프">
+    <svg className="history-chart" viewBox="0 0 1960 230" role="img" aria-label="조회 기간 대표 적재율 변화 그래프" onPointerMove={handleChartPointerMove} onPointerLeave={() => setHoveredLoadIndex(null)}>
       <g stroke="#e2e8ef" strokeWidth="1">
         {[0, 20, 40, 60, 80, 100].map((value) => <path key={value} d={`M${left} ${toY(value)}H${right}`} />)}
       </g>
@@ -109,7 +218,12 @@ function HistoryLoadChart({ chartEvents, loadSamples: samples, startsAt, endsAt,
         const path = points.map((sample, sampleIndex) => `${sampleIndex === 0 ? "M" : "L"}${toX(sample.hour)} ${toY(sample.value)}`).join(" ");
         return <g key={`history-load-${index}`}><path d={`${path}V${bottom}H${toX(points[0].hour)}Z`} fill="#f58a07" fillOpacity="0.1" /><path className="history-load-line" d={path} fill="none" stroke="#f58a07" strokeWidth="2" />{points.length === 1 && <circle cx={toX(points[0].hour)} cy={toY(points[0].value)} r="2.5" fill="#f58a07" />}</g>;
       }) : <text x="980" y="130" textAnchor="middle" fill="#61708a">{loadState?.message && loadState.message !== emptyMessage && <title>{loadState.message}</title>}{emptyMessage}</text>}
-      {!unavailable && samples.map((sample, index) => sample.value !== null && sample.dataState === "LIMITED" && <circle key={`history-limited-${index}`} cx={toX(sample.hour)} cy={toY(sample.value)} r="3.5" fill="#ffffff" stroke="#f58a07" strokeWidth="2" tabIndex={0} aria-label={`판단 생성 ${sample.generatedAt ?? "정보 없음"}, 대표 적재율 ${sample.value}%, 입력 제한, 관측 ${sample.observedAt ?? "정보 없음"}`} onPointerEnter={() => setActiveLoadIndex(index)} onPointerLeave={() => setActiveLoadIndex(null)} onFocus={() => setActiveLoadIndex(index)} onBlur={() => setActiveLoadIndex(null)}><title>입력 제한 상태의 적재율 {sample.value}%</title></circle>)}
+      {!unavailable && selectedLoad && <line x1={selectedGuideX} x2={selectedGuideX} y1={top} y2={bottom} stroke="#94a3b8" strokeDasharray="3 3" strokeWidth="1" pointerEvents="none" />}
+      {!unavailable && samples.map((sample, index) => {
+        const plottedValue = plottedSampleValue(sample, useMaximum);
+        const labelValue = sample.value ?? plottedValue;
+        return plottedValue !== null && sample.dataState === "LIMITED" && <circle key={`history-limited-${index}`} cx={toX(sample.hour)} cy={toY(plottedValue)} r="3.5" fill="#ffffff" stroke="#f58a07" strokeWidth="2" tabIndex={0} aria-label={`판단 생성 ${sample.generatedAt ?? "정보 없음"}, 대표 적재율 ${labelValue}%, 입력 제한, 관측 ${sample.observedAt ?? "정보 없음"}`} onPointerEnter={() => setActiveLoadIndex(index)} onPointerLeave={() => setActiveLoadIndex(null)} onFocus={() => setActiveLoadIndex(index)} onBlur={() => setActiveLoadIndex(null)}><title>입력 제한 상태의 적재율 {labelValue}%</title></circle>;
+      })}
       <g stroke="#8b9aad" strokeWidth="1.2">
         {ticks.map(({ hour }) => <path key={hour} d={`M${toX(hour)} ${bottom}V${bottom + 6}`} />)}
       </g>
@@ -146,11 +260,11 @@ function HistoryLoadChart({ chartEvents, loadSamples: samples, startsAt, endsAt,
           <text x="10" y="36">{selectedEvent.detail}</text>
         </g>
       )}
-      {!unavailable && selectedLoad?.value !== null && selectedLoad?.dataState === "LIMITED" && <g className="history-chart-tooltip" transform={`translate(${loadTooltipX} 132)`} pointerEvents="none">
-        <rect width="340" height="64" rx="5" />
-        <text x="10" y="18">판단 생성 {selectedLoad.generatedAt ?? "정보 없음"}</text>
-        <text x="10" y="36">대표 적재율 {selectedLoad.value}% / 입력 제한</text>
-        <text x="10" y="54">관측 {selectedLoad.observedAt ?? "정보 없음"}</text>
+      {!unavailable && loadTooltipLines && <g className="history-chart-tooltip" transform={`translate(${loadTooltipX} ${loadTooltipY})`} pointerEvents="none">
+        <rect width={loadTooltipWidth} height={loadTooltipHeight} rx="5" />
+        {loadTooltipLines.map((line, index) => (
+          <text key={`tip-${index}`} x="10" y={18 + index * 18}>{line}</text>
+        ))}
       </g>}
     </svg>
   );
@@ -243,8 +357,14 @@ export function HistoryPage({ dataSource, history, headerNotifications, headerUn
   }).map((event) => ({ ...event, hour: event.hour + (originTime - startTime) / 3_600_000 })) : [];
   const startHour = (startTime - originTime) / 3_600_000;
   const endHour = (endTime - originTime) / 3_600_000;
+  const viewDuration = endHour - startHour;
   const loadSamples = displayedHistory.loadSamples.filter((sample) => sample.hour >= startHour && sample.hour <= endHour)
-    .map((sample) => ({ ...sample, hour: sample.hour - startHour }));
+    .map((sample) => ({
+      ...sample,
+      hour: sample.hour - startHour,
+      ...(sample.bucketStartHour !== undefined && { bucketStartHour: Math.max(0, Math.min(viewDuration, sample.bucketStartHour - startHour)) }),
+      ...(sample.bucketEndHour !== undefined && { bucketEndHour: Math.max(0, Math.min(viewDuration, sample.bucketEndHour - startHour)) }),
+    }));
   const thresholds = displayedHistory.thresholds.filter((sample, index, values) => sample.hour <= endHour && (sample.hour >= startHour || index === values.findLastIndex((candidate) => candidate.hour <= startHour)))
     .map((sample) => ({ ...sample, hour: Math.max(0, sample.hour - startHour) }));
   const showLegend = (type: string) => dataSource?.monitoringVersion !== "v2" && (applied.eventType === "전체" || applied.eventType === type);

@@ -166,3 +166,95 @@ test("view가 없거나 full이면 assessmentId 누락 시 거부한다", () => 
     expect(() => parseLoadHistoryV2(response, scope)).toThrow("Unexpected v2 load history");
   }
 });
+
+test("장기 구간 통계(minimumPercent, maximumPercent, averagePercent, validSamples, invalidSamples)와 구간 경계 시각을 보존하고 범위 오류를 거부한다", () => {
+  const response = fixture();
+  const from = Date.parse("2026-10-14T15:00:00Z");
+  const interval = 900 * 1000;
+  response.from = new Date(from).toISOString();
+  response.to = new Date(from + 3 * interval).toISOString();
+  response.bucketSeconds = 900;
+  response.samples = [
+    {
+      bucketStartAt: new Date(from).toISOString(),
+      bucketEndAt: new Date(from + interval).toISOString(),
+      generatedAt: new Date(from + interval - 1000).toISOString(),
+      observedAt: new Date(from + interval - 2000).toISOString(),
+      assessmentId: null,
+      valuePercent: 59.82,
+      valid: true,
+      dataState: "AVAILABLE",
+      reasonCodes: [],
+      minimumPercent: 59.82,
+      maximumPercent: 92,
+      averagePercent: 81.52,
+      validSamples: 890,
+      invalidSamples: 7,
+    } as ReturnType<typeof fixture>["samples"][number],
+    {
+      bucketStartAt: new Date(from + interval).toISOString(),
+      bucketEndAt: new Date(from + 2 * interval).toISOString(),
+      generatedAt: new Date(from + 2 * interval - 1000).toISOString(),
+      observedAt: new Date(from + 2 * interval - 2000).toISOString(),
+      assessmentId: null,
+      valuePercent: null,
+      valid: false,
+      dataState: "UNKNOWN",
+      reasonCodes: ["HEIGHT_SCAN_STALE"],
+      minimumPercent: 0.08,
+      maximumPercent: 89.94,
+      averagePercent: 77.29,
+      validSamples: 706,
+      invalidSamples: 187,
+    } as ReturnType<typeof fixture>["samples"][number],
+    {
+      bucketStartAt: new Date(from + 2 * interval).toISOString(),
+      bucketEndAt: new Date(from + 3 * interval).toISOString(),
+      generatedAt: null,
+      observedAt: null,
+      assessmentId: null,
+      valuePercent: null,
+      valid: false,
+      dataState: "NO_DATA",
+      reasonCodes: ["STATE_NOT_RECEIVED"],
+    },
+  ];
+
+  const parsed = parseLoadHistoryV2(response, scope);
+  expect(parsed.bucketSeconds).toBe(900);
+  expect(parsed.historySamples[0]).toMatchObject({
+    bucketStartHour: 0,
+    bucketEndHour: 0.25,
+    minimumPercent: 59.82,
+    maximumPercent: 92,
+    averagePercent: 81.52,
+    validSamples: 890,
+    invalidSamples: 7,
+    value: 59.82,
+  });
+  expect(parsed.historySamples[1]).toMatchObject({
+    bucketStartHour: 0.25,
+    bucketEndHour: 0.5,
+    minimumPercent: 0.08,
+    maximumPercent: 89.94,
+    averagePercent: 77.29,
+    validSamples: 706,
+    invalidSamples: 187,
+    value: null,
+  });
+
+  for (const field of ["minimumPercent", "maximumPercent", "averagePercent"] as const) {
+    for (const invalid of [-0.1, 100.1, Number.NaN, "50"]) {
+      const broken = structuredClone(response);
+      (broken.samples[0] as Record<string, unknown>)[field] = invalid;
+      expect(() => parseLoadHistoryV2(broken, scope)).toThrow("Unexpected v2 load history");
+    }
+  }
+  for (const field of ["validSamples", "invalidSamples"] as const) {
+    for (const invalid of [-1, 1.5, "3"]) {
+      const broken = structuredClone(response);
+      (broken.samples[0] as Record<string, unknown>)[field] = invalid;
+      expect(() => parseLoadHistoryV2(broken, scope)).toThrow("Unexpected v2 load history");
+    }
+  }
+});

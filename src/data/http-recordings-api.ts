@@ -76,7 +76,7 @@ type RecordingsApiContext = {
   optionalArea: <T>(operation: Promise<T>, fallback: T, message: string, signal?: AbortSignal, stale?: boolean) => Promise<{ value: T; state: DataAreaState }>;
   pitId: string;
   request: <T>(path: string, init?: RequestInit & { timeoutMs?: number }) => Promise<T>;
-  requestV2LoadHistory: (from: string, to: string, signal?: AbortSignal) => Promise<{ historySamples: DashboardData["history"]["loadSamples"] }>;
+  requestV2LoadHistory: (from: string, to: string, signal?: AbortSignal) => Promise<{ historySamples: DashboardData["history"]["loadSamples"]; bucketSeconds?: number }>;
   serverNow: () => number;
   supportsDailyRecordings: boolean;
   useV2Monitoring: boolean;
@@ -102,9 +102,9 @@ export function createRecordingsApi({
   useV2Monitoring,
 }: RecordingsApiContext) {
   let dailyApiPromise: Promise<DailyRecordingApi> | null = null;
-  const historyCache = new Map<string, { samples: DashboardData["history"]["loadSamples"]; timestamp: number }>();
+  const historyCache = new Map<string, { samples: DashboardData["history"]["loadSamples"]; bucketSeconds?: number; timestamp: number }>();
 
-  const getCachedHistory = (key: string): DashboardData["history"]["loadSamples"] | null => {
+  const getCachedHistory = (key: string): { samples: DashboardData["history"]["loadSamples"]; bucketSeconds?: number } | null => {
     const entry = historyCache.get(key);
     if (!entry) return null;
     if (performance.now() - entry.timestamp > HISTORY_CACHE_TTL_MS) {
@@ -113,17 +113,17 @@ export function createRecordingsApi({
     }
     historyCache.delete(key);
     historyCache.set(key, entry);
-    return entry.samples;
+    return { samples: entry.samples, bucketSeconds: entry.bucketSeconds };
   };
 
-  const setCachedHistory = (key: string, samples: DashboardData["history"]["loadSamples"]) => {
+  const setCachedHistory = (key: string, samples: DashboardData["history"]["loadSamples"], bucketSeconds?: number) => {
     if (historyCache.has(key)) {
       historyCache.delete(key);
     } else if (historyCache.size >= MAX_HISTORY_CACHE_ENTRIES) {
       const oldestKey = historyCache.keys().next().value;
       if (oldestKey !== undefined) historyCache.delete(oldestKey);
     }
-    historyCache.set(key, { samples, timestamp: performance.now() });
+    historyCache.set(key, { samples, bucketSeconds, timestamp: performance.now() });
   };
   const getDailyApi = () => {
     if (!supportsDailyRecordings) throw new ApiError(404, "현재 연결은 날짜 녹화를 지원하지 않습니다.", "UNSUPPORTED_ENDPOINT");
@@ -156,21 +156,21 @@ export function createRecordingsApi({
     const scope = monitoringScope?.();
     const cacheKey = `${pitId}:${scope?.siteId ?? ""}:${scope?.edgeId ?? ""}:${from}:${to}`;
 
-    let cachedSamples: DashboardData["history"]["loadSamples"] | null = null;
+    let cached: { samples: DashboardData["history"]["loadSamples"]; bucketSeconds?: number } | null = null;
     if (!overRange) {
-      cachedSamples = getCachedHistory(cacheKey);
+      cached = getCachedHistory(cacheKey);
     }
 
-    let load: { historySamples: DashboardData["history"]["loadSamples"] } | null;
+    let load: { historySamples: DashboardData["history"]["loadSamples"]; bucketSeconds?: number } | null;
     let loadState: DataAreaState;
 
-    if (cachedSamples !== null) {
-      load = { historySamples: cachedSamples };
+    if (cached !== null) {
+      load = { historySamples: cached.samples, bucketSeconds: cached.bucketSeconds };
       loadState = { status: "ready" };
     } else {
       const loadResult = await optionalArea(overRange ? Promise.reject(new ApiError(422, "HISTORY_RANGE_MUST_BE_WITHIN_90_DAYS", "HISTORY_RANGE_MUST_BE_WITHIN_90_DAYS"))
         : requestV2LoadHistory(from, to, signal).then((result) => {
-            setCachedHistory(cacheKey, result.historySamples);
+            setCachedHistory(cacheKey, result.historySamples, result.bucketSeconds);
             return result;
           }).catch((error: unknown) => {
             if (error && typeof error === "object" && "code" in error && typeof error.code === "string" && historyErrorMessages[error.code]) {
@@ -189,6 +189,7 @@ export function createRecordingsApi({
     return {
       ...emptyHistory(to),
       startsAt: toDateTimeInput(from), endsAt: toDateTimeInput(to),
+      ...(load?.bucketSeconds !== undefined && { bucketSeconds: load.bucketSeconds }),
       loadSamples: load?.historySamples ?? [],
       events: [],
       thresholds: threshold === undefined ? [] : [{ hour: 0, value: threshold }],

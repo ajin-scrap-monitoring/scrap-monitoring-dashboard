@@ -264,3 +264,56 @@ test("이력 이벤트 표는 보이는 페이지만 서버에 요청하고 적�
   await expect(rows).toHaveCount(6);
   await expect.poll(() => eventRequests().map(url => url.searchParams.get("page")).join(",")).toBe("1,2,3,4");
 });
+
+test("7일(900초) 조회에서는 마지막 값이 내려간 수거 구간에서도 단일 추세선에 최대 적재율(maximumPercent)을 반영한다", async ({ page }) => {
+  const snapshot = monitoringV2StateFixture("UNAVAILABLE");
+  const initial = { ...snapshot, serverTime: "2026-10-15T19:00:00+09:00", summary: { ...snapshot.summary, collectionThresholdPercent: 80 } };
+  const api = await installBackendApi(page, { initial });
+  api.setLoadHistory((url) => {
+    const from = Date.parse(url.searchParams.get("from")!);
+    const to = Date.parse(url.searchParams.get("to")!);
+    const step = 900_000;
+    const count = Math.round((to - from) / step);
+    if (count <= 96) return undefined;
+    const samples = Array.from({ length: count }, (_, index) => {
+      const start = from + index * step;
+      const end = start + step;
+      const generatedAt = new Date(end - 1000).toISOString();
+      const base = {
+        bucketStartAt: new Date(start).toISOString(),
+        bucketEndAt: new Date(end).toISOString(),
+        generatedAt,
+        observedAt: generatedAt,
+        valid: true,
+        dataState: "AVAILABLE" as const,
+        reasonCodes: [] as string[],
+      };
+      if (index === count - 2) {
+        return { ...base, valuePercent: 51, minimumPercent: 51, maximumPercent: 92, averagePercent: 78.5, validSamples: 900, invalidSamples: 0 };
+      }
+      return { ...base, valuePercent: 70, minimumPercent: 60, maximumPercent: 70, averagePercent: 65, validSamples: 900, invalidSamples: 0 };
+    });
+    return {
+      status: 200,
+      body: {
+        schemaVersion: "2",
+        pitId: initial.pitId,
+        source: initial.source,
+        from: new Date(from).toISOString(),
+        to: new Date(to).toISOString(),
+        bucketSeconds: 900,
+        selectionPolicy: "LATEST_STATE_PER_BUCKET",
+        view: "chart",
+        samples,
+      },
+    };
+  });
+  await page.goto("/history?source=api");
+  const chart = page.locator(".history-chart");
+  await expect(chart.locator(".history-load-line")).toHaveCount(1);
+  await expect(chart.locator(".history-load-range")).toHaveCount(0);
+  await expect(chart.locator(".history-load-peak")).toHaveCount(0);
+  const lineD = await chart.locator(".history-load-line").getAttribute("d");
+  expect(lineD).toContain(`${192 - 92 * 1.3}`);
+  await expect(page.getByLabel("그래프 범례")).toHaveText("현재 임계율");
+});
