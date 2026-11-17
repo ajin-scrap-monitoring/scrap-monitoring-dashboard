@@ -145,7 +145,7 @@ test("제공된 경보 평가와 실제 완료 시각을 변환하고 새 경보
   await api.snapshot({ ...monitoringV2StateFixture("FRESH", 95), operations: {
     effectiveState: "CRITICAL", lastKnownState: "CRITICAL", lastEvaluatedAt: "2026-10-13T00:00:09Z", lastAlertAt: "2026-10-13T00:00:10Z", notificationId: "notif-v2-opaque",
   } });
-  await expect(page.locator(".kpi-value")).toHaveText("95%");
+  await expect(page.locator(".kpi-value")).toHaveText("95.00%");
   await page.getByRole("button", { name: "알림 2건", exact: true }).click();
   await expect(page.getByLabel("최근 알림").getByText("수거 필요", { exact: true })).toBeVisible();
   await page.getByRole("heading", { name: "스크랩 모니터링", exact: true }).click();
@@ -219,28 +219,34 @@ test("v2 전체 상태, 0%와 소수 적재율을 표시하고 동일 snapshot�
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/?source=api");
-  await expect(page.locator(".kpi-value")).toHaveText("0%");
+  await expect(page.locator(".kpi-value")).toHaveText("0.00%");
   for (const state of ["STALE", "UNKNOWN", "NO_DATA", "UNAVAILABLE", "FRESH"] as const) {
     await api.snapshot(monitoringV2StateFixture(state, 72.5));
-    await expect(page.locator(".kpi-value")).toHaveText(state === "FRESH" ? "72.5%" : "판단 불가");
+    await expect(page.locator(".kpi-value")).toHaveText(state === "FRESH" ? "72.50%" : "판단 불가");
   }
   await page.evaluate(() => window.backendFixture.emit("error", ""));
-  await expect(page.locator(".kpi-value")).toHaveText("72.5%");
+  await expect(page.locator(".kpi-value")).toHaveText("72.50%");
   await expect(page.locator(".kpi-label")).toHaveText("추정 적재율 (갱신 대기)");
   await api.snapshot(monitoringV2StateFixture("UNAVAILABLE", 72.5));
   await page.evaluate(() => window.backendFixture.emit("error", ""));
   await expect(page.locator(".kpi-value")).toHaveText("판단 불가");
   await expect(page.getByRole("status").filter({ hasText: "재연결" })).toBeVisible();
   await api.snapshot(monitoringV2StateFixture("FRESH", 72.5));
-  await expect(page.locator(".kpi-value")).toHaveText("72.5%");
-  for (const percent of [72.123456, 99.999999, 0.000001]) {
+  await expect(page.locator(".kpi-value")).toHaveText("72.50%");
+  for (const [percent, expectedText] of [
+    [88, "88.00%"],
+    [100, "100.00%"],
+    [72.123456, "72.123456%"],
+    [99.999999, "99.999999%"],
+    [0.000001, "0.000001%"],
+  ] as const) {
     await api.snapshot(monitoringV2StateFixture("FRESH", percent));
-    await expect(page.locator(".kpi-value")).toHaveText(`${percent}%`);
+    await expect(page.locator(".kpi-value")).toHaveText(expectedText);
     expect(await page.locator(".kpi-value").evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
   }
   await api.snapshot(monitoringV2StateFixture("FRESH", 72.5));
   await page.evaluate(() => window.backendFixture.emit("monitoring.snapshot", "{broken"));
-  await expect(page.locator(".kpi-value")).toHaveText("72.5%");
+  await expect(page.locator(".kpi-value")).toHaveText("72.50%");
   expect(errors).toEqual([]);
   expect(api.requests.some((url) => url.pathname === "/api/v1/monitoring/snapshot")).toBe(false);
   expect(api.requests.some((url) => url.pathname.includes("webrtc"))).toBe(false);

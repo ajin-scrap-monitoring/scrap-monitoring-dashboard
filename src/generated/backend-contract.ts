@@ -2945,6 +2945,8 @@ export interface components {
             readonly pitId: string;
             /** Profiles */
             readonly profiles: readonly components["schemas"]["LidarProfileV2"][];
+            /** Rawmeansectionfillpercent */
+            readonly rawMeanSectionFillPercent?: number | null;
         };
         /**
          * LidarProfileSample
@@ -2971,6 +2973,11 @@ export interface components {
         readonly LidarProfileSampleV2: {
             /** Anglemdeg */
             readonly angleMdeg?: number;
+            /**
+             * Binsource
+             * @enum {string}
+             */
+            readonly binSource?: "OBSERVED" | "INTERPOLATED" | "UNAVAILABLE" | "MASKED";
             /**
              * Height
              * @description Height in cm
@@ -3032,15 +3039,18 @@ export interface components {
             /**
              * Samplesource
              * @default MEASUREMENT
-             * @enum {string}
              */
-            readonly sampleSource?: "MEASUREMENT" | "FILTERED_POINT_CLOUD";
+            readonly sampleSource?: ("MEASUREMENT" | "FILTERED_POINT_CLOUD") | null;
             /** Samples */
             readonly samples: readonly components["schemas"]["LidarProfileSampleV2"][];
             /** Sectionfillpercent */
             readonly sectionFillPercent?: number | null;
+            /** Sectionjudgmentstate */
+            readonly sectionJudgmentState?: ("AVAILABLE" | "LIMITED" | "UNAVAILABLE") | null;
             /** Sectionlengthcm */
             readonly sectionLengthCm?: number | null;
+            /** Sectionsource */
+            readonly sectionSource?: "EDGE_SECTION_PROFILE" | null;
             /** Sensorid */
             readonly sensorId: string;
             /**
@@ -8541,7 +8551,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["DailyRecording"];
+                    readonly "application/json": components["schemas"]["DailyRecordingMetadata"];
                 };
             };
             /** @description Accepted */
@@ -8550,7 +8560,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["DailyRecording"];
+                    readonly "application/json": components["schemas"]["DailyRecordingMetadata"];
                 };
             };
             /** @description Bad Request */

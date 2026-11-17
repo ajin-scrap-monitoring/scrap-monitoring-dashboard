@@ -22,7 +22,7 @@ test("판단 불가는 중립 회색으로 표시하고 수치 수신 전후에�
   const unavailable = await geometry();
   expect(unavailable.length).toBeGreaterThan(0);
   await api.snapshot(monitoringV2StateFixture("FRESH", 72.5));
-  await expect(value).toHaveText("72.5%");
+  await expect(value).toHaveText("72.50%");
   await expect(value).toHaveCSS("color", "rgb(17, 24, 39)");
   await expect(value).toHaveCSS("font-size", "76px");
   await expect(value).toHaveCSS("font-weight", "800");
@@ -391,7 +391,7 @@ test("layout 조회 실패는 측정 영역에 정보 없음만 표시하고 나
   api.setLayout(null);
   await page.goto("/?source=api");
   await expect(page.locator(".measurement-layout-state")).toHaveText("배치 정보 없음");
-  await expect(page.locator(".kpi-value")).toHaveText("72.5%");
+  await expect(page.locator(".kpi-value")).toHaveText("72.50%");
   await expect(page.locator(".measurement-card svg.measurement-svg")).toBeVisible();
 });
 
@@ -537,4 +537,57 @@ test("카메라 상태가 HEALTHY에서 INTERRUPTED 및 확인 불가로 전환�
   expect(Math.abs(updatedGeometry!.width - initialGeometry!.width)).toBeLessThanOrEqual(0.1);
   expect(Math.abs(updatedGeometry!.height - initialGeometry!.height)).toBeLessThanOrEqual(0.1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+});
+
+test("Edge DEGRADED 활성 알림과 장비 상태는 한국어 사유 요약과 상세 모달을 카드 크기 변경 없이 제공한다", async ({ page }) => {
+  const base = monitoringV2StateFixture("FRESH", 88);
+  const initial = {
+    ...base,
+    deviceStatus: {
+      ...base.deviceStatus,
+      connection_state: "REPORTING" as const,
+      effective_state: "DEGRADED",
+      reason_codes: ["CAMERA_FRAME_STALE", "OUTBOX_DATA_LOSS"],
+    },
+  };
+  const api = await installBackendApi(page, { initial });
+  api.setActiveAlerts(activeAlertsFixture({
+    evaluationState: "NORMAL",
+    reasonCodes: [],
+    coverage: [],
+    items: [activeHealthAlertFixture({
+      reasonCodes: ["CAMERA_FRAME_STALE", "OUTBOX_DATA_LOSS"],
+    })],
+  }));
+  await page.goto("/?source=api");
+  await page.evaluate(() => document.fonts.ready);
+
+  await expect(page.locator(".kpi-value")).toHaveText("88.00%");
+  const alertsCard = page.locator(".alerts-card");
+  const devicesCard = page.locator(".devices-card");
+  const geometry = () => page.locator(".monitoring-grid > .card").evaluateAll((cards) => cards.map((card) => {
+    const { x, y, width, height } = card.getBoundingClientRect();
+    return { x, y, width, height };
+  }));
+  const before = await geometry();
+
+  const alertTrigger = alertsCard.getByRole("button", { name: /Edge 장치 상태 이상/ });
+  await expect(alertTrigger).toContainText("엣지 장비 일부 기능 제한 (카메라 프레임 수신 지연 외 1건), 서버 최초 확인 10-13 08:47");
+  await expect(devicesCard.getByText("일부 기능 제한", { exact: true })).toHaveAttribute(
+    "title",
+    "DEGRADED\n사유: 카메라 프레임 수신 지연 (CAMERA_FRAME_STALE)\n사유: 전송 대기 데이터 유실 (OUTBOX_DATA_LOSS)",
+  );
+  expect(await alertsCard.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+  expect(await geometry()).toEqual(before);
+
+  await alertTrigger.click();
+  const dialog = page.getByRole("dialog", { name: "Edge 장치 상태 이상" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("엣지 장비 (edge-01)");
+  await expect(dialog).toContainText("일부 기능 제한 (DEGRADED)");
+  await expect(dialog).toContainText("카메라 프레임 수신 지연 (CAMERA_FRAME_STALE)");
+  await expect(dialog).toContainText("전송 대기 데이터 유실 (OUTBOX_DATA_LOSS)");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(alertTrigger).toBeFocused();
 });

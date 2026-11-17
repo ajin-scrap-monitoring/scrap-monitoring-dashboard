@@ -5779,6 +5779,19 @@
             },
             "title": "Profiles",
             "type": "array"
+          },
+          "rawMeanSectionFillPercent": {
+            "anyOf": [
+              {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rawmeansectionfillpercent"
           }
         },
         "required": [
@@ -5826,6 +5839,16 @@
           "angleMdeg": {
             "title": "Anglemdeg",
             "type": "integer"
+          },
+          "binSource": {
+            "enum": [
+              "OBSERVED",
+              "INTERPOLATED",
+              "UNAVAILABLE",
+              "MASKED"
+            ],
+            "title": "Binsource",
+            "type": "string"
           },
           "height": {
             "anyOf": [
@@ -6012,13 +6035,20 @@
             "type": "number"
           },
           "sampleSource": {
-            "default": "MEASUREMENT",
-            "enum": [
-              "MEASUREMENT",
-              "FILTERED_POINT_CLOUD"
+            "anyOf": [
+              {
+                "enum": [
+                  "MEASUREMENT",
+                  "FILTERED_POINT_CLOUD"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Samplesource",
-            "type": "string"
+            "default": "MEASUREMENT",
+            "title": "Samplesource"
           },
           "samples": {
             "items": {
@@ -6040,6 +6070,22 @@
             ],
             "title": "Sectionfillpercent"
           },
+          "sectionJudgmentState": {
+            "anyOf": [
+              {
+                "enum": [
+                  "AVAILABLE",
+                  "LIMITED",
+                  "UNAVAILABLE"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sectionjudgmentstate"
+          },
           "sectionLengthCm": {
             "anyOf": [
               {
@@ -6050,6 +6096,18 @@
               }
             ],
             "title": "Sectionlengthcm"
+          },
+          "sectionSource": {
+            "anyOf": [
+              {
+                "const": "EDGE_SECTION_PROFILE",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sectionsource"
           },
           "sensorId": {
             "title": "Sensorid",
@@ -17075,7 +17133,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DailyRecording"
+                  "$ref": "#/components/schemas/DailyRecordingMetadata"
                 }
               }
             },
@@ -17085,7 +17143,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DailyRecording"
+                  "$ref": "#/components/schemas/DailyRecordingMetadata"
                 }
               }
             },
@@ -19293,5 +19351,5 @@
     }
   },
   "x-source-repository": "https://github.com/ajin-scrap-monitoring/scrap-monitoring-backend",
-  "x-source-revision": "530a6ac81c1c85b86993321488fe7c5b3d9d01bb"
+  "x-source-revision": "b41512b2651593ab187297e4aa707904705df649"
 }

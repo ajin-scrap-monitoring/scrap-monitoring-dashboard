@@ -23,7 +23,7 @@ test("최근 알림 20건은 popover 내부에서 스크롤하고 헤더와 이�
   const popover = page.getByRole("region", { name: "최근 알림", exact: true });
   await expect(popover).toBeInViewport({ ratio: 1 });
   await expect(popover.getByRole("button", { name: "모두 읽음", exact: true })).toBeInViewport({ ratio: 1 });
-  const history = popover.getByRole("link", { name: "알림 이력에서 보기", exact: true });
+  const history = popover.getByRole("link", { name: "이벤트 이력에서 보기", exact: true });
   await expect(history).toBeInViewport({ ratio: 1 });
   expect(await popover.locator(".header-notification-list").evaluate(element => getComputedStyle(element).overflowY === "auto" && element.scrollHeight > element.clientHeight)).toBe(true);
   const notifications = popover.locator(".header-notification");

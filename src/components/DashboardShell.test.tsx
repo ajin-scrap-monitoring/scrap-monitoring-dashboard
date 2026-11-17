@@ -166,6 +166,7 @@ test("긴 로그인 ID와 알림의 원문은 title과 접근 가능한 텍스�
   await screen.findByLabelText("최근 알림");
   expect(view.container.querySelector(".header-notification strong")).toHaveAttribute("title", title);
   expect(view.container.querySelector(".header-notification small")).toHaveAttribute("title", detail);
+  expect(screen.getByRole("link", { name: "이벤트 이력에서 보기" })).toHaveAttribute("href", "/history");
 });
 
 test("모듈 로딩이 끝나기 전에 버튼을 눌러도 로딩이 끝나면 패널이 뜬다", async () => {

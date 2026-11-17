@@ -181,4 +181,55 @@ describe("daily-recording-api /summary 및 구간 페이지 API", () => {
     expect(requestedUrls).not.toContain(`GET /api/v2/recordings/daily/${id1}`);
     expect(requestedUrls).toContain(`POST /api/v2/recordings/daily/${id1}/exports`);
   });
+
+  test("exports POST 응답의 ready, failed 상태와 503 CATALOG_SUMMARY_UNAVAILABLE을 구분한다", async () => {
+    const requestedUrls: string[] = [];
+    let exportResponse: Record<string, unknown> = {
+      ...metadataItem(id1, "2026-10-14", false),
+      export_state: "ready",
+      download_path: `/media/daily-recordings/${id1}/content?download=true`,
+      size_bytes: 2048,
+      export_expires_at: "2026-10-18T00:00:00Z",
+    };
+    let rejectExport: Error | null = null;
+
+    const api = createDailyRecordingApi({
+      ApiError,
+      cameraId,
+      isAuthenticated: () => true,
+      request: vi.fn((path: string, init?: RequestInit) => {
+        requestedUrls.push(`${init?.method ?? "GET"} ${path}`);
+        if (path === `/api/v2/recordings/daily/${id1}/summary`) {
+          return Promise.resolve(metadataItem(id1, "2026-10-14", false));
+        }
+        if (path === `/api/v2/recordings/daily/${id1}/exports` && init?.method === "POST") {
+          return rejectExport ? Promise.reject(rejectExport) : Promise.resolve(exportResponse);
+        }
+        return Promise.reject(new ApiError(404, "unexpected"));
+      }) as unknown as <T>(path: string, init: RequestInit) => Promise<T>,
+      serverNow: () => Date.parse("2026-10-16T12:00:00.000Z"),
+    });
+
+    const ready = await api.prepareExport(id1);
+    expect(ready.daily?.exportState).toBe("ready");
+    expect(ready.downloadUrl).toBe(`/media/daily-recordings/${id1}/content?download=true`);
+
+    exportResponse = {
+      ...metadataItem(id1, "2026-10-14", false),
+      export_state: "failed",
+      download_path: null,
+      error: { code: "EXPORT_FAILED", message: "Media processing failed" },
+    };
+    const failed = await api.prepareExport(id1);
+    expect(failed.daily?.exportState).toBe("failed");
+    expect(failed.errorCode).toBe("EXPORT_FAILED");
+    expect(failed.downloadUrl).toBeUndefined();
+
+    rejectExport = new ApiError(503, "catalog summary unavailable", "CATALOG_SUMMARY_UNAVAILABLE");
+    await expect(api.prepareExport(id1)).rejects.toMatchObject({
+      status: 503,
+      code: "CATALOG_SUMMARY_UNAVAILABLE",
+    });
+    expect(requestedUrls).not.toContain(`GET /api/v2/recordings/daily/${id1}`);
+  });
 });

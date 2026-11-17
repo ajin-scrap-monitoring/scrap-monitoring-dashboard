@@ -110,7 +110,7 @@ describe("LiDAR profile 표본", () => {
       ...base,
       profiles: [{ ...base.profiles[0], sampleSource: null }],
     };
-    expect(() => parseLidarProfilesV2(withNullSource, "pit-01")).toThrow("Unexpected v2 LiDAR profile contract.");
+    expect(() => parseLidarProfilesV2(withNullSource, "pit-01")).not.toThrow();
 
     const withInvalidProcessingVersion = {
       ...base,
@@ -123,6 +123,83 @@ describe("LiDAR profile 표본", () => {
       profiles: [{ ...base.profiles[0], sourceScanId: 123 }],
     };
     expect(() => parseLidarProfilesV2(withInvalidScanId, "pit-01")).toThrow("Unexpected v2 LiDAR profile contract.");
+  });
+
+  test("Q21 단면 확장 필드(sectionSource, sectionJudgmentState, binSource, sectionFillPercent, rawMeanSectionFillPercent)를 허용하고 형식 오류를 거부한다", () => {
+    const base = lidarProfilesFixture();
+    const withSectionFields = {
+      ...base,
+      meanSectionFillPercent: 48.2,
+      rawMeanSectionFillPercent: 49.5,
+      profiles: [
+        {
+          ...base.profiles[0],
+          sensorId: "lidar-a",
+          sampleSource: null,
+          sectionSource: "EDGE_SECTION_PROFILE",
+          sectionJudgmentState: "LIMITED",
+          sectionFillPercent: 51.25,
+          samples: [
+            { positionRatio: 0.1, height: 100, valid: true, sourceIndex: 0, binSource: "OBSERVED" },
+            { positionRatio: 0.5, height: 150, valid: true, sourceIndex: 1, binSource: "INTERPOLATED" },
+            { positionRatio: 0.9, height: null, valid: false, sourceIndex: 2, binSource: "UNAVAILABLE" },
+          ],
+        },
+        {
+          ...base.profiles[1],
+          sensorId: "lidar-b",
+          sampleSource: null,
+          sectionSource: null,
+          sectionJudgmentState: null,
+          sectionFillPercent: null,
+          samples: [
+            { positionRatio: 0.2, height: null, valid: false, sourceIndex: 0, binSource: "MASKED" },
+          ],
+        },
+      ],
+    };
+    const [first, second] = parseLidarProfilesV2(withSectionFields, "pit-01");
+    expect(first.samples).toEqual([
+      { positionRatio: 0.1, height: 1 },
+      { positionRatio: 0.5, height: 1.5 },
+      { positionRatio: 0.9, height: null },
+    ]);
+    expect(second.samples).toEqual([{ positionRatio: 0.2, height: null }]);
+
+    expect(() => parseLidarProfilesV2({
+      ...withSectionFields,
+      rawMeanSectionFillPercent: 101,
+    }, "pit-01")).toThrow("Unexpected v2 LiDAR profile contract.");
+
+    expect(() => parseLidarProfilesV2({
+      ...withSectionFields,
+      profiles: [{ ...withSectionFields.profiles[0], sectionSource: "OTHER_SOURCE" }],
+    }, "pit-01")).toThrow("Unexpected v2 LiDAR profile contract.");
+
+    expect(() => parseLidarProfilesV2({
+      ...withSectionFields,
+      profiles: [{ ...withSectionFields.profiles[0], sectionJudgmentState: "INVALID" }],
+    }, "pit-01")).toThrow("Unexpected v2 LiDAR profile contract.");
+
+    expect(() => parseLidarProfilesV2({
+      ...withSectionFields,
+      meanSectionFillPercent: 100.1,
+    }, "pit-01")).toThrow("Unexpected v2 LiDAR profile contract.");
+
+    expect(() => parseLidarProfilesV2({
+      ...withSectionFields,
+      profiles: [{ ...withSectionFields.profiles[0], sectionFillPercent: -1 }],
+    }, "pit-01")).toThrow("Unexpected v2 LiDAR profile contract.");
+
+    expect(() => parseLidarProfilesV2({
+      ...withSectionFields,
+      profiles: [{ ...withSectionFields.profiles[0], samples: [{ positionRatio: 0.1, height: 100, valid: true, binSource: "CONFLICT" }] }],
+    }, "pit-01")).toThrow("Unexpected v2 LiDAR profile sample contract.");
+
+    expect(() => parseLidarProfilesV2({
+      ...withSectionFields,
+      profiles: [{ ...withSectionFields.profiles[0], samples: [{ positionRatio: 0.1, height: 100, valid: true, binSource: null }] }],
+    }, "pit-01")).toThrow("Unexpected v2 LiDAR profile sample contract.");
   });
 
   test("최상위 meanSectionReasonCodes를 각 profile.reasonCodes에 병합하고 잘못된 형식은 거부한다", () => {

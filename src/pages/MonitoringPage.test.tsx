@@ -76,7 +76,7 @@ test.each(["FRESH", "STALE", "UNAVAILABLE", "UNKNOWN", "NO_DATA"] as const)("v2 
   data.monitoring = monitoringV2Data(monitoringV2StateFixture(state, 72.5), "pit-01");
   render(<MonitoringPage data={data} dataSource={dataSource} />);
   const main = screen.getByRole("main");
-  expect(main.querySelector(".kpi-value")).toHaveTextContent(state === "FRESH" ? "72.5%" : "판단 불가");
+  expect(main.querySelector(".kpi-value")).toHaveTextContent(state === "FRESH" ? "72.50%" : "판단 불가");
   expect(main.querySelector(".kpi-label")).toHaveTextContent("추정 적재율");
   const metrics = main.querySelectorAll(".kpi-card .mini-stat");
   expect([...metrics].map(metric => metric.querySelector(".label")?.textContent)).toEqual([
@@ -104,12 +104,12 @@ test.each(["FRESH", "STALE", "UNAVAILABLE", "UNKNOWN", "NO_DATA"] as const)("v2 
   expect(screen.queryByRole("dialog", { name: "모니터링 상태 상세" })).not.toBeInTheDocument();
 });
 
-test("SSE 연결 중단은 적재율을 숨기고 같은 snapshot 복구는 0%를 표시한다", async () => {
+test("SSE 연결 중단은 적재율을 숨기고 같은 snapshot 복구는 0.00%를 표시한다", async () => {
   const dataSource = createMockDashboardDataSource();
   const data = await dataSource.getDashboardData();
   data.monitoring = monitoringV2Data(monitoringV2StateFixture("FRESH", 0), "pit-01");
   const view = render(<MonitoringPage data={data} dataSource={dataSource} />);
-  expect(view.container.querySelector(".kpi-value")).toHaveTextContent("0%");
+  expect(view.container.querySelector(".kpi-value")).toHaveTextContent("0.00%");
   const disconnected = structuredClone(data);
   disconnected.monitoring.status = "disconnected";
   disconnected.reception.status = "error";
@@ -121,7 +121,7 @@ test("SSE 연결 중단은 적재율을 숨기고 같은 snapshot 복구는 0%�
   expect(screen.getByText("실시간 연결이 복구되면 활성 알림을 다시 표시합니다.")).toBeVisible();
   expect(screen.getByLabelText("데이터 수신 상태")).toHaveTextContent("연결 문제");
   view.rerender(<MonitoringPage data={data} dataSource={dataSource} />);
-  expect(view.container.querySelector(".kpi-value")).toHaveTextContent("0%");
+  expect(view.container.querySelector(".kpi-value")).toHaveTextContent("0.00%");
   expect(screen.getByLabelText("데이터 수신 상태")).toHaveTextContent("연결 정상");
 });
 
@@ -242,8 +242,8 @@ test("활성 알림은 장비 항목과 서버 최초 확인 시각을 표시하
   const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
   const card = container.querySelector(".alerts-card") as HTMLElement;
   expect(within(card).getByText("Edge 장치 상태 이상")).toBeVisible();
-  expect(within(card).getByText("엣지 장비 일부 기능 제한, 서버 최초 확인 10-13 08:47")).toBeVisible();
-  expect(within(card).getByText("엣지 장비 일부 기능 제한, 서버 최초 확인 10-13 08:47").closest(".active-alert")).toHaveAttribute("title", expect.stringContaining("EDGE_STATUS"));
+  expect(within(card).getByText("엣지 장비 일부 기능 제한 (EDGE_REPORT_DEGRADED), 서버 최초 확인 10-13 08:47")).toBeVisible();
+  expect(within(card).getByText("엣지 장비 일부 기능 제한 (EDGE_REPORT_DEGRADED), 서버 최초 확인 10-13 08:47").closest(".active-alert")).toHaveAttribute("title", expect.stringContaining("EDGE_STATUS"));
   expect(within(card).getByText("적재율 경보")).toBeVisible();
   expect(within(card).getByText("적재율 판정 불가")).toBeVisible();
   expect(card.querySelector(".alert-count")).toHaveTextContent("1건");
@@ -306,7 +306,7 @@ test("basis.snapshotId가 현재 snapshot과 같고 판정이 다르면 판정 �
 test("startedAt이 null이면 시작 정보 없음으로 표시하고 서버 판정 시각으로 대신 채우지 않는다", async () => {
   const { data, dataSource } = await alertData({ evaluationState: "NORMAL", reasonCodes: [], coverage: [] }, [{ ...edgeAlert, startedAt: null }]);
   render(<MonitoringPage data={data} dataSource={dataSource} />);
-  expect(screen.getByText("엣지 장비 일부 기능 제한, 시작 정보 없음")).toBeVisible();
+  expect(screen.getByText("엣지 장비 일부 기능 제한 (EDGE_REPORT_DEGRADED), 시작 정보 없음")).toBeVisible();
 });
 
 test("coverage의 UNKNOWN과 UNSUPPORTED 구성 요소는 확인 불가로 표시하고 CHECKED는 표시하지 않는다", async () => {
@@ -432,9 +432,9 @@ test("적재율 유지 중 kpi-label은 '갱신 대기'를 포함하고 title에
   expect(label).toHaveTextContent("추정 적재율 (갱신 대기)");
   expect(label).toHaveAttribute("title", "마지막 정상 관측 2026-11-11 15:26:43 (한국 표준시)을 최대 10초 표시합니다");
   const value = container.querySelector(".kpi-value");
-  expect(value).toHaveTextContent("78.5%");
+  expect(value).toHaveTextContent("78.50%");
   const progress = container.querySelector(".progress");
-  expect(progress).toHaveAttribute("aria-label", "추정 적재율 78.5%");
+  expect(progress).toHaveAttribute("aria-label", "추정 적재율 78.50%");
 });
 
 test("simulated=false 적재율 유지 중 kpi-label도 '추정 적재율 (갱신 대기)'이다", async () => {
@@ -453,4 +453,82 @@ test("simulated=false 적재율 유지 중 kpi-label도 '추정 적재율 (갱�
   const label = container.querySelector(".kpi-label");
   expect(label).toHaveTextContent("추정 적재율 (갱신 대기)");
   expect(label).toHaveAttribute("title", "마지막 정상 관측 2026-11-11 15:00:00 (한국 표준시)을 최대 10초 표시합니다");
+});
+
+test("추정 적재율은 정수 88을 88.00%로 표시하고 세 자리 이상 소수는 반올림 없이 보존한다", async () => {
+  const dataSource = createMockDashboardDataSource();
+  const data = await dataSource.getDashboardData();
+  data.monitoring = monitoringV2Data(monitoringV2StateFixture("FRESH", 88), "pit-01");
+  const view = render(<MonitoringPage data={data} dataSource={dataSource} />);
+  expect(view.container.querySelector(".kpi-value")).toHaveTextContent("88.00%");
+  expect(view.container.querySelector(".progress")).toHaveAttribute("aria-label", "추정 적재율 88.00%");
+
+  const precise = structuredClone(data);
+  precise.monitoring.summary.loadPercent = 72.123456;
+  view.rerender(<MonitoringPage data={precise} dataSource={dataSource} />);
+  expect(view.container.querySelector(".kpi-value")).toHaveTextContent("72.123456%");
+});
+
+test("Edge DEGRADED 활성 알림과 장비 상태는 한국어 사유 요약과 상세 모달을 제공한다", async () => {
+  const base = monitoringV2StateFixture("FRESH", 88);
+  const { data, dataSource } = await alertData(
+    { evaluationState: "NORMAL", reasonCodes: [], coverage: [] },
+    [{
+      id: "health:edge",
+      level: "warning",
+      title: "Edge 장치 상태 이상",
+      detail: "엣지 장비 DEGRADED",
+      time: "09:00",
+      startedAt: "2026-10-13 08:47",
+      validUntilAt: "2026-10-13T00:05:00Z",
+      health: {
+        componentKind: "EDGE",
+        componentName: "엣지 장비",
+        componentId: "edge-01",
+        state: "DEGRADED",
+        evidenceSource: "EDGE_STATUS",
+        reasonCodes: ["CAMERA_FRAME_STALE", "OUTBOX_DATA_LOSS"],
+        simulated: null,
+      },
+    }],
+  );
+  data.monitoring.devices = monitoringV2Data({
+    ...base,
+    deviceStatus: {
+      ...base.deviceStatus,
+      connection_state: "REPORTING",
+      effective_state: "DEGRADED",
+      reason_codes: ["CAMERA_FRAME_STALE", "OUTBOX_DATA_LOSS"],
+    },
+  }, "pit-01").devices;
+
+  const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
+  const alertsCard = container.querySelector(".alerts-card") as HTMLElement;
+  const trigger = within(alertsCard).getByRole("button", { name: /Edge 장치 상태 이상/ });
+  expect(trigger).toHaveTextContent("엣지 장비 일부 기능 제한 (카메라 프레임 수신 지연 외 1건), 서버 최초 확인 10-13 08:47");
+  expect(trigger.closest(".active-alert")).toHaveAttribute(
+    "title",
+    "엣지 장비 (edge-01) / 상태 일부 기능 제한 (DEGRADED) / 근거 Edge 장치 상태 보고 (EDGE_STATUS) / 사유 카메라 프레임 수신 지연 (CAMERA_FRAME_STALE), 전송 대기 데이터 유실 (OUTBOX_DATA_LOSS)",
+  );
+
+  const devicesCard = container.querySelector(".devices-card") as HTMLElement;
+  expect(within(devicesCard).getByText("일부 기능 제한", { selector: ".status-text" })).toHaveAttribute(
+    "title",
+    "DEGRADED\n사유: 카메라 프레임 수신 지연 (CAMERA_FRAME_STALE)\n사유: 전송 대기 데이터 유실 (OUTBOX_DATA_LOSS)",
+  );
+
+  trigger.focus();
+  fireEvent.click(trigger);
+  const dialog = screen.getByRole("dialog", { name: "Edge 장치 상태 이상" });
+  expect(within(dialog).getByText("엣지 장비 (edge-01)")).toBeVisible();
+  expect(within(dialog).getByText("일부 기능 제한 (DEGRADED)")).toBeVisible();
+  expect(within(dialog).getByText("Edge 장치 상태 보고 (EDGE_STATUS)")).toBeVisible();
+  expect(within(dialog).getByText("카메라 프레임 수신 지연 (CAMERA_FRAME_STALE)")).toBeVisible();
+  expect(within(dialog).getByText("전송 대기 데이터 유실 (OUTBOX_DATA_LOSS)")).toBeVisible();
+  expect(within(dialog).getByText("2026-10-13 08:47")).toBeVisible();
+  expect(within(dialog).getByText("09:00")).toBeVisible();
+
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(trigger).toHaveFocus();
 });

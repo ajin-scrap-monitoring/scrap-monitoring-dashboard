@@ -1051,4 +1051,13 @@ describe("Backend v2 모니터링", () => {
     const snapshot = monitoringV2StateFixture("FRESH");
     expect(() => monitoringV2Data({ ...snapshot, summary: { ...snapshot.summary, filterState } }, "pit-01")).toThrow("Unexpected monitoring contract or pit assignment.");
   });
+
+  test("v2 snapshot의 summary.rawLoadPercent는 유효 범위와 null을 허용하고 범위 밖 값은 거부한다", () => {
+    const snapshot = monitoringV2StateFixture("FRESH", 64.25);
+    expect(() => monitoringV2Data({ ...snapshot, summary: { ...snapshot.summary, rawLoadPercent: 68.5 } }, "pit-01")).not.toThrow();
+    expect(() => monitoringV2Data({ ...snapshot, summary: { ...snapshot.summary, rawLoadPercent: null } }, "pit-01")).not.toThrow();
+    for (const rawLoadPercent of [-0.1, 100.1, "68.5"]) {
+      expect(() => monitoringV2Data({ ...snapshot, summary: { ...snapshot.summary, rawLoadPercent } }, "pit-01")).toThrow("Unexpected monitoring contract or pit assignment.");
+    }
+  });
 });

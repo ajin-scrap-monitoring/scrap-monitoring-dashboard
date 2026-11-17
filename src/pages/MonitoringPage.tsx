@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 
 import cameraFrame from "../assets/camera-frame.png";
 import { DashboardPageShell } from "../components/DashboardShell";
+import { DetailDialog } from "../components/DetailDialog";
 import { ExpandIcon, SectionTitle } from "../components/DashboardPrimitives";
 import { DataReceptionMeta } from "../components/DataReceptionMeta";
 import { LiveVideo } from "../components/LiveVideo";
@@ -13,6 +14,14 @@ import { v1MonitoringEnabled } from "../build-features";
 import { seoulDisplayText } from "../display-time";
 import { useModalFocus } from "../use-modal-focus";
 import { useCameraStatus } from "./use-camera-status";
+import {
+  componentKindLabel,
+  deviceStatusTitle,
+  evidenceSourceLabel,
+  formatLoadPercent,
+  formatMonitoringReasonDetails,
+  formatMonitoringReasonSummary,
+} from "./monitoring-presentation";
 
 const alertsPerPage = 4;
 const missingValue = "정보 없음";
@@ -30,7 +39,8 @@ const deviceStateLabels: Record<string, string> = {
   STARTING: "시작 중", RETRYING: "재연결 중", FATAL: "사용 불가",
 };
 
-type AlertRow = { alert: ActiveAlert } | { notice: { id: string; title: string; detail: string; hint: string } };
+type AlertNotice = { id: string; title: string; detail: string; hint: string; reasonCodes: string[] };
+type AlertRow = { alert: ActiveAlert } | { notice: AlertNotice };
 const coverageReasonLabels: Record<string, string> = { CAMERA_HEALTH_SOURCE_NOT_CONFIGURED: "상태 입력 계약 없음" };
 
 function formatKpiLabel(filterState?: MonitoringFilterState | null, loadHeld?: boolean) {
@@ -66,14 +76,33 @@ function alertDetail(alert: ActiveAlert) {
   const base = alert.health
     ? `${alert.health.componentName} ${deviceLabel(alert.health.state)}`
     : alert.detail;
-  if (alert.startedAt === undefined) return base;
-  return `${base}, ${alert.startedAt === null ? "시작 정보 없음" : `서버 최초 확인 ${alert.startedAt.slice(5)}`}`;
+  const reasonSummary = alert.health ? formatMonitoringReasonSummary(alert.health.reasonCodes) : null;
+  const summary = reasonSummary ? `${base} (${reasonSummary})` : base;
+  if (alert.startedAt === undefined) return summary;
+  return `${summary}, ${alert.startedAt === null ? "시작 정보 없음" : `서버 최초 확인 ${alert.startedAt.slice(5)}`}`;
 }
 
 function alertHint(alert: ActiveAlert) {
   if (!alert.health) return undefined;
-  return [`${alert.health.componentKind} ${alert.health.componentId}`, `근거 ${alert.health.evidenceSource}`,
-    alert.health.reasonCodes.length > 0 ? `사유 ${alert.health.reasonCodes.join(", ")}` : ""].filter(Boolean).join(" / ");
+  const reasons = formatMonitoringReasonDetails(alert.health.reasonCodes);
+  return [
+    `${componentKindLabel(alert.health.componentKind)} (${alert.health.componentId})`,
+    `상태 ${deviceLabel(alert.health.state)} (${alert.health.state})`,
+    `근거 ${evidenceSourceLabel(alert.health.evidenceSource)} (${alert.health.evidenceSource})`,
+    reasons.length > 0 ? `사유 ${reasons.join(", ")}` : "",
+  ].filter(Boolean).join(" / ");
+}
+
+function formatOptionalTimestamp(value: string): string {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? seoulDisplayText(parsed) : value;
+}
+
+function renderDetailReasons(codes: readonly string[], emptyText: string) {
+  if (codes.length === 0) return emptyText;
+  const items = formatMonitoringReasonDetails(codes);
+  if (items.length === 1) return items[0];
+  return <ul className="monitoring-detail-reasons">{items.map((item) => <li key={item}>{item}</li>)}</ul>;
 }
 
 function deviceLabel(value: string) {
@@ -85,8 +114,10 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
   const state = monitoring.v2;
   const [alertPage, setAlertPage] = useState(0);
   const [videoOpen, setVideoOpen] = useState(false);
+  const [selectedAlert, setSelectedAlert] = useState<AlertRow | null>(null);
   const cameraDisplay = useCameraStatus(dataSource, session?.user.id ?? null);
   const closeDialog = useCallback(() => setVideoOpen(false), []);
+  const closeAlertDetail = useCallback(() => setSelectedAlert(null), []);
   const modalRef = useModalFocus<HTMLDivElement>(videoOpen, closeDialog);
   const alarmState = state?.streamState === "reconnecting" && monitoring.alarmState ? "UNKNOWN" : monitoring.alarmState;
   const alarmLabel = alarmState ? alarmPresentation[alarmState] : "미지원";
@@ -102,10 +133,19 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
         id: "fill-undetermined",
         title: "적재율 경보",
         detail: alertsState.basis?.lastKnownState ? `적재율 판정 불가 (마지막 판정 ${alarmStateLabel(alertsState.basis.lastKnownState)})` : "적재율 판정 불가",
-        hint: alertsState.reasonCodes.join(", "),
+        hint: formatMonitoringReasonDetails(alertsState.reasonCodes).join(", "),
+        reasonCodes: alertsState.reasonCodes,
       },
     }] : []),
-    ...unconfirmed.map((entry) => ({ notice: { id: `coverage-${entry.componentKind}-${entry.componentId ?? ""}`, title: entry.componentName, detail: coverageDetail(entry), hint: entry.reasonCodes.join(", ") } })),
+    ...unconfirmed.map((entry) => ({
+      notice: {
+        id: `coverage-${entry.componentKind}-${entry.componentId ?? ""}`,
+        title: entry.componentName,
+        detail: coverageDetail(entry),
+        hint: formatMonitoringReasonDetails(entry.reasonCodes).join(", "),
+        reasonCodes: entry.reasonCodes,
+      },
+    })),
   ];
   const totalAlertPages = Math.max(1, Math.ceil(rows.length / alertsPerPage));
   const currentAlertPage = Math.min(alertPage, totalAlertPages - 1);
@@ -121,7 +161,8 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
     : alertsState.evaluationState === "WARNING" ? "사전 경보가 꺼져 있어 표시할 항목이 없습니다."
     : "현재 활성 알림이 없습니다.";
   const layoutState = state ? layoutPresentation(monitoring.measurementLayout) : null;
-  const valueLength = String(monitoring.summary.loadPercent ?? "").length;
+  const formattedLoadPercent = monitoring.summary.loadPercent === null ? null : formatLoadPercent(monitoring.summary.loadPercent);
+  const valueLength = formattedLoadPercent?.length ?? 0;
   const isLoadHistoryLoading = monitoring.loadHistoryState?.status === "loading";
   const pastLoad = monitoring.summary.loadOneHourAgo;
   const pastLoadTitle = !isLoadHistoryLoading && pastLoad
@@ -150,10 +191,10 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
             <div className="monitoring-card-title"><SectionTitle>현재 상태</SectionTitle></div>
             <div className="kpi-content">
               <p className="kpi-label" title={monitoring.summary.loadHold ? `마지막 정상 관측 ${seoulDisplayText(Date.parse(monitoring.summary.loadHold.observedAt))}을 최대 10초 표시합니다` : state?.filterState === "WARMING" ? "시간 필터가 준비되는 동안의 값" : undefined}>{formatKpiLabel(state?.filterState, Boolean(monitoring.summary.loadHold))}</p>
-              <div className={`kpi-value${monitoring.summary.loadPercent === null ? " unavailable-value" : valueLength > 5 ? " precise-value" : ""}`} style={valueLength > 5 ? { fontSize: Math.min(76, 500 / valueLength) } : undefined}>{monitoring.summary.loadPercent === null ? "판단 불가" : <>{monitoring.summary.loadPercent}<span>%</span></>}</div>
-              {monitoring.summary.loadPercent === null
+              <div className={`kpi-value${formattedLoadPercent === null ? " unavailable-value" : valueLength > 5 ? " precise-value" : ""}`} style={valueLength > 5 ? { fontSize: Math.min(76, 500 / valueLength) } : undefined}>{formattedLoadPercent === null ? "판단 불가" : <>{formattedLoadPercent}<span>%</span></>}</div>
+              {formattedLoadPercent === null
                 ? <div className="progress-unavailable">{state?.streamState === "reconnecting" && <span role="status">실시간 연결 재연결 중</span>}</div>
-                : <div className="progress" aria-label={`추정 적재율 ${monitoring.summary.loadPercent}%`}><div style={{ width: `${monitoring.summary.loadPercent}%` }} /></div>}
+                : <div className="progress" aria-label={`추정 적재율 ${formattedLoadPercent}%`}><div style={{ width: `${monitoring.summary.loadPercent}%` }} /></div>}
               <div className="mini-stats">
                 <div className="mini-stat">
                   <span className="label">수거 임계율</span>
@@ -210,10 +251,14 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
             <div className="active-alert-list">
               {visibleRows.length > 0 ? visibleRows.map((row) => "alert" in row
                 ? <div className="active-alert" key={row.alert.id} title={alertHint(row.alert)}>
-                  <div><strong className={`alert-${row.alert.level}`}>{row.alert.title}</strong><span>{alertDetail(row.alert)}</span></div><time>{row.alert.time}</time>
+                  <button className="detail-trigger active-alert-trigger" type="button" aria-haspopup="dialog" onClick={() => setSelectedAlert(row)}>
+                    <strong className={`alert-${row.alert.level}`}>{row.alert.title}</strong><span>{alertDetail(row.alert)}</span>
+                  </button><time>{row.alert.time}</time>
                 </div>
                 : <div className="active-alert" key={row.notice.id} title={row.notice.hint || undefined}>
-                  <div><strong className="alert-unconfirmed">{row.notice.title}</strong><span>{row.notice.detail}</span></div>
+                  <button className="detail-trigger active-alert-trigger" type="button" aria-haspopup="dialog" onClick={() => setSelectedAlert(row)}>
+                    <strong className="alert-unconfirmed">{row.notice.title}</strong><span>{row.notice.detail}</span>
+                  </button>
                 </div>) : <p className="collection-empty">{alertEmptyMessage}</p>}
             </div>
             <Pagination ariaLabel="활성 알림 페이지" currentPage={currentAlertPage} itemLabel="알림" onPageChange={setAlertPage} totalPages={totalAlertPages} />
@@ -227,7 +272,7 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
                 const statusText = isCamera
                   ? cameraDisplay.statusText
                   : device.statusLabel ? deviceLabel(device.statusLabel) : deviceLabels[device.status];
-                const title = isCamera ? cameraDisplay.title : device.statusLabel;
+                const title = isCamera ? cameraDisplay.title : deviceStatusTitle(device.statusLabel, device.reasonCodes);
                 return (
                   <div className="device" key={`${index}-${device.label}`}>
                     <div>
@@ -251,5 +296,32 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
         </div>
       </div>
     </div>}
+    {selectedAlert && <DetailDialog
+      id="active-alert-detail-title"
+      title={"alert" in selectedAlert ? selectedAlert.alert.title : selectedAlert.notice.title}
+      onClose={closeAlertDetail}
+    >
+      <dl className="monitoring-detail-list">
+        {"alert" in selectedAlert ? (
+          selectedAlert.alert.health ? <>
+            <div><dt>대상</dt><dd>{`${selectedAlert.alert.health.componentName} (${selectedAlert.alert.health.componentId})`}</dd></div>
+            <div><dt>현재 상태</dt><dd>{`${deviceLabel(selectedAlert.alert.health.state)} (${selectedAlert.alert.health.state})`}</dd></div>
+            <div><dt>판정 근거</dt><dd>{`${evidenceSourceLabel(selectedAlert.alert.health.evidenceSource)} (${selectedAlert.alert.health.evidenceSource})`}</dd></div>
+            <div><dt>상세 사유</dt><dd>{renderDetailReasons(selectedAlert.alert.health.reasonCodes, "세부 사유 코드가 함께 전달되지 않았습니다.")}</dd></div>
+            <div><dt>서버 최초 확인</dt><dd>{selectedAlert.alert.startedAt === undefined ? "미제공" : selectedAlert.alert.startedAt === null ? "시작 정보 없음" : selectedAlert.alert.startedAt}</dd></div>
+            <div><dt>표시 시각</dt><dd>{selectedAlert.alert.time}</dd></div>
+            {selectedAlert.alert.validUntilAt && <div><dt>유효 기한</dt><dd>{formatOptionalTimestamp(selectedAlert.alert.validUntilAt)}</dd></div>}
+          </> : <>
+            <div><dt>내용</dt><dd>{selectedAlert.alert.detail}</dd></div>
+            <div><dt>등급</dt><dd>{selectedAlert.alert.level === "error" ? "위험" : selectedAlert.alert.level === "warning" ? "경고" : "안내"}</dd></div>
+            {selectedAlert.alert.startedAt !== undefined && <div><dt>서버 최초 확인</dt><dd>{selectedAlert.alert.startedAt === null ? "시작 정보 없음" : selectedAlert.alert.startedAt}</dd></div>}
+            <div><dt>표시 시각</dt><dd>{selectedAlert.alert.time}</dd></div>
+          </>
+        ) : <>
+          <div><dt>내용</dt><dd>{selectedAlert.notice.detail}</dd></div>
+          <div><dt>상세 사유</dt><dd>{renderDetailReasons(selectedAlert.notice.reasonCodes, "세부 사유 코드가 함께 전달되지 않았습니다.")}</dd></div>
+        </>}
+      </dl>
+    </DetailDialog>}
   </DashboardPageShell>;
 }

@@ -46,6 +46,7 @@ export type DeviceStatus = {
   status: "normal" | "delayed" | "unavailable" | "unknown";
   statusLabel?: string;
   receivedLabel?: string;
+  reasonCodes?: string[];
 };
 
 export type ActiveAlertBasis = {

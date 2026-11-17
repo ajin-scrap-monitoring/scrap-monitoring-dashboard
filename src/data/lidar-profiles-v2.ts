@@ -8,9 +8,16 @@ const slots = [
 const calibrationStates = ["UNVERIFIED", "VERIFIED", "UNAVAILABLE", "SIMULATION"];
 const summaryPolicies = ["PROFILE_MEAN", "SCAN_MEAN_TEMPORAL_MEDIAN"];
 const sampleSources = ["MEASUREMENT", "FILTERED_POINT_CLOUD"];
+const sectionSources = ["EDGE_SECTION_PROFILE"];
+const sectionJudgmentStates = ["AVAILABLE", "LIMITED", "UNAVAILABLE"];
+const binSources = ["OBSERVED", "INTERPOLATED", "UNAVAILABLE", "MASKED"];
 
 function nullableNumber(value: unknown): value is number | null {
   return value === null || (typeof value === "number" && Number.isFinite(value));
+}
+
+function nullablePercent(value: unknown): boolean {
+  return value === null || (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100);
 }
 
 function nullableString(value: unknown): value is string | null {
@@ -21,12 +28,13 @@ function meters(centimeters: number | null | undefined) {
   return typeof centimeters === "number" ? `${(centimeters / 100).toFixed(2)} m` : "-";
 }
 
-// LidarProfileSampleV2: valid, positionRatio, height는 필수(null 가능), angleMdeg와 sourceIndex는 선택이다.
+// LidarProfileSampleV2: valid, positionRatio, height는 필수(null 가능), angleMdeg, sourceIndex, binSource는 선택이다.
 // 표본 수는 가변이고 앞쪽 다수가 valid=false, positionRatio=null, height=null일 수 있다.
 function sampleOf(value: unknown): LidarProfileSample {
   if (!record(value) || typeof value.valid !== "boolean" || !nullableNumber(value.positionRatio) || !nullableNumber(value.height)
     || value.positionRatio === undefined || value.height === undefined
-    || !(value.angleMdeg === undefined || Number.isInteger(value.angleMdeg)) || !(value.sourceIndex === undefined || Number.isInteger(value.sourceIndex))) {
+    || !(value.angleMdeg === undefined || Number.isInteger(value.angleMdeg)) || !(value.sourceIndex === undefined || Number.isInteger(value.sourceIndex))
+    || !(value.binSource === undefined || binSources.includes(value.binSource as string))) {
     throw new Error("Unexpected v2 LiDAR profile sample contract.");
   }
   // 위치가 없거나 범위 밖인 표본은 제거하지 않고 높이 없는 끊김 표지로 남긴다.
@@ -36,7 +44,9 @@ function sampleOf(value: unknown): LidarProfileSample {
 
 export function parseLidarProfilesV2(value: unknown, pitId: string): LidarProfile[] {
   const fail = (): never => { throw new Error("Unexpected v2 LiDAR profile contract."); };
-  if (!record(value) || value.pitId !== pitId || !Array.isArray(value.profiles)) return fail();
+  if (!record(value) || value.pitId !== pitId || !Array.isArray(value.profiles)
+    || !(value.meanSectionFillPercent === undefined || nullablePercent(value.meanSectionFillPercent))
+    || !(value.rawMeanSectionFillPercent === undefined || nullablePercent(value.rawMeanSectionFillPercent))) return fail();
   const meanSectionReasonCodes = value.meanSectionReasonCodes === undefined ? []
     : strings(value.meanSectionReasonCodes) ? value.meanSectionReasonCodes : fail();
   const bySensor = new Map<string, Record<string, unknown>>();
@@ -47,7 +57,10 @@ export function parseLidarProfilesV2(value: unknown, pitId: string): LidarProfil
       || !(profile.calibrationState === undefined || calibrationStates.includes(profile.calibrationState as string))
       || !(profile.summaryValuePolicy === undefined || summaryPolicies.includes(profile.summaryValuePolicy as string))
       || !(profile.reasonCodes === undefined || strings(profile.reasonCodes))
-      || !(profile.sampleSource === undefined || sampleSources.includes(profile.sampleSource as string))
+      || !(profile.sampleSource === undefined || profile.sampleSource === null || sampleSources.includes(profile.sampleSource as string))
+      || !(profile.sectionSource === undefined || profile.sectionSource === null || sectionSources.includes(profile.sectionSource as string))
+      || !(profile.sectionJudgmentState === undefined || profile.sectionJudgmentState === null || sectionJudgmentStates.includes(profile.sectionJudgmentState as string))
+      || !(profile.sectionFillPercent === undefined || nullablePercent(profile.sectionFillPercent))
       || !(profile.processingVersion === undefined || nullableString(profile.processingVersion))
       || !(profile.sourceScanId === undefined || nullableString(profile.sourceScanId))) return fail();
     bySensor.set(profile.sensorId, profile);
