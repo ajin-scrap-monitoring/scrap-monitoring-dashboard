@@ -140,7 +140,7 @@ service 상태를 표시한다. 카메라 관측은 LiDAR 측정 시각과 독�
 표본의 `generatedAt`과 `observedAt`이 null일 수 있다. 이 표본은 bucket 위치로 표시하고 시각을
 만들어 채우지 않는다. 응답의 `inputSource`, `valuePolicy`와 `simulated`는 보존하며 화면에 시뮬레이션 여부를 별도로 표기하지 않는다.
 
-유효한 0%는 보존하고 결측(null)과 `valid=false`는 선을 연결하지 않는다. 이전 값으로 채우지
+유효한 0%는 보존하고 결측(null)과 `maximumPercent` 등 유효 구간 통계가 없는 `valid=false` 구간은 선을 연결하지 않는다. 이력 그래프에서 `bucketSeconds`가 60초를 초과하는 장기 구간(`7일`, `30일`, `90일` 등)에 서버가 `maximumPercent`를 제공하면 단일 추세선(`.history-load-line`)에 구간 최댓값(`maximumPercent`, `valuePercent`가 함께 있으면 둘 중 큰 값)을 반영하고, 제공되지 않으면 `valuePercent`를 사용한다. 이전 값으로 채우지
 않으며 전체 범위 재조회 방식을 유지한다. 90일을 넘는 기간은 요청 전에 안내하고 요청하지 않는다.
 422 `HISTORY_*` 코드와 503 `HISTORY_QUERY_TIMEOUT`은 빈 그래프나 0% 대신 이력 화면에서 안내 문구로,
 현황 그래프에서 오류 상태로 표시하며 자동 재시도하지 않는다. 현재 임계율은 참고선이며 과거에

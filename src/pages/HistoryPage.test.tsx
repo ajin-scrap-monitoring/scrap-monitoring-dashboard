@@ -294,3 +294,101 @@ test("이력 그래프는 simulated 표본이 있어도 시뮬레이션 표기�
   expect(container.querySelector(".history-chart-simulation")).toBeNull();
   expect(screen.getByRole("img", { name: "조회 기간 대표 적재율 변화 그래프" })).toBeInTheDocument();
 });
+
+test("1분 초과 집계 구간에서는 단일 추세선에 구간 최댓값(maximumPercent)을 반영하고 호버 시 구간 통계를 표시한다", async () => {
+  const loadSamples: DashboardData["history"]["loadSamples"] = [
+    {
+      hour: 0.24,
+      bucketStartHour: 0,
+      bucketEndHour: 0.25,
+      bucketStartAt: "2026-10-14T15:00:00Z",
+      bucketEndAt: "2026-10-14T15:15:00Z",
+      minimumPercent: 50.48,
+      maximumPercent: 71.7,
+      averagePercent: 61.04,
+      value: 71.68,
+      dataState: "AVAILABLE",
+    },
+    {
+      hour: 0.49,
+      bucketStartHour: 0.25,
+      bucketEndHour: 0.5,
+      bucketStartAt: "2026-10-14T15:15:00Z",
+      bucketEndAt: "2026-10-14T15:30:00Z",
+      minimumPercent: 59.82,
+      maximumPercent: 92,
+      averagePercent: 81.52,
+      value: null,
+      dataState: "UNKNOWN",
+    },
+    {
+      hour: 0.74,
+      bucketStartHour: 0.5,
+      bucketEndHour: 0.75,
+      bucketStartAt: "2026-10-14T15:30:00Z",
+      bucketEndAt: "2026-10-14T15:45:00Z",
+      minimumPercent: 0.09,
+      maximumPercent: 59.21,
+      averagePercent: 11.01,
+      value: 19.18,
+      dataState: "AVAILABLE",
+    },
+  ];
+  const { container } = await renderHistory({
+    startsAt: "2026-10-15 00:00",
+    endsAt: "2026-10-15 01:00",
+    bucketSeconds: 900,
+    thresholds: [{ hour: 0, value: 80 }],
+    loadState: { status: "ready", thresholdKind: "current" },
+    loadSamples,
+  });
+
+  fireEvent.change(screen.getByRole("textbox", { name: "시작 시각" }), { target: { value: "2026-10-15 00:00" } });
+  fireEvent.change(screen.getByRole("textbox", { name: "종료 시각" }), { target: { value: "2026-10-15 01:00" } });
+  fireEvent.click(screen.getByRole("button", { name: "조회" }));
+
+  expect(container.querySelector(".history-load-range")).toBeNull();
+  expect(container.querySelector(".history-load-peak")).toBeNull();
+  const lines = container.querySelectorAll(".history-load-line");
+  expect(lines).toHaveLength(1);
+  expect(lines[0].getAttribute("d")).toContain(`${192 - 92 * 1.3}`);
+  const legend = screen.getByLabelText("그래프 범례");
+  expect(legend).toHaveTextContent("현재 임계율");
+  expect(legend).not.toHaveTextContent("구간 범위");
+
+  const chart = container.querySelector(".history-chart") as SVGSVGElement;
+  vi.spyOn(chart, "getBoundingClientRect").mockReturnValue({
+    x: 0, y: 0, left: 0, top: 0, width: 1960, height: 230, right: 1960, bottom: 230, toJSON: () => ({}),
+  });
+  const secondCenterX = 58 + 1842 * 0.375;
+  fireEvent.pointerMove(chart, { clientX: secondCenterX, clientY: 120 });
+  const tooltip = container.querySelector(".history-chart-tooltip");
+  expect(tooltip).toHaveTextContent("구간 10.15 00:15~00:30 (KST)");
+  expect(tooltip).toHaveTextContent("최대 92% / 최소 59.82%");
+  expect(tooltip).toHaveTextContent("평균 81.52% / 마지막 무효");
+  fireEvent.pointerLeave(chart);
+  expect(container.querySelector(".history-chart-tooltip")).toBeNull();
+});
+
+test("60초(24시간) 구간에서는 maximumPercent가 있어도 value를 그대로 사용한다", async () => {
+  const { container } = await renderHistory({
+    startsAt: "2026-10-14 00:00",
+    endsAt: "2026-10-15 00:00",
+    bucketSeconds: 60,
+    thresholds: [{ hour: 0, value: 80 }],
+    loadState: { status: "ready", thresholdKind: "current" },
+    loadSamples: [{
+      hour: 12,
+      bucketStartHour: 12,
+      bucketEndHour: 12 + 1 / 60,
+      minimumPercent: 40,
+      maximumPercent: 90,
+      averagePercent: 60,
+      value: 42,
+      dataState: "AVAILABLE",
+    }],
+  });
+  fireEvent.click(screen.getByRole("button", { name: "최근 24시간" }));
+  fireEvent.click(screen.getByRole("button", { name: "조회" }));
+  expect(container.querySelector(".history-load-line")?.getAttribute("d")).toBe(`M${58 + 1842 * 0.5} ${192 - 42 * 1.3}`);
+});

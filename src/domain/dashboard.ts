@@ -28,6 +28,11 @@ export type LoadHistoryMetadata = {
   inputSource?: "EDGE_STATE" | "HEIGHT_SECTIONS" | "MIXED";
   valuePolicy?: "RAW_STATE" | "MEDIAN_MINUTE";
   simulated?: boolean;
+  minimumPercent?: number | null;
+  maximumPercent?: number | null;
+  averagePercent?: number | null;
+  validSamples?: number;
+  invalidSamples?: number;
 };
 
 export type UserSession = {
@@ -164,6 +169,8 @@ export type HistoryEvent = {
 
 export type HistoryLoadSample = LoadHistoryMetadata & {
   hour: number;
+  bucketStartHour?: number;
+  bucketEndHour?: number;
   value: number | null;
 };
 
@@ -409,6 +416,7 @@ export type DashboardData = {
     eventsState?: DataAreaState;
     startsAt: string;
     endsAt: string;
+    bucketSeconds?: number;
     chartEvents: HistoryChartEvent[];
     loadSamples: HistoryLoadSample[];
     thresholds: HistoryThresholdSample[];

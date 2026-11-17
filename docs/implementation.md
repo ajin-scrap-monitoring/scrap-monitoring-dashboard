@@ -360,7 +360,7 @@ decode 성공 시각이 있는 상태에서 frame 수신 중단이나 일시적 
 
 빠른 기간은 최근 24시간, 7일, 30일과 90일이며 기본은 7일이다. 데이터 source의 종료 시각을
 기준으로 입력을 채우고 직접 입력은 preset을 해제한다. 기간과 유형은 조회 버튼으로
-적용하며 임계율과 추이 선은 이벤트 유형으로 필터링하지 않는다. 잘못된 기간과 `queryHistory`의 Promise reject는
+적용하며 임계율과 추이 선은 이벤트 유형으로 필터링하지 않는다. `bucketSeconds`가 60초를 초과하는 조회에서 `maximumPercent`가 있으면 단일 추세선에 구간 최댓값을 반영하고 구간 통계(`minimumPercent`, `maximumPercent`, `averagePercent`)는 한국 표준시 기준 hover tooltip으로 제공한다. 잘못된 기간과 `queryHistory`의 Promise reject는
 기존 결과를 유지하고 조회 조건 제목 행의 한 줄 안내와 title 및 접근성 설명을 사용한다. v2 적재율 오류 상태가 반환되면 적용된 결과의 그래프 영역에 적재율 오류를 표시한다.
 새 조건의 이벤트 조회가 실패하면 이벤트 목록을 비우고 오류를 표시한다.
 HTTP source의 이벤트 표는 표에 보이는 페이지만 서버에 요청하며 synthetic source는 메모리의 이벤트를 필터링해 페이지로 나눈다. `queryHistoryEvents`는 표의 페이지 크기(8건),

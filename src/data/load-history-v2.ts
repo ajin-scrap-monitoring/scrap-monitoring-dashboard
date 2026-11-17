@@ -25,6 +25,14 @@ function optionalOneOf(value: unknown, allowed: string[]) {
   return value === undefined || value === null || (typeof value === "string" && allowed.includes(value));
 }
 
+function optionalPercent(value: unknown) {
+  return value === undefined || value === null || (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100);
+}
+
+function optionalNonNegativeInt(value: unknown) {
+  return value === undefined || (typeof value === "number" && Number.isInteger(value) && value >= 0);
+}
+
 function clock(value: string) {
   return historyClock.format(new Date(value));
 }
@@ -68,7 +76,9 @@ export function parseLoadHistoryV2(value: unknown, scope: LoadHistoryScope): Par
     if (generatedAt !== null && (timestampValue(generatedAt) < bucketStart || timestampValue(generatedAt) >= bucketEnd)) return fail();
     if (sample.valid && sample.valuePercent !== null && !["AVAILABLE", "LIMITED"].includes(sample.dataState)) return fail();
     if (!optionalOneOf(sample.inputSource, inputSources) || !optionalOneOf(sample.valuePolicy, valuePolicies)
-      || !(sample.simulated === undefined || typeof sample.simulated === "boolean")) return fail();
+      || !(sample.simulated === undefined || typeof sample.simulated === "boolean")
+      || !optionalPercent(sample.minimumPercent) || !optionalPercent(sample.maximumPercent) || !optionalPercent(sample.averagePercent)
+      || !optionalNonNegativeInt(sample.validSamples) || !optionalNonNegativeInt(sample.invalidSamples)) return fail();
 
     const measuredAt = generatedAt ?? sample.bucketStartAt;
     const metadata: LoadHistoryMetadata = {
@@ -82,10 +92,21 @@ export function parseLoadHistoryV2(value: unknown, scope: LoadHistoryScope): Par
       ...(typeof sample.inputSource === "string" && { inputSource: sample.inputSource as LoadHistoryMetadata["inputSource"] }),
       ...(typeof sample.valuePolicy === "string" && { valuePolicy: sample.valuePolicy as LoadHistoryMetadata["valuePolicy"] }),
       ...(typeof sample.simulated === "boolean" && { simulated: sample.simulated }),
+      ...(sample.minimumPercent !== undefined && { minimumPercent: sample.minimumPercent as number | null }),
+      ...(sample.maximumPercent !== undefined && { maximumPercent: sample.maximumPercent as number | null }),
+      ...(sample.averagePercent !== undefined && { averagePercent: sample.averagePercent as number | null }),
+      ...(typeof sample.validSamples === "number" && { validSamples: sample.validSamples }),
+      ...(typeof sample.invalidSamples === "number" && { invalidSamples: sample.invalidSamples }),
     };
     const plottedValue = sample.valid && typeof sample.valuePercent === "number" ? sample.valuePercent : null;
     monitoringSamples.push({ ...metadata, measuredAt, time: clock(measuredAt), value: plottedValue });
-    historySamples.push({ ...metadata, hour: (timestampValue(measuredAt) - from) / 3_600_000, value: plottedValue });
+    historySamples.push({
+      ...metadata,
+      hour: (timestampValue(measuredAt) - from) / 3_600_000,
+      bucketStartHour: (bucketStart - from) / 3_600_000,
+      bucketEndHour: (bucketEnd - from) / 3_600_000,
+      value: plottedValue,
+    });
   }
   return { from: value.from, to: value.to, bucketSeconds: value.bucketSeconds, monitoringSamples, historySamples };
 }
