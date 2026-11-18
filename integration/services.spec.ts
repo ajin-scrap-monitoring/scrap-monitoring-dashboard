@@ -78,12 +78,14 @@ test("실제 Backend의 과거 적재율 값과 현재 임계율을 이력 그�
       expect(sample).toMatchObject({ valuePercent: item.percent, valid: item.percent !== null });
       if (item.percent === null || !sample?.generatedAt) continue;
       const x = 58 + 1842 * (Date.parse(sample.generatedAt) - Date.parse(history.from)) / (Date.parse(history.to) - Date.parse(history.from));
-      expect(points.some(point => Math.abs(point.x - x) < 0.001 && Math.abs(point.y - (192 - item.percent! * 1.3)) < 0.001)).toBe(true);
+      expect(points.some(point => Math.abs(point.x - x) < 0.001 && Math.abs(point.y - (198 - item.percent! * 1.8)) < 0.001)).toBe(true);
     }
     await expect(page.getByLabel(/대표 적재율 68.5%, 입력 제한/)).toBeVisible();
+    await expect(page.getByLabel("그래프 범례")).toHaveText(`현재 임계율 ${snapshot.summary.collectionThresholdPercent}%`);
+    await expect(page.locator(".history-chart").getByText(`현재 임계율 ${snapshot.summary.collectionThresholdPercent}%`, { exact: true })).toHaveCount(0);
     const threshold = page.locator('.history-chart path[stroke-dasharray="6 6"]');
     const thresholdY = Number((await threshold.getAttribute("d"))?.match(/^M58 ([\d.]+)H1900$/)?.[1]);
-    expect(thresholdY).toBeCloseTo(192 - snapshot.summary.collectionThresholdPercent * 1.3);
+    expect(thresholdY).toBeCloseTo(198 - snapshot.summary.collectionThresholdPercent * 1.8);
     await page.getByRole("button", { name: "최근 24시간", exact: true }).click();
     await page.getByRole("button", { name: "조회", exact: true }).click();
     await expect(page.getByRole("button", { name: "조회", exact: true })).toBeEnabled();
