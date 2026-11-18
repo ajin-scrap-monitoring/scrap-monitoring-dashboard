@@ -11,7 +11,7 @@ test("측정 참고도의 SVG 태그, 좌표, 색상과 순서를 고정한다",
   const markup = screen.getByRole("img", { name: "LiDAR 1과 LiDAR 2 측정선 배치" }).outerHTML;
   let checksum = 2166136261;
   for (const character of markup) checksum = Math.imul(checksum ^ character.charCodeAt(0), 16777619);
-  expect((checksum >>> 0).toString(16)).toBe("4bc82566");
+  expect((checksum >>> 0).toString(16)).toBe("36bdd127");
 });
 
 test("최근 적재율 눈금은 표본 누락과 무관하게 3시간 간격을 유지한다", () => {

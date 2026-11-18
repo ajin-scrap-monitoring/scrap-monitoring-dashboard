@@ -32,7 +32,7 @@ function contiguousSegments<T>(items: readonly T[], isValid: (item: T) => boolea
 
 export function MeasurementDiagram({ lidar1Color, lidar2Color }: { lidar1Color: string; lidar2Color: string }) {
   const lidar1Points = "74.75,153 126,151 158,164 187,171 205,186 226,193 243.24,207";
-  const lidar2Points = "252,102.93 245,132 231,159 211,191 190,226.72";
+  const lidar2Points = "306.5,94.5 283,121 257,145 232,175 212,202 190,226.72";
   return (
     <svg className="measurement-svg" viewBox="0 0 440 275" role="img" aria-label="LiDAR 1과 LiDAR 2 측정선 배치">
       <defs>
@@ -101,7 +101,7 @@ export function MeasurementDiagram({ lidar1Color, lidar2Color }: { lidar1Color: 
       {[
         ["74.75 153", lidar1Color, "A"],
         ["243.24 207", lidar1Color, "B"],
-        ["252 102.93", lidar2Color, "B"],
+        ["306.5 94.5", lidar2Color, "B"],
         ["190 226.72", lidar2Color, "A"],
       ].map(([position, color, label]) => <g key={position} transform={`translate(${position})`}>
         <circle r="8" fill="#ffffff" stroke={color} strokeWidth="2.2" />
