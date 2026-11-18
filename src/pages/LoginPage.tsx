@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { applicationVersion } from "../application-version";
 import { ROUTES, setAuthenticated } from "../app-routing";
-import { UserIcon } from "../components/DashboardPrimitives";
+import { BrandMark, UserIcon } from "../components/DashboardPrimitives";
 import type { DashboardDataSource } from "../data/dashboard-data-source";
 
 function LockIcon() {
@@ -23,7 +23,7 @@ export function LoginPage({ dataSource }: { dataSource?: DashboardDataSource }) 
   return (
     <main className="login-page" aria-label="사용자 로그인">
       <section className="login-intro">
-        <div className="login-brand" aria-label="AJIN SCRAP MONITORING"><span className="brand-mark" aria-hidden="true" /><span>AJIN SCRAP MONITORING</span></div>
+        <div className="login-brand" aria-label="AJIN SCRAP MONITORING"><BrandMark /><span>AJIN SCRAP MONITORING</span></div>
         <div className="login-intro-copy">
           <span className="login-overline">AJIN INDUSTRIAL</span>
           <h1>스크랩 모니터링<br />관리자 시스템</h1>

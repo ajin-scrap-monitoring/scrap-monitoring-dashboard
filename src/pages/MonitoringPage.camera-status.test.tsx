@@ -125,13 +125,19 @@ describe("카메라 상태 행 표시 및 헬퍼 함수", () => {
     expect(expired.title).toContain("카메라 상태 확인 불가");
   });
 
-  test("MonitoringPage는 SSE 카메라 상태의 프레임 수신 시각을 표시한다", () => {
+  test("MonitoringPage는 SSE 카메라 상태의 연결 상태, 프레임 수신 시각과 사유를 표시한다", () => {
     const stream = cameraSource();
     stream.emit(createCameraStatus());
     render(<MonitoringPage data={baseDashboardData} dataSource={stream.source} />);
-    const status = screen.getByText("카메라").closest(".device")!.querySelector(".status-text")!;
+    const card = screen.getByText("카메라").closest(".device")!;
+    const status = card.querySelector(".status-text")!;
     expect(status).toHaveTextContent("정상");
     expect(status.getAttribute("title")).toContain("프레임 수신 시각");
+    expect(card).toHaveTextContent("연결 상태");
+    expect(card).toHaveTextContent("연결됨");
+    expect(card).toHaveTextContent("프레임 수신");
+    expect(card).toHaveTextContent("11.01 17:59:58");
+    expect(card.querySelector(".device-details")).toHaveTextContent("상태정상");
   });
 });
 

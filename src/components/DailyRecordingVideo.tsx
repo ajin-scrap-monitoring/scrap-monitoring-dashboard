@@ -85,7 +85,7 @@ export function DailyRecordingVideo({ videoRef, path, label, poster, initialTime
     };
   }, [path, videoRef]);
 
-  return <video ref={videoRef} className="recording-daily-video" controls={controls} autoPlay={autoPlay} playsInline preload="metadata" poster={poster} aria-label={label}
+  return <video ref={videoRef} className="recording-daily-video" controls={controls} controlsList={controls ? "nofullscreen" : undefined} autoPlay={autoPlay} playsInline preload="metadata" poster={poster} aria-label={label}
     onEnded={onEnded}
     onTimeUpdate={event => onTimeUpdate(event.currentTarget.currentTime)} />;
 }

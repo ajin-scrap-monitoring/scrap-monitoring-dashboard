@@ -225,7 +225,6 @@ export function LoadChart({ samples, threshold, state, thresholdKind }: { sample
       </g>
       <path d={`M40 ${toY(threshold)}H410`} stroke="#607086" strokeDasharray="5 5" strokeOpacity="0.58" strokeWidth="1.5" />
       {previousResult && <text x="225" y="12" fill="#61708a" fontSize="9" textAnchor="middle">이전 조회 결과 / 갱신 실패</text>}
-      <text x="408" y="12" fill="#526278" fontSize="10" fontWeight="600" textAnchor="end">{thresholdKind === "current" ? "현재 임계율" : "수거 임계율"} {threshold}%</text>
       {sampleSegments.length > 0 ? sampleSegments.map((segment, index) => {
         const linePath = segment.map((sample, sampleIndex) => `${sampleIndex === 0 ? "M" : "L"}${sample.x} ${sample.y}`).join(" ");
         return <g key={`load-segment-${index}`}>

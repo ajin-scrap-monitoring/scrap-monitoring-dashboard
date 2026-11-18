@@ -72,6 +72,9 @@ test("공통 페이지 셸은 활성 메뉴와 푸터를 조립한다", () => {
   expect(screen.getByRole("link", { name: "이력" })).toHaveAttribute("aria-current", "page");
   expect(screen.getByText("이력 본문")).toBeVisible();
   expect(screen.getByText(/Copyright 2026 AJIN INDUSTRIAL/)).toBeVisible();
+  const brandMark = screen.getByRole("link", { name: "AJIN SCRAP MONITORING 홈" }).querySelector("svg.brand-mark");
+  expect(brandMark).toBeInTheDocument();
+  expect(brandMark).toHaveAttribute("aria-hidden", "true");
 });
 
 test("인증된 공통 헤더는 갱신된 알림과 읽음 상태를 관리한다", async () => {
@@ -302,4 +305,15 @@ test("로딩 중 또는 실패 상태에서 Escape와 바깥 클릭으로 패널
   fireEvent.pointerDown(document.body);
   expect(screen.queryByText("메뉴를 불러오지 못했습니다.")).not.toBeInTheDocument();
   expect(button).toHaveAttribute("aria-expanded", "false");
+});
+
+test('관리자 화면 헤더는 data-page="admin"을 설정해 활성 메뉴 색상을 구분한다', () => {
+  const session = { expiresAt: "2026-10-16T00:00:00Z", user: { id: "u1", displayName: "관리자", role: "administrator" as const } };
+  const { container, rerender } = render(<DashboardHeader activePage="monitoring" initialNotifications={[]} initialUnreadCount={0} session={session} />);
+  expect(container.querySelector("header")).toHaveAttribute("data-page", "monitoring");
+  expect(screen.getByRole("link", { name: "현황" })).toHaveClass("active");
+
+  rerender(<DashboardHeader activePage="admin" initialNotifications={[]} initialUnreadCount={0} session={session} />);
+  expect(container.querySelector("header")).toHaveAttribute("data-page", "admin");
+  expect(screen.getByRole("link", { name: "관리자" })).toHaveClass("active");
 });

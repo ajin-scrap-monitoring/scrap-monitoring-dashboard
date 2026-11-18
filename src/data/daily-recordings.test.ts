@@ -237,12 +237,13 @@ describe("날짜 마감과 export 및 보관 만료의 분리", () => {
     expect(dailyTimeState(item, "2026-10-13T15:00:10.000Z", afterClosure)).toBe("unavailable");
   });
 
-  test("deleted_at, cleanup_state, cleanup_completed_at, cleanup_error, space_reclaimed를 허용하고 domain에 보존한다", () => {
+  test("deleted_at, deletion_reason, cleanup_state, cleanup_completed_at, cleanup_error, space_reclaimed를 허용하고 domain에 보존한다", () => {
     const item = closed({
       status: "deleted",
       playback_state: "unavailable",
       playback_path: null,
       deleted_at: "2026-10-15T10:00:00Z",
+      deletion_reason: "capacity_pressure",
       cleanup_state: "complete",
       cleanup_completed_at: "2026-10-15T10:05:00Z",
       cleanup_error: null,
@@ -250,11 +251,19 @@ describe("날짜 마감과 export 및 보관 만료의 분리", () => {
     });
     expect(item).toMatchObject({
       deletedAt: "2026-10-15T10:00:00Z",
+      deletionReason: "capacity_pressure",
       cleanupState: "complete",
       cleanupCompletedAt: "2026-10-15T10:05:00Z",
       cleanupError: null,
       spaceReclaimed: null,
     });
+    expect(closed({ status: "deleted", playback_state: "unavailable", playback_path: null }).deletionReason).toBeUndefined();
+    expect(closed({ status: "deleted", playback_state: "unavailable", playback_path: null, deletion_reason: null }).deletionReason).toBeUndefined();
+  });
+
+  test("허용되지 않은 deletion_reason은 계약 오류로 처리한다", () => {
+    expect(() => closed({ deletion_reason: "manual_purge" })).toThrow("Unexpected daily recording contract.");
+    expect(() => closed({ deletion_reason: 123 })).toThrow("Unexpected daily recording contract.");
   });
 
   test("space_reclaimed가 null이 아니면 계약 오류로 처리한다", () => {

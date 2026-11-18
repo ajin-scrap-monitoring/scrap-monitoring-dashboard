@@ -385,12 +385,17 @@ test("날짜 영상 확대 창은 Tab으로 영상 내부 controls에 이동하�
   await page.goto("/recordings?source=api");
   const opener = page.getByRole("button", { name: "녹화 영상 크게 보기" });
   await expect(opener).toBeVisible();
-  await expect.poll(() => page.locator(".recording-frame video").evaluate(element => (element as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(1);
+  const baseVideo = page.locator(".recording-frame video");
+  await expect(baseVideo).toHaveAttribute("controlsList", "nofullscreen");
+  await expect.poll(() => baseVideo.evaluate(element => (element as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(1);
+  await baseVideo.dblclick();
+  expect(await page.evaluate(() => document.fullscreenElement)).toBeNull();
   await opener.focus();
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", { name: "녹화 영상 크게 보기" });
   const close = dialog.getByRole("button", { name: "녹화 영상 닫기" });
   const video = dialog.locator("video");
+  await expect(video).toHaveAttribute("controlsList", "nofullscreen");
   await expect(close).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(video).toBeFocused();

@@ -212,3 +212,44 @@ test("관리자 화면의 버튼 문구는 어느 viewport에서도 단어 중�
   expect(text.overflow).toBeLessThanOrEqual(0);
   expect(text.textWidth).toBeLessThanOrEqual(text.buttonWidth);
 });
+
+test("관리자 화면의 반복 알림 제한과 정책 카드는 내용이 카드를 벗어나지 않는다", async ({ page }) => {
+  await installContractApi(page, { initiallyAuthenticated: true });
+  await page.goto("/admin?source=api");
+  await expect(page.locator(".repeat-limit")).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+
+  const metrics = await page.evaluate(() => {
+    const cards = [...document.querySelectorAll<HTMLElement>(".admin-content .card")].map(card => ({
+      cls: card.className,
+      overflowY: card.scrollHeight - card.clientHeight,
+    }));
+    const repeat = document.querySelector<HTMLElement>(".repeat-limit");
+    const repeatBox = repeat?.getBoundingClientRect();
+    const policy = document.querySelector<HTMLElement>(".policy-card");
+    const policyBox = policy?.getBoundingClientRect();
+    const repeatChildrenOverflow = repeat && repeatBox
+      ? [...repeat.querySelectorAll<HTMLElement>("*")].some((child) => {
+          const rect = child.getBoundingClientRect();
+          if (rect.width === 0 || rect.height === 0) return false;
+          return rect.top < repeatBox.top - 0.5 || rect.bottom > repeatBox.bottom + 0.5;
+        })
+      : true;
+    const repeatInsidePolicy = Boolean(
+      repeatBox && policyBox && repeatBox.top >= policyBox.top && repeatBox.bottom <= policyBox.bottom,
+    );
+    return {
+      cards,
+      repeatOverflowY: repeat ? repeat.scrollHeight - repeat.clientHeight : 999,
+      repeatChildrenOverflow,
+      repeatInsidePolicy,
+    };
+  });
+
+  for (const card of metrics.cards) {
+    expect(card.overflowY, card.cls).toBeLessThanOrEqual(1);
+  }
+  expect(metrics.repeatOverflowY).toBeLessThanOrEqual(0);
+  expect(metrics.repeatChildrenOverflow).toBe(false);
+  expect(metrics.repeatInsidePolicy).toBe(true);
+});

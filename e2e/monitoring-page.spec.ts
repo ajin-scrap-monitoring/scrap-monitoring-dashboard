@@ -127,23 +127,32 @@ function deviceSnapshot(): BackendSnapshot {
   } };
 }
 
-test("현황 장비는 상태만 표시하고 scan 시각과 수신 시각 및 지연은 표시하지 않는다", async ({ page }) => {
+test("현황 장비는 확장 카드에 연결 상태, 수신 시각과 사유를 표시하고 latency 추정은 표시하지 않는다", async ({ page }) => {
   const initial = deviceSnapshot();
   await installBackendApi(page, { initial });
   await page.goto("/?source=api");
   await expect(page.locator(".devices-card .device-name")).toHaveText(["LiDAR 1", "LiDAR 2", "카메라", "엣지 장비"]);
   const sensor = page.locator(".device").filter({ has: page.getByText("LiDAR 1", { exact: true }) });
-  await expect(sensor.getByText("정상", { exact: true })).toHaveAttribute("title", "FRESH");
+  await expect(sensor.locator(".status-text")).toHaveText("정상");
+  await expect(sensor.locator(".status-text")).toHaveAttribute("title", "FRESH");
+  await expect(sensor).toContainText("최근 스캔");
+  await expect(sensor.locator(".device-details")).toContainText("상태");
+  await expect(sensor.locator(".device-details")).toContainText("정상");
   await expect(sensor.locator("time")).toHaveCount(0);
+  const edge = page.locator(".device").filter({ has: page.getByText("엣지 장비", { exact: true }) });
+  await expect(edge).toContainText("연결 상태");
+  await expect(edge).toContainText("보고 중");
+  await expect(edge).toContainText("최근 보고");
   await expect(page.locator(".devices-card")).toContainText("갱신 지연");
   await expect(page.locator(".devices-card")).toContainText("일부 기능 제한");
   await expect(page.locator(".devices-card time, .devices-card .device-meta")).toHaveCount(0);
   await expect(page.locator(".devices-card")).not.toContainText(/마지막 scan|최근 수신|지연 정보/);
   await expect(page.locator(".kpi-value")).toHaveText("판단 불가");
   await expect(page.locator(".mini-stat").filter({ hasText: "적재율 경보" })).toContainText("미지원");
-  const chart = page.getByRole("img", { name: "최근 24시간 대표 적재율 그래프" });
-  await expect(chart).toContainText("현재 임계율 85%");
-  await expect(chart).not.toContainText("참고");
+  const loadCard = page.locator(".chart-card").filter({ hasText: "최근 24시간 적재율" });
+  await expect(loadCard.getByLabel("최근 24시간 적재율 범례")).toHaveText("현재 임계율 85%");
+  const chart = loadCard.getByRole("img", { name: "최근 24시간 대표 적재율 그래프" });
+  await expect(chart).not.toContainText(/임계율|참고/);
   const target = page.locator(".chart-point-target").first();
   const at = await target.getAttribute("aria-label");
   expect(at).toMatch(/^09:\d{2} 대표 적재율/);
@@ -239,18 +248,21 @@ test("촬영 시각이 없는 영상은 frame 수신 시각을 표시하고 확�
 });
 
 for (const threshold of [85, 90, 100]) {
-  test(`현재 임계율 ${threshold}% 문구는 점선과 겹치지 않고 측정 영역은 제목, 배치 상태 한 줄과 그림만 표시한다`, async ({ page }) => {
+  test(`현재 임계율 ${threshold}% 범례는 점선과 분리해 카드 제목 줄에 표시하고 측정 영역은 제목, 배치 상태 한 줄과 그림만 표시한다`, async ({ page }) => {
     const snapshot = deviceSnapshot();
     const initial = { ...snapshot, summary: { ...snapshot.summary, collectionThresholdPercent: threshold } };
     await installBackendApi(page, { initial });
     await page.goto("/?source=api");
-    const chart = page.getByRole("img", { name: "최근 24시간 대표 적재율 그래프" });
-    const label = chart.getByText(`현재 임계율 ${threshold}%`, { exact: true });
-    await expect(label).toBeVisible();
+    const loadCard = page.locator(".chart-card").filter({ hasText: "최근 24시간 적재율" });
+    const legend = loadCard.getByLabel("최근 24시간 적재율 범례");
+    const chart = loadCard.getByRole("img", { name: "최근 24시간 대표 적재율 그래프" });
+    await expect(legend).toHaveText(`현재 임계율 ${threshold}%`);
+    await expect(legend.locator(".history-legend-line")).toBeVisible();
+    await expect(chart.getByText(`현재 임계율 ${threshold}%`, { exact: true })).toHaveCount(0);
     await page.evaluate(() => document.fonts.ready);
-    const labelBounds = await label.boundingBox();
+    const labelBounds = await legend.boundingBox();
     const lineBounds = await chart.locator('path[stroke-dasharray="5 5"]').boundingBox();
-    if (!labelBounds || !lineBounds) throw new Error("The threshold label and line must be measurable.");
+    if (!labelBounds || !lineBounds) throw new Error("The threshold legend and line must be measurable.");
     expect(lineBounds.y - labelBounds.y - labelBounds.height).toBeGreaterThan(4);
     await expect(page.locator(".measurement-card .monitoring-card-title")).toHaveText("측정 영역");
     await expect(page.locator(".measurement-card .measurement-layout-state")).toHaveCount(0);

@@ -42,18 +42,16 @@ test("조회 입력 오류와 실패 안내는 기존 카드와 조회 조건의
 });
 
 for (const threshold of [0, 90, 100]) {
-  test(`이력의 현재 임계율 ${threshold}% 문구는 점선 위쪽에 겹침 없이 표시한다`, async ({ page }) => {
+  test(`이력의 현재 임계율 ${threshold}%는 그래프 내부에 그리지 않고 범례로만 표시한다`, async ({ page }) => {
     const snapshot = monitoringV2StateFixture("UNAVAILABLE");
     await installBackendApi(page, { initial: { ...snapshot, summary: { ...snapshot.summary, collectionThresholdPercent: threshold } } });
     await page.goto("/history?source=api");
     const chart = page.locator(".history-chart");
-    const label = chart.getByText(`현재 임계율 ${threshold}%`, { exact: true });
-    await expect(label).toBeVisible();
-    await page.evaluate(() => document.fonts.ready);
-    const labelBounds = await label.boundingBox();
-    const lineBounds = await chart.locator('path[stroke-dasharray="6 6"]').boundingBox();
-    if (!labelBounds || !lineBounds) throw new Error("The threshold label and line must be measurable.");
-    expect(lineBounds.y - labelBounds.y - labelBounds.height).toBeGreaterThan(4);
+    const legend = page.getByLabel("그래프 범례");
+    await expect(legend).toHaveText(`현재 임계율 ${threshold}%`);
+    await expect(legend.locator(".history-legend-line")).toBeVisible();
+    await expect(chart.getByText(`현재 임계율 ${threshold}%`, { exact: true })).toHaveCount(0);
+    await expect(chart.locator('path[stroke-dasharray="6 6"]')).toHaveAttribute("d", `M58 ${198 - threshold * 1.8}H1900`);
   });
 }
 
@@ -104,13 +102,13 @@ test("기간과 유형 필터는 조회 버튼으로 적용하며 정상 적재�
   expect(Date.parse(queries[0].searchParams.get("to")!) - Date.parse(queries[0].searchParams.get("from")!)).toBe(7 * 86_400_000);
   const chart = page.locator(".history-chart");
   const legend = page.getByLabel("그래프 범례");
-  await expect(legend).toHaveText("현재 임계율");
-  await expect(chart.getByText("현재 임계율 93%", { exact: true })).toBeVisible();
+  await expect(legend).toHaveText("현재 임계율 93%");
+  await expect(chart.getByText("현재 임계율 93%", { exact: true })).toHaveCount(0);
   await expect(chart).not.toContainText("유효한 적재율 데이터가 없습니다.");
   const threshold = await chart.locator('path[stroke-dasharray="6 6"]').getAttribute("d");
-  expect(Number(threshold?.match(/^M58 ([\d.]+)H1900$/)?.[1])).toBeCloseTo(192 - 93 * 1.3);
+  expect(Number(threshold?.match(/^M58 ([\d.]+)H1900$/)?.[1])).toBeCloseTo(198 - 93 * 1.8);
   const paths = () => chart.locator(".history-load-line").evaluateAll(lines => lines.map(line => line.getAttribute("d")));
-  expect((await paths()).some(path => /[ML][\d.]+ 192(?: |$)/.test(path ?? ""))).toBe(true);
+  expect((await paths()).some(path => /[ML][\d.]+ 198(?: |$)/.test(path ?? ""))).toBe(true);
   expect((await paths()).every(path => !/NaN|Infinity/.test(path ?? ""))).toBe(true);
   const limited = page.getByLabel(/대표 적재율 68.5%, 입력 제한/).first();
   await limited.focus();
@@ -143,8 +141,8 @@ test("기간과 유형 필터는 조회 버튼으로 적용하며 정상 적재�
     if (count) await expect(rows).toHaveCount(count);
     else await expect(rows).toContainText("조회된 이벤트가 없습니다.");
     expect(await paths()).toEqual(baseline);
-    await expect(legend).toHaveText("현재 임계율");
-    await expect(chart.getByText("현재 임계율 93%", { exact: true })).toBeVisible();
+    await expect(legend).toHaveText("현재 임계율 93%");
+    await expect(chart.getByText("현재 임계율 93%", { exact: true })).toHaveCount(0);
     await expect(chart.locator(".history-event-target")).toHaveCount(0);
   }
   await page.getByRole("button", { name: "전체", exact: true }).click();
@@ -265,7 +263,7 @@ test("이력 이벤트 표는 보이는 페이지만 서버에 요청하고 적�
   await expect.poll(() => eventRequests().map(url => url.searchParams.get("page")).join(",")).toBe("1,2,3,4");
 });
 
-test("7일(900초) 조회에서는 마지막 값이 내려간 수거 구간에서도 단일 추세선에 최대 적재율(maximumPercent)을 반영한다", async ({ page }) => {
+test("7일(900초) 조회에서는 수거 구간의 최댓값(maximumPercent)과 최저점(minimumPercent)을 단일 추세선에 순서대로 반영한다", async ({ page }) => {
   const snapshot = monitoringV2StateFixture("UNAVAILABLE");
   const initial = { ...snapshot, serverTime: "2026-10-15T19:00:00+09:00", summary: { ...snapshot.summary, collectionThresholdPercent: 80 } };
   const api = await installBackendApi(page, { initial });
@@ -288,10 +286,13 @@ test("7일(900초) 조회에서는 마지막 값이 내려간 수거 구간에�
         dataState: "AVAILABLE" as const,
         reasonCodes: [] as string[],
       };
-      if (index === count - 2) {
-        return { ...base, valuePercent: 51, minimumPercent: 51, maximumPercent: 92, averagePercent: 78.5, validSamples: 900, invalidSamples: 0 };
+      if (index === count - 3) {
+        return { ...base, valuePercent: 18, minimumPercent: 4, maximumPercent: 92, averagePercent: 48.5, validSamples: 900, invalidSamples: 0 };
       }
-      return { ...base, valuePercent: 70, minimumPercent: 60, maximumPercent: 70, averagePercent: 65, validSamples: 900, invalidSamples: 0 };
+      if (index === count - 2) {
+        return { ...base, valuePercent: 35, minimumPercent: 18, maximumPercent: 35, averagePercent: 26, validSamples: 900, invalidSamples: 0 };
+      }
+      return { ...base, valuePercent: 70, minimumPercent: 69.5, maximumPercent: 70.4, averagePercent: 70, validSamples: 900, invalidSamples: 0 };
     });
     return {
       status: 200,
@@ -314,6 +315,7 @@ test("7일(900초) 조회에서는 마지막 값이 내려간 수거 구간에�
   await expect(chart.locator(".history-load-range")).toHaveCount(0);
   await expect(chart.locator(".history-load-peak")).toHaveCount(0);
   const lineD = await chart.locator(".history-load-line").getAttribute("d");
-  expect(lineD).toContain(`${192 - 92 * 1.3}`);
-  await expect(page.getByLabel("그래프 범례")).toHaveText("현재 임계율");
+  expect(lineD).toContain(`${198 - 92 * 1.8}`);
+  expect(lineD).toContain(`${198 - 4 * 1.8}`);
+  await expect(page.getByLabel("그래프 범례")).toHaveText("현재 임계율 80%");
 });

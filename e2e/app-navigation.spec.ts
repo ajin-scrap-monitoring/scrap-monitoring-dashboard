@@ -254,7 +254,7 @@ test("현황과 다른 화면을 반복 이동해도 분리된 img와 SVG circle
 });
 
 test("뒤로와 앞으로 이동은 각 화면을 떠나기 직전의 scroll 위치를 복원한다", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setViewportSize({ width: 1280, height: 700 });
   const api = await installBackendApi(page);
   const id = "evt-alt-31";
   api.setEventReplays([syntheticEventReplay({}, { eventId: id, occurredAt: "2026-10-12T00:00:00Z", windowFrom: "2026-10-11T23:59:30Z", windowTo: "2026-10-12T00:00:30Z" })]);

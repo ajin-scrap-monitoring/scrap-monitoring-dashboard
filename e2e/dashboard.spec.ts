@@ -273,9 +273,54 @@ test("주요 페이지는 대상 뷰포트에서 수평으로 넘치지 않는�
 
   for (const [path, heading, level] of pages) {
     await page.goto(path);
-    await expect(page.getByRole("heading", { name: heading, exact: true, level })).toBeVisible();
+    const titleLocator = page.getByRole("heading", { name: heading, exact: true, level });
+    await expect(titleLocator).toBeVisible();
+    if (level === 1) {
+      const mark = titleLocator.locator(".page-title-mark");
+      await expect(mark).toBeVisible();
+      const expectedSectionFont = (page.viewportSize()?.width ?? 1920) <= 1499 ? "18px" : "20px";
+      expect(await page.locator(".section-title").first().evaluate(el => getComputedStyle(el).fontSize)).toBe(expectedSectionFont);
+      if (path === "/admin") {
+        const adminColors = await page.evaluate(() => {
+          const nav = document.querySelector('header.topbar[data-page="admin"] .nav-link.active');
+          const markEl = document.querySelector(".admin-page .page-title-mark");
+          const section = document.querySelector(".admin-page .section-title");
+          const primary = document.querySelector(".admin-page .admin-primary");
+          const outline = document.querySelector(".admin-page .admin-outline-button");
+          const toggle = document.querySelector(".admin-page .admin-toggle input:checked + i");
+          const check = document.querySelector(".admin-page .admin-check input:checked + span");
+          return {
+            navColor: nav ? getComputedStyle(nav).color : null,
+            navBar: nav ? getComputedStyle(nav, "::after").backgroundColor : null,
+            markBefore: markEl ? getComputedStyle(markEl, "::before").backgroundColor : null,
+            markAfter: markEl ? getComputedStyle(markEl, "::after").backgroundColor : null,
+            sectionBar: section ? getComputedStyle(section, "::before").backgroundColor : null,
+            primaryBg: primary ? getComputedStyle(primary).backgroundColor : null,
+            outlineBorder: outline ? getComputedStyle(outline).borderColor : null,
+            outlineText: outline ? getComputedStyle(outline).color : null,
+            toggleBg: toggle ? getComputedStyle(toggle).backgroundColor : null,
+            checkBg: check ? getComputedStyle(check).backgroundColor : null,
+          };
+        });
+        expect(adminColors).toEqual({
+          navColor: "rgb(129, 140, 248)",
+          navBar: "rgb(129, 140, 248)",
+          markBefore: "rgb(79, 70, 229)",
+          markAfter: "rgb(38, 52, 73)",
+          sectionBar: "rgb(79, 70, 229)",
+          primaryBg: "rgb(79, 70, 229)",
+          outlineBorder: "rgb(79, 70, 229)",
+          outlineText: "rgb(67, 56, 202)",
+          toggleBg: "rgb(79, 70, 229)",
+          checkBg: "rgb(79, 70, 229)",
+        });
+      }
+    }
     const horizontalOverflow = await page.evaluate<number>(
       "document.documentElement.scrollWidth - document.documentElement.clientWidth",
+    );
+    const verticalOverflow = await page.evaluate<number>(
+      "document.documentElement.scrollHeight - document.documentElement.clientHeight",
     );
     const maximumCardOverflow = await page.evaluate<number>(
       "Math.max(0, ...[...document.querySelectorAll('.card')].map((element) => element.scrollHeight - element.clientHeight))",
@@ -285,9 +330,79 @@ test("주요 페이지는 대상 뷰포트에서 수평으로 넘치지 않는�
     );
     const documentHeight = await page.evaluate<number>("document.documentElement.scrollHeight");
     expect(horizontalOverflow).toBeLessThanOrEqual(0);
+    expect(verticalOverflow).toBeLessThanOrEqual(0);
     expect(maximumCardOverflow).toBeLessThanOrEqual(2);
     expect(footerOverlapCount).toBe(0);
     expect(documentHeight).toBeLessThanOrEqual(1100);
+  }
+});
+
+test("주요 페이지는 FHD 브라우저 유효 높이(1920x900)에서도 세로 스크롤 없이 표시된다", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 900 });
+  await page.addInitScript("window.sessionStorage.setItem('scrap-monitoring-authenticated', 'true')");
+
+  const pages = [
+    ["/", "스크랩 모니터링", 1],
+    ["/history", "이력", 1],
+    ["/recordings", "녹화 영상", 1],
+    ["/admin", "관리자 설정", 1],
+    ["/login", "로그인", 2],
+  ] as const;
+
+  for (const [path, heading, level] of pages) {
+    await page.goto(path);
+    const titleLocator = page.getByRole("heading", { name: heading, exact: true, level });
+    await expect(titleLocator).toBeVisible();
+    if (level === 1) {
+      const mark = titleLocator.locator(".page-title-mark");
+      await expect(mark).toBeVisible();
+      const expectedSectionFont = (page.viewportSize()?.width ?? 1920) <= 1499 ? "18px" : "20px";
+      expect(await page.locator(".section-title").first().evaluate(el => getComputedStyle(el).fontSize)).toBe(expectedSectionFont);
+      if (path === "/admin") {
+        const adminColors = await page.evaluate(() => {
+          const nav = document.querySelector('header.topbar[data-page="admin"] .nav-link.active');
+          const markEl = document.querySelector(".admin-page .page-title-mark");
+          const section = document.querySelector(".admin-page .section-title");
+          const primary = document.querySelector(".admin-page .admin-primary");
+          const outline = document.querySelector(".admin-page .admin-outline-button");
+          const toggle = document.querySelector(".admin-page .admin-toggle input:checked + i");
+          const check = document.querySelector(".admin-page .admin-check input:checked + span");
+          return {
+            navColor: nav ? getComputedStyle(nav).color : null,
+            navBar: nav ? getComputedStyle(nav, "::after").backgroundColor : null,
+            markBefore: markEl ? getComputedStyle(markEl, "::before").backgroundColor : null,
+            markAfter: markEl ? getComputedStyle(markEl, "::after").backgroundColor : null,
+            sectionBar: section ? getComputedStyle(section, "::before").backgroundColor : null,
+            primaryBg: primary ? getComputedStyle(primary).backgroundColor : null,
+            outlineBorder: outline ? getComputedStyle(outline).borderColor : null,
+            outlineText: outline ? getComputedStyle(outline).color : null,
+            toggleBg: toggle ? getComputedStyle(toggle).backgroundColor : null,
+            checkBg: check ? getComputedStyle(check).backgroundColor : null,
+          };
+        });
+        expect(adminColors).toEqual({
+          navColor: "rgb(129, 140, 248)",
+          navBar: "rgb(129, 140, 248)",
+          markBefore: "rgb(79, 70, 229)",
+          markAfter: "rgb(38, 52, 73)",
+          sectionBar: "rgb(79, 70, 229)",
+          primaryBg: "rgb(79, 70, 229)",
+          outlineBorder: "rgb(79, 70, 229)",
+          outlineText: "rgb(67, 56, 202)",
+          toggleBg: "rgb(79, 70, 229)",
+          checkBg: "rgb(79, 70, 229)",
+        });
+      }
+    }
+    await page.evaluate(() => document.fonts.ready);
+    const metrics = await page.evaluate(() => ({
+      horizontalOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      verticalOverflow: document.documentElement.scrollHeight - document.documentElement.clientHeight,
+      maximumCardOverflow: Math.max(0, ...[...document.querySelectorAll(".card")].map(el => el.scrollHeight - el.clientHeight)),
+    }));
+    expect(metrics.horizontalOverflow).toBeLessThanOrEqual(0);
+    expect(metrics.verticalOverflow).toBeLessThanOrEqual(0);
+    expect(metrics.maximumCardOverflow).toBeLessThanOrEqual(2);
   }
 });
 
@@ -316,5 +431,28 @@ test("주요 페이지의 대화형 요소와 이미지에 접근 가능한 이�
 
     expect(unnamedControls).toEqual([]);
     expect(imagesWithoutAlt).toBe(0);
+  }
+});
+
+test("로그인 화면은 일반 브라우저 높이와 좁은 창에서도 가로 및 세로 스크롤 없이 표시된다", async ({ page }) => {
+  await page.goto("/login");
+  await expect(page.getByRole("heading", { name: "로그인", exact: true, level: 2 })).toBeVisible();
+  await page.getByLabel("아이디").fill("   ");
+  await page.getByLabel("비밀번호").fill("x");
+  await page.getByRole("button", { name: "로그인", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("아이디와 비밀번호를 입력하세요.");
+
+  for (const viewport of [
+    { width: 1920, height: 900 },
+    { width: 1280, height: 720 },
+    { width: 900, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const overflow = await page.evaluate(() => ({
+      x: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      y: document.documentElement.scrollHeight - document.documentElement.clientHeight,
+    }));
+    expect(overflow.x, `${viewport.width}x${viewport.height} horizontal`).toBeLessThanOrEqual(0);
+    expect(overflow.y, `${viewport.width}x${viewport.height} vertical`).toBeLessThanOrEqual(0);
   }
 });

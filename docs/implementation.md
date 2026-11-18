@@ -93,9 +93,19 @@ Vite는 TypeScript 파일을 JavaScript로 변환하지만 타입 검사를 수�
 코드 포맷은 별도 formatter 없이 ESLint 규칙만 적용한다.
 
 현재 개발 및 브라우저 검증 기준은 데스크톱 Chrome 151 이상, 최소 너비 1280 Cascading Style
-Sheets (CSS) 픽셀, 기본 Full HD (FHD) 1920 x 1080 뷰포트다. 높이를 초과하는
-기본 페이지 콘텐츠는 페이지 세로 스크롤을 사용하며 알림 목록, 수신 대상 창과 상세 창은 영역 자체에 스크롤을 둔다. Chrome 최소 버전은 `@playwright/test` 1.62.1이
-검증하는 Chromium 151.0.7922.34를 기준으로 한다.
+Sheets (CSS) 픽셀, 기본 Full HD (FHD) 1920 x 1080 뷰포트다. 현황, 이력, 녹화와 관리자 화면은
+`--vh-compact: clamp(0px, calc(1080px - 100vh), 180px)` 계산으로 900px~1080px 뷰포트 높이
+구간에서 카드 간격(12px), 상단 바(58px), 제목 영역(76px), 하단 바(20px, `margin-bottom: 4px`, `padding-bottom: 5px`, `12px` 글자)와
+1920 x 1080 기준 카드 좌표를 유지한 채 카드 높이와 내부 여백 및 일부 보조 글자 크기를 비례 축소한다. 이 계산으로
+주소창과 북마크 바를 포함한 900px 유효 브라우저 높이(1280 x 900, 1440 x 900, 1920 x 900)에서
+문서 가로 및 세로 스크롤이나 카드 내부 잘림 없이 한 화면에 맞춘다. 다만 현황 대표 적재율
+수치(`.kpi-value` 76px)와 `판단 불가` 문구(`.unavailable-value` 32px)는 크기 비율을 고정하고,
+관리자 화면의 `.repeat-limit`와 `.test-message`는 최소 높이(`min-height`)와 자동 높이를
+사용해 내부 요소가 상자 밖으로 넘치지 않게 유지한다. 900px 미만 높이에서는 카드 최소
+높이(`history-events` 360px, `recordings-main` 610px, `admin-content` 738px) 아래로 문서 세로
+스크롤이 생기며 알림 목록, 장비 목록(`.device-grid`), 수신 대상 창과 상세 창은 영역 자체
+스크롤을 유지한다. Chrome 최소 버전은 `@playwright/test` 1.62.1이 검증하는 Chromium
+151.0.7922.34를 기준으로 한다.
 
 ## 코드 구조와 작업 재개 기준
 
@@ -105,7 +115,7 @@ Sheets (CSS) 픽셀, 기본 Full HD (FHD) 1920 x 1080 뷰포트다. 높이를 �
 `RuntimeConfiguredApp`은 검증한 runtime 설정 뒤 HTTP data source를 초기화하며,
 개발 및 synthetic source의 선택 경계는 아래 데이터 소스 절을 따른다.
 
-`src/App.tsx`는 `/`, `/history`, `/recordings`, `/login`과 `/admin`을 분기한다.
+`src/App.tsx`는 `/`, `/history`, `/recordings`, `/login`과 `/admin`을 분기한다. 공통 상단 바와 로그인 화면의 `AJIN SCRAP MONITORING` 앞에는 `DashboardPrimitives`의 `BrandMark`가 아진산업 CI 심벌 마크 SVG(`svg.brand-mark`)를 표시한다.
 같은 origin의 `/`, `/history`, `/recordings`, `/admin`(query parameter 포함)은 `AppLink`와
 `navigate`를 통한 client-side 화면 전환을 지원한다. `/login`과 그 외 경로는 document 이동으로 동작한다.
 로그인 성공, 로그아웃, session 만료, MJPEG 401과 403, 설정 오류 재시도의 `window.location.assign`과 `reload`는
@@ -148,7 +158,7 @@ Suspense를 유지한다.
 `DashboardPrimitives.tsx`, `MonitoringVisuals.tsx`와 `Pagination.tsx`를 사용한다.
 경로와 synthetic 인증 키는 `src/app-routing.ts`가 정의한다.
 
-네 화면의 페이지 제목은 장식 없이 같은 크기, 굵기와 정렬을 사용한다. 제목 영역의 최소 높이는
+네 화면의 페이지 제목(`PageTitle`)은 `.page-title-mark` 사선 아이콘과 함께 같은 크기, 굵기와 정렬을 사용하며 모든 카드 제목(`.section-title`)은 기본 `20px`(`<=1499px` 폭에서는 `18px` 상한)과 `18px` 높이 강조 막대를 사용한다. 눌렀을 때 상세 모달이나 팝업을 여는 글자 버튼(`.detail-trigger`)은 파란색(`#1466d6`)과 밑줄을 기본 표시로 사용해 일반 텍스트와 구분하고, 활성 알림 행(`.active-alert-trigger`)에서는 제목 등급 색상을 유지한 채 상세 설명에 파란색과 밑줄을 적용한다. 관리자 화면(`.admin-page`, `.recipient-panel`, `.recipient-add-modal`)은 제목 아이콘, section 제목 막대, 주요 button, toggle, checkbox, 선택 입력과 상단 내비게이션 활성 상태(`.topbar[data-page="admin"] .nav-link.active`)의 강조 테마를 인디고 계열(`#4f46e5` / `#4338ca` / `#eef2ff`, 상단 바 활성 `#818cf8`)로 통일해 운영 화면의 주황색 테마(`#f58a07` / `#c46b00` / `#fff4e6`)와 구분한다. 제목 영역의 최소 높이는
 76px이며 현황, 이력과 녹화 화면에서는 오른쪽에 데이터 수신 상태를 함께 배치한다. 로딩과 오류 화면의 데이터 수신 상태도 제목 영역과 같은 높이와 여백 위치에 배치한다. 카드 위치, 크기와 간격은 변경하지 않는다.
 
 ### 데이터 소스와 요청 수명
@@ -259,7 +269,7 @@ Synthetic 영상과 썸네일은 `src/assets/camera-frame.png`를 사용하며 �
 `title`에 원문을 유지하고 생략 표시한다. 사용자 메뉴의 역할 표기는 `viewer`를 Viewer,
 `administrator`를 Administrator로 표시한다.
 
-로그인 화면은 계정 로그인만 제공한다. 실제 v2 및 녹화 조회는 Backend session이 필요하고
+로그인 화면은 계정 로그인만 제공한다. 로그인 화면(`.login-page`)은 `.app-shell`의 `1280px` 최소 너비와 분리해 `900px` 일반 브라우저 높이와 좁은 창(`960px` 이하 단일 열 전환)에서도 가로 및 세로 스크롤 없이 폼과 오류 안내를 표시한다. 실제 v2 및 녹화 조회는 Backend session이 필요하고
 관리자 화면은 administrator 역할을 확인한다. API 401 또는 SSE `session.expired`는
 로그인으로 이동한다. HTTP adapter는 session Cookie와 CSRF (Cross-Site Request Forgery)
 token을 사용한다. Synthetic 로그인은 `sessionStorage`를 사용하고 비로그인 조회에는
@@ -323,8 +333,7 @@ snapshotId의 응답도 적용한다. 결합 조회의 트리거, 5초 지연 �
 사용하며 수치와 같은 높이의 영역을 유지한다. 경보 평가 미제공은 미지원으로 표시하고
 원본 판단 사유와 capability는 모델에 보존하되 별도 진단 버튼은 제공하지 않는다.
 
-장비 카드는 장비명과 보고된 상태만 표시하고 scan 및 진행 시각과 latency는 표시하지
-않는다. 보고된 `reason_codes`가 있으면 해당 장치 상태 hover title에 한국어 사유와 원시 코드를 함께 둔다. 카메라 행의 `useCameraStatus`는 data source의 `subscribeCameraStatus`를 구독한다.
+장비 상태 4개 카드(`LiDAR 1`, `LiDAR 2`, `카메라`, `엣지 장비`)는 카드 하단 여백까지 확장해 장비명과 보고된 상태 외에 연결 상태(카메라, 엣지 장비), 최근 스캔/프레임 수신/보고 시각(한국 표준시) 및 `상태` 행(`reason_codes` 한국어 사유 요약, 사유가 없고 정상 상태이면 `정상`, 그 외 사유 부재 시 `정보 없음`)을 표시하며, 별도 서비스 진단 목록과 clock 상태 및 offset과 추정 latency는 표시하지 않는다. 해당 장치 상태 hover title에도 한국어 사유와 원시 코드를 함께 둔다. 카메라 행의 `useCameraStatus`는 data source의 `subscribeCameraStatus`를 구독한다.
 HTTP data source는 앱 공용 SSE에서 검사한 마지막 카메라 상태와 단조 시계의 수신 시각을
 보관하고 새 구독자에게 즉시 전달한다. 화면 종료는 카메라 구독만 해제하며 화면 이동은 SSE를
 다시 연결하지 않는다. 숨김 탭은 기한 검사 timer를 멈추고 다시 보이면 즉시 기한을 판정한다.
@@ -336,7 +345,7 @@ A 및 B 원의 중심은 끝점에 있고 반투명 면은 센서와 측정선 �
 
 현황 및 이력의 시간축 눈금은 6시간 이하 1시간, 6시간 초과 24시간 이하는 3시간 간격이며 이력의 24시간 초과는
 자정 기준 24시간 배수 간격(7일 이하 1일 간격, 초과 기간은 `Math.ceil(기간/168)`일 간격)의 날짜 눈금을 사용한다. 표본 좌표와 tooltip의 실제 시각은 변경하지 않는다.
-현재 임계율 수치는 점선과 겹치지 않는 위쪽 여백에 표시하고 긴 소수 값은 원본을 유지하며
+현황의 최근 24시간 적재율 카드는 SVG 내부 텍스트 왜곡을 피하기 위해 카드 제목 줄 범례(`.chart-legend`, LiDAR 최소/최대 안내와 같은 `#61708a` 색상 및 `12px`/`11px` 크기)에 점선 기호와 함께 `현재 임계율`(또는 `수거 임계율`) 및 수치를 표시하고, 이력 화면 역시 그래프 영역 내부에는 임계율 문구를 두지 않고 카드 제목 줄 범례(`.history-legend`)에만 점선 기호와 `현재 임계율` 수치(또는 `수거 임계율`)를 표시하며 상하 여백을 넓힌 플롯 영역을 사용한다. 긴 소수 값은 원본을 유지하며
 tooltip 너비를 조정한다. v2 tooltip과 눈금은 `Asia/Seoul`을 사용한다.
 현재 임계율 선을 과거 적용 임계율로 표현하지 않는다.
 
@@ -360,7 +369,7 @@ decode 성공 시각이 있는 상태에서 frame 수신 중단이나 일시적 
 
 빠른 기간은 최근 24시간, 7일, 30일과 90일이며 기본은 7일이다. 데이터 source의 종료 시각을
 기준으로 입력을 채우고 직접 입력은 preset을 해제한다. 기간과 유형은 조회 버튼으로
-적용하며 임계율과 추이 선은 이벤트 유형으로 필터링하지 않는다. `bucketSeconds`가 60초를 초과하는 조회에서 `maximumPercent`가 있으면 단일 추세선에 구간 최댓값을 반영하고 구간 통계(`minimumPercent`, `maximumPercent`, `averagePercent`)는 한국 표준시 기준 hover tooltip으로 제공한다. 잘못된 기간과 `queryHistory`의 Promise reject는
+적용하며 임계율과 추이 선은 이벤트 유형으로 필터링하지 않는다. `bucketSeconds`가 60초를 초과하는 조회에서 구간 통계(`minimumPercent`, `maximumPercent`, `averagePercent`)가 있으면 단일 추세선에 `valuePercent` 종점과 직전 점 및 종점 범위를 1%p 이상 벗어나는 구간 최고치/최저치를 순서대로 반영해 피크와 수거 저점을 함께 연결하고 `valuePercent`가 없는 유효 구간은 구간 범위 안에 배치한다. 구간 통계(`minimumPercent`, `maximumPercent`, `averagePercent`)는 한국 표준시 기준 hover tooltip으로 제공한다. 잘못된 기간과 `queryHistory`의 Promise reject는
 기존 결과를 유지하고 조회 조건 제목 행의 한 줄 안내와 title 및 접근성 설명을 사용한다. v2 적재율 오류 상태가 반환되면 적용된 결과의 그래프 영역에 적재율 오류를 표시한다.
 새 조건의 이벤트 조회가 실패하면 이벤트 목록을 비우고 오류를 표시한다.
 HTTP source의 이벤트 표는 표에 보이는 페이지만 서버에 요청하며 synthetic source는 메모리의 이벤트를 필터링해 페이지로 나눈다. `queryHistoryEvents`는 표의 페이지 크기(8건),
@@ -452,7 +461,10 @@ player를 이동시키며 기본 player는 정지 상태를 유지한다. 확대
 카드의 기존 안내 문단을 대체해 카드 높이를 바꾸지 않는다. 삭제 후 목록에서 해당 녹화를
 제거하고 그 날짜 영상을 쓰던 이벤트 항목의 재생 정보를 무효화해 `processing`으로 표시하며 선택된 항목의 상세를 다시 조회한다.
 
-확대는 기본 player를 pause하고 같은 위치에서 시작한다. 일반 video의 확대 player가 frame을 확보하고
+확대는 기본 player를 pause하고 같은 위치에서 시작한다. 날짜 녹화와 단일 MP4의 `<video controls>`는
+`controlsList="nofullscreen"`과 `-webkit-media-controls-fullscreen-button` 숨김으로
+브라우저 기본 전체화면 버튼을 제거해 실시간 영상과 동일한 `.video-modal` 팝업 확대만 제공하며,
+기본 화면의 `.recording-expand` 버튼은 컨트롤 바 위(`bottom: 76px`)에 둔다. 일반 video의 확대 player가 frame을 확보하고
 seek가 끝난 경우에만 닫을 때 기본 player의 위치를 갱신하며 이벤트 player는 보고된 재생 위치를 사용한다. 확대 중 기본 player의
 time update는 표시 시각을 변경하지 않는다. Source 변경은 다운로드 재조회와 이전 완료
 표시를 취소한다. 확대 창의 Tab과 Shift+Tab 순환에는 닫기 버튼과 `controls`가 있는
@@ -476,9 +488,9 @@ Graphics)의 path로 묶으며 모든 원본 경계와 누락을 유지한다. �
 서버 기본값은 유지하되 파일 생성 성공으로 간주하지 않으며 미제공 metadata는 보충하지
 않는다. 목록에서는 길이의 결측 문구를 숨기고 정보 카드에는 정보 없음을 유지한다.
 
-상태 표시는 hover와 선택으로 popover를 열어 사용자용 사유, 짧은 오류 코드와 누락 수를
+상태 표시(`.recording-status-trigger`)는 상태 색상을 유지한 채 밑줄을 함께 표시하고 hover와 선택으로 popover를 열어 사용자용 사유, 짧은 오류 코드와 누락 수를
 표시한다. 오류 원문 및 stack trace는 서버 로그에서 확인한다. 영상 없음은 별도 popup으로
-표시하지 않는다. 녹화 범위 상세 창은 v1 media clip의 부분 저장 버튼뿐 아니라 누락 구간이 있는 이벤트 상세와 날짜 녹화의 누락 구간 버튼에서도 열린다.
+표시하지 않는다. 녹화 범위 상세 창은 v1 media clip의 부분 저장 버튼뿐 아니라 누락 구간이 있는 이벤트 상세와 날짜 녹화의 누락 구간 버튼에서도 열리며 해당 버튼(`.recording-coverage-trigger`)은 `.detail-trigger`의 파란색과 밑줄 스타일을 따른다.
 v1 clip 상세는 `getRecordingCoverage`로 추가 조회하고 이벤트와 날짜 누락 상세는 선택한 녹화 객체의 데이터를 사용한다.
 이벤트 창은 요청 구간, 요청 및 확보와 재생 길이, 누락 구간의 시작과 종료 시각 및 종류와 사유 코드를 표시한다.
 날짜 창은 녹화 날짜와 누락 구간의 시작 및 종료 시각과 사유 코드를 표시한다.

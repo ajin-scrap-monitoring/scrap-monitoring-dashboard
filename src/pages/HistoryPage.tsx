@@ -4,7 +4,7 @@ import { AppLink } from "../app-link";
 import { ROUTES } from "../app-routing";
 import { v1MonitoringEnabled } from "../build-features";
 import { DashboardPageShell } from "../components/DashboardShell";
-import { SectionTitle } from "../components/DashboardPrimitives";
+import { PageTitle, SectionTitle } from "../components/DashboardPrimitives";
 import { DataReceptionMeta } from "../components/DataReceptionMeta";
 import { Pagination } from "../components/Pagination";
 import { DateTimeField } from "../components/DateTimeField";
@@ -36,6 +36,13 @@ function eventTitle(event: HistoryEvent) {
   return event.title || event.content;
 }
 
+const excursionBandPercent = 1;
+
+type PlottedPoint = {
+  hour: number;
+  value: number;
+};
+
 function hasRangeStats(sample: HistoryLoadSample): sample is HistoryLoadSample & { minimumPercent: number; maximumPercent: number } {
   return typeof sample.minimumPercent === "number" && typeof sample.maximumPercent === "number";
 }
@@ -45,6 +52,89 @@ function plottedSampleValue(sample: HistoryLoadSample, useMaximum: boolean) {
     return sample.value !== null ? Math.max(sample.maximumPercent, sample.value) : sample.maximumPercent;
   }
   return sample.value;
+}
+
+function placeWithinWindow(startHour: number, endHour: number, values: readonly number[]): PlottedPoint[] {
+  if (values.length === 0) return [];
+  if (values.length === 1) return [{ hour: (startHour + endHour) / 2, value: values[0] }];
+  const span = Math.max(0, endHour - startHour);
+  return values.map((value, index) => ({
+    hour: startHour + span * ((index + 1) / (values.length + 1)),
+    value,
+  }));
+}
+
+function nextSampleAnchor(sample: HistoryLoadSample | undefined): number | null {
+  if (!sample) return null;
+  if (typeof sample.averagePercent === "number") return sample.averagePercent;
+  if (sample.value !== null) return sample.value;
+  if (hasRangeStats(sample)) return (sample.minimumPercent + sample.maximumPercent) / 2;
+  if (typeof sample.maximumPercent === "number") return sample.maximumPercent;
+  return null;
+}
+
+// 구간 안의 min/max 발생 순서가 응답에 없을 때 양 끝점과의 전체 변동량이 작은 방향을 선택한다.
+function orderedExtrema(min: number, max: number, prevY: number | null, endY: number | null, nextAnchor: number | null): [number, number] {
+  if (prevY !== null && endY !== null && prevY !== endY) {
+    return endY < prevY ? [max, min] : [min, max];
+  }
+  if (prevY !== null && nextAnchor !== null && prevY !== nextAnchor) {
+    return nextAnchor < prevY ? [max, min] : [min, max];
+  }
+  const target = endY ?? nextAnchor;
+  if (target !== null) {
+    const distDiff = Math.abs(max - target) - Math.abs(target - min);
+    if (Math.abs(distDiff) < 1e-9 && endY !== null && nextAnchor !== null && nextAnchor !== endY) {
+      return nextAnchor < endY ? [min, max] : [max, min];
+    }
+    return distDiff <= 0 ? [min, max] : [max, min];
+  }
+  if (prevY !== null) return Math.abs(max - prevY) <= Math.abs(prevY - min) ? [max, min] : [min, max];
+  return [max, min];
+}
+
+function longRangeSamplePoints(sample: HistoryLoadSample, prevY: number | null, nextAnchor: number | null): { points: PlottedPoint[]; markerPoint: PlottedPoint | null } {
+  const endValue = sample.value;
+  if (!hasRangeStats(sample) || sample.bucketStartHour === undefined || sample.bucketEndHour === undefined) {
+    const fallback = plottedSampleValue(sample, true);
+    if (fallback === null) return { points: [], markerPoint: null };
+    const point = { hour: endValue !== null ? sample.hour : sampleCenterHour(sample), value: fallback };
+    return { points: [point], markerPoint: point };
+  }
+  const min = sample.minimumPercent;
+  const max = sample.maximumPercent;
+  const bStart = sample.bucketStartHour;
+  const bEnd = sample.bucketEndHour;
+  if (endValue !== null) {
+    const endHour = Math.max(bStart, sample.hour);
+    const span = endHour - bStart;
+    const hi = Math.max(max, endValue);
+    const lo = Math.min(min, endValue);
+    const upperRef = prevY === null ? endValue : Math.max(prevY, endValue);
+    const lowerRef = prevY === null ? endValue : Math.min(prevY, endValue);
+    const needMax = span > 0 && hi - upperRef >= excursionBandPercent;
+    const needMin = span > 0 && lowerRef - lo >= excursionBandPercent;
+    const interior: number[] = [];
+    if (needMax && needMin) {
+      interior.push(...orderedExtrema(lo, hi, prevY, endValue, nextAnchor));
+    } else if (needMax) {
+      interior.push(hi);
+    } else if (needMin) {
+      interior.push(lo);
+    }
+    const endPoint = { hour: endHour, value: endValue };
+    return { points: [...placeWithinWindow(bStart, endHour, interior), endPoint], markerPoint: endPoint };
+  }
+  const span = Math.max(0, bEnd - bStart);
+  if (span === 0 || max - min < excursionBandPercent) {
+    const mid = typeof sample.averagePercent === "number" ? sample.averagePercent : max;
+    const point = { hour: sampleCenterHour(sample), value: mid };
+    return { points: [point], markerPoint: point };
+  }
+  const [first, second] = orderedExtrema(min, max, prevY, null, nextAnchor);
+  const picked = prevY !== null && Math.abs(first - prevY) < excursionBandPercent ? [second] : [first, second];
+  const points = placeWithinWindow(bStart, bEnd, picked);
+  return { points, markerPoint: points[0] ?? null };
 }
 
 function formatHistoryPercent(value: number) {
@@ -92,12 +182,23 @@ function HistoryLoadChart({ chartEvents, loadSamples: samples, startsAt, endsAt,
   const [hoveredLoadIndex, setHoveredLoadIndex] = useState<number | null>(null);
   const left = 58;
   const right = 1900;
-  const top = 62;
-  const bottom = 192;
   const start = dateTimeValue(startsAt);
   const end = dateTimeValue(endsAt);
   const duration = (end - start) / 3_600_000;
   const toX = (hour: number) => left + (right - left) * (hour / duration);
+  const eventAnnotations = v1MonitoringEnabled ? chartEvents.map((event) => {
+    const sample = { hour: event.hour, value: event.value };
+    const x = toX(sample.hour);
+    const direction = x > right - 120 ? -1 : event.label === "수거 필요" ? -1 : 1;
+    const row = event.label === "수거 필요" ? 0 : event.label === "수거 완료" ? 1 : 2;
+    const labelY = 17 + row * 17;
+    const labelX = x + direction * 38;
+    return { ...event, direction, labelX, labelY, sample, x };
+  }) : [];
+  const hasEventAnnotations = eventAnnotations.length > 0;
+  const top = hasEventAnnotations ? 62 : 18;
+  const bottom = 198;
+  const elbowY = top - 8;
   const tickStep = duration <= 6 ? 1 : duration <= 24 ? 3 : Math.max(24, Math.ceil(duration / 168) * 24);
   const ticks = timeAxisTicks(start, end, tickStep).map(timestamp => {
     const hour = (timestamp - start) / 3_600_000;
@@ -109,14 +210,32 @@ function HistoryLoadChart({ chartEvents, loadSamples: samples, startsAt, endsAt,
   });
   const toY = (value: number) => bottom - value * ((bottom - top) / 100);
   const useMaximum = (bucketSeconds ?? 0) > 60;
-  const segments: Array<Array<HistoryLoadSample & { value: number }>> = [];
-  let segment: Array<HistoryLoadSample & { value: number }> = [];
-  for (const sample of samples) {
-    const plottedValue = plottedSampleValue(sample, useMaximum);
-    if (plottedValue === null) {
+  const segments: PlottedPoint[][] = [];
+  let segment: PlottedPoint[] = [];
+  const limitedMarkers: Array<{ index: number; sample: HistoryLoadSample; point: PlottedPoint }> = [];
+  for (const [index, sample] of samples.entries()) {
+    if (useMaximum) {
+      const prevY = segment.at(-1)?.value ?? null;
+      const { points, markerPoint } = longRangeSamplePoints(sample, prevY, nextSampleAnchor(samples[index + 1]));
+      if (points.length === 0) {
+        if (segment.length) segments.push(segment);
+        segment = [];
+      } else {
+        segment.push(...points);
+        if (sample.dataState === "LIMITED" && markerPoint) {
+          limitedMarkers.push({ index, sample, point: markerPoint });
+        }
+      }
+    } else if (sample.value === null) {
       if (segment.length) segments.push(segment);
       segment = [];
-    } else segment.push({ ...sample, value: plottedValue });
+    } else {
+      const point = { hour: sample.hour, value: sample.value };
+      segment.push(point);
+      if (sample.dataState === "LIMITED") {
+        limitedMarkers.push({ index, sample, point });
+      }
+    }
   }
   if (segment.length) segments.push(segment);
   const previousResult = loadState?.status === "error" && loadState.stale === true && segments.length > 0;
@@ -130,24 +249,15 @@ function HistoryLoadChart({ chartEvents, loadSamples: samples, startsAt, endsAt,
     const next = thresholdPoints[index + 1];
     return `${index === 0 ? "M" : "L"}${toX(sample.hour)} ${toY(sample.value)}${next ? `H${toX(next.hour)}` : `H${right}`}`;
   }).join(" ");
-  const currentThreshold = loadState?.thresholdKind === "current" ? thresholdPoints.at(-1)?.value : undefined;
-  const eventAnnotations = v1MonitoringEnabled ? chartEvents.map((event) => {
-    const sample = { hour: event.hour, value: event.value };
-    const x = toX(sample.hour);
-    const direction = x > right - 120 ? -1 : event.label === "수거 필요" ? -1 : 1;
-    const row = event.label === "수거 필요" ? 0 : event.label === "수거 완료" ? 1 : 2;
-    const elbowY = top - 8;
-    const labelY = 17 + row * 17;
-    const labelX = x + direction * 38;
-    return { ...event, direction, elbowY, labelX, labelY, sample, x };
-  }) : [];
   const selectedEvent = activeEvent === null ? null : eventAnnotations[activeEvent] ?? null;
   const selectedSample = selectedEvent?.sample ?? null;
   const tooltipX = selectedSample === null ? 0 : Math.max(left + 8, Math.min(toX(selectedSample.hour) - 96, right - 200));
   const tooltipY = selectedSample === null ? 0 : 132;
   const inspectedIndex = selectedEvent !== null ? null : (activeLoadIndex ?? hoveredLoadIndex);
   const selectedLoad = inspectedIndex === null ? null : samples[inspectedIndex] ?? null;
-  const selectedGuideX = selectedLoad ? toX(selectedLoad.hour) : 0;
+  const selectedGuideX = selectedLoad
+    ? toX(useMaximum && selectedLoad.value === null ? sampleCenterHour(selectedLoad) : selectedLoad.hour)
+    : 0;
   const loadTooltipLines = (() => {
     if (!selectedLoad) return null;
     if (selectedLoad.dataState === "LIMITED" && !hasRangeStats(selectedLoad) && selectedLoad.value !== null) {
@@ -212,17 +322,15 @@ function HistoryLoadChart({ chartEvents, loadSamples: samples, startsAt, endsAt,
         {ticks.map(({ hour, label }) => <text key={hour} x={toX(hour)} y="218" textAnchor={hour === 0 ? "start" : "middle"}>{label}</text>)}
       </g>
       {thresholdPath && <path d={thresholdPath} stroke="#607086" strokeDasharray="6 6" strokeWidth="1.5" fill="none" />}
-      {thresholdPath && currentThreshold !== undefined && <text x={right} y="48" fill="#526278" fontSize="14" fontWeight="600" textAnchor="end">현재 임계율 {currentThreshold}%</text>}
-      {previousResult && <text x="980" y="45" textAnchor="middle" fill="#61708a" fontSize="12">이전 조회 결과 / 갱신 실패</text>}
+      {previousResult && <text x="980" y={hasEventAnnotations ? 45 : 11} textAnchor="middle" fill="#61708a" fontSize={hasEventAnnotations ? 12 : 11}>이전 조회 결과 / 갱신 실패</text>}
       {!unavailable && segments.length > 0 ? segments.map((points, index) => {
         const path = points.map((sample, sampleIndex) => `${sampleIndex === 0 ? "M" : "L"}${toX(sample.hour)} ${toY(sample.value)}`).join(" ");
         return <g key={`history-load-${index}`}><path d={`${path}V${bottom}H${toX(points[0].hour)}Z`} fill="#f58a07" fillOpacity="0.1" /><path className="history-load-line" d={path} fill="none" stroke="#f58a07" strokeWidth="2" />{points.length === 1 && <circle cx={toX(points[0].hour)} cy={toY(points[0].value)} r="2.5" fill="#f58a07" />}</g>;
-      }) : <text x="980" y="130" textAnchor="middle" fill="#61708a">{loadState?.message && loadState.message !== emptyMessage && <title>{loadState.message}</title>}{emptyMessage}</text>}
+      }) : <text x="980" y={(top + bottom) / 2} dominantBaseline="middle" textAnchor="middle" fill="#61708a">{loadState?.message && loadState.message !== emptyMessage && <title>{loadState.message}</title>}{emptyMessage}</text>}
       {!unavailable && selectedLoad && <line x1={selectedGuideX} x2={selectedGuideX} y1={top} y2={bottom} stroke="#94a3b8" strokeDasharray="3 3" strokeWidth="1" pointerEvents="none" />}
-      {!unavailable && samples.map((sample, index) => {
-        const plottedValue = plottedSampleValue(sample, useMaximum);
-        const labelValue = sample.value ?? plottedValue;
-        return plottedValue !== null && sample.dataState === "LIMITED" && <circle key={`history-limited-${index}`} cx={toX(sample.hour)} cy={toY(plottedValue)} r="3.5" fill="#ffffff" stroke="#f58a07" strokeWidth="2" tabIndex={0} aria-label={`판단 생성 ${sample.generatedAt ?? "정보 없음"}, 대표 적재율 ${labelValue}%, 입력 제한, 관측 ${sample.observedAt ?? "정보 없음"}`} onPointerEnter={() => setActiveLoadIndex(index)} onPointerLeave={() => setActiveLoadIndex(null)} onFocus={() => setActiveLoadIndex(index)} onBlur={() => setActiveLoadIndex(null)}><title>입력 제한 상태의 적재율 {labelValue}%</title></circle>;
+      {!unavailable && limitedMarkers.map(({ index, sample, point }) => {
+        const labelValue = sample.value ?? point.value;
+        return <circle key={`history-limited-${index}`} cx={toX(point.hour)} cy={toY(point.value)} r="3.5" fill="#ffffff" stroke="#f58a07" strokeWidth="2" tabIndex={0} aria-label={`판단 생성 ${sample.generatedAt ?? "정보 없음"}, 대표 적재율 ${labelValue}%, 입력 제한, 관측 ${sample.observedAt ?? "정보 없음"}`} onPointerEnter={() => setActiveLoadIndex(index)} onPointerLeave={() => setActiveLoadIndex(null)} onFocus={() => setActiveLoadIndex(index)} onBlur={() => setActiveLoadIndex(null)}><title>입력 제한 상태의 적재율 {labelValue}%</title></circle>;
       })}
       <g stroke="#8b9aad" strokeWidth="1.2">
         {ticks.map(({ hour }) => <path key={hour} d={`M${toX(hour)} ${bottom}V${bottom + 6}`} />)}
@@ -233,7 +341,7 @@ function HistoryLoadChart({ chartEvents, loadSamples: samples, startsAt, endsAt,
           const targetWidth = 82;
           return (
             <g key={event.id}>
-              <path d={`M${event.x} ${toY(event.sample.value)}V${event.elbowY}L${event.labelX} ${event.labelY + 4}`} fill="none" stroke={event.color} strokeOpacity="0.72" strokeWidth="1.5" />
+              <path d={`M${event.x} ${toY(event.sample.value)}V${elbowY}L${event.labelX} ${event.labelY + 4}`} fill="none" stroke={event.color} strokeOpacity="0.72" strokeWidth="1.5" />
               <text x={event.labelX + event.direction * 5} y={event.labelY} fill={event.color} fontSize="11" fontWeight="700" textAnchor={event.direction === -1 ? "end" : "start"}>{event.label}</text>
               <rect
                 className="history-event-target"
@@ -367,6 +475,10 @@ export function HistoryPage({ dataSource, history, headerNotifications, headerUn
     }));
   const thresholds = displayedHistory.thresholds.filter((sample, index, values) => sample.hour <= endHour && (sample.hour >= startHour || index === values.findLastIndex((candidate) => candidate.hour <= startHour)))
     .map((sample) => ({ ...sample, hour: Math.max(0, sample.hour - startHour) }));
+  const currentThreshold = displayedHistory.loadState?.thresholdKind === "current" ? thresholds.at(-1)?.value : undefined;
+  const thresholdLegendLabel = displayedHistory.loadState?.thresholdKind === "current"
+    ? (currentThreshold !== undefined ? `현재 임계율 ${currentThreshold}%` : "현재 임계율")
+    : "수거 임계율";
   const showLegend = (type: string) => dataSource?.monitoringVersion !== "v2" && (applied.eventType === "전체" || applied.eventType === type);
   const totalEventPages = serverEvents ? Math.max(1, serverEvents.totalPages) : Math.max(1, Math.ceil(filteredEvents.length / historyEventsPerPage));
   const visibleEvents = serverEvents ? serverEvents.items : filteredEvents.slice(eventPage * historyEventsPerPage, (eventPage + 1) * historyEventsPerPage);
@@ -376,7 +488,7 @@ export function HistoryPage({ dataSource, history, headerNotifications, headerUn
   return (
     <DashboardPageShell activePage="history" dataSource={dataSource} headerNotifications={headerNotifications} headerUnreadCount={headerUnreadCount} notificationState={headerNotificationState} session={session}>
       <main className="history-page" aria-label="스크랩 모니터링 이력">
-        <div className="page-heading"><h1 tabIndex={-1}>이력</h1><DataReceptionMeta reception={reception} /></div>
+        <div className="page-heading"><PageTitle>이력</PageTitle><DataReceptionMeta reception={reception} /></div>
         <div className="history-content">
           <section className="card history-query">
             <div className="history-query-head"><SectionTitle>조회 조건</SectionTitle>{queryError ? <p id="history-query-error" role="alert" title={queryError}>{queryError}</p>
@@ -411,7 +523,7 @@ export function HistoryPage({ dataSource, history, headerNotifications, headerUn
               <button className="primary-button" type="submit" disabled={querying}>{querying ? "조회 중" : "조회"}</button>
             </form>
           </section>
-          <section className="card history-load"><div className="history-card-head"><SectionTitle>적재율 이력</SectionTitle><div className="history-legend" aria-label="그래프 범례"><span><i className="history-legend-line" />{displayedHistory.loadState?.thresholdKind === "current" ? "현재 임계율" : "수거 임계율"}</span>{v1MonitoringEnabled && showLegend("알림") && <span><i className="history-legend-leader need" />수거 필요</span>}{v1MonitoringEnabled && showLegend("수거") && <span><i className="history-legend-leader complete" />수거 완료</span>}{v1MonitoringEnabled && showLegend("오류") && <span><i className="history-legend-leader error" />오류</span>}</div></div><HistoryLoadChart key={`${applied.start}-${applied.end}-${applied.eventType}`} {...displayedHistory} startsAt={applied.start} endsAt={applied.end} loadSamples={loadSamples} chartEvents={chartEvents} thresholds={thresholds} /></section>
+          <section className="card history-load"><div className="history-card-head"><SectionTitle>적재율 이력</SectionTitle><div className="history-legend" aria-label="그래프 범례"><span><i className="history-legend-line" />{thresholdLegendLabel}</span>{v1MonitoringEnabled && showLegend("알림") && <span><i className="history-legend-leader need" />수거 필요</span>}{v1MonitoringEnabled && showLegend("수거") && <span><i className="history-legend-leader complete" />수거 완료</span>}{v1MonitoringEnabled && showLegend("오류") && <span><i className="history-legend-leader error" />오류</span>}</div></div><HistoryLoadChart key={`${applied.start}-${applied.end}-${applied.eventType}`} {...displayedHistory} startsAt={applied.start} endsAt={applied.end} loadSamples={loadSamples} chartEvents={chartEvents} thresholds={thresholds} /></section>
           <section className="card history-events">
             <div className="history-card-head"><SectionTitle>이벤트 이력</SectionTitle><span>{eventsFailed ? "조회 실패" : eventsLoading ? "불러오는 중" : `총 ${eventsTotal}건`}</span></div>
             <div className="history-table-wrap"><table aria-busy={serverEvents?.status === "paging" || eventsLoading}>

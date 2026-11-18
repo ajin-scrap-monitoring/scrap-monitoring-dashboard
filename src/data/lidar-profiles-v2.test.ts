@@ -219,6 +219,50 @@ describe("LiDAR profile 표본", () => {
     expect(() => parseLidarProfilesV2({ ...base, meanSectionReasonCodes: "HEIGHT_PAIR_UNMATCHED" }, "pit-01"))
       .toThrow("Unexpected v2 LiDAR profile contract.");
   });
+
+  test("v0.2.1 공간 표시 확장 필드(valuePolicy, displayBinCount, displayCoverageRatio, displayUnpositionedCount)를 허용하고 범위 오류를 거부한다", () => {
+    const base = lidarProfilesFixture();
+    const withDisplayFields = {
+      ...base,
+      profiles: [
+        {
+          ...base.profiles[0],
+          sensorId: "lidar-a",
+          valuePolicy: "SPATIAL_BIN_MEDIAN",
+          displayBinCount: 200,
+          displayCoverageRatio: 0.75,
+          displayUnpositionedCount: 3,
+        },
+        {
+          ...base.profiles[1],
+          sensorId: "lidar-b",
+          valuePolicy: "SENSOR_ANGLE",
+          displayBinCount: null,
+          displayCoverageRatio: null,
+          displayUnpositionedCount: null,
+        },
+      ],
+    };
+    const [first, second] = parseLidarProfilesV2(withDisplayFields, "pit-01");
+    expect(first.label).toBe("LiDAR 1");
+    expect(second.label).toBe("LiDAR 2");
+
+    for (const invalidProfile of [
+      { valuePolicy: "UNKNOWN_POLICY" },
+      { displayBinCount: 1 },
+      { displayBinCount: 201 },
+      { displayBinCount: 100.5 },
+      { displayCoverageRatio: -0.1 },
+      { displayCoverageRatio: 1.1 },
+      { displayUnpositionedCount: -1 },
+      { displayUnpositionedCount: 1.5 },
+    ]) {
+      expect(() => parseLidarProfilesV2({
+        ...base,
+        profiles: [{ ...base.profiles[0], ...invalidProfile }],
+      }, "pit-01")).toThrow("Unexpected v2 LiDAR profile contract.");
+    }
+  });
 });
 
 describe("calculateUnmeasuredRanges", () => {

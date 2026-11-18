@@ -6,7 +6,7 @@ import { ROUTES, hasAuthenticationSession } from "../app-routing";
 import type { DashboardDataSource } from "../data/dashboard-data-source";
 import type { DataAreaState, HeaderNotification, UserSession } from "../domain/dashboard";
 import { useModalFocus } from "../use-modal-focus";
-import { BellIcon, UserIcon } from "./DashboardPrimitives";
+import { BellIcon, BrandMark, UserIcon } from "./DashboardPrimitives";
 import { loadHeaderPopovers } from "./header-popovers-loader";
 
 export type DashboardPage = "monitoring" | "history" | "recordings" | "admin";
@@ -145,8 +145,8 @@ export function DashboardHeader({ activePage, dataSource, initialNotifications, 
   };
 
   return (
-    <header className="topbar">
-      <AppLink className="brand" to={ROUTES.monitoring} aria-label="AJIN SCRAP MONITORING 홈"><span className="brand-mark" aria-hidden="true" /><span>AJIN SCRAP MONITORING</span></AppLink>
+    <header className="topbar" data-page={activePage}>
+      <AppLink className="brand" to={ROUTES.monitoring} aria-label="AJIN SCRAP MONITORING 홈"><BrandMark /><span>AJIN SCRAP MONITORING</span></AppLink>
       <nav className="global-nav" aria-label="주요 메뉴" aria-hidden={sessionPending || undefined}>
         {!sessionPending && ([["monitoring", "현황"], ["history", "이력"], ["recordings", "녹화 영상"], ["admin", "관리자"]] as const).filter(([page]) => page !== "admin" || canManage).map(([page, label]) => <AppLink key={page} className={`nav-link ${activePage === page ? "active" : ""}`} to={ROUTES[page]} aria-current={activePage === page ? "page" : undefined}>{label}</AppLink>)}
       </nav>
