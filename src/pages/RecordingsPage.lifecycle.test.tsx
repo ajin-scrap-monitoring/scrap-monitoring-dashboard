@@ -481,12 +481,14 @@ test("MP4 확대는 기본 video를 pause하고 재생 위치 및 촬영 시각�
   await act(async () => { await Promise.resolve(); });
   const base = view.container.querySelector("video");
   if (!base) throw new Error("Base video missing.");
+  expect(base).toHaveAttribute("controlsList", "nofullscreen");
   base.currentTime = 10;
   fireEvent.timeUpdate(base);
   fireEvent.click(screen.getByRole("button", { name: "녹화 영상 크게 보기" }));
   expect(pause.mock.instances).toContain(base);
   const expanded = view.container.querySelector<HTMLVideoElement>(".video-modal video");
   if (!expanded) throw new Error("Expanded video missing.");
+  expect(expanded).toHaveAttribute("controlsList", "nofullscreen");
   fireEvent.loadedMetadata(expanded);
   expect(expanded.currentTime).toBe(10);
   expanded.currentTime = 20;

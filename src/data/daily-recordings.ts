@@ -142,6 +142,7 @@ function parseDailyRecordingBase(value: unknown, cameraId: string) {
   const cleanupCompletedAt = item.cleanup_completed_at === undefined || item.cleanup_completed_at === null ? null : nullableTimestamp(item.cleanup_completed_at);
   const cleanupError = errorDetail(item.cleanup_error, "파일 정리에 실패했습니다.");
   const deletedAt = item.deleted_at === undefined || item.deleted_at === null ? null : nullableTimestamp(item.deleted_at);
+  const deletionReason = item.deletion_reason === undefined || item.deletion_reason === null ? null : choice(item.deletion_reason, ["capacity_pressure"]);
   if (item.space_reclaimed !== undefined && item.space_reclaimed !== null) return fail();
 
   return {
@@ -173,6 +174,7 @@ function parseDailyRecordingBase(value: unknown, cameraId: string) {
       exportExpiresAt: nullableTimestamp(item.export_expires_at),
       error,
       deletedAt,
+      ...(deletionReason !== null && { deletionReason }),
       cleanupState,
       cleanupCompletedAt,
       cleanupError,

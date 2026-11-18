@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 import cameraFrame from "../assets/camera-frame.png";
 import { DashboardPageShell } from "../components/DashboardShell";
 import { DetailDialog } from "../components/DetailDialog";
-import { ExpandIcon, SectionTitle } from "../components/DashboardPrimitives";
+import { ExpandIcon, PageTitle, SectionTitle } from "../components/DashboardPrimitives";
 import { DataReceptionMeta } from "../components/DataReceptionMeta";
 import { LiveVideo } from "../components/LiveVideo";
 import { LoadChart, MeasurementDiagram, ProfileChart, UnsupportedChart } from "../components/MonitoringVisuals";
@@ -11,7 +11,7 @@ import { Pagination } from "../components/Pagination";
 import type { DashboardDataSource } from "../data/dashboard-data-source";
 import type { ActiveAlert, ActiveAlertCoverage, AlarmState, DashboardData, MeasurementLayoutStatus, MonitoringFilterState } from "../domain/dashboard";
 import { v1MonitoringEnabled } from "../build-features";
-import { seoulDisplayText } from "../display-time";
+import { seoulDateTime, seoulDisplayText } from "../display-time";
 import { useModalFocus } from "../use-modal-focus";
 import { useCameraStatus } from "./use-camera-status";
 import {
@@ -109,6 +109,20 @@ function deviceLabel(value: string) {
   return Object.hasOwn(deviceStateLabels, value) ? deviceStateLabels[value] : value;
 }
 
+function formatDeviceTimestamp(value: string): string {
+  if (!value || value === missingValue) return missingValue;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return value;
+  const kst = seoulDateTime(parsed);
+  return `${kst.slice(5, 7)}.${kst.slice(8, 10)} ${kst.slice(11, 19)}`;
+}
+
+function formatDeviceTimestampTitle(value: string): string | undefined {
+  if (!value || value === missingValue) return undefined;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? seoulDisplayText(parsed) : value;
+}
+
 export function MonitoringPage({ data, dataSource }: { data: DashboardData; dataSource: DashboardDataSource }) {
   const { monitoring, session } = data;
   const state = monitoring.v2;
@@ -182,7 +196,7 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
   return <DashboardPageShell activePage="monitoring" dataSource={dataSource} headerNotifications={monitoring.headerNotifications} headerUnreadCount={monitoring.unreadNotificationCount} notificationState={monitoring.notificationState} session={session}>
     <main className="monitoring-page" aria-label="스크랩 모니터링 대시보드">
       <div className="page-heading">
-        <h1 tabIndex={-1}>스크랩 모니터링</h1>
+        <PageTitle>스크랩 모니터링</PageTitle>
         <DataReceptionMeta reception={data.reception} />
       </div>
       <div className="content">
@@ -232,7 +246,12 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
             <MeasurementDiagram lidar1Color="#1677e8" lidar2Color="#0ba58f" />
           </section>
           <section className="card chart-card span-4">
-            <div className="chart-title-row"><SectionTitle>최근 24시간 적재율</SectionTitle></div>
+            <div className="chart-title-row">
+              <SectionTitle>최근 24시간 적재율</SectionTitle>
+              <div className="chart-legend" aria-label="최근 24시간 적재율 범례">
+                <span><i className="history-legend-line" />{state ? "현재 임계율" : "수거 임계율"} {monitoring.summary.collectionThreshold}%</span>
+              </div>
+            </div>
             <LoadChart samples={monitoring.loadHistory} threshold={monitoring.summary.collectionThreshold} state={monitoring.loadHistoryState} thresholdKind={state ? "current" : undefined} />
           </section>
           {(v1MonitoringEnabled || state) && monitoring.lidarProfiles.length > 0 && state?.streamState !== "reconnecting"
@@ -273,12 +292,49 @@ export function MonitoringPage({ data, dataSource }: { data: DashboardData; data
                   ? cameraDisplay.statusText
                   : device.statusLabel ? deviceLabel(device.statusLabel) : deviceLabels[device.status];
                 const title = isCamera ? cameraDisplay.title : deviceStatusTitle(device.statusLabel, device.reasonCodes);
+                const reasonSummary = formatMonitoringReasonSummary(device.reasonCodes ?? []);
+                const reasonDetails = formatMonitoringReasonDetails(device.reasonCodes ?? []);
+                const reasonRow = {
+                  label: "상태",
+                  value: reasonSummary ?? (status === "normal" ? "정상" : "정보 없음"),
+                  title: reasonDetails.length > 0 ? reasonDetails.join("\n") : undefined,
+                };
+                const deviceRows: Array<{ label: string; value: string; title?: string }> = isCamera
+                  ? [
+                    { label: "연결 상태", value: cameraDisplay.connectionText },
+                    { label: "프레임 수신", value: cameraDisplay.frameReceivedText, title: cameraDisplay.frameReceivedTitle },
+                    { label: "상태", value: cameraDisplay.reasonText, title: cameraDisplay.reasonTitle },
+                  ]
+                  : device.label === "카메라"
+                    ? [
+                      { label: "연결 상태", value: state ? "확인 중" : (device.status === "normal" ? "연결됨" : "확인 불가") },
+                      { label: "프레임 수신", value: formatDeviceTimestamp(device.received), title: formatDeviceTimestampTitle(device.received) },
+                      reasonRow,
+                    ]
+                    : device.label === "엣지 장비"
+                      ? [
+                        { label: "연결 상태", value: state ? (state.connectionState === "REPORTING" ? "보고 중" : "확인 불가") : (device.status === "normal" ? "연결됨" : "확인 불가") },
+                        { label: "최근 보고", value: formatDeviceTimestamp(device.received), title: formatDeviceTimestampTitle(device.received) },
+                        reasonRow,
+                      ]
+                      : [
+                        { label: "최근 스캔", value: formatDeviceTimestamp(device.received), title: formatDeviceTimestampTitle(device.received) },
+                        reasonRow,
+                      ];
                 return (
                   <div className="device" key={`${index}-${device.label}`}>
-                    <div>
+                    <div className="device-head">
                       <span className="device-name" title={device.label}>{device.label}</span>
                       <span className={`status-text ${deviceTones[status]}`} title={title}>{statusText}</span>
                     </div>
+                    <dl className="device-details">
+                      {deviceRows.map((entry) => (
+                        <div key={entry.label}>
+                          <dt>{entry.label}</dt>
+                          <dd title={entry.title}>{entry.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
                   </div>
                 );
               }) : <p className="collection-empty">등록된 장비 상태가 없습니다.</p>}

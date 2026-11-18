@@ -100,8 +100,8 @@ Backend 기준은 manifest의 revision이다. 현황 보조 조회는 5개(`fill
 촬영 시각은 각각 다른 시각이다. 브라우저의 로컬 시각은 경과 시간 계산에 사용하지 않는다.
 snapshot, `profiles`, `fill-forecast`와 `load-history`의 `simulated` 값은 계약 파서가 수용하되, 화면에는 시뮬레이션과 실측을 구분하는 문구를 표시하지 않는다.
 
-별도의 장비 서비스 진단 목록, 마지막 진행 시각, clock 상태와 offset은 화면에 표시하지
-않는다. 장비 및 센서 상태 카드의 title에는 보고된 `reason_codes`가 있을 때 한국어 사유와 원시 코드를 함께 표시한다. 서비스 부재 및 오래된 장비 snapshot을 정상 상태로 보충하지 않는다. pit 이름은
+별도의 장비 서비스 진단 목록, 서비스 마지막 진행 시각, clock 상태와 offset, 추정 latency는 화면에 표시하지
+않는다. 장비 상태 4개 카드(`LiDAR 1`, `LiDAR 2`, `카메라`, `엣지 장비`)는 카드 하단 여백을 채워 배치하며 연결 상태(카메라, 엣지 장비), 최근 스캔/프레임 수신/보고 시각(한국 표준시)과 `reason_codes` 한국어 사유 요약을 표시한다. 장비 및 센서 상태 카드의 title에는 보고된 `reason_codes`가 있을 때 한국어 사유와 원시 코드를 함께 표시한다. 서비스 부재 및 오래된 장비 snapshot을 정상 상태로 보충하지 않는다. pit 이름은
 조회하거나 표시하지 않는다. 센서의 FRESH는 최근 scan 수신 기준이며 적재율 산출 성공이나
 driver 서비스의 전체 건강 상태를 의미하지 않는다.
 
@@ -140,7 +140,7 @@ service 상태를 표시한다. 카메라 관측은 LiDAR 측정 시각과 독�
 표본의 `generatedAt`과 `observedAt`이 null일 수 있다. 이 표본은 bucket 위치로 표시하고 시각을
 만들어 채우지 않는다. 응답의 `inputSource`, `valuePolicy`와 `simulated`는 보존하며 화면에 시뮬레이션 여부를 별도로 표기하지 않는다.
 
-유효한 0%는 보존하고 결측(null)과 `maximumPercent` 등 유효 구간 통계가 없는 `valid=false` 구간은 선을 연결하지 않는다. 이력 그래프에서 `bucketSeconds`가 60초를 초과하는 장기 구간(`7일`, `30일`, `90일` 등)에 서버가 `maximumPercent`를 제공하면 단일 추세선(`.history-load-line`)에 구간 최댓값(`maximumPercent`, `valuePercent`가 함께 있으면 둘 중 큰 값)을 반영하고, 제공되지 않으면 `valuePercent`를 사용한다. 이전 값으로 채우지
+유효한 0%는 보존하고 결측(null)과 `maximumPercent` 등 유효 구간 통계가 없는 `valid=false` 구간은 선을 연결하지 않는다. 이력 그래프에서 `bucketSeconds`가 60초를 초과하는 장기 구간(`7일`, `30일`, `90일` 등)에 서버가 `minimumPercent`와 `maximumPercent`를 제공하면 단일 추세선(`.history-load-line`)에 종점 `valuePercent`(`generatedAt` 시각)와 직전 점 및 종점 범위를 1%p 이상 벗어나는 구간 최고치/최저치를 전체 변동량이 작은 순서로 구간 내부에 배치해 함께 연결하고, `valuePercent`가 null인 유효 구간은 `bucketStartAt`에서 `bucketEndAt` 범위 안에 배치한다. `minimumPercent` 없이 `maximumPercent`만 제공되면 `maximumPercent`를, 모두 없으면 `valuePercent`를 사용한다. 이전 값으로 채우지
 않으며 전체 범위 재조회 방식을 유지한다. 90일을 넘는 기간은 요청 전에 안내하고 요청하지 않는다.
 422 `HISTORY_*` 코드와 503 `HISTORY_QUERY_TIMEOUT`은 빈 그래프나 0% 대신 이력 화면에서 안내 문구로,
 현황 그래프에서 오류 상태로 표시하며 자동 재시도하지 않는다. 현재 임계율은 참고선이며 과거에
@@ -177,7 +177,7 @@ filterState가 WARMING이어도 profile 응답에 유효점이 있으면 곡선�
 평균은 `SCAN_MEAN_TEMPORAL_MEDIAN` 기준이면 `filteredAverage`, 아니면 `average`다.
 새 profile에 유효점이 있고 대표값이 null일 때 개별 `profile.reasonCodes` 또는 최상위 `meanSectionReasonCodes`에 `HEIGHT_TEMPORAL_MISSING`이 있으면 유지하지 않고 직전 정상 대표값을 버린다. 그렇지 않고 개별 `profile.reasonCodes` 또는 최상위 `meanSectionReasonCodes`에 `HEIGHT_TEMPORAL_WARMING`, `HEIGHT_TEMPORAL_WARMING_OR_MISSING` 또는 `HEIGHT_PAIR_UNMATCHED`가 있으면 마지막 정상 대표값을 최대 10초간 유지해 보조 표기 "평균 갱신 대기"와 title "마지막 정상 대표값을 최대 10초 표시합니다"로 표시한다. 그 외의 사유로 null이면 대표값은 "-"로 표시하고 곡선은 유지한다.
 profile 조회가 네트워크 오류, timeout 또는 5xx로 실패한 경우(인증 오류 제외)에만 마지막 유효 곡선과 대표값을 최대 10초간 보조 표기 "곡선 갱신 대기"로 유지한다. 응답이 도착했으나 `samples`가 빈 배열이거나 유효점이 없으면(예: `FILTERED_PROFILE_UNAVAILABLE`) 즉시 비우고 과거 곡선으로 덮지 않는다. 부분 무효점은 새 곡선의 유효점만 그리고 끊긴 구간을 유지하며 이전 스캔 점으로 보충하지 않는다. 유지 시간 10초가 만료되면 곡선은 비우고 평균은 "-"로 전환한다.
-`nullable sampleSource`, `processingVersion`, `sourceScanId`, `sectionSource`, `sectionJudgmentState`, `sectionFillPercent`, `meanSectionFillPercent`, `rawMeanSectionFillPercent`와 sample의 `binSource` 선택 필드는 계약 파서에서 검증해 허용하며, 현재 화면 모델에는 기존 높이 곡선과 통계만 반영한다.
+`nullable sampleSource`, `processingVersion`, `sourceScanId`, `sectionSource`, `sectionJudgmentState`, `sectionFillPercent`, `meanSectionFillPercent`, `rawMeanSectionFillPercent`, `valuePolicy`, `displayBinCount`, `displayCoverageRatio`, `displayUnpositionedCount`와 sample의 `binSource` 선택 필드는 계약 파서에서 검증해 허용하며, `GET /api/v2/monitoring/profiles` 기본(`view=spatial`) 응답의 공간 200구간 중앙값(`SPATIAL_BIN_MEDIAN`)을 포함해 `samples` 배열 길이와 각 표본 좌표를 그대로 그린다(다른 프로필까지 200점을 가정하지 않음). 현재 화면 모델에는 기존 높이 곡선과 통계만 반영한다.
 `valid=false`, 높이 또는 위치가 null인 표본은 선을 끊는다. 관측 구간은 유효 높이와 `positionRatio`가 모두
 있는 연속 표본들의 가로축 범위(`0~1` clamp)를 합친 구간이다. 가로축의 바깥 구간([0, 최솟값), (최댓값, 1])은
 가로축 길이의 1% 이상일 때, 유효 구간 사이의 중간 결손 구간은 길이와 무관하게 결손이 발생하면 미측정 영역으로
@@ -309,7 +309,7 @@ v2 경보와 수거 판단 목록(`/api/v2/monitoring/alerts`, `collection-event
 두 구간 응답의 `revision`이 단건 `summary`와 일치하고 두 응답 간 `snapshot`이 같을 때만 화면에 반영한다. `400 INVALID_CURSOR`는 1페이지 단발 재시도로 복구하며 `409 DAILY_SNAPSHOT_CHANGED`나 revision 또는 snapshot 불일치는 최대 2회까지 단건 `/summary`를 다시 조회해 구간 페이지를 초기화한다. 502, 503, 504와 네트워크 오류는 자동 재시도 없이 `role="alert"`와 "다시 조회" 버튼을 표시한다. 날짜, 필터 또는 녹화 선택을 바꾸면 진행 중인 구간 요청을 취소하고 cursor 상태를 초기화한다.
 목록 행은 서버 요약 상태(`playback_state`)로 "영상 없음" 등을 단건 확인 전부터 표시한다. 다운로드 준비 사전 확인과 준비 완료 폴링은 단건 `/summary`를 사용하고, `POST /exports` 본문 parser는 `DailyRecordingMetadata`와 legacy `DailyRecording` 응답을 모두 수용한다. 보관 만료와 cleanup 표시는 목록 메타데이터 값을 단건 확인 전부터 표시한 뒤 단건 `/summary` 값으로 교체한다.
 
-날짜 녹화는 `deleted_at`, `cleanup_state`(pending, failed, complete, null), `cleanup_completed_at`,
+날짜 녹화는 `deleted_at`, `deletion_reason`(capacity_pressure, null), `cleanup_state`(pending, failed, complete, null), `cleanup_completed_at`,
 `cleanup_error`를 수신 및 보존하고 `space_reclaimed`는 null만 허용하며 그 외 값은 계약 오류로 처리한다. `status`가 deleted 또는 expired면
 녹화 정보의 보관 만료에 `expires_at` 날짜 대신 "삭제됨" 또는 "만료됨"을 표시한다. 재생과 다운로드
 불가 처리는 우선하며 삭제 뒤 남은 `export_state`를 다운로드 가능으로 해석하지 않는다. 녹화 상태
@@ -385,11 +385,11 @@ Backend 회신서의 요청 목록은 이 절의 표를 정본으로 사용한�
 
 | ID | 항목 | 화면 위치 | 책임 | 상태 |
 | --- | --- | --- | --- | --- |
-| Q-17 | 녹화 중인 날짜 녹화 조회의 Backend 메모리 한도 도달 | 녹화 화면 녹화 목록과 녹화 정보 | Backend | Backend `b41512b`(PR `#268`, `#272`, `#302`)에서 `/summary`, 구간 cursor API와 `POST /exports` 경량 연결(`DailyRecordingMetadata`)까지 반영 완료 및 실개발 서버 11/14, 11/16, 11/17 목록, 구간과 export 확인. Dashboard 계약 동기화 완료, 고정 기준 버전(`9c952b3` 이후 패치) 기준 최종 수락과 임의 실제 시각 직접 탐색 API(미구현 후속) 구분 |
+| Q-17 | 녹화 중인 날짜 녹화 조회의 Backend 메모리 한도 도달 | 녹화 화면 녹화 목록과 녹화 정보 | Backend | Backend `v0.2.1`(`c589f04e`, PR `#268`, `#272`, `#302`, `#306`)에서 `/summary`, 구간 cursor API, `POST /exports` 경량 연결(`DailyRecordingMetadata`)과 선택적 `deletion_reason=capacity_pressure`까지 반영 및 공식 이미지/개발 서버 배포 완료. Dashboard 계약 동기화 완료, 고정 기준 버전 기준 최종 수락과 임의 실제 시각 직접 탐색 API(미구현 후속) 구분 |
 | Q-18 | 날짜 녹화 저장 중단 | 녹화 화면 날짜 녹화와 이벤트 녹화 재생 | Media Service | 날짜 녹화 예산(`daily_limit_bytes`)과 30일 보관 설정 정합 미해결. 운영안 검토 후 사용자가 현 저장소, 예산과 30일 보관 설정 유지를 결정해 증설, 예산 조정, 기간 축소와 영상 삭제 미적용 |
 | Q-19 | 데이터 정상 중 적재율 경보 평가의 간헐적 `UNKNOWN` | 현재 상태 카드 적재율 경보 | Backend | Backend PR `#260`, `#264`, `#285`에서 스캔 1회 누락 뒤 창 재준비 완화 반영. 시간쌍 초과 및 실제 5초 관측 부족 보호 유지와 과거 미기록 표본 원인 미확정 구분 |
 | Q-20 | 이벤트 구간 파일 준비 요청의 504 응답 | 녹화 화면 녹화 파일 | Backend | Backend `b41512b`(PR `#282`)에서 요청 내 미디어 동기 대기 제거 및 즉시 202 접수와 합성 8초 지연 검증 반영. 실제 운영 파일 생성 지연과의 구분 유지 |
-| Q-21 | LiDAR 1, 2 단면 곡선 보정과 동일 위치 복수 값 해소 | 현황 화면 LiDAR 1, LiDAR 2 카드 | Backend, Dashboard | Backend `b41512b`(PR `#290`, `#292`)에서 `EDGE_V2_SECTION_PROFILES_ENABLED` 단면 경로(`sectionSource`, `sectionJudgmentState`, `binSource`, `sectionFillPercent`, `rawMeanSectionFillPercent`, `meanSectionFillPercent`, `summary.rawLoadPercent`) 구현 및 Dashboard 계약 파서 수용 완료. 서버 flag OFF 상태이며 Edge 검증 근거와 활성 조건 확정 및 별도 현재 비율 UI 배치 결정 후 합동 확인 |
+| Q-21 | LiDAR 1, 2 단면 곡선 보정과 동일 위치 복수 값 해소 | 현황 화면 LiDAR 1, LiDAR 2 카드 | Backend, Dashboard | Backend `v0.2.1`(`c589f04e`, PR `#304`)에서 표시용 공간 200구간 중앙값(`SPATIAL_BIN_MEDIAN`, `displayBinCount`, `displayCoverageRatio`, `displayUnpositionedCount`, `view=spatial`/`source`) 반영 및 Dashboard 계약 동기화와 파서 수용 완료. `EDGE_V2_SECTION_PROFILES_ENABLED` 기반 단면 경로(`PR #290`, `#292`)는 사용자 명시 보류로 서버 flag OFF 유지 |
 | Q-22 | 장치 성능과 복구 이벤트 판정 기준 보수화 | 이력 화면 운영 이력 표, 현황 화면 활성 알림 카드 | Backend | Backend `b41512b`(PR `#296`)에서 측정 오류 구간 통합, 첫 오류 및 새 원인 즉시 기록과 유효 관측 10초 연속 복구 반영 |
 | Q-23 | 동일 시간 구간 내 반복 이벤트 단일화 | 이력 화면 운영 이력 표, 녹화 화면 녹화 목록 | Backend | Backend `b41512b`(PR `#280`, `#296`)에서 구형 장치 동일 원인 반복 억제와 측정 오류 구간 통합 반영 |
 | Q-24 | 이벤트 내용의 입력 원천 및 시뮬레이션 구분 기록 제거 | 이력 화면 운영 이력 표와 이벤트 상세, 녹화 화면 녹화 목록 | Backend | Backend `b41512b`(PR `#286`)에서 이벤트 표시 문구 정리 반영(구조화 출처 및 기존 이력 보존) |

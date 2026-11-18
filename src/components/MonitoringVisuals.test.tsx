@@ -93,7 +93,7 @@ test("v2 그래프는 bucket 범위를 유지하고 실제 점을 판단 생성 
   expect(targets).toHaveLength(2);
   expect(Number(targets[0].getAttribute("cx"))).toBeCloseTo(40 + 370 / 6);
   expect(Number(targets[0].getAttribute("cy"))).toBe(148);
-  expect(screen.getByText("현재 임계율 85%")).toBeVisible();
+  expect(screen.queryByText(/현재 임계율/)).not.toBeInTheDocument();
   expect(targets[1]).toHaveAccessibleName(/입력 제한.*판단 생성.*관측/);
   fireEvent.focus(targets[1]);
   expect(container.querySelector(".chart-tooltip")).toHaveTextContent("입력 제한");
@@ -146,13 +146,12 @@ test("적재율 소수 자릿수를 유지하고 tooltip 폭을 값 길이에 �
   const tooltip = container.querySelector(".chart-tooltip");
   expect(tooltip).toHaveTextContent("대표 적재율 99.123456789%");
   expect(Number(tooltip?.querySelector("rect")?.getAttribute("width"))).toBeGreaterThan(140);
-  expect(screen.getByText("현재 임계율 90%")).not.toHaveAttribute("transform");
+  expect(screen.queryByText("현재 임계율 90%")).not.toBeInTheDocument();
 });
 
-test.each([0, 80, 90, 100])("임계율 %s%%의 문구는 점선과 분리한 그래프 위쪽 여백에 표시한다", (threshold) => {
+test.each([0, 80, 90, 100])("임계율 %s%%의 점선 좌표를 유지하고 SVG 내부에 왜곡된 문구를 넣지 않는다", (threshold) => {
   const { container } = render(<LoadChart threshold={threshold} thresholdKind="current" samples={[]} />);
-  const label = screen.getByText(`현재 임계율 ${threshold}%`);
-  expect(Number(label.getAttribute("y")) + Number(label.getAttribute("font-size")) / 2).toBeLessThan(20);
+  expect(screen.queryByText(`현재 임계율 ${threshold}%`)).not.toBeInTheDocument();
   expect(container.querySelector('path[stroke-dasharray="5 5"]')).toHaveAttribute("d", `M40 ${148 - threshold * 1.28}H410`);
   expect(screen.getByRole("img")).toHaveAttribute("viewBox", "0 0 430 175");
 });

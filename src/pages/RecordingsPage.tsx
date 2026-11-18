@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 
 import cameraFrame from "../assets/camera-frame.png";
 import { DashboardPageShell } from "../components/DashboardShell";
-import { ExpandIcon, SectionTitle } from "../components/DashboardPrimitives";
+import { ExpandIcon, PageTitle, SectionTitle } from "../components/DashboardPrimitives";
 import { DataReceptionMeta } from "../components/DataReceptionMeta";
 import { Pagination } from "../components/Pagination";
 import { DateTimeField } from "../components/DateTimeField";
@@ -913,7 +913,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
     <DashboardPageShell activePage="recordings" dataSource={dataSource} headerNotifications={headerNotifications} headerUnreadCount={headerUnreadCount} notificationState={headerNotificationState} session={session}>
       <main className="recordings-page" aria-label="스크랩 모니터링 녹화 영상">
         <div className="page-heading">
-          <h1 tabIndex={-1}>녹화 영상</h1>
+          <PageTitle>녹화 영상</PageTitle>
           <DataReceptionMeta reception={reception} />
         </div>
         <div className="recordings-content">
@@ -1078,7 +1078,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                           : selectedPlaybackAvailable && selectedRecording?.daily?.playbackPath
                           ? <Suspense fallback={<div className="recording-media-unavailable" role="status">영상을 준비 중입니다.</div>}><DailyRecordingVideo key={selectedKey} videoRef={playerRef} path={selectedRecording.daily.playbackPath} label={`${selectedRecording.date} 녹화 영상`} poster={posterUrl ?? selectedRecording.thumbnailUrl} onError={() => setPlaybackError({ key: selectedKey, message: "영상을 재생하지 못했습니다. 접근 상태를 확인하세요." })} onTimeUpdate={seconds => { if (!recordingOpen) setPlaybackSeconds(seconds); }} /></Suspense>
                           : selectedPlaybackAvailable && selectedRecording?.contentUrl
-                          ? <video ref={playerRef} src={selectedRecording.contentUrl} poster={posterUrl ?? selectedRecording.thumbnailUrl} controls preload="metadata" aria-label={`${selectedRecording.date} 녹화 영상`} onError={() => setPlaybackError({ key: selectedKey, message: "영상 접근 상태를 확인하세요." })} onTimeUpdate={(event) => { if (!recordingOpen) setPlaybackSeconds(event.currentTarget.currentTime); }} />
+                          ? <video ref={playerRef} src={selectedRecording.contentUrl} poster={posterUrl ?? selectedRecording.thumbnailUrl} controls controlsList="nofullscreen" preload="metadata" aria-label={`${selectedRecording.date} 녹화 영상`} onError={() => setPlaybackError({ key: selectedKey, message: "영상 접근 상태를 확인하세요." })} onTimeUpdate={(event) => { if (!recordingOpen) setPlaybackSeconds(event.currentTarget.currentTime); }} />
                           : selectedRecording?.sample
                             ? <img src={cameraFrame} alt={`${selectedRecording.date} 녹화 영상`} />
                             : <div className="recording-media-unavailable" role="status">{detailRequired && !detailReady ? "영상을 준비 중입니다." : selectedRecording ? "재생 가능한 영상이 없습니다." : "선택할 수 있는 녹화 영상이 없습니다."}</div>}
@@ -1228,7 +1228,7 @@ export function RecordingsPage({ dataSource, recordings, recordingsState, record
                 : selectedPlaybackAvailable && selectedRecording.daily?.playbackPath
                 ? <Suspense fallback={<div className="recording-media-unavailable" role="status">영상을 준비 중입니다.</div>}><DailyRecordingVideo key={`${selectedKey}-expanded`} videoRef={expandedPlayerRef} path={selectedRecording.daily.playbackPath} label={`${selectedRecording.date} 녹화 영상 확대`} poster={posterUrl ?? selectedRecording.thumbnailUrl} initialTime={playbackSeconds} onError={() => setPlaybackError({ key: selectedKey, message: "영상 접근 상태를 확인하세요." })} onTimeUpdate={setPlaybackSeconds} /></Suspense>
                 : selectedPlaybackAvailable && selectedRecording.contentUrl
-                ? <video ref={expandedPlayerRef} src={selectedRecording.contentUrl} poster={posterUrl ?? selectedRecording.thumbnailUrl} controls autoPlay aria-label={`${selectedRecording.date} 녹화 영상 확대`} onLoadedMetadata={(event) => { event.currentTarget.currentTime = playbackSeconds; }} onError={() => setPlaybackError({ key: selectedKey, message: "영상 접근 상태를 확인하세요." })} onTimeUpdate={(event) => setPlaybackSeconds(event.currentTarget.currentTime)} />
+                ? <video ref={expandedPlayerRef} src={selectedRecording.contentUrl} poster={posterUrl ?? selectedRecording.thumbnailUrl} controls controlsList="nofullscreen" autoPlay aria-label={`${selectedRecording.date} 녹화 영상 확대`} onLoadedMetadata={(event) => { event.currentTarget.currentTime = playbackSeconds; }} onError={() => setPlaybackError({ key: selectedKey, message: "영상 접근 상태를 확인하세요." })} onTimeUpdate={(event) => setPlaybackSeconds(event.currentTarget.currentTime)} />
                 : selectedRecording.sample
                   ? <img src={cameraFrame} alt={`${selectedRecording.date} 녹화 영상 확대`} />
                   : <div className="recording-media-unavailable" role="status">재생 가능한 영상이 없습니다.</div>}

@@ -56,6 +56,7 @@ test("MSE 미지원이며 native HLS 지원 시 같은 origin의 playlist를 연
   const video = screen.getByLabelText("날짜 녹화 재생");
   await waitFor(() => expect(video).toHaveAttribute("src", path));
   expect(video).toHaveAttribute("controls");
+  expect(video).toHaveAttribute("controlsList", "nofullscreen");
   expect(video).toHaveAttribute("preload", "metadata");
   expect(video).not.toHaveAttribute("autoplay");
   expect(instances).toHaveLength(0);
@@ -65,6 +66,10 @@ test("MSE 미지원이며 native HLS 지원 시 같은 origin의 playlist를 연
   view.unmount();
   expect(video).not.toHaveAttribute("src");
   expect(pause).toHaveBeenCalled();
+
+  const custom = player({ controls: false });
+  expect(screen.getByLabelText("날짜 녹화 재생")).not.toHaveAttribute("controlsList");
+  custom.view.unmount();
 });
 
 test("MSE player는 필요할 때 로드하고 FetchLoader와 요청 범위 및 retry를 제한한다", async () => {

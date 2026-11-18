@@ -1976,6 +1976,8 @@ export interface components {
             readonly coverage_as_of_at: string;
             /** Deleted At */
             readonly deleted_at?: string | null;
+            /** Deletion Reason */
+            readonly deletion_reason?: "capacity_pressure" | null;
             /** Download Path */
             readonly download_path: string | null;
             readonly error: components["schemas"]["DailyError"] | null;
@@ -2063,6 +2065,8 @@ export interface components {
             readonly coverage_as_of_at: string;
             /** Deleted At */
             readonly deleted_at?: string | null;
+            /** Deletion Reason */
+            readonly deletion_reason?: "capacity_pressure" | null;
             /** Download Path */
             readonly download_path: string | null;
             readonly error: components["schemas"]["DailyError"] | null;
@@ -3020,6 +3024,12 @@ export interface components {
              * @default 0
              */
             readonly coverageRatio?: number;
+            /** Displaybincount */
+            readonly displayBinCount?: number | null;
+            /** Displaycoverageratio */
+            readonly displayCoverageRatio?: number | null;
+            /** Displayunpositionedcount */
+            readonly displayUnpositionedCount?: number | null;
             /** Filteredaverage */
             readonly filteredAverage?: number | null;
             /** Maximum */
@@ -7388,6 +7398,7 @@ export interface operations {
     readonly profiles_api_v2_monitoring_profiles_get: {
         readonly parameters: {
             readonly query?: {
+                readonly view?: "spatial" | "source";
                 readonly pit_id?: string;
             };
             readonly header?: never;

@@ -2938,6 +2938,18 @@
             ],
             "title": "Deleted At"
           },
+          "deletion_reason": {
+            "anyOf": [
+              {
+                "const": "capacity_pressure",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deletion Reason"
+          },
           "download_path": {
             "anyOf": [
               {
@@ -3218,6 +3230,18 @@
               }
             ],
             "title": "Deleted At"
+          },
+          "deletion_reason": {
+            "anyOf": [
+              {
+                "const": "capacity_pressure",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deletion Reason"
           },
           "download_path": {
             "anyOf": [
@@ -5955,6 +5979,44 @@
             "minimum": 0,
             "title": "Coverageratio",
             "type": "number"
+          },
+          "displayBinCount": {
+            "anyOf": [
+              {
+                "maximum": 200,
+                "minimum": 2,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Displaybincount"
+          },
+          "displayCoverageRatio": {
+            "anyOf": [
+              {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Displaycoverageratio"
+          },
+          "displayUnpositionedCount": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Displayunpositionedcount"
           },
           "filteredAverage": {
             "anyOf": [
@@ -15243,6 +15305,20 @@
         "parameters": [
           {
             "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "spatial",
+              "enum": [
+                "spatial",
+                "source"
+              ],
+              "title": "View",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "pit_id",
             "required": false,
             "schema": {
@@ -19351,5 +19427,5 @@
     }
   },
   "x-source-repository": "https://github.com/ajin-scrap-monitoring/scrap-monitoring-backend",
-  "x-source-revision": "b41512b2651593ab187297e4aa707904705df649"
+  "x-source-revision": "c589f04e26261956d7d871df70fb658cc41ad77e"
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { DashboardPageShell } from "../components/DashboardShell";
-import { SectionTitle } from "../components/DashboardPrimitives";
+import { PageTitle, SectionTitle } from "../components/DashboardPrimitives";
 import { Pagination } from "../components/Pagination";
 import { Dropdown } from "../components/Dropdown";
 import type { DashboardDataSource } from "../data/dashboard-data-source";
@@ -382,7 +382,7 @@ export function AdminPage({ admin, dataSource, headerNotifications, headerUnread
   return (
     <DashboardPageShell activePage="admin" dataSource={dataSource} headerNotifications={headerNotifications} headerUnreadCount={headerUnreadCount} notificationState={headerNotificationState} session={session}>
       <main className="admin-page" aria-label="관리자 설정">
-        <div className="page-heading"><h1 tabIndex={-1}>관리자 설정</h1></div>
+        <div className="page-heading"><PageTitle>관리자 설정</PageTitle></div>
         <div className="admin-content">
           <div className="admin-top">
             <section className="card threshold-card">

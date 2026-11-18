@@ -7,17 +7,19 @@ import type { DashboardData } from "../domain/dashboard";
 
 import { HistoryPage } from "./HistoryPage";
 
-test.each([0, 80, 90, 100])("현재 임계율 %s%%는 점선과 분리한 그래프 위쪽 여백에 표시한다", async threshold => {
+test.each([0, 80, 90, 100])("현재 임계율 %s%%는 그래프 내부에 그리지 않고 범례에만 표시한다", async threshold => {
   const { container } = await renderHistory({ thresholds: [{ hour: 0, value: threshold }], loadState: { status: "ready", thresholdKind: "current" } });
-  const label = screen.getByText(`현재 임계율 ${threshold}%`);
-  expect(label).toHaveAttribute("y", "48");
-  expect(label).toHaveAttribute("text-anchor", "end");
-  expect(container.querySelector('path[stroke-dasharray="6 6"]')).toHaveAttribute("d", `M58 ${192 - threshold * 1.3}H1900`);
+  const legend = screen.getByLabelText("그래프 범례");
+  expect(legend).toHaveTextContent(`현재 임계율 ${threshold}%`);
+  const chart = container.querySelector(".history-chart")!;
+  expect(within(chart as HTMLElement).queryByText(`현재 임계율 ${threshold}%`)).not.toBeInTheDocument();
+  expect(container.querySelector('path[stroke-dasharray="6 6"]')).toHaveAttribute("d", `M58 ${198 - threshold * 1.36}H1900`);
 });
 
 test("현재 임계율 값이 없으면 점선의 수치를 임의로 만들지 않는다", async () => {
   const { container } = await renderHistory({ thresholds: [], loadState: { status: "ready", thresholdKind: "current" } });
   expect(container.querySelector('path[stroke-dasharray="6 6"]')).not.toBeInTheDocument();
+  expect(screen.getByLabelText("그래프 범례")).toHaveTextContent("현재 임계율");
   expect(screen.queryByText(/^현재 임계율 \d/)).not.toBeInTheDocument();
 });
 
@@ -36,7 +38,7 @@ function eventSource(getDashboardData: DashboardDataSource["getDashboardData"]) 
 test("이력 그래프는 null 구간을 연결하지 않고 단독 0%도 표시한다", async () => {
   const { container } = await renderHistory({ loadSamples: [{ hour: 0, value: 0 }, { hour: 1, value: null }, { hour: 2, value: 50 }] });
   expect(container.querySelectorAll(".history-load-line")).toHaveLength(2);
-  expect(container.querySelector('circle[fill="#f58a07"]')).toHaveAttribute("cy", "192");
+  expect(container.querySelector('circle[fill="#f58a07"]')).toHaveAttribute("cy", "198");
   for (const path of container.querySelectorAll(".history-load-line")) {
     expect(path.getAttribute("d")).not.toContain("L");
     expect(path).toHaveAttribute("stroke-width", "2");
@@ -52,7 +54,7 @@ test("24시간 이력 눈금은 정각에 정렬하고 조회 기간 및 실제 
   expect(screen.getByRole("textbox", { name: "종료 시각" })).toHaveValue("2026-10-15 19:21");
   const labels = [...container.querySelectorAll('.history-chart text[y="218"]')].map(text => text.textContent);
   expect(labels).toEqual(["21:00", "00:00", "03:00", "06:00", "09:00", "12:00", "15:00", "18:00"]);
-  expect(container.querySelector(".history-load-line")).toHaveAttribute("d", `M${58 + 1842 * 0.5 / 24} 127`);
+  expect(container.querySelector(".history-load-line")).toHaveAttribute("d", `M${58 + 1842 * 0.5 / 24} ${198 - 50 * 1.8}`);
 });
 
 test("1시간의 이력 조회 구간에도 정각 눈금을 표시한다", async () => {
@@ -68,13 +70,13 @@ test("조회 경계의 적재율을 보간해 만들지 않는다", async () => 
   fireEvent.change(screen.getByRole("textbox", { name: "종료 시각" }), { target: { value: "2026-09-03 02:30" } });
   fireEvent.click(screen.getByRole("button", { name: "조회" }));
   const path = container.querySelector(".history-load-line");
-  expect(path).toHaveAttribute("d", `M${58 + 1842 * 1.5 / 2} 127`);
+  expect(path).toHaveAttribute("d", `M${58 + 1842 * 1.5 / 2} ${198 - 50 * 1.8}`);
 });
 
 test("LIMITED와 현재 임계율 참고 의미를 표시하고 v1 marker를 v2 점에 연결하지 않는다", async () => {
   const mock = createMockDashboardDataSource();
   const { container } = await renderHistory({ loadSamples: [{ hour: 2, value: 54, generatedAt: "2026-09-03T02:00:00Z", observedAt: "2026-09-03T01:59:59Z", dataState: "LIMITED" }], loadState: { status: "ready", thresholdKind: "current" } }, { ...mock, monitoringVersion: "v2" });
-  expect(screen.getByText("현재 임계율")).toBeVisible();
+  expect(screen.getByLabelText("그래프 범례")).toHaveTextContent("현재 임계율 80%");
   expect(screen.queryByText("적재율은 v2 STATE 판단이며, 이벤트 목록은 v1 운영 기록입니다.")).not.toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "조회 조건" })).toBeVisible();
   const limited = screen.getByLabelText(/대표 적재율 54%, 입력 제한, 관측/);
@@ -351,9 +353,12 @@ test("1분 초과 집계 구간에서는 단일 추세선에 구간 최댓값(ma
   expect(container.querySelector(".history-load-peak")).toBeNull();
   const lines = container.querySelectorAll(".history-load-line");
   expect(lines).toHaveLength(1);
-  expect(lines[0].getAttribute("d")).toContain(`${192 - 92 * 1.3}`);
+  const lineD = lines[0].getAttribute("d") ?? "";
+  expect(lineD).toContain(`${198 - 92 * 1.8}`);
+  expect(lineD).toContain(`${198 - 0.09 * 1.8}`);
+  expect(lineD).toContain(`${198 - 19.18 * 1.8}`);
   const legend = screen.getByLabelText("그래프 범례");
-  expect(legend).toHaveTextContent("현재 임계율");
+  expect(legend).toHaveTextContent("현재 임계율 80%");
   expect(legend).not.toHaveTextContent("구간 범위");
 
   const chart = container.querySelector(".history-chart") as SVGSVGElement;
@@ -390,5 +395,98 @@ test("60초(24시간) 구간에서는 maximumPercent가 있어도 value를 그�
   });
   fireEvent.click(screen.getByRole("button", { name: "최근 24시간" }));
   fireEvent.click(screen.getByRole("button", { name: "조회" }));
-  expect(container.querySelector(".history-load-line")?.getAttribute("d")).toBe(`M${58 + 1842 * 0.5} ${192 - 42 * 1.3}`);
+  expect(container.querySelector(".history-load-line")?.getAttribute("d")).toBe(`M${58 + 1842 * 0.5} ${198 - 42 * 1.8}`);
+});
+
+test("장기 구간은 수거 버킷의 최고치와 최저치를 순서대로 연결하고 1%p 미만 흔들림과 value=null 경계 쏠림을 억제한다", async () => {
+  const { container } = await renderHistory({
+    startsAt: "2026-10-15 00:00",
+    endsAt: "2026-10-15 01:15",
+    bucketSeconds: 900,
+    thresholds: [{ hour: 0, value: 80 }],
+    loadState: { status: "ready", thresholdKind: "current" },
+    loadSamples: [
+      {
+        hour: 0.24,
+        bucketStartHour: 0,
+        bucketEndHour: 0.25,
+        minimumPercent: 84,
+        maximumPercent: 85,
+        averagePercent: 84.5,
+        value: 85,
+        dataState: "AVAILABLE",
+      },
+      {
+        hour: 0.49,
+        bucketStartHour: 0.25,
+        bucketEndHour: 0.5,
+        minimumPercent: 5,
+        maximumPercent: 92,
+        averagePercent: 38,
+        value: 12,
+        dataState: "AVAILABLE",
+      },
+      {
+        hour: 0.74,
+        bucketStartHour: 0.5,
+        bucketEndHour: 0.75,
+        minimumPercent: 11.4,
+        maximumPercent: 12.6,
+        averagePercent: 12,
+        value: 12.2,
+        dataState: "AVAILABLE",
+      },
+      {
+        hour: 0.75,
+        bucketStartHour: 0.75,
+        bucketEndHour: 1,
+        bucketStartAt: "2026-10-14T15:45:00Z",
+        bucketEndAt: "2026-10-14T16:00:00Z",
+        minimumPercent: 6,
+        maximumPercent: 90,
+        averagePercent: 45,
+        value: null,
+        dataState: "UNKNOWN",
+      },
+      {
+        hour: 1.24,
+        bucketStartHour: 1,
+        bucketEndHour: 1.25,
+        minimumPercent: 12,
+        maximumPercent: 35,
+        averagePercent: 24,
+        value: 35,
+        dataState: "AVAILABLE",
+      },
+    ],
+  });
+
+  fireEvent.change(screen.getByRole("textbox", { name: "시작 시각" }), { target: { value: "2026-10-15 00:00" } });
+  fireEvent.change(screen.getByRole("textbox", { name: "종료 시각" }), { target: { value: "2026-10-15 01:15" } });
+  fireEvent.click(screen.getByRole("button", { name: "조회" }));
+
+  const lineD = container.querySelector(".history-load-line")?.getAttribute("d") ?? "";
+  const coords = [...lineD.matchAll(/[ML]([-0-9.]+) ([-0-9.]+)/g)].map(([, x, y]) => ({
+    x: Number(x),
+    y: Number(y),
+  }));
+  const ys = coords.map((point) => Math.round(((198 - point.y) / 1.8) * 100) / 100);
+  // 84 -> 85(끝) -> 92 -> 5 -> 12 -> 12.2(1%p 미만 흔들림 생략) -> 6 -> 90(상승 방향) -> 12 -> 35
+  expect(ys).toEqual([84, 85, 92, 5, 12, 12.2, 6, 90, 12, 35]);
+  for (let i = 1; i < coords.length; i += 1) {
+    expect(coords[i].x).toBeGreaterThan(coords[i - 1].x);
+  }
+  const bucket3StartX = 58 + 1842 * (0.75 / 1.25);
+  const bucket3EndX = 58 + 1842 * (1 / 1.25);
+  expect(coords[6].x).toBeGreaterThan(bucket3StartX);
+  expect(coords[7].x).toBeLessThan(bucket3EndX);
+
+  const chart = container.querySelector(".history-chart") as SVGSVGElement;
+  vi.spyOn(chart, "getBoundingClientRect").mockReturnValue({
+    x: 0, y: 0, left: 0, top: 0, width: 1960, height: 230, right: 1960, bottom: 230, toJSON: () => ({}),
+  });
+  const bucket3CenterX = 58 + 1842 * (0.875 / 1.25);
+  fireEvent.pointerMove(chart, { clientX: bucket3CenterX, clientY: 120 });
+  const guide = container.querySelector('.history-chart line[stroke="#94a3b8"]');
+  expect(Number(guide?.getAttribute("x1"))).toBeCloseTo(bucket3CenterX, 5);
 });

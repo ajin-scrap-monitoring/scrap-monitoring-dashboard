@@ -23,6 +23,7 @@ type DailyRecordingBase = {
   exportExpiresAt: string | null;
   error: { code: string; message: string } | null;
   deletedAt?: string | null;
+  deletionReason?: "capacity_pressure" | null;
   cleanupState?: "pending" | "failed" | "complete" | null;
   cleanupCompletedAt?: string | null;
   cleanupError?: { code: string; message: string } | null;

@@ -2,11 +2,17 @@ import { useEffect, useState } from "react";
 
 import type { DashboardDataSource } from "../data/dashboard-data-source";
 import type { CameraConnectionState, CameraStatusV2 } from "../data/camera-status-v2";
-import { seoulDisplayText } from "../display-time";
+import { seoulDateTime, seoulDisplayText } from "../display-time";
+import { formatMonitoringReasonDetails, formatMonitoringReasonSummary } from "./monitoring-presentation";
 
 export type CameraDisplay = {
   status: "normal" | "unavailable" | "unknown";
   statusText: string;
+  connectionText: string;
+  frameReceivedText: string;
+  frameReceivedTitle?: string;
+  reasonText: string;
+  reasonTitle?: string;
   title: string;
 };
 
@@ -17,6 +23,14 @@ function formatFrameTime(timeStr: string | null): string {
     return seoulDisplayText(parsed);
   }
   return timeStr;
+}
+
+function formatCompactFrameTime(timeStr: string | null): string {
+  if (!timeStr) return "정보 없음";
+  const parsed = Date.parse(timeStr);
+  if (!Number.isFinite(parsed)) return timeStr;
+  const kst = seoulDateTime(parsed);
+  return `${kst.slice(5, 7)}.${kst.slice(8, 10)} ${kst.slice(11, 19)}`;
 }
 
 function formatConnectionState(connectionState: CameraConnectionState): string {
@@ -37,34 +51,53 @@ export function buildCameraDisplay(
 ): CameraDisplay {
   const baseNotice = "프레임 수신 기준 상태 (화질이나 하드웨어 자체 진단 아님)";
   if (!cameraStatus || isExpiredOrFailed) {
+    const reasonSummary = cameraStatus ? formatMonitoringReasonSummary(cameraStatus.reasonCodes) : null;
+    const reasonDetails = cameraStatus ? formatMonitoringReasonDetails(cameraStatus.reasonCodes) : [];
     return {
       status: "unknown",
       statusText: "확인 불가",
+      connectionText: "확인 불가",
+      frameReceivedText: cameraStatus ? formatCompactFrameTime(cameraStatus.lastFrameReceivedAt) : "정보 없음",
+      frameReceivedTitle: cameraStatus?.lastFrameReceivedAt ? formatFrameTime(cameraStatus.lastFrameReceivedAt) : undefined,
+      reasonText: reasonSummary ?? "정보 없음",
+      reasonTitle: reasonDetails.length > 0 ? reasonDetails.join("\n") : undefined,
       title: `${baseNotice}\n카메라 상태 확인 불가`,
     };
   }
 
+  const connectionText = formatConnectionState(cameraStatus.connectionState);
+  const fullFrameTime = formatFrameTime(cameraStatus.lastFrameReceivedAt);
+  const reasonDetails = formatMonitoringReasonDetails(cameraStatus.reasonCodes);
   const lines = [
     baseNotice,
-    `프레임 수신 시각: ${formatFrameTime(cameraStatus.lastFrameReceivedAt)}`,
-    `연결 상태: ${formatConnectionState(cameraStatus.connectionState)}`,
+    `프레임 수신 시각: ${fullFrameTime}`,
+    `연결 상태: ${connectionText}`,
   ];
   if (cameraStatus.reasonCodes.length > 0) {
     lines.push(`사유: ${cameraStatus.reasonCodes.join(", ")}`);
   }
 
   const title = lines.join("\n");
+  const reasonSummary = formatMonitoringReasonSummary(cameraStatus.reasonCodes);
+  const common = {
+    connectionText,
+    frameReceivedText: formatCompactFrameTime(cameraStatus.lastFrameReceivedAt),
+    frameReceivedTitle: cameraStatus.lastFrameReceivedAt ? fullFrameTime : undefined,
+    reasonText: reasonSummary ?? (cameraStatus.state === "HEALTHY" ? "정상" : "정보 없음"),
+    reasonTitle: reasonDetails.length > 0 ? reasonDetails.join("\n") : undefined,
+    title,
+  };
 
   switch (cameraStatus.state) {
     case "HEALTHY":
-      return { status: "normal", statusText: "정상", title };
+      return { ...common, status: "normal", statusText: "정상" };
     case "INTERRUPTED":
-      return { status: "unavailable", statusText: "수신 중단", title };
+      return { ...common, status: "unavailable", statusText: "수신 중단" };
     case "UNSUPPORTED":
-      return { status: "unknown", statusText: "미지원", title };
+      return { ...common, status: "unknown", statusText: "미지원" };
     case "UNKNOWN":
     default:
-      return { status: "unknown", statusText: "확인 불가", title };
+      return { ...common, status: "unknown", statusText: "확인 불가" };
   }
 }
 

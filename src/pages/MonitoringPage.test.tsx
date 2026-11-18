@@ -16,24 +16,35 @@ vi.mock("../components/LiveVideo", () => ({
   },
 }));
 
-test("장비 상태 코드는 표시 문구로 변환하고 scan 및 수신 시각과 지연은 표시하지 않는다", async () => {
+test("장비 상태 코드는 표시 문구로 변환하고 확장 카드에 한국 표준시 수신 시각과 연결 상태 및 사유 요약을 표시한다", async () => {
   const dataSource = createMockDashboardDataSource();
   const data = await dataSource.getDashboardData();
   data.monitoring = monitoringV2Data(monitoringV2StateFixture("UNAVAILABLE"), "pit-01");
   const received = "2026-10-15T00:00:12.123456Z";
   data.monitoring.devices = [
-    { label: "LiDAR 1", received, receivedLabel: "마지막 scan", status: "normal", statusLabel: "FRESH" },
-    { label: "엣지 장비", received, status: "delayed", statusLabel: "DEGRADED" },
+    { label: "LiDAR 1", received, receivedLabel: "마지막 scan", status: "normal", statusLabel: "FRESH", reasonCodes: [] },
+    { label: "엣지 장비", received, status: "delayed", statusLabel: "DEGRADED", reasonCodes: ["LIDAR_STATUS_NOT_REPORTED"] },
     { label: "카메라", received: "정보 없음", status: "unknown" },
     { label: "미확인 장비", received: "정보 없음", status: "unknown", statusLabel: "constructor" },
   ];
   const { container } = render(<MonitoringPage data={data} dataSource={dataSource} />);
-  expect(screen.getByText("정상")).toHaveAttribute("title", "FRESH");
-  expect(screen.getByText("일부 기능 제한")).toHaveAttribute("title", "DEGRADED");
+  expect(screen.getByText("정상", { selector: ".device .status-text" })).toHaveAttribute("title", "FRESH");
+  expect(screen.getByText("일부 기능 제한")).toHaveAttribute("title", "DEGRADED\n사유: LiDAR 상태 미보고 (LIDAR_STATUS_NOT_REPORTED)");
   expect(screen.getByText("constructor")).toBeVisible();
   expect(container.querySelectorAll(".device time, .device-meta")).toHaveLength(0);
   expect(container.querySelector(".devices-card")).not.toHaveTextContent(/마지막 scan|최근 수신|지연 정보/);
   expect(container.querySelector(".devices-card")).not.toHaveTextContent(received);
+  const lidarCard = screen.getByText("LiDAR 1", { selector: ".device-name" }).closest(".device")!;
+  expect(lidarCard).toHaveTextContent("최근 스캔");
+  expect(lidarCard).toHaveTextContent("10.15 09:00:12");
+  expect(lidarCard).toHaveTextContent("상태");
+  expect(lidarCard.querySelector(".device-details")).toHaveTextContent("정상");
+  const edgeCard = screen.getByText("엣지 장비", { selector: ".device-name" }).closest(".device")!;
+  expect(edgeCard).toHaveTextContent("연결 상태");
+  expect(edgeCard).toHaveTextContent("확인 불가");
+  expect(edgeCard).toHaveTextContent("최근 보고");
+  expect(edgeCard).toHaveTextContent("10.15 09:00:12");
+  expect(edgeCard).toHaveTextContent("LiDAR 상태 미보고");
   expect(data.monitoring.devices[0].statusLabel).toBe("FRESH");
   expect(data.monitoring.devices[0].received).toBe(received);
 });
@@ -102,6 +113,9 @@ test.each(["FRESH", "STALE", "UNAVAILABLE", "UNKNOWN", "NO_DATA"] as const)("v2 
   expect(cards[6]).toHaveTextContent("활성 알림을 불러오지 못했습니다.");
   expect(screen.queryByRole("button", { name: "상태 상세" })).not.toBeInTheDocument();
   expect(screen.queryByRole("dialog", { name: "모니터링 상태 상세" })).not.toBeInTheDocument();
+  const loadLegend = within(cards[3] as HTMLElement).getByLabelText("최근 24시간 적재율 범례");
+  expect(loadLegend).toHaveTextContent(`현재 임계율 ${data.monitoring.summary.collectionThreshold}%`);
+  expect(loadLegend.querySelector(".history-legend-line")).toBeInTheDocument();
 });
 
 test("SSE 연결 중단은 적재율을 숨기고 같은 snapshot 복구는 0.00%를 표시한다", async () => {

@@ -7,10 +7,19 @@ const slots = [
 ] as const;
 const calibrationStates = ["UNVERIFIED", "VERIFIED", "UNAVAILABLE", "SIMULATION"];
 const summaryPolicies = ["PROFILE_MEAN", "SCAN_MEAN_TEMPORAL_MEDIAN"];
+const profileValuePolicies = ["SPATIAL_BIN_MEDIAN", "SPATIAL_TEMPORAL_MEDIAN", "SENSOR_ANGLE"];
 const sampleSources = ["MEASUREMENT", "FILTERED_POINT_CLOUD"];
 const sectionSources = ["EDGE_SECTION_PROFILE"];
 const sectionJudgmentStates = ["AVAILABLE", "LIMITED", "UNAVAILABLE"];
 const binSources = ["OBSERVED", "INTERPOLATED", "UNAVAILABLE", "MASKED"];
+
+function nullableIntInRange(value: unknown, min: number, max = Infinity): boolean {
+  return value === null || (typeof value === "number" && Number.isInteger(value) && value >= min && value <= max);
+}
+
+function nullableNumberInRange(value: unknown, min: number, max: number): boolean {
+  return value === null || (typeof value === "number" && Number.isFinite(value) && value >= min && value <= max);
+}
 
 function nullableNumber(value: unknown): value is number | null {
   return value === null || (typeof value === "number" && Number.isFinite(value));
@@ -56,6 +65,10 @@ export function parseLidarProfilesV2(value: unknown, pitId: string): LidarProfil
       || !["average", "minimum", "maximum", "filteredAverage"].every((key) => profile[key] === undefined || nullableNumber(profile[key]))
       || !(profile.calibrationState === undefined || calibrationStates.includes(profile.calibrationState as string))
       || !(profile.summaryValuePolicy === undefined || summaryPolicies.includes(profile.summaryValuePolicy as string))
+      || !(profile.valuePolicy === undefined || profileValuePolicies.includes(profile.valuePolicy as string))
+      || !(profile.displayBinCount === undefined || nullableIntInRange(profile.displayBinCount, 2, 200))
+      || !(profile.displayCoverageRatio === undefined || nullableNumberInRange(profile.displayCoverageRatio, 0, 1))
+      || !(profile.displayUnpositionedCount === undefined || nullableIntInRange(profile.displayUnpositionedCount, 0))
       || !(profile.reasonCodes === undefined || strings(profile.reasonCodes))
       || !(profile.sampleSource === undefined || profile.sampleSource === null || sampleSources.includes(profile.sampleSource as string))
       || !(profile.sectionSource === undefined || profile.sectionSource === null || sectionSources.includes(profile.sectionSource as string))
